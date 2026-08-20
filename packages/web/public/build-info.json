@@ -1,1 +1,1 @@
-{"marker":"deploy-check-3","api":"api/handler.ts + rewrite __path"}
+{"marker":"deploy-check-4","api":"bundle autocontido api/handler.js (libsql via HTTP)"}
