@@ -1,1 +1,1 @@
-{"marker":"deploy-check-2","api":"catch-all node function"}
+{"marker":"deploy-check-3","api":"api/handler.ts + rewrite __path"}
