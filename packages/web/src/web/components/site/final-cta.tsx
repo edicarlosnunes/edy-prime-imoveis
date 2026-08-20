@@ -1,0 +1,60 @@
+import { site } from "../../lib/site";
+import { LeadForm } from "./lead-form";
+
+export function FinalCta() {
+  return (
+    <section id="contato" className="relative overflow-hidden bg-deep">
+      <img
+        src="/images/imovel-5.jpg"
+        alt="Varanda com vista para o mar"
+        className="absolute inset-0 h-full w-full object-cover opacity-25"
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-deep via-deep/90 to-deep/60" />
+
+      <div className="relative mx-auto grid max-w-[1240px] gap-14 px-6 py-24 lg:grid-cols-12 lg:gap-16 lg:px-8 lg:py-32">
+        <div className="reveal lg:col-span-6">
+          <p className="label-xs flex items-center gap-3 text-brass-soft">
+            <span className="h-px w-10 bg-brass-soft/60" />
+            Próximo passo
+          </p>
+          <h2 className="display mt-6 text-[clamp(2.2rem,4.4vw,3.6rem)] text-white">
+            Vamos encontrar
+            <br />
+            o seu endereço
+            <br />
+            <span className="italic text-brass-soft">em {site.city}.</span>
+          </h2>
+          <p className="mt-8 max-w-md text-base leading-relaxed text-white/70">
+            Preencha ao lado ou fale direto no WhatsApp {site.whatsappLabel}. Atendimento{" "}
+            {site.hours.toLowerCase()}.
+          </p>
+
+          <dl className="mt-12 space-y-6 border-t border-white/12 pt-8 text-sm text-white/65">
+            <div>
+              <dt className="label-xs text-brass-soft">Escritório</dt>
+              <dd className="mt-2">{site.address}</dd>
+            </div>
+            <div>
+              <dt className="label-xs text-brass-soft">E-mail</dt>
+              <dd className="mt-2">{site.email}</dd>
+            </div>
+            <div>
+              <dt className="label-xs text-brass-soft">Registro</dt>
+              <dd className="mt-2">{site.creci}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div className="reveal lg:col-span-6 lg:col-start-7" data-reveal-delay="120">
+          <div className="grain relative border border-white/12 bg-white/[0.04] p-8 backdrop-blur-md lg:p-10">
+            <h3 className="display text-3xl text-white">Solicitar seleção de imóveis</h3>
+            <p className="mt-3 mb-7 text-sm leading-relaxed text-white/60">
+              Quanto mais detalhes, mais certeira a lista que você recebe.
+            </p>
+            <LeadForm tone="dark" source="cta-final" />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
