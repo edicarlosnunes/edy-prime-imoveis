@@ -11,8 +11,8 @@ export const site = {
   city: "Praia Grande",
   state: "SP",
   /** Somente números, com DDI e DDD. Ex: 5513991234567 */
-  whatsapp: "5513999999999",
-  whatsappLabel: "(13) 99999-9999",
+  whatsapp: "5513996922804",
+  whatsappLabel: "(13) 99692-2804",
   email: "contato@edypremiimoveis.com.br",
   instagram: "https://instagram.com/",
   address: "Av. Pres. Costa e Silva, Boqueirão — Praia Grande/SP",
