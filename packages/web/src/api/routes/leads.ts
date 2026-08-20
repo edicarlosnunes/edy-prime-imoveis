@@ -1,8 +1,19 @@
 import { z } from "zod";
 import { desc } from "drizzle-orm";
 import { base } from "../__core/app";
-import { db } from "../database";
 import * as schema from "../database/schema";
+
+/**
+ * O cliente do banco (libsql) é carregado sob demanda, dentro do handler.
+ * Importar `db` no topo do módulo fazia o cliente ser criado no momento em que
+ * a API é carregada — se as credenciais faltarem, ou se o bundle serverless
+ * resolver o binário nativo do libsql, a função inteira morre na inicialização
+ * e derruba até rotas que não usam banco (health, vitrine de imóveis).
+ */
+async function getDb() {
+  const { db } = await import("../database");
+  return db;
+}
 
 const createInput = z.object({
   name: z.string().min(2).max(120),
@@ -15,6 +26,7 @@ const createInput = z.object({
 export const leads = {
   /** Grava um novo contato vindo do site. */
   create: base.input(createInput).handler(async ({ input }) => {
+    const db = await getDb();
     const [lead] = await db
       .insert(schema.leads)
       .values({
@@ -30,7 +42,8 @@ export const leads = {
   }),
 
   /** Últimos contatos recebidos (uso interno). */
-  list: base.handler(() =>
-    db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt)).limit(100),
-  ),
+  list: base.handler(async () => {
+    const db = await getDb();
+    return db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt)).limit(100);
+  }),
 };
