@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Menu, X, Phone } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Phone } from "lucide-react";
 import { site, whatsappLink } from "../../lib/site";
 
 const links = [
@@ -41,31 +41,73 @@ export function Header() {
     return () => observer.disconnect();
   }, []);
 
+  // Menu mobile: trava o scroll do fundo e fecha com Esc
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Fecha o menu ao voltar para desktop
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => {
+      if (mq.matches) setOpen(false);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
+  const closeMenu = useCallback(() => setOpen(false), []);
+
+  const solid = scrolled || open;
+
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-all duration-500 ${
-        scrolled
-          ? "border-b border-white/10 bg-deep/95 py-3 backdrop-blur-md"
-          : "bg-gradient-to-b from-black/55 via-black/25 to-transparent py-5"
+      className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,border-color] duration-500 ${
+        solid
+          ? "border-b border-white/10 bg-deep/95 shadow-[0_1px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+          : "border-b border-transparent bg-gradient-to-b from-black/60 via-black/25 to-transparent"
       }`}
     >
-      <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-6 px-6 lg:px-8">
-        <a href="#top" className="flex shrink-0 items-baseline gap-2 text-white">
-          <span className="display text-2xl tracking-tight">{site.brand}</span>
-          <span className="label-xs text-brass-soft">{site.brandSuffix}</span>
+      <div
+        className={`mx-auto flex max-w-[1240px] items-center justify-between gap-6 px-6 transition-[height] duration-500 lg:px-8 ${
+          solid ? "h-[68px]" : "h-[84px]"
+        }`}
+      >
+        <a
+          href="#top"
+          onClick={closeMenu}
+          className="group flex shrink-0 items-baseline gap-2 text-white"
+        >
+          <span className="display text-[26px] leading-none tracking-tight transition-colors duration-300 group-hover:text-brass-soft">
+            {site.brand}
+          </span>
+          <span className="label-xs text-brass-soft transition-opacity duration-300 group-hover:opacity-80">
+            {site.brandSuffix}
+          </span>
         </a>
 
-        <nav className="hidden items-center gap-8 md:flex">
+        <nav className="hidden items-center gap-9 md:flex lg:gap-11">
           {links.map((link) => {
             const isActive = active === link.href;
             return (
               <a
                 key={link.href}
                 href={link.href}
-                className={`relative py-1 text-[13px] tracking-[0.08em] uppercase transition-colors after:absolute after:-bottom-0.5 after:left-0 after:h-px after:bg-brass-soft after:transition-all after:duration-300 hover:text-white ${
+                aria-current={isActive ? "true" : undefined}
+                className={`relative py-1.5 text-[12.5px] font-normal tracking-[0.16em] whitespace-nowrap uppercase transition-colors duration-300 after:absolute after:-bottom-px after:left-0 after:h-px after:bg-brass-soft after:transition-[width] after:duration-500 after:ease-out hover:text-brass-soft ${
                   isActive
-                    ? "text-white after:w-full"
-                    : "text-white/85 after:w-0 hover:after:w-full"
+                    ? "text-brass-soft after:w-full"
+                    : "text-white/80 after:w-0 hover:after:w-full"
                 }`}
               >
                 {link.label}
@@ -81,48 +123,89 @@ export function Header() {
             )}
             target="_blank"
             rel="noreferrer"
-            className="hidden items-center gap-2 bg-brass px-6 py-3 text-[12px] tracking-[0.14em] text-white uppercase transition-colors hover:bg-brass-soft sm:flex"
+            className="hidden items-center gap-2 border border-brass bg-brass px-6 py-3 text-[11.5px] tracking-[0.18em] text-white uppercase transition-colors duration-300 hover:border-brass-soft hover:bg-brass-soft sm:flex"
           >
             <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
             WhatsApp
           </a>
+
           <button
             type="button"
             aria-label={open ? "Fechar menu" : "Abrir menu"}
             aria-expanded={open}
+            aria-controls="menu-mobile"
             onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-2 border border-white/25 px-3 py-2.5 text-white transition-colors hover:border-white/60 md:hidden"
+            className="flex items-center gap-2.5 border border-white/25 px-3.5 py-2.5 text-white transition-colors duration-300 hover:border-brass-soft md:hidden"
           >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            <span className="text-[12px] tracking-[0.14em] uppercase">Menu</span>
+            <span className="relative block h-3 w-4">
+              <span
+                className={`absolute left-0 block h-px w-4 bg-current transition-transform duration-300 ease-out ${
+                  open ? "top-1.5 rotate-45" : "top-0"
+                }`}
+              />
+              <span
+                className={`absolute top-1.5 left-0 block h-px w-4 bg-current transition-opacity duration-200 ${
+                  open ? "opacity-0" : "opacity-100"
+                }`}
+              />
+              <span
+                className={`absolute left-0 block h-px w-4 bg-current transition-transform duration-300 ease-out ${
+                  open ? "top-1.5 -rotate-45" : "top-3"
+                }`}
+              />
+            </span>
+            <span className="text-[11.5px] tracking-[0.18em] uppercase">Menu</span>
           </button>
         </div>
       </div>
 
-      {open && (
-        <nav className="mt-3 border-t border-white/10 bg-deep px-6 pt-2 pb-5 md:hidden">
-          {links.map((link) => (
-            <a
-              key={link.href}
-              href={link.href}
-              onClick={() => setOpen(false)}
-              className="block border-b border-white/8 py-4 text-[14px] tracking-[0.1em] text-white/85 uppercase"
-            >
-              {link.label}
-            </a>
-          ))}
+      {/* Menu mobile */}
+      <div
+        id="menu-mobile"
+        className={`overflow-hidden border-t border-white/10 bg-deep transition-[max-height,opacity] duration-500 ease-out md:hidden ${
+          open ? "max-h-[70vh] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <nav className="px-6 pt-2 pb-6">
+          {links.map((link, index) => {
+            const isActive = active === link.href;
+            return (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={closeMenu}
+                aria-current={isActive ? "true" : undefined}
+                style={{ transitionDelay: open ? `${80 + index * 45}ms` : "0ms" }}
+                className={`flex items-center justify-between border-b border-white/10 py-4 text-[13px] tracking-[0.16em] uppercase transition-all duration-500 ${
+                  open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+                } ${isActive ? "text-brass-soft" : "text-white/85"}`}
+              >
+                {link.label}
+                <span
+                  className={`h-px transition-[width] duration-500 ${
+                    isActive ? "w-6 bg-brass-soft" : "w-0 bg-transparent"
+                  }`}
+                />
+              </a>
+            );
+          })}
           <a
             href={whatsappLink(
               `Olá, ${site.broker}. Quero informações sobre imóveis em ${site.city}.`,
             )}
             target="_blank"
             rel="noreferrer"
-            className="mt-5 block bg-brass px-6 py-4 text-center text-[12px] tracking-[0.14em] text-white uppercase"
+            onClick={closeMenu}
+            style={{ transitionDelay: open ? `${80 + links.length * 45}ms` : "0ms" }}
+            className={`mt-6 flex items-center justify-center gap-2 bg-brass px-6 py-4 text-[11.5px] tracking-[0.18em] text-white uppercase transition-all duration-500 hover:bg-brass-soft ${
+              open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+            }`}
           >
+            <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
             Falar no WhatsApp
           </a>
         </nav>
-      )}
+      </div>
     </header>
   );
 }

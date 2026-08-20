@@ -24,6 +24,11 @@
     scroll-behavior: smooth;
   }
 
+  /* Compensa o header fixo ao navegar pelos links do menu */
+  section[id] {
+    scroll-margin-top: 68px;
+  }
+
   body {
     background-color: var(--color-paper);
     color: var(--color-ink);
