@@ -25,14 +25,24 @@ import { sha256Hex } from "./auth";
 
 export const GUARD_CHANNEL = "site" as const;
 
-/** Limites por visitante (hash de IP). */
-const NEW_CONVERSATIONS_PER_HOUR = 3;
-const NEW_CONVERSATIONS_PER_DAY = 8;
-const AI_CALLS_PER_HOUR = 30;
-const AI_CALLS_PER_DAY = 80;
+/**
+ * Limites centralizados. Cada um aceita override por variável de ambiente
+ * (só no servidor, root `.env`), então ajustar depois do lançamento não exige
+ * deploy de código: basta mudar o valor e reiniciar.
+ */
+function limitFromEnv(name: string, fallback: number) {
+  const raw = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+/* Valores de lançamento (conservadores). */
+const NEW_CONVERSATIONS_PER_HOUR = limitFromEnv("SITE_CHAT_MAX_NEW_CONVERSATIONS_HOUR", 3);
+const NEW_CONVERSATIONS_PER_DAY = limitFromEnv("SITE_CHAT_MAX_NEW_CONVERSATIONS_DAY", 8);
+const AI_CALLS_PER_HOUR = limitFromEnv("SITE_CHAT_MAX_AI_HOUR", 10);
+const AI_CALLS_PER_DAY = limitFromEnv("SITE_CHAT_MAX_AI_DAY", 30);
 
 /** Teto diário de segurança para o chat público inteiro (custo do modelo). */
-const GLOBAL_AI_CALLS_PER_DAY = 600;
+const GLOBAL_AI_CALLS_PER_DAY = limitFromEnv("SITE_CHAT_MAX_AI_GLOBAL_DAY", 150);
 
 /** Mensagem única mostrada ao visitante — sem detalhe de segurança. */
 export const GUARD_NOTICE =
@@ -81,7 +91,11 @@ async function countEvents(
   return Number(row?.total ?? 0);
 }
 
-/** Registra um evento do guard. Nunca derruba a operação principal. */
+/**
+ * Registra um evento do guard. Devolve `false` quando a gravação falha — no
+ * chat público isso significa "não chamar o modelo" (falha fechada), porque sem
+ * contador não há como limitar custo.
+ */
 export async function recordGuardEvent(
   db: AdminDb,
   fingerprint: string,
@@ -95,8 +109,9 @@ export async function recordGuardEvent(
       kind,
       reason: reason ? reason.slice(0, 120) : null,
     });
+    return true;
   } catch {
-    /* contador é proteção, não pode quebrar o atendimento */
+    return false;
   }
 }
 
@@ -161,9 +176,9 @@ export async function guardSiteChat(
 
     return ALLOWED;
   } catch {
-    /* Falha de leitura do contador não pode derrubar o atendimento: o limite
-       por conversa (site-chat.ts) continua valendo. */
-    return ALLOWED;
+    /* Falha fechada: sem contador confiável não chamamos o modelo. Vale só para
+       o canal público `site` — admin e canais futuros não passam por aqui. */
+    return { allowed: false, notice: GUARD_NOTICE };
   }
 }
 

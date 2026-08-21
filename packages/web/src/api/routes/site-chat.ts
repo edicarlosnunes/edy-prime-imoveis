@@ -239,7 +239,11 @@ export const siteChat = {
         externalId: externalIdFor(token),
       });
       if (!existing) {
-        await recordGuardEvent(db, fingerprint, "conversation");
+        const counted = await recordGuardEvent(db, fingerprint, "conversation");
+        if (!counted) {
+          /* Falha fechada: sem contador confiável não chamamos o modelo. */
+          return { state: emptyState, messages: [], properties: [], notice: GUARD_NOTICE };
+        }
         await pruneGuardEvents(db);
       }
 
@@ -280,7 +284,17 @@ export const siteChat = {
         body,
       });
 
-      await recordGuardEvent(db, fingerprint, "ai");
+      const aiCounted = await recordGuardEvent(db, fingerprint, "ai");
+      if (!aiCounted) {
+        /* Falha fechada: o turno da IA não acontece sem o contador gravado. */
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+          messages,
+          properties: [],
+          notice: GUARD_NOTICE,
+        };
+      }
       const turn = await aiTurn(db, conversation.id, siteBaseUrl(context.headers));
 
       const [fresh] = await db

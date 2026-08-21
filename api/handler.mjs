@@ -47204,11 +47204,15 @@ async function aiTurn(db3, conversationId, baseUrl) {
 // packages/web/src/api/lib/chat-guard.ts
 init_schema();
 var GUARD_CHANNEL = "site";
-var NEW_CONVERSATIONS_PER_HOUR = 3;
-var NEW_CONVERSATIONS_PER_DAY = 8;
-var AI_CALLS_PER_HOUR = 30;
-var AI_CALLS_PER_DAY = 80;
-var GLOBAL_AI_CALLS_PER_DAY = 600;
+function limitFromEnv(name25, fallback) {
+  const raw2 = Number.parseInt(process.env[name25] ?? "", 10);
+  return Number.isFinite(raw2) && raw2 > 0 ? raw2 : fallback;
+}
+var NEW_CONVERSATIONS_PER_HOUR = limitFromEnv("SITE_CHAT_MAX_NEW_CONVERSATIONS_HOUR", 3);
+var NEW_CONVERSATIONS_PER_DAY = limitFromEnv("SITE_CHAT_MAX_NEW_CONVERSATIONS_DAY", 8);
+var AI_CALLS_PER_HOUR = limitFromEnv("SITE_CHAT_MAX_AI_HOUR", 10);
+var AI_CALLS_PER_DAY = limitFromEnv("SITE_CHAT_MAX_AI_DAY", 30);
+var GLOBAL_AI_CALLS_PER_DAY = limitFromEnv("SITE_CHAT_MAX_AI_GLOBAL_DAY", 150);
 var GUARD_NOTICE = "Chegamos ao limite de atendimento automático para este acesso agora. Deixe seu nome e WhatsApp no formulário ou chame a gente no WhatsApp: um corretor responde em seguida.";
 var HOUR_MS = 60 * 60 * 1000;
 var DAY_MS = 24 * HOUR_MS;
@@ -47238,7 +47242,10 @@ async function recordGuardEvent(db3, fingerprint, kind, reason) {
       kind,
       reason: reason ? reason.slice(0, 120) : null
     });
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 async function pruneGuardEvents(db3) {
   try {
@@ -47278,7 +47285,7 @@ async function guardSiteChat(db3, fingerprint, options) {
       return block("teto_global_dia");
     return ALLOWED;
   } catch {
-    return ALLOWED;
+    return { allowed: false, notice: GUARD_NOTICE };
   }
 }
 
@@ -47492,7 +47499,10 @@ var siteChat = {
       externalId: externalIdFor(token)
     });
     if (!existing) {
-      await recordGuardEvent(db3, fingerprint, "conversation");
+      const counted = await recordGuardEvent(db3, fingerprint, "conversation");
+      if (!counted) {
+        return { state: emptyState, messages: [], properties: [], notice: GUARD_NOTICE };
+      }
       await pruneGuardEvents(db3);
     }
     const limited = await conversationRateLimited(db3, conversation.id);
@@ -47520,7 +47530,16 @@ var siteChat = {
       authorName: conversation.contactName ?? null,
       body
     });
-    await recordGuardEvent(db3, fingerprint, "ai");
+    const aiCounted = await recordGuardEvent(db3, fingerprint, "ai");
+    if (!aiCounted) {
+      const messages3 = await loadMessages(db3, conversation.id);
+      return {
+        state: toPublicState(token, conversation, countClientMessages(messages3)),
+        messages: messages3,
+        properties: [],
+        notice: GUARD_NOTICE
+      };
+    }
     const turn = await aiTurn(db3, conversation.id, siteBaseUrl(context.headers));
     const [fresh] = await db3.select().from(conversations).where(eq(conversations.id, conversation.id)).limit(1);
     const messages2 = await loadMessages(db3, conversation.id);
