@@ -4208,7 +4208,7 @@ var init_sqlite_core = __esm(() => {
 });
 
 // packages/web/src/api/agent/model.ts
-function pickModel2(agentModel, configuredDefault) {
+function pickModel(agentModel, configuredDefault) {
   const explicit = (agentModel ?? "").trim();
   if (explicit)
     return explicit;
@@ -47044,7 +47044,7 @@ async function agentReply(db3, agent, turns, baseUrl) {
   const { config: config2 } = await readConfig(db3, "ai_gateway");
   const configured = typeof config2.defaultModel === "string" ? config2.defaultModel : null;
   const result = await generateText({
-    model: gateway2(pickModel2(agent.model, configured)),
+    model: gateway2(pickModel(agent.model, configured)),
     system: systemPrompt(agent),
     messages: turns.slice(-16).map((turn) => ({ role: turn.role, content: turn.content })),
     tools: propertyTools(db3, baseUrl, seen),
@@ -48794,7 +48794,6 @@ async function audit(db3, actor, action, options = {}) {
 async function recentAudit(db3, limit = 100) {
   return db3.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(Math.min(limit, 300));
 }
-
 // packages/web/src/api/lib/feed.ts
 init_schema();
 var FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"];

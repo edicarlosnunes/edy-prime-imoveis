@@ -4,6 +4,7 @@
  */
 import { generateText } from "ai";
 import { gateway } from "../agent/gateway";
+import { pickModel } from "../agent/model";
 import { feedProperties, feedXml } from "./feed";
 import type { ConfigMap, IntegrationStatus } from "./integrations";
 import type { AdminDb } from "./admin-base";
