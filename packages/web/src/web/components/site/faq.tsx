@@ -15,7 +15,7 @@ const faqs = [
   {
     question: "Consigo financiar? Vocês ajudam com o banco?",
     answer:
-      "Sim. Faço a simulação inicial, organizo a documentação e acompanho o processo com correspondentes bancários parceiros — Caixa, Itaú, Bradesco e Santander — até a assinatura do contrato.",
+      "Sim. Faço a simulação inicial, organizo a documentação e acompanho o processo junto ao banco escolhido até a assinatura do contrato.",
   },
   {
     question: "Atende quem mora em outra cidade?",
