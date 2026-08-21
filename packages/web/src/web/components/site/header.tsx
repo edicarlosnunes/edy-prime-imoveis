@@ -78,6 +78,7 @@ export function Header() {
 
   return (
     <header
+      data-sec="menu"
       className={`${menu.sticky ? "fixed" : "absolute"} inset-x-0 top-0 z-50 transition-[background-color,box-shadow,border-color] duration-500 ${
         solid
           ? "border-b border-white/10 bg-deep/95 shadow-[0_1px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl"
@@ -121,6 +122,7 @@ export function Header() {
                 key={link.id}
                 href={link.href}
                 aria-current={isActive ? "true" : undefined}
+                data-t="menu"
                 className={`relative py-1.5 text-[12.5px] font-normal tracking-[0.16em] whitespace-nowrap uppercase transition-colors duration-300 after:absolute after:-bottom-px after:left-0 after:h-px after:bg-brass-soft after:transition-[width] after:duration-500 after:ease-out hover:text-brass-soft ${
                   isActive
                     ? "text-brass-soft after:w-full"
@@ -139,6 +141,7 @@ export function Header() {
               href={waHref}
               target="_blank"
               rel="noreferrer"
+              data-t="button"
               className="site-btn site-btn-dark hidden px-6 py-3 sm:inline-flex"
             >
               <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
@@ -192,6 +195,7 @@ export function Header() {
                 href={link.href}
                 onClick={closeMenu}
                 aria-current={isActive ? "true" : undefined}
+                data-t="menu"
                 style={{ transitionDelay: open ? `${80 + index * 45}ms` : "0ms" }}
                 className={`flex items-center justify-between border-b border-white/10 ${fullscreen ? "py-5 text-[15px]" : "py-4 text-[13px]"} tracking-[0.16em] uppercase transition-all duration-500 ${
                   open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
@@ -212,6 +216,7 @@ export function Header() {
               target="_blank"
               rel="noreferrer"
               onClick={closeMenu}
+              data-t="button"
               style={{ transitionDelay: open ? `${80 + links.length * 45}ms` : "0ms" }}
               className={`site-btn site-btn-dark mt-6 w-full py-4 transition-all duration-500 ${
                 open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"

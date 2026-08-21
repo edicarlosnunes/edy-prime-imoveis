@@ -73,14 +73,15 @@ function ContactForm({ code, title }: { code: string; title: string }) {
         <div className="flex h-11 w-11 items-center justify-center border border-brass/40 bg-brass/10">
           <Check className="h-5 w-5 text-brass" strokeWidth={1.6} />
         </div>
-        <h3 className="display mt-4 text-2xl text-deep">Recebido.</h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
+        <h3 data-t="subheading" className="display mt-4 text-2xl text-deep">Recebido.</h3>
+        <p data-t="body" className="mt-2 text-sm leading-relaxed text-muted">
           Vou responder pelo WhatsApp com as informações do imóvel {code}.
         </p>
         <a
           href={whatsappLink(`Olá, ${site.broker}. Enviei o formulário sobre o imóvel ${code}.`)}
           target="_blank"
           rel="noreferrer"
+          data-t="button"
           className="label-xs mt-4 inline-flex items-center gap-2 bg-brass px-6 py-3.5 text-white transition-colors hover:bg-brass-soft"
         >
           Adiantar pelo WhatsApp <ArrowUpRight className="h-3.5 w-3.5" />
@@ -114,12 +115,13 @@ function ContactForm({ code, title }: { code: string; title: string }) {
         }
       }}
     >
-      <p className="label-xs text-brass">Falar sobre este imóvel</p>
+      <p data-t="caption" className="label-xs text-brass">Falar sobre este imóvel</p>
       <input
         required
         placeholder="Seu nome"
         value={name}
         onChange={(event) => setName(event.target.value)}
+        data-t="form"
         className="w-full border border-line bg-white px-4 py-3.5 text-sm text-ink outline-none focus:border-brass"
       />
       <input
@@ -127,17 +129,20 @@ function ContactForm({ code, title }: { code: string; title: string }) {
         placeholder="WhatsApp com DDD"
         value={phone}
         onChange={(event) => setPhone(event.target.value)}
+        data-t="form"
         className="w-full border border-line bg-white px-4 py-3.5 text-sm text-ink outline-none focus:border-brass"
       />
       <textarea
         placeholder="Quer agendar visita? Conte aqui."
         value={message}
         onChange={(event) => setMessage(event.target.value)}
+        data-t="form"
         className="min-h-24 w-full border border-line bg-white px-4 py-3.5 text-sm text-ink outline-none focus:border-brass"
       />
       <button
         type="submit"
         disabled={createLead.isPending}
+        data-t="button"
         className="label-xs inline-flex w-full items-center justify-center gap-2 bg-deep px-6 py-4 text-white transition-colors hover:bg-deep/85 disabled:opacity-60"
       >
         {createLead.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -167,13 +172,14 @@ function PropertyPage() {
   );
 
   return (
-    <div className="site-shell min-h-screen bg-paper">
+    <div className="site-shell min-h-screen bg-paper" data-sec="imovel">
       <SiteChrome />
       <Header />
 
       <main className="mx-auto max-w-[1240px] px-6 py-16 lg:px-8 lg:py-20">
         <Link
           href="/#imoveis"
+          data-t="caption"
           className="label-xs inline-flex items-center gap-2 text-muted transition-colors hover:text-brass"
         >
           <ArrowLeft className="h-3.5 w-3.5" /> Voltar para a vitrine
@@ -189,8 +195,8 @@ function PropertyPage() {
 
         {!query.isLoading && !property && (
           <div className="mt-16 border border-line bg-white p-10 text-center">
-            <h1 className="display text-3xl text-deep">Imóvel não encontrado</h1>
-            <p className="mt-3 text-sm text-muted">
+            <h1 data-t="heading" className="display text-3xl text-deep">Imóvel não encontrado</h1>
+            <p data-t="body" className="mt-3 text-sm text-muted">
               Este imóvel pode ter sido vendido ou saído do site. Veja as opções disponíveis na
               vitrine ou fale comigo no WhatsApp {site.whatsappLabel}.
             </p>
@@ -213,7 +219,7 @@ function PropertyPage() {
                     alt={property.title}
                     className="aspect-[16/10] w-full object-cover"
                   />
-                  <span className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
+                  <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
                     {statusLabel[property.status] ?? property.status}
                   </span>
                 </div>
@@ -237,19 +243,19 @@ function PropertyPage() {
                   </div>
                 )}
 
-                <p className="label-xs mt-8 text-brass">
+                <p data-t="caption" className="label-xs mt-8 text-brass">
                   {typeLabel[property.type] ?? "Imóvel"} · {purposeLabel[property.purpose] ?? property.purpose} ·{" "}
                   {property.code}
                 </p>
-                <h1 className="display mt-3 text-[calc(clamp(2rem,3.4vw,2.9rem))] leading-tight text-deep">
+                <h1 data-t="heading" className="display mt-3 text-[calc(clamp(2rem,3.4vw,2.9rem))] leading-tight text-deep">
                   {property.title}
                 </h1>
-                <p className="mt-3 flex items-center gap-2 text-sm text-muted">
+                <p data-t="info" className="mt-3 flex items-center gap-2 text-sm text-muted">
                   <MapPin className="h-4 w-4 text-brass" strokeWidth={1.6} />
                   {[property.address, property.district, property.city].filter(Boolean).join(" · ")}
                 </p>
 
-                <div className="mt-6 grid grid-cols-2 gap-4 border-y border-line py-5 sm:grid-cols-4">
+                <div data-t="features" className="mt-6 grid grid-cols-2 gap-4 border-y border-line py-5 sm:grid-cols-4">
                   <span className="flex items-center gap-2 text-sm text-muted">
                     <BedDouble className="h-4 w-4 text-brass" strokeWidth={1.5} />
                     {property.bedrooms} dorm.
@@ -270,8 +276,8 @@ function PropertyPage() {
 
                 {property.description && (
                   <div className="mt-8">
-                    <h2 className="display text-2xl text-deep">Sobre o imóvel</h2>
-                    <p className="mt-3 text-sm leading-relaxed whitespace-pre-wrap text-muted">
+                    <h2 data-t="subheading" className="display text-2xl text-deep">Sobre o imóvel</h2>
+                    <p data-t="body" className="mt-3 text-sm leading-relaxed whitespace-pre-wrap text-muted">
                       {property.description}
                     </p>
                   </div>
@@ -279,8 +285,8 @@ function PropertyPage() {
 
                 {property.features.length > 0 && (
                   <div className="mt-8">
-                    <h2 className="display text-2xl text-deep">Características</h2>
-                    <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+                    <h2 data-t="subheading" className="display text-2xl text-deep">Características</h2>
+                    <ul data-t="features" className="mt-4 grid gap-2 sm:grid-cols-2">
                       {property.features.map((feature) => (
                         <li key={feature} className="flex items-center gap-2 text-sm text-muted">
                           <Check className="h-3.5 w-3.5 text-brass" strokeWidth={2} />
@@ -294,11 +300,11 @@ function PropertyPage() {
 
               <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
                 <div className="border border-line bg-white p-6">
-                  <p className="label-xs text-muted">
+                  <p data-t="caption" className="label-xs text-muted">
                     {purposeLabel[property.purpose] ?? property.purpose}
                   </p>
-                  <p className="display mt-2 text-4xl text-deep">{formatBRL(property.price)}</p>
-                  <div className="mt-4 space-y-1 text-xs text-muted">
+                  <p data-t="price" className="display mt-2 text-4xl text-deep">{formatBRL(property.price)}</p>
+                  <div data-t="info" className="mt-4 space-y-1 text-xs text-muted">
                     {property.condoFee ? <p>Condomínio: {formatBRL(property.condoFee)}</p> : null}
                     {property.iptu ? <p>IPTU: {formatBRL(property.iptu)}</p> : null}
                     {property.areaTotal ? <p>Área total: {property.areaTotal} m²</p> : null}
@@ -310,6 +316,7 @@ function PropertyPage() {
                     )}
                     target="_blank"
                     rel="noreferrer"
+                    data-t="button"
                     className="label-xs mt-5 inline-flex w-full items-center justify-center gap-2 bg-brass px-6 py-4 text-white transition-colors hover:bg-brass-soft"
                   >
                     Falar no WhatsApp <ArrowUpRight className="h-3.5 w-3.5" />
@@ -321,6 +328,7 @@ function PropertyPage() {
                       setCopied(true);
                       setTimeout(() => setCopied(false), 1800);
                     }}
+                    data-t="button"
                     className="label-xs mt-2 inline-flex w-full items-center justify-center gap-2 border border-line px-6 py-3.5 text-deep transition-colors hover:border-brass"
                   >
                     {copied ? (
@@ -341,7 +349,7 @@ function PropertyPage() {
 
             {related.length > 0 && (
               <section className="mt-20 border-t border-line pt-12">
-                <h2 className="display text-3xl text-deep">Imóveis parecidos</h2>
+                <h2 data-t="heading" className="display text-3xl text-deep">Imóveis parecidos</h2>
                 <div className="mt-8 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
                   {related.map((item) => (
                     <Link key={item.code} href={`/imovel/${item.slug}`} className="group block">
@@ -350,11 +358,11 @@ function PropertyPage() {
                         alt={item.title}
                         className="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]"
                       />
-                      <p className="label-xs mt-4 text-brass">
+                      <p data-t="caption" className="label-xs mt-4 text-brass">
                         {item.district} · {item.code}
                       </p>
-                      <h3 className="display mt-2 text-xl leading-snug text-deep">{item.title}</h3>
-                      <p className="display mt-2 text-2xl text-deep">{formatBRL(item.price)}</p>
+                      <h3 data-t="card" className="display mt-2 text-xl leading-snug text-deep">{item.title}</h3>
+                      <p data-t="price" className="display mt-2 text-2xl text-deep">{formatBRL(item.price)}</p>
                     </Link>
                   ))}
                 </div>

@@ -23,9 +23,11 @@ import { TabHero, TabMenu } from "../../components/admin/editor/tabs-hero";
 import { TabSections } from "../../components/admin/editor/tabs-sections";
 import { TabCompany, TabFooter } from "../../components/admin/editor/tabs-company";
 import { TabHistory } from "../../components/admin/editor/tab-history";
+import { TabTypography } from "../../components/admin/editor/tab-typography";
 
 const tabs = [
   { key: "identidade", label: "Identidade" },
+  { key: "textos", label: "Textos" },
   { key: "capa", label: "Capa" },
   { key: "menu", label: "Menu" },
   { key: "secoes", label: "Seções" },
@@ -193,6 +195,7 @@ function Editor() {
         ) : (
           <>
             {tab === "identidade" && <TabIdentity content={content} patch={patch} />}
+            {tab === "textos" && <TabTypography content={content} patch={patch} />}
             {tab === "capa" && <TabHero content={content} patch={patch} />}
             {tab === "menu" && <TabMenu content={content} patch={patch} />}
             {tab === "secoes" && <TabSections content={content} patch={patch} />}

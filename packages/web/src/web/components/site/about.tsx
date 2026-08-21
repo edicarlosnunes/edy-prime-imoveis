@@ -8,7 +8,7 @@ export function About() {
   const data = sections.sobre;
 
   return (
-    <section id="sobre" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
+    <section id="sobre" data-sec="sobre" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
       <div className="grid items-center gap-14 lg:grid-cols-12 lg:gap-16">
         {data.imageUrl.trim() && (
           <div className="reveal lg:col-span-5">
@@ -21,8 +21,8 @@ export function About() {
               />
               {(data.badgeName.trim() || data.badgeCaption.trim()) && (
                 <div className="absolute -right-4 -bottom-6 bg-deep px-6 py-5 text-white">
-                  <p className="display text-2xl">{data.badgeName}</p>
-                  <p className="label-xs mt-1 text-brass-soft">{data.badgeCaption}</p>
+                  <p data-t="subheading" className="display text-2xl">{data.badgeName}</p>
+                  <p data-t="caption" className="label-xs mt-1 text-brass-soft">{data.badgeCaption}</p>
                 </div>
               )}
             </div>
@@ -31,13 +31,14 @@ export function About() {
 
         <div className={data.imageUrl.trim() ? "lg:col-span-7" : "lg:col-span-12"}>
           {data.eyebrow.trim() && (
-            <p className="reveal label-xs flex items-center gap-3 text-brass">
+            <p data-t="caption" className="reveal label-xs flex items-center gap-3 text-brass">
               <span className="h-px w-10 bg-brass/60" />
               {data.eyebrow}
             </p>
           )}
           {data.title.trim() && (
             <h2
+              data-t="heading"
               className="reveal display mt-6 text-[calc(clamp(2rem,4vw,3.2rem)*var(--h-scale,1))] text-deep"
               data-reveal-delay="80"
             >
@@ -46,6 +47,7 @@ export function About() {
           )}
           {data.paragraphs.length > 0 && (
             <div
+              data-t="body"
               className="reveal mt-7 space-y-5 text-base leading-relaxed text-muted"
               data-reveal-delay="140"
             >
@@ -62,6 +64,7 @@ export function About() {
               {data.items.map((item) => (
                 <li
                   key={item.id}
+                  data-t="info"
                   className="flex items-start gap-3 text-sm leading-relaxed text-ink"
                 >
                   <Check className="mt-0.5 h-4 w-4 shrink-0 text-brass" strokeWidth={1.8} />
@@ -76,6 +79,7 @@ export function About() {
               href={whatsappLink(`Olá, ${site.broker}. Quero conversar sobre imóveis em ${site.city}.`)}
               target="_blank"
               rel="noreferrer"
+              data-t="button"
               className="site-btn reveal mt-12"
               data-btn="outline"
               data-reveal-delay="260"

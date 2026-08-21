@@ -9,22 +9,22 @@ export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section id="duvidas" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
+    <section id="duvidas" data-sec="faq" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
       <div className="grid gap-14 lg:grid-cols-12 lg:gap-16">
         <div className="reveal lg:col-span-4">
           {data.eyebrow.trim() && (
-            <p className="label-xs flex items-center gap-3 text-brass">
+            <p data-t="caption" className="label-xs flex items-center gap-3 text-brass">
               <span className="h-px w-10 bg-brass/60" />
               {data.eyebrow}
             </p>
           )}
           {data.title.trim() && (
-            <h2 className="display mt-6 text-[calc(clamp(2rem,4vw,3rem)*var(--h-scale,1))] text-deep">
+            <h2 data-t="heading" className="display mt-6 text-[calc(clamp(2rem,4vw,3rem)*var(--h-scale,1))] text-deep">
               <Lines text={data.title} />
             </h2>
           )}
           {data.text.trim() && (
-            <p className="mt-5 text-sm leading-relaxed text-muted">
+            <p data-t="body" className="mt-5 text-sm leading-relaxed text-muted">
               <Lines text={data.text} />
             </p>
           )}
@@ -44,7 +44,7 @@ export function Faq() {
                   onClick={() => setOpen(isOpen ? null : index)}
                   className="flex w-full items-center justify-between gap-6 py-6 text-left"
                 >
-                  <span className="display text-xl text-deep lg:text-2xl">{faq.question}</span>
+                  <span data-t="faq" className="display text-xl text-deep lg:text-2xl">{faq.question}</span>
                   {isOpen ? (
                     <Minus className="h-4 w-4 shrink-0 text-brass" strokeWidth={1.6} />
                   ) : (
@@ -56,7 +56,7 @@ export function Faq() {
                     isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
                   }`}
                 >
-                  <p className="overflow-hidden pr-10 text-sm leading-relaxed text-muted">
+                  <p data-t="body" className="overflow-hidden pr-10 text-sm leading-relaxed text-muted">
                     <span className="block pb-6">{faq.answer}</span>
                   </p>
                 </div>

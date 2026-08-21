@@ -9,7 +9,7 @@ export function FinalCta() {
   const data = sections.contato;
 
   return (
-    <section id="contato" className="relative overflow-hidden bg-deep">
+    <section id="contato" data-sec="contato" className="relative overflow-hidden bg-deep">
       {data.imageUrl.trim() && (
         <img
           src={data.imageUrl}
@@ -22,13 +22,13 @@ export function FinalCta() {
       <div className="relative mx-auto grid max-w-[1240px] gap-14 px-6 py-24 lg:grid-cols-12 lg:gap-16 lg:px-8 lg:py-32">
         <div className={`reveal ${data.showForm ? "lg:col-span-6" : "lg:col-span-8"}`}>
           {data.eyebrow.trim() && (
-            <p className="label-xs flex items-center gap-3 text-brass-soft">
+            <p data-t="caption" className="label-xs flex items-center gap-3 text-brass-soft">
               <span className="h-px w-10 bg-brass-soft/60" />
               {data.eyebrow}
             </p>
           )}
           {(data.title.trim() || data.titleAccent.trim()) && (
-            <h2 className="display mt-6 text-[calc(clamp(2.2rem,4.4vw,3.6rem)*var(--h-scale,1))] text-white">
+            <h2 data-t="heading" className="display mt-6 text-[calc(clamp(2.2rem,4.4vw,3.6rem)*var(--h-scale,1))] text-white">
               <Lines text={data.title} />
               {data.titleAccent.trim() && (
                 <>
@@ -40,7 +40,7 @@ export function FinalCta() {
               )}
             </h2>
           )}
-          <p className="mt-8 max-w-md text-base leading-relaxed text-white/70">
+          <p data-t="body" className="mt-8 max-w-md text-base leading-relaxed text-white/70">
             {data.text.trim() ? (
               <Lines text={data.text} />
             ) : (
@@ -51,22 +51,22 @@ export function FinalCta() {
             )}
           </p>
 
-          <dl className="mt-12 space-y-6 border-t border-white/12 pt-8 text-sm text-white/65">
+          <dl data-t="info" className="mt-12 space-y-6 border-t border-white/12 pt-8 text-sm text-white/65">
             {data.officeLabel.trim() && (
               <div>
-                <dt className="label-xs text-brass-soft">{data.officeLabel}</dt>
+                <dt data-t="caption" className="label-xs text-brass-soft">{data.officeLabel}</dt>
                 <dd className="mt-2">{site.address}</dd>
               </div>
             )}
             {data.emailLabel.trim() && (
               <div>
-                <dt className="label-xs text-brass-soft">{data.emailLabel}</dt>
+                <dt data-t="caption" className="label-xs text-brass-soft">{data.emailLabel}</dt>
                 <dd className="mt-2">{site.email}</dd>
               </div>
             )}
             {data.creciLabel.trim() && (
               <div>
-                <dt className="label-xs text-brass-soft">{data.creciLabel}</dt>
+                <dt data-t="caption" className="label-xs text-brass-soft">{data.creciLabel}</dt>
                 <dd className="mt-2">{site.creci}</dd>
               </div>
             )}
@@ -77,10 +77,10 @@ export function FinalCta() {
           <div className="reveal lg:col-span-6 lg:col-start-7" data-reveal-delay="120">
             <div className="grain relative border border-white/12 bg-white/[0.04] p-8 backdrop-blur-md lg:p-10">
               {data.formTitle.trim() && (
-                <h3 className="display text-3xl text-white">{data.formTitle}</h3>
+                <h3 data-t="subheading" className="display text-3xl text-white">{data.formTitle}</h3>
               )}
               {data.formText.trim() && (
-                <p className="mt-3 mb-7 text-sm leading-relaxed text-white/60">{data.formText}</p>
+                <p data-t="body" className="mt-3 mb-7 text-sm leading-relaxed text-white/60">{data.formText}</p>
               )}
               <LeadForm tone="dark" source="cta-final" />
             </div>

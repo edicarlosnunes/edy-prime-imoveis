@@ -8,7 +8,7 @@ export function Footer() {
   const logoUrl = (menu.logoUrl || theme.logoUrl).trim();
 
   return (
-    <footer className="bg-ink text-white/60">
+    <footer data-sec="footer" className="bg-ink text-white/60">
       <div className="mx-auto max-w-[1240px] px-6 py-16 lg:px-8">
         <div className="grid gap-12 md:grid-cols-4">
           <div className="md:col-span-2">
@@ -27,15 +27,15 @@ export function Footer() {
                 </span>
               </p>
             )}
-            <p className="mt-5 max-w-sm text-sm leading-relaxed">
+            <p data-t="body" className="mt-5 max-w-sm text-sm leading-relaxed">
               <Lines text={footer.about} /> {site.creci}.
             </p>
           </div>
 
           {footer.links.length > 0 && (
             <div>
-              <p className="label-xs text-white">{footer.navLabel}</p>
-              <ul className="mt-5 space-y-3 text-sm">
+              <p data-t="caption" className="label-xs text-white">{footer.navLabel}</p>
+              <ul data-t="footer" className="mt-5 space-y-3 text-sm">
                 {footer.links.map((link) => (
                   <li key={link.id}>
                     <a href={link.href} className="transition-colors hover:text-brass-soft">
@@ -48,8 +48,8 @@ export function Footer() {
           )}
 
           <div>
-            <p className="label-xs text-white">{footer.contactLabel}</p>
-            <ul className="mt-5 space-y-3 text-sm">
+            <p data-t="caption" className="label-xs text-white">{footer.contactLabel}</p>
+            <ul data-t="footer" className="mt-5 space-y-3 text-sm">
               <li>
                 <a
                   href={whatsappLink(`Olá, ${site.broker}. Vim pelo site.`)}
@@ -100,7 +100,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-14 flex flex-col gap-3 border-t border-white/10 pt-8 text-xs md:flex-row md:items-center md:justify-between">
+        <div data-t="caption" className="mt-14 flex flex-col gap-3 border-t border-white/10 pt-8 text-xs md:flex-row md:items-center md:justify-between">
           <p>
             © {new Date().getFullYear()} {menu.logoText || site.brand}{" "}
             {menu.logoSuffix || site.brandSuffix}. {footer.copyright}

@@ -16,7 +16,7 @@ export function CtaFinal() {
   const external = href.startsWith("http");
 
   return (
-    <section id="busca-personalizada" className="mx-auto max-w-[1240px] px-6 pb-24 lg:px-8">
+    <section id="busca-personalizada" data-sec="ctaFinal" className="mx-auto max-w-[1240px] px-6 pb-24 lg:px-8">
       <div className="reveal relative overflow-hidden border border-line bg-white/60 px-8 py-10 text-center">
         {data.imageUrl.trim() && (
           <>
@@ -30,15 +30,15 @@ export function CtaFinal() {
         )}
         <div className="relative">
           {data.eyebrow.trim() && (
-            <p className="label-xs mb-4 text-brass">{data.eyebrow}</p>
+            <p data-t="caption" className="label-xs mb-4 text-brass">{data.eyebrow}</p>
           )}
           {data.title.trim() && (
-            <h3 className="display text-[calc(1.875rem*var(--h-scale,1))] text-deep">
+            <h3 data-t="heading" className="display text-[calc(1.875rem*var(--h-scale,1))] text-deep">
               <Lines text={data.title} />
             </h3>
           )}
           {data.text.trim() && (
-            <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted">
+            <p data-t="body" className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted">
               <Lines text={data.text} />
             </p>
           )}
@@ -47,6 +47,7 @@ export function CtaFinal() {
               href={href}
               target={external ? "_blank" : undefined}
               rel={external ? "noreferrer" : undefined}
+              data-t="button"
               className="site-btn mt-7"
               data-btn={theme.buttonStyle}
             >

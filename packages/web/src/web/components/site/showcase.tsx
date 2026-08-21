@@ -31,28 +31,28 @@ export function Showcase() {
   const list = (properties.data ?? []).slice(0, limit);
 
   return (
-    <section id="imoveis" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
+    <section id="imoveis" data-sec="imoveis" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
       <div className="flex flex-wrap items-end justify-between gap-8">
         <div className="reveal max-w-2xl">
           {data.eyebrow.trim() && (
-            <p className="label-xs flex items-center gap-3 text-brass">
+            <p data-t="caption" className="label-xs flex items-center gap-3 text-brass">
               <span className="h-px w-10 bg-brass/60" />
               {data.eyebrow}
             </p>
           )}
           {data.title.trim() && (
-            <h2 className="display mt-6 text-[calc(clamp(2rem,4vw,3.2rem)*var(--h-scale,1))] text-deep">
+            <h2 data-t="heading" className="display mt-6 text-[calc(clamp(2rem,4vw,3.2rem)*var(--h-scale,1))] text-deep">
               <Lines text={data.title} />
             </h2>
           )}
           {data.subtitle.trim() && (
-            <p className="mt-4 text-base leading-relaxed text-muted">
+            <p data-t="subheading" className="mt-4 text-base leading-relaxed text-muted">
               <Lines text={data.subtitle} />
             </p>
           )}
         </div>
         {data.text.trim() && (
-          <p className="reveal max-w-sm text-sm leading-relaxed text-muted" data-reveal-delay="80">
+          <p data-t="body" className="reveal max-w-sm text-sm leading-relaxed text-muted" data-reveal-delay="80">
             <Lines text={data.text} />
           </p>
         )}
@@ -79,22 +79,22 @@ export function Showcase() {
                 alt={property.title}
                 className="aspect-[4/3] w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
               />
-              <span className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
+              <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
                 {statusLabel[property.status]}
               </span>
             </Link>
 
-            <p className="label-xs mt-5 text-brass">
+            <p data-t="caption" className="label-xs mt-5 text-brass">
               {property.district} · {property.code}
             </p>
             <Link href={`/imovel/${property.slug}`}>
-              <h3 className="display mt-2 text-2xl leading-snug text-deep transition-colors hover:text-brass">
+              <h3 data-t="card" className="display mt-2 text-2xl leading-snug text-deep transition-colors hover:text-brass">
                 {property.title}
               </h3>
             </Link>
-            <p className="mt-2 text-sm text-muted">{property.highlight}</p>
+            <p data-t="card" className="mt-2 text-sm text-muted">{property.highlight}</p>
 
-            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-xs text-muted">
+            <div data-t="features" className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-xs text-muted">
               <span className="flex items-center gap-1.5">
                 <BedDouble className="h-3.5 w-3.5 text-brass" strokeWidth={1.5} />
                 {property.bedrooms} dorm. · {property.suites} suíte
@@ -111,9 +111,10 @@ export function Showcase() {
             </div>
 
             <div className="mt-5 flex items-end justify-between gap-4">
-              <p className="display text-3xl text-deep">{formatBRL(property.price)}</p>
+              <p data-t="price" className="display text-3xl text-deep">{formatBRL(property.price)}</p>
               <Link
                 href={`/imovel/${property.slug}`}
+                data-t="button"
                 className="label-xs flex items-center gap-1.5 border-b border-brass/50 pb-1 text-brass transition-colors hover:border-brass hover:text-deep"
               >
                 Ver o imóvel

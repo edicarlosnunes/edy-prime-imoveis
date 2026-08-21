@@ -8,6 +8,13 @@
  * Nada aqui depende de React, do servidor ou de variáveis de ambiente.
  */
 
+import {
+  createTypographyMap,
+  createTypographyScopeMap,
+  type TypographyMap,
+  type TypographyScopeMap,
+} from "./site-typography";
+
 export interface MenuItem {
   id: string;
   label: string;
@@ -56,6 +63,10 @@ export interface SectionBase {
 }
 
 export interface SiteContent {
+  /** tipografia global, por tipo de texto */
+  typography: TypographyMap;
+  /** tipografia por seção (vence a global quando preenchida) */
+  typographyScopes: TypographyScopeMap;
   theme: {
     logoUrl: string;
     logoHeight: number;
@@ -206,6 +217,9 @@ export const BODY_FONTS = ["Jost", "Inter", "Work Sans", "DM Sans", "Lato", "Mon
 
 /** Conteúdo padrão = o site exatamente como está publicado hoje. */
 export const defaultSiteContent: SiteContent = {
+  // tudo em branco = o site exatamente como foi entregue (nenhum CSS extra)
+  typography: createTypographyMap(),
+  typographyScopes: createTypographyScopeMap(),
   theme: {
     logoUrl: "",
     logoHeight: 34,

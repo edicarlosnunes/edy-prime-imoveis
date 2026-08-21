@@ -26,7 +26,7 @@ export function Hero() {
   const overlay = Math.min(100, Math.max(0, hero.overlay)) / 100;
 
   return (
-    <section id="top" className="relative min-h-screen overflow-hidden bg-deep">
+    <section id="top" data-sec="hero" className="relative min-h-screen overflow-hidden bg-deep">
       {hero.imageUrl.trim() && (
         <img
           src={hero.imageUrl}
@@ -50,6 +50,7 @@ export function Hero() {
         >
           {hero.eyebrow.trim() && (
             <p
+              data-t="caption"
               className={`reveal label-xs flex items-center gap-3 text-brass-soft ${
                 centered ? "justify-center" : ""
               }`}
@@ -60,6 +61,7 @@ export function Hero() {
           )}
 
           <h1
+            data-t="heading"
             className="reveal display mt-8 text-white text-[calc(clamp(2.6rem,6vw,4.6rem)*var(--h-scale,1))]"
             data-reveal-delay="80"
           >
@@ -76,6 +78,7 @@ export function Hero() {
 
           {hero.subtitle.trim() && (
             <p
+              data-t="subheading"
               className={`reveal mt-8 max-w-xl text-lg leading-relaxed text-white/75 ${
                 centered ? "mx-auto" : ""
               }`}
@@ -87,6 +90,7 @@ export function Hero() {
 
           {hero.supportText.trim() && (
             <p
+              data-t="body"
               className={`reveal mt-4 max-w-xl text-sm leading-relaxed text-white/55 ${
                 centered ? "mx-auto" : ""
               }`}
@@ -105,6 +109,7 @@ export function Hero() {
                 <a
                   href={hero.primaryCtaHref || "#imoveis"}
                   className="site-btn site-btn-dark"
+                  data-t="button"
                   data-btn={theme.buttonStyle}
                 >
                   {hero.primaryCtaLabel}
@@ -115,6 +120,7 @@ export function Hero() {
                 <a
                   href={hero.secondaryCtaHref || "#contato"}
                   className="site-btn site-btn-dark"
+                  data-t="button"
                   data-btn="outline"
                 >
                   {hero.secondaryCtaLabel}
@@ -133,7 +139,7 @@ export function Hero() {
               {hero.assurances.map((item, index) => {
                 const Icon = icons[index % icons.length];
                 return (
-                  <li key={item.id} className="flex items-start gap-3 text-sm text-white/70">
+                  <li key={item.id} data-t="info" className="flex items-start gap-3 text-sm text-white/70">
                     <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brass-soft" strokeWidth={1.5} />
                     {item.text}
                   </li>
@@ -150,13 +156,13 @@ export function Hero() {
           >
             <div className="grain relative border border-white/12 bg-deep/70 p-8 backdrop-blur-md lg:p-10">
               {hero.formEyebrow.trim() && (
-                <p className="label-xs text-brass-soft">{hero.formEyebrow}</p>
+                <p data-t="caption" className="label-xs text-brass-soft">{hero.formEyebrow}</p>
               )}
               {hero.formTitle.trim() && (
-                <h2 className="display mt-3 text-3xl text-white">{hero.formTitle}</h2>
+                <h2 data-t="subheading" className="display mt-3 text-3xl text-white">{hero.formTitle}</h2>
               )}
               {hero.formText.trim() && (
-                <p className="mt-3 mb-7 text-sm leading-relaxed text-white/60">{hero.formText}</p>
+                <p data-t="body" className="mt-3 mb-7 text-sm leading-relaxed text-white/60">{hero.formText}</p>
               )}
               <LeadForm tone="dark" source="hero" />
             </div>

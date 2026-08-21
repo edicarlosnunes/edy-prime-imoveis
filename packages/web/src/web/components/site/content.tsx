@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { defaultSiteContent, mergeSiteContent, type SiteContent } from "../../lib/site-content";
+import { typographyCss, typographyFonts } from "../../lib/site-typography";
 import { configureSite } from "../../lib/site";
 import { usePublishedContent, useDraftContent } from "../../queries/site";
 
@@ -104,13 +105,36 @@ export function themeCss(theme: SiteContent["theme"]) {
 .site-shell .display{font-family:"${headingFont}",ui-serif,Georgia,serif;}`;
 }
 
-function googleFontsHref(theme: SiteContent["theme"]) {
+/** Tema + tipografia editável, na ordem correta (tipografia sobrepõe o tema). */
+export function siteCss(content: SiteContent) {
+  const typo = typographyCss(content.typography, content.typographyScopes);
+  return typo ? `${themeCss(content.theme)}\n${typo}` : themeCss(content.theme);
+}
+
+export function googleFontsHref(content: SiteContent) {
+  const theme = content.theme;
   const d = defaultSiteContent.theme;
-  const families = [
-    `${font(theme.headingFont, d.headingFont).replace(/ /g, "+")}:wght@300;400;500;600`,
-    `${font(theme.bodyFont, d.bodyFont).replace(/ /g, "+")}:wght@300;400;500`,
-  ];
+  const heading = font(theme.headingFont, d.headingFont);
+  const body = font(theme.bodyFont, d.bodyFont);
+  // Pesos exatamente como antes quando a tipografia não foi personalizada:
+  // assim o site permanece idêntico ao publicado hoje.
+  const extras = typographyFonts(content.typography, content.typographyScopes);
+  const wide = extras.length > 0 || typographyUsesItalic(content);
+  const axis = typographyUsesItalic(content)
+    ? "ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,600"
+    : "wght@300;400;500;600;700";
+  const families = wide
+    ? [heading, body, ...extras.filter((name) => name !== heading && name !== body)].map(
+        (name) => `${name.replace(/ /g, "+")}:${axis}`,
+      )
+    : [`${heading.replace(/ /g, "+")}:wght@300;400;500;600`, `${body.replace(/ /g, "+")}:wght@300;400;500`];
   return `https://fonts.googleapis.com/css2?family=${families.join("&family=")}&display=swap`;
+}
+
+/** Alguma configuração pede itálico? Só então carregamos as variantes itálicas. */
+function typographyUsesItalic(content: SiteContent) {
+  const maps = [content.typography, ...Object.values(content.typographyScopes ?? {})];
+  return maps.some((map) => Object.values(map ?? {}).some((style) => style?.italic === "yes"));
 }
 
 function setMeta(selector: string, attr: "name" | "property", key: string, value: string) {
@@ -130,8 +154,8 @@ function setMeta(selector: string, attr: "name" | "property", key: string, value
 export function SiteChrome() {
   const content = useSiteContent();
   const { seo, theme } = content;
-  const css = useMemo(() => themeCss(theme), [theme]);
-  const fontsHref = useMemo(() => googleFontsHref(theme), [theme]);
+  const css = useMemo(() => siteCss(content), [content]);
+  const fontsHref = useMemo(() => googleFontsHref(content), [content]);
 
   useEffect(() => {
     if (seo.title.trim()) document.title = seo.title.trim();

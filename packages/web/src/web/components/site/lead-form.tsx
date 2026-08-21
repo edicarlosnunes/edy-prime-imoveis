@@ -64,8 +64,8 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
         <div className="flex h-12 w-12 items-center justify-center border border-brass-soft/60 bg-brass/15">
           <Check className="h-5 w-5 text-brass-soft" strokeWidth={1.6} />
         </div>
-        <h3 className="display text-3xl">Recebido, {name.split(" ")[0]}.</h3>
-        <p className={`text-sm leading-relaxed ${dark ? "text-white/70" : "text-muted"}`}>
+        <h3 data-t="subheading" className="display text-3xl">Recebido, {name.split(" ")[0]}.</h3>
+        <p data-t="body" className={`text-sm leading-relaxed ${dark ? "text-white/70" : "text-muted"}`}>
           Vou analisar o que você procura e retornar pelo WhatsApp com uma seleção de opções que
           fazem sentido — sem enxurrada de anúncios.
         </p>
@@ -75,6 +75,7 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
           )}
           target="_blank"
           rel="noreferrer"
+          data-t="button"
           className="inline-flex items-center gap-2 bg-brass px-7 py-4 label-xs text-white transition-colors hover:bg-brass-soft"
         >
           Adiantar pelo WhatsApp
@@ -91,6 +92,7 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="Seu nome"
+        data-t="form"
         className={fieldClass}
       />
       <input
@@ -99,11 +101,13 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
         value={phone}
         onChange={(e) => setPhone(maskPhone(e.target.value))}
         placeholder="WhatsApp com DDD"
+        data-t="form"
         className={fieldClass}
       />
       <select
         value={interest}
         onChange={(e) => setInterest(e.target.value)}
+        data-t="form"
         className={`${fieldClass} appearance-none`}
       >
         {interests.map((option) => (
@@ -118,6 +122,7 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
           onChange={(e) => setMessage(e.target.value)}
           rows={3}
           placeholder="Bairro, número de quartos, faixa de valor (opcional)"
+          data-t="form"
           className={`${fieldClass} resize-none`}
         />
       )}
@@ -125,6 +130,7 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
       <button
         type="submit"
         disabled={createLead.isPending}
+        data-t="button"
         className="flex w-full items-center justify-center gap-2 bg-brass px-6 py-4 label-xs text-white transition-colors hover:bg-brass-soft disabled:opacity-60"
       >
         {createLead.isPending ? (
@@ -146,7 +152,7 @@ export function LeadForm({ tone = "dark", source = "hero", compact = false }: Le
         </p>
       )}
 
-      <p className={`text-[11px] leading-relaxed ${dark ? "text-white/45" : "text-muted"}`}>
+      <p data-t="caption" className={`text-[11px] leading-relaxed ${dark ? "text-white/45" : "text-muted"}`}>
         Atendimento pessoal, sem robô. Seus dados ficam só comigo.
       </p>
     </form>
