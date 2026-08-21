@@ -96,6 +96,10 @@ export const media = sqliteTable("media", {
   mime: text("mime").notNull(),
   size: integer("size").notNull(),
   data: text("data").notNull(),
+  /** nome original do arquivo, mostrado na biblioteca de mídia */
+  name: text("name"),
+  /** texto alternativo (acessibilidade/SEO) */
+  alt: text("alt"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -236,3 +240,31 @@ export const settings = sqliteTable("settings", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/* ------------------------------------------------- editor do site (CMS) */
+
+/**
+ * Versões do conteúdo editável do site público.
+ * status: draft (rascunho em edição) | published (no ar) | archived (histórico)
+ * data: JSON com o conteúdo completo (ver src/web/lib/site-content.ts)
+ */
+export const siteContent = sqliteTable(
+  "site_content",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    status: text("status").notNull().default("draft"),
+    data: text("data").notNull(),
+    label: text("label"),
+    author: text("author"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    publishedAt: integer("published_at", { mode: "timestamp" }),
+  },
+  (t) => [index("site_content_status_idx").on(t.status)],
+);
+
+export type SiteContentRow = typeof siteContent.$inferSelect;

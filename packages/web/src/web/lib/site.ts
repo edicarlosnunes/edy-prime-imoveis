@@ -32,15 +32,23 @@ export const site = {
   ],
 } as const;
 
-export interface SiteConfigPatch {
-  broker?: string | null;
-  whatsapp?: string | null;
-  email?: string | null;
-  creci?: string | null;
-  address?: string | null;
-  instagram?: string | null;
-  facebook?: string | null;
-}
+export type SiteConfigPatch = Partial<{
+  name: string;
+  brandSuffix: string;
+  broker: string;
+  role: string;
+  creci: string;
+  whatsapp: string;
+  phone: string;
+  email: string;
+  address: string;
+  instagram: string;
+  facebook: string;
+  hours: string;
+  city: string;
+  state: string;
+  districts: string[];
+}>;
 
 function phoneLabel(raw: string) {
   const digits = raw.replace(/\D/g, "").replace(/^55/, "");
@@ -58,28 +66,57 @@ function handleOf(url: string) {
 }
 
 /**
- * Aplica os dados salvos em /admin → Configurações sobre os valores padrão.
+ * Aplica os dados publicados no Editor do Site (/admin/editor) sobre os padrões.
  * Só sobrescreve o que vier preenchido: se a API falhar, o site segue igual.
  */
 export function configureSite(patch: SiteConfigPatch | null | undefined) {
   if (!patch) return;
   const target = site as unknown as Record<string, unknown>;
-  if (patch.broker?.trim()) target.broker = patch.broker.trim();
-  if (patch.email?.trim()) target.email = patch.email.trim();
-  if (patch.creci?.trim()) target.creci = patch.creci.trim();
-  if (patch.address?.trim()) target.address = patch.address.trim();
-  if (patch.instagram?.trim()) {
-    target.instagram = patch.instagram.trim();
-    target.instagramHandle = handleOf(patch.instagram.trim());
+  const text = (value: string | undefined) => (value && value.trim() ? value.trim() : null);
+
+  const name = text(patch.name);
+  if (name) target.brand = name;
+  const suffix = text(patch.brandSuffix);
+  if (suffix) target.brandSuffix = suffix;
+  const broker = text(patch.broker);
+  if (broker) target.broker = broker;
+  const role = text(patch.role);
+  if (role) target.role = role;
+  const creci = text(patch.creci);
+  if (creci) target.creci = creci;
+  const email = text(patch.email);
+  if (email) target.email = email;
+  const address = text(patch.address);
+  if (address) target.address = address;
+  const hours = text(patch.hours);
+  if (hours) target.hours = hours;
+  const city = text(patch.city);
+  if (city) target.city = city;
+  const state = text(patch.state);
+  if (state) target.state = state;
+
+  const instagram = text(patch.instagram);
+  if (instagram) {
+    target.instagram = instagram;
+    target.instagramHandle = handleOf(instagram);
   }
-  if (patch.facebook?.trim()) {
-    target.facebook = patch.facebook.trim();
-    target.facebookHandle = handleOf(patch.facebook.trim());
+  const facebook = text(patch.facebook);
+  if (facebook) {
+    target.facebook = facebook;
+    target.facebookHandle = handleOf(facebook);
   }
+
   const whatsapp = patch.whatsapp?.replace(/\D/g, "");
   if (whatsapp && whatsapp.length >= 12) {
     target.whatsapp = whatsapp;
-    target.whatsappLabel = phoneLabel(whatsapp);
+    target.whatsappLabel = text(patch.phone) ?? phoneLabel(whatsapp);
+  } else {
+    const phone = text(patch.phone);
+    if (phone) target.whatsappLabel = phone;
+  }
+
+  if (Array.isArray(patch.districts) && patch.districts.length > 0) {
+    target.districts = patch.districts.map((item) => String(item).trim()).filter(Boolean);
   }
 }
 

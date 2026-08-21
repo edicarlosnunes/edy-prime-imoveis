@@ -5,6 +5,7 @@ import { ping } from "./routes/ping";
 import { leads } from "./routes/leads";
 import { properties } from "./routes/properties";
 import { siteConfig } from "./routes/site-config";
+import { siteContent } from "./routes/site-content";
 import { adminAuth } from "./routes/admin-auth";
 import { adminProperties } from "./routes/admin-properties";
 import { adminLeads } from "./routes/admin-leads";
@@ -14,6 +15,8 @@ import { adminTasks } from "./routes/admin-tasks";
 import { adminDeals } from "./routes/admin-deals";
 import { adminDashboard } from "./routes/admin-dashboard";
 import { adminSettings } from "./routes/admin-settings";
+import { adminSite } from "./routes/admin-site";
+import { adminMedia } from "./routes/admin-media";
 import * as schema from "./database/schema";
 import {
   clearedSessionCookie,
@@ -37,6 +40,7 @@ export const router = {
   leads,
   properties,
   siteConfig,
+  siteContent,
   adminAuth,
   adminProperties,
   adminLeads,
@@ -46,6 +50,8 @@ export const router = {
   adminDeals,
   adminDashboard,
   adminSettings,
+  adminSite,
+  adminMedia,
 };
 
 export type AppRouter = typeof router;
@@ -155,11 +161,13 @@ app.post("/api/admin/upload", async (c) => {
 
   const id = randomHex(12);
   const db = await getDb();
+  const safeName = (file.name || "imagem").replace(/[^\w.\-() ]+/g, "").slice(0, 120);
   await db.insert(schema.media).values({
     id,
     mime: file.type,
     size: buffer.byteLength,
     data: btoa(binary),
+    name: safeName,
   });
 
   return c.json({ url: `/api/media/${id}`, id }, 200);

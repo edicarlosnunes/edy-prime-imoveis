@@ -9,6 +9,7 @@ import AdminOwners from "./pages/admin/owners";
 import AdminAgenda from "./pages/admin/agenda";
 import AdminDeals from "./pages/admin/deals";
 import AdminSettings from "./pages/admin/settings";
+import AdminSiteEditor from "./pages/admin/site-editor";
 import { Provider } from "./components/provider";
 import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
 
@@ -26,6 +27,7 @@ function App() {
         <Route path="/admin/agenda" component={AdminAgenda} />
         <Route path="/admin/propostas" component={AdminDeals} />
         <Route path="/admin/configuracoes" component={AdminSettings} />
+        <Route path="/admin/editor" component={AdminSiteEditor} />
       </Switch>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
       {import.meta.env.DEV && <AgentFeedback />}

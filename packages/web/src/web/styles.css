@@ -57,6 +57,73 @@
   letter-spacing: -0.01em;
 }
 
+/* ------------------------------------------------------------------ *
+ * Site editável (Editor do Site): os tokens acima são sobrescritos     *
+ * por um <style> escopado em `.site-shell`, então o painel /admin      *
+ * mantém o visual padrão.                                             *
+ * ------------------------------------------------------------------ */
+
+@layer base {
+  .site-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid var(--color-deep);
+    background-color: var(--color-deep);
+    color: #fff;
+    padding: 1rem 2rem;
+    border-radius: var(--btn-radius, 0px);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    font-weight: 400;
+    text-transform: var(--btn-transform, uppercase);
+    transition:
+      background-color 0.3s,
+      border-color 0.3s,
+      color 0.3s;
+  }
+
+  .site-btn:hover {
+    background-color: var(--color-brass);
+    border-color: var(--color-brass);
+    color: #fff;
+  }
+
+  .site-btn[data-btn="outline"] {
+    background-color: transparent;
+    color: var(--color-deep);
+  }
+
+  .site-btn[data-btn="outline"]:hover {
+    background-color: var(--color-deep);
+    color: #fff;
+  }
+
+  /* Variante para fundos escuros */
+  .site-btn-dark {
+    border-color: var(--color-brass);
+    background-color: var(--color-brass);
+  }
+
+  .site-btn-dark:hover {
+    background-color: var(--color-brass-soft);
+    border-color: var(--color-brass-soft);
+  }
+
+  .site-btn-dark[data-btn="outline"] {
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
+  }
+
+  .site-btn-dark[data-btn="outline"]:hover {
+    background-color: #fff;
+    color: var(--color-deep);
+    border-color: #fff;
+  }
+}
+
 /* Scroll reveal */
 .reveal {
   opacity: 0;

@@ -1,33 +1,56 @@
-# Painel administrativo — Edy Premi Imóveis
+# Edy Premi Imóveis — Editor do Site (CMS) no /admin
 
-## Objetivo
-Painel completo em /admin (login seguro, dashboard, imóveis, CRM, clientes, proprietários, agenda, propostas, configurações),
-usando o banco Turso existente. Vitrine pública passa a ler os imóveis do banco (migrando os 6 atuais).
+Projeto: /home/user/edy-premi-imoveis (packages/web). Produção: https://www.edyprimeimoveis.com.br
 
-## Regras
-- Não quebrar o site público (design/menu/WhatsApp/formulário).
-- Não apagar leads reais. Migrations aditivas e idempotentes.
-- Sem novas variáveis de ambiente (evitar bloqueio externo na Vercel):
-  - senha admin: hash PBKDF2 no banco
-  - sessão: token aleatório, hash sha256 no banco, cookie httpOnly
-  - fotos: upload guardado no próprio banco (tabela media) e servido em /api/media/:id
-- API de produção = bundle `bun run build:api` (ESM .mjs) — rodar antes do commit.
+## Fase 1 — Banco e API (CONCLUÍDO)
+- [x] Tabela `site_content` (draft/published/archived, coluna `data` JSON) + índice em schema.ts
+- [x] Colunas `media.name` e `media.alt`
+- [x] `scripts/migrate.ts` atualizado e APLICADO no banco real (leads preservados)
+- [x] `src/web/lib/site-content.ts` — contrato/tipos + `defaultSiteContent` (site atual) + `mergeSiteContent`
+- [x] `src/api/routes/site-content.ts` — `siteContent.get` (público)
+- [x] `src/api/routes/admin-site.ts` — state / saveDraft / publish / history / restore / discardDraft
+- [x] `src/api/routes/admin-media.ts` — list / update / remove (bloqueia exclusão em uso)
+- [x] `src/api/index.ts` — router + `name` no upload
+- [x] `src/web/lib/site.ts` — `configureSite` ampliado
 
-## Passos
-1. [x] schema.ts com todas as tabelas
-2. [x] script de migração idempotente + aplicar no banco real
-3. [x] seed: 6 imóveis atuais + usuário admin + settings
-4. [x] auth (pbkdf2 + sessões + middleware adminBase) e rotas de login/logout
-5. [x] rotas API: properties(publica), admin-properties, admin-leads, admin-clients, admin-owners,
-       admin-tasks, admin-deals, admin-dashboard, admin-settings, media/upload
-6. [x] UI /admin (layout + 9 telas) e integração da vitrine pública
-7. [x] build + testes locais (desktop/mobile, login, CRUD, CRM, vitrine)
-8. [x] build:api + commit + push main + testes em produção
+## Fase 2 — Frontend público editável
+- [x] `queries/site.ts` (usePublishedContent, useDraftContent)
+- [x] `queries/admin-site.ts` (state/draft/publish/history/restore/media)
+- [x] `components/site/content.tsx` (contexto, SiteContentProvider, SiteChrome, PreviewBanner)
+- [x] `components/provider.tsx` → SiteContentProvider
+- [x] `styles.css` → `.site-btn`, `--btn-radius`, `--btn-transform`
+- [x] header.tsx
+- [x] hero.tsx, proof.tsx (diferenciais), showcase.tsx (imóveis), cta-final.tsx (novo), process.tsx,
+      about.tsx, faq.tsx, final-cta.tsx (contato), footer.tsx
+- [x] `pages/index.tsx` → `.site-shell` + `orderedSections()` + SiteChrome
 
-## Estado final (21/08/2026)
-- Commits: 9142e68 (painel completo) e 13712dd (fix do reveal da vitrine) + ajuste de rótulos de origem.
-- Testado local (1440px e 390px) e em produção: login, guard, CRUD de imóvel com foto, publicar/despublicar,
-  destacar, status, CRM (nota, etapa, WhatsApp, perdido), clientes, proprietários, agenda, propostas,
-  configurações, dashboard, vitrine pública e formulário de lead.
-- Dados de teste removidos: banco com 6 imóveis originais, 0 leads, 0 clientes, 0 proprietários, 0 tarefas, 0 propostas.
-- Login inicial: edyprimeimoveis@gmail.com / EdyPremi-0bdb43dd (trocar em Configurações).
+## Fase 3 — Editor no painel
+- [x] `pages/admin/site-editor.tsx` + `components/admin/editor/*`
+      abas: Identidade, Capa, Menu, Seções, Empresa, Rodapé, SEO, Mídia, Histórico
+      barra fixa: Salvar rascunho / Pré-visualizar / Publicar / data da última alteração
+- [x] rota `/admin/editor` em app.tsx (dentro do AdminGuard) + item no menu do layout
+
+## Fase 4 — Validação e entrega
+- [x] `bunx tsc --noEmit` + `bun run build` (exit 0)
+- [x] Testes Playwright 1440px e 390px — 22 checagens, todas verdes (scripts/test-editor.py)
+- [x] `bun run build:api`
+- [ ] commit e push em `main`, validar produção
+
+## Notas
+- Tema aplicado por `<style>` escopado em `.site-shell` (NÃO afetar /admin, mesmos tokens).
+- `configureSite` roda no `useMemo` do provider (síncrono), nunca em useEffect.
+- `bun run lint` falha por erro pré-existente em packages/mobile/app/_layout.tsx — ignorar.
+- Não alterar DATABASE_URL / DATABASE_AUTH_TOKEN nem criar env nova.
+
+## Resultado dos testes (21/08/2026)
+Executado em http://localhost:4200 com usuário admin temporário (removido depois):
+site padrão · login · editor abre · cores · textos da capa · item do menu oculto ·
+ordem/visibilidade de seções · contatos · rodapé · SEO · biblioteca de imagens ·
+salvar rascunho · rascunho NÃO vaza para o site público · pré-visualização mostra o rascunho ·
+publicar · site público reflete o publicado (cor, título, WhatsApp, seção oculta) ·
+painel /admin com tema e CRM intactos · upload de imagem · imagem trocada no site ·
+exclusão de imagem em uso bloqueada (409) · histórico restaura no rascunho sem mexer no ar ·
+mobile 390px (home + menu).
+
+Banco após os testes: `site_content` com 1 versão publicada ("Conteúdo inicial do site",
+idêntica ao design atual) + 1 rascunho. Mídia e usuário de teste removidos.

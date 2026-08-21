@@ -69,3 +69,29 @@ acento `brass`, cantos retos, labels em caixa alta).
 
 1. Visitante chega → hero → preenche formulário curto → lead salvo → mensagem de confirmação + link direto do WhatsApp.
 2. Visitante navega a vitrine → clica no card → CTA "Falar sobre este imóvel" abre WhatsApp com o código do imóvel preenchido.
+
+## Editor do Site (CMS) — /admin/editor
+
+Todo o conteúdo do site é editável no painel e guardado no banco (`site_content`),
+sem nada de texto/cor fixo no código de apresentação.
+
+- **Contrato único:** `packages/web/src/web/lib/site-content.ts` define os tipos, o
+  `defaultSiteContent` (o site como foi entregue) e o `mergeSiteContent` que funde o
+  JSON do banco sobre os padrões. Se o banco estiver vazio ou a API falhar, o site
+  renderiza exatamente o design padrão.
+- **Versionamento:** uma linha por versão com `status = draft | published | archived`.
+  Publicar arquiva a versão no ar e coloca o rascunho no lugar; o rascunho continua
+  existindo. Histórico guarda até 20 versões; restaurar volta para o rascunho (não publica).
+- **Tema:** `SiteChrome` injeta um `<style>` escopado em `.site-shell` sobrescrevendo os
+  tokens do Tailwind (`--color-deep`, `--color-brass`, `--font-display`, `--h-scale`,
+  `--btn-radius`…). O escopo é obrigatório: o painel `/admin` usa os mesmos tokens e não
+  pode ser afetado. Cores e fontes passam por validação antes de entrar no CSS.
+- **Botões do site:** classes `.site-btn` / `.site-btn-dark` (declaradas em `@layer base`
+  para que as utilities do Tailwind continuem vencendo, ex. `hidden`).
+- **Pré-visualização:** `/?preview=1` busca o rascunho por rota protegida e cai no
+  publicado silenciosamente se não houver sessão.
+- **Mídia:** upload em `POST /api/admin/upload` (máx 3 MB, resize client-side ~1600px),
+  servida em `/api/media/:id`. A exclusão é bloqueada quando a imagem está em uso em um
+  imóvel ou no conteúdo do site.
+- **Ordem das seções:** `pages/index.tsx` renderiza via `orderedSections()`; a faixa
+  "Não encontrou o que procurava?" virou a seção própria `cta-final.tsx`.

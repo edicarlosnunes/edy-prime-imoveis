@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Palette,
   Settings,
   UserRound,
   Users,
@@ -27,6 +28,7 @@ const nav: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/admin/proprietarios", label: "Proprietários", icon: KeyRound },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarClock },
   { href: "/admin/propostas", label: "Propostas", icon: Handshake },
+  { href: "/admin/editor", label: "Editor do Site", icon: Palette },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
 ];
 

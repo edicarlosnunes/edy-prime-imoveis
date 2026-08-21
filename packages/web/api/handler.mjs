@@ -4211,6 +4211,7 @@ var init_sqlite_core = __esm(() => {
 var exports_schema = {};
 __export(exports_schema, {
   tasks: () => tasks,
+  siteContent: () => siteContent,
   settings: () => settings,
   propertyImages: () => propertyImages,
   properties: () => properties,
@@ -4224,7 +4225,7 @@ __export(exports_schema, {
   adminUsers: () => adminUsers,
   adminSessions: () => adminSessions
 });
-var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings;
+var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings, siteContent;
 var init_schema = __esm(() => {
   init_sqlite_core();
   adminUsers = sqliteTable("admin_users", {
@@ -4286,6 +4287,8 @@ var init_schema = __esm(() => {
     mime: text("mime").notNull(),
     size: integer2("size").notNull(),
     data: text("data").notNull(),
+    name: text("name"),
+    alt: text("alt"),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   });
   owners = sqliteTable("owners", {
@@ -4380,6 +4383,16 @@ var init_schema = __esm(() => {
     commissionRate: real("commission_rate").notNull().default(6),
     updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   });
+  siteContent = sqliteTable("site_content", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    status: text("status").notNull().default("draft"),
+    data: text("data").notNull(),
+    label: text("label"),
+    author: text("author"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    publishedAt: integer2("published_at", { mode: "timestamp" })
+  }, (t) => [index("site_content_status_idx").on(t.status)]);
 });
 
 // node_modules/.bun/@libsql+core@0.17.2/node_modules/@libsql/core/lib-esm/api.js
@@ -32899,6 +32912,25 @@ var siteConfig = {
   })
 };
 
+// packages/web/src/api/routes/site-content.ts
+init_schema();
+var siteContent2 = {
+  get: base.handler(async () => {
+    try {
+      const db3 = await getDb();
+      const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "published")).orderBy(desc(siteContent.publishedAt)).limit(1);
+      if (!row)
+        return null;
+      return {
+        publishedAt: row.publishedAt,
+        data: JSON.parse(row.data)
+      };
+    } catch {
+      return null;
+    }
+  })
+};
+
 // packages/web/src/api/lib/admin-base.ts
 var adminBase = base.use(async ({ context, next }) => {
   const user = await resolveSession(context.headers);
@@ -33571,6 +33603,281 @@ var adminSettings = {
   })
 };
 
+// packages/web/src/api/routes/admin-site.ts
+init_schema();
+var MAX_JSON_BYTES = 400 * 1024;
+var MAX_STRING = 20000;
+var MAX_ARRAY = 200;
+var MAX_DEPTH = 8;
+var MAX_KEYS = 200;
+function sanitize(value2, depth = 0) {
+  if (depth > MAX_DEPTH)
+    return null;
+  if (value2 === null)
+    return null;
+  if (typeof value2 === "string")
+    return value2.slice(0, MAX_STRING);
+  if (typeof value2 === "number")
+    return Number.isFinite(value2) ? value2 : 0;
+  if (typeof value2 === "boolean")
+    return value2;
+  if (Array.isArray(value2)) {
+    return value2.slice(0, MAX_ARRAY).map((item) => sanitize(item, depth + 1));
+  }
+  if (typeof value2 === "object") {
+    const out = {};
+    let count = 0;
+    for (const [key, item] of Object.entries(value2)) {
+      if (count >= MAX_KEYS)
+        break;
+      if (!/^[A-Za-z0-9_-]{1,60}$/.test(key))
+        continue;
+      out[key] = sanitize(item, depth + 1);
+      count += 1;
+    }
+    return out;
+  }
+  return null;
+}
+function serialize(data) {
+  const clean = sanitize(data);
+  const json2 = JSON.stringify(clean);
+  if (json2.length > MAX_JSON_BYTES) {
+    throw new ORPCError("BAD_REQUEST", { message: "Conteúdo muito grande para salvar" });
+  }
+  return json2;
+}
+var contentInput = exports_external.object({
+  data: exports_external.record(exports_external.string(), exports_external.unknown())
+});
+function rowOut(row) {
+  return {
+    id: row.id,
+    status: row.status,
+    label: row.label,
+    author: row.author,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    publishedAt: row.publishedAt,
+    data: JSON.parse(row.data)
+  };
+}
+async function findDraft(db3) {
+  const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "draft")).orderBy(desc(siteContent.updatedAt)).limit(1);
+  return row ?? null;
+}
+async function findPublished(db3) {
+  const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "published")).orderBy(desc(siteContent.publishedAt)).limit(1);
+  return row ?? null;
+}
+var adminSite = {
+  state: adminBase.handler(async ({ context }) => {
+    const db3 = context.db;
+    const draft = await findDraft(db3);
+    const published = await findPublished(db3);
+    return {
+      draft: draft ? rowOut(draft) : null,
+      published: published ? rowOut(published) : null,
+      hasChanges: Boolean(draft && (!published || draft.data !== published.data))
+    };
+  }),
+  saveDraft: adminBase.input(contentInput).handler(async ({ input, context }) => {
+    const db3 = context.db;
+    const json2 = serialize(input.data);
+    const existing = await findDraft(db3);
+    const now = new Date;
+    if (existing) {
+      await db3.update(siteContent).set({ data: json2, updatedAt: now, author: context.user.name }).where(eq(siteContent.id, existing.id));
+      return { ok: true, id: existing.id, updatedAt: now };
+    }
+    await db3.insert(siteContent).values({
+      status: "draft",
+      data: json2,
+      author: context.user.name,
+      label: "Rascunho",
+      createdAt: now,
+      updatedAt: now
+    });
+    const created = await findDraft(db3);
+    return { ok: true, id: created?.id ?? 0, updatedAt: now };
+  }),
+  publish: adminBase.input(exports_external.object({ data: exports_external.record(exports_external.string(), exports_external.unknown()).optional(), label: exports_external.string().max(120).optional() })).handler(async ({ input, context }) => {
+    const db3 = context.db;
+    const now = new Date;
+    let json2;
+    if (input.data) {
+      json2 = serialize(input.data);
+      const draft = await findDraft(db3);
+      if (draft) {
+        await db3.update(siteContent).set({ data: json2, updatedAt: now, author: context.user.name }).where(eq(siteContent.id, draft.id));
+      } else {
+        await db3.insert(siteContent).values({
+          status: "draft",
+          data: json2,
+          author: context.user.name,
+          label: "Rascunho",
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+    } else {
+      const draft = await findDraft(db3);
+      if (!draft)
+        throw new ORPCError("BAD_REQUEST", { message: "Nada para publicar" });
+      json2 = draft.data;
+    }
+    const current = await findPublished(db3);
+    if (current) {
+      await db3.update(siteContent).set({ status: "archived" }).where(eq(siteContent.id, current.id));
+    }
+    await db3.insert(siteContent).values({
+      status: "published",
+      data: json2,
+      author: context.user.name,
+      label: input.label?.trim() || `Publicado em ${now.toLocaleString("pt-BR")}`,
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: now
+    });
+    try {
+      const company = JSON.parse(json2).company;
+      if (company) {
+        const [row] = await db3.select().from(settings).limit(1);
+        const payload = {
+          companyName: `${company.name ?? ""} ${company.brandSuffix ?? ""}`.trim(),
+          brokerName: company.broker ?? "",
+          whatsapp: (company.whatsapp ?? "").replace(/\D/g, ""),
+          email: company.email ?? "",
+          creci: company.creci ?? "",
+          address: company.address ?? "",
+          instagram: company.instagram ?? "",
+          facebook: company.facebook ?? "",
+          updatedAt: now
+        };
+        if (row) {
+          await db3.update(settings).set(payload).where(eq(settings.id, row.id));
+        }
+      }
+    } catch {}
+    const archived = await db3.select({ id: siteContent.id }).from(siteContent).where(eq(siteContent.status, "archived")).orderBy(desc(siteContent.createdAt));
+    for (const old of archived.slice(20)) {
+      await db3.delete(siteContent).where(eq(siteContent.id, old.id));
+    }
+    return { ok: true, publishedAt: now };
+  }),
+  history: adminBase.handler(async ({ context }) => {
+    const db3 = context.db;
+    const rows = await db3.select({
+      id: siteContent.id,
+      status: siteContent.status,
+      label: siteContent.label,
+      author: siteContent.author,
+      createdAt: siteContent.createdAt,
+      publishedAt: siteContent.publishedAt
+    }).from(siteContent).where(ne(siteContent.status, "draft")).orderBy(desc(siteContent.createdAt)).limit(30);
+    return rows;
+  }),
+  restore: adminBase.input(exports_external.object({ id: exports_external.number().int().positive() })).handler(async ({ input, context }) => {
+    const db3 = context.db;
+    const [version4] = await db3.select().from(siteContent).where(and(eq(siteContent.id, input.id), ne(siteContent.status, "draft"))).limit(1);
+    if (!version4)
+      throw new ORPCError("NOT_FOUND", { message: "Versão não encontrada" });
+    const now = new Date;
+    const draft = await findDraft(db3);
+    if (draft) {
+      await db3.update(siteContent).set({ data: version4.data, updatedAt: now, author: context.user.name }).where(eq(siteContent.id, draft.id));
+    } else {
+      await db3.insert(siteContent).values({
+        status: "draft",
+        data: version4.data,
+        author: context.user.name,
+        label: "Rascunho",
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+    return { ok: true, data: JSON.parse(version4.data) };
+  }),
+  discardDraft: adminBase.handler(async ({ context }) => {
+    const db3 = context.db;
+    const published = await findPublished(db3);
+    const draft = await findDraft(db3);
+    if (!draft)
+      return { ok: true, data: published ? JSON.parse(published.data) : null };
+    if (!published) {
+      await db3.delete(siteContent).where(eq(siteContent.id, draft.id));
+      return { ok: true, data: null };
+    }
+    await db3.update(siteContent).set({ data: published.data, updatedAt: new Date }).where(eq(siteContent.id, draft.id));
+    return { ok: true, data: JSON.parse(published.data) };
+  })
+};
+
+// packages/web/src/api/routes/admin-media.ts
+init_schema();
+var adminMedia = {
+  list: adminBase.input(exports_external.object({ search: exports_external.string().max(80).optional() }).optional()).handler(async ({ input, context }) => {
+    const rows = await context.db.select({
+      id: media.id,
+      mime: media.mime,
+      size: media.size,
+      name: media.name,
+      alt: media.alt,
+      createdAt: media.createdAt
+    }).from(media).orderBy(desc(media.createdAt)).limit(300);
+    const search = input?.search?.trim().toLowerCase();
+    const filtered = search ? rows.filter((row) => (row.name ?? "").toLowerCase().includes(search) || (row.alt ?? "").toLowerCase().includes(search)) : rows;
+    const images = await context.db.select({ url: propertyImages.url }).from(propertyImages);
+    const contentRows = await context.db.select({ data: siteContent.data, status: siteContent.status }).from(siteContent);
+    const inProperties = new Set(images.map((row) => row.url.match(/\/api\/media\/([a-f0-9]+)/)?.[1]).filter((id) => Boolean(id)));
+    const inContent = new Set;
+    for (const row of contentRows) {
+      if (row.status === "archived")
+        continue;
+      for (const match2 of row.data.matchAll(/\/api\/media\/([a-f0-9]+)/g)) {
+        inContent.add(match2[1]);
+      }
+    }
+    return filtered.map((row) => ({
+      ...row,
+      url: `/api/media/${row.id}`,
+      usedInProperties: inProperties.has(row.id),
+      usedInSite: inContent.has(row.id)
+    }));
+  }),
+  update: adminBase.input(exports_external.object({
+    id: exports_external.string().min(4).max(64),
+    name: exports_external.string().max(160).optional(),
+    alt: exports_external.string().max(300).optional()
+  })).handler(async ({ input, context }) => {
+    await context.db.update(media).set({
+      ...input.name === undefined ? {} : { name: input.name.trim() },
+      ...input.alt === undefined ? {} : { alt: input.alt.trim() }
+    }).where(eq(media.id, input.id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.string().min(4).max(64), force: exports_external.boolean().optional() })).handler(async ({ input, context }) => {
+    const url2 = `/api/media/${input.id}`;
+    if (!input.force) {
+      const [used] = await context.db.select({ id: propertyImages.id }).from(propertyImages).where(or(eq(propertyImages.url, url2), like(propertyImages.url, `%${input.id}%`))).limit(1);
+      if (used) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imagem em uso em um imóvel. Troque a foto do imóvel antes de excluir."
+        });
+      }
+      const contentRows = await context.db.select({ data: siteContent.data, status: siteContent.status }).from(siteContent);
+      const inUse = contentRows.some((row) => row.status !== "archived" && row.data.includes(input.id));
+      if (inUse) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imagem em uso no site. Troque a imagem na seção antes de excluir."
+        });
+      }
+    }
+    await context.db.delete(media).where(eq(media.id, input.id));
+    return { ok: true };
+  })
+};
+
 // packages/web/src/api/index.ts
 init_schema();
 var router = {
@@ -33578,6 +33885,7 @@ var router = {
   leads: leads2,
   properties: properties2,
   siteConfig,
+  siteContent: siteContent2,
   adminAuth,
   adminProperties,
   adminLeads,
@@ -33586,7 +33894,9 @@ var router = {
   adminTasks,
   adminDeals,
   adminDashboard,
-  adminSettings
+  adminSettings,
+  adminSite,
+  adminMedia
 };
 var app = createApp(router);
 var attempts = new Map;
@@ -33667,11 +33977,13 @@ app.post("/api/admin/upload", async (c) => {
   }
   const id = randomHex(12);
   const db3 = await getDb();
+  const safeName = (file2.name || "imagem").replace(/[^\w.\-() ]+/g, "").slice(0, 120);
   await db3.insert(media).values({
     id,
     mime: file2.type,
     size: buffer.byteLength,
-    data: btoa(binary)
+    data: btoa(binary),
+    name: safeName
   });
   return c.json({ url: `/api/media/${id}`, id }, 200);
 });

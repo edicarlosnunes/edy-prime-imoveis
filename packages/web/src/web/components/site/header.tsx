@@ -1,16 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Phone } from "lucide-react";
 import { site, whatsappLink } from "../../lib/site";
-
-const links = [
-  { href: "#imoveis", label: "Imóveis" },
-  { href: "#como-funciona", label: "Como funciona" },
-  { href: "#sobre", label: "Sobre" },
-  { href: "#duvidas", label: "Dúvidas" },
-  { href: "#contato", label: "Contato" },
-];
+import { useSiteContent } from "./content";
 
 export function Header() {
+  const { menu, theme } = useSiteContent();
+  const links = useMemo(
+    () => menu.items.filter((item) => item.visible && item.label.trim() && item.href.trim()),
+    [menu.items],
+  );
+
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>("");
@@ -25,6 +24,7 @@ export function Header() {
   // Destaca no menu a seção que está na tela
   useEffect(() => {
     const sections = links
+      .filter((link) => link.href.startsWith("#") && link.href.length > 1)
       .map((link) => document.querySelector<HTMLElement>(link.href))
       .filter((el): el is HTMLElement => Boolean(el));
     if (sections.length === 0) return;
@@ -39,7 +39,7 @@ export function Header() {
     );
     for (const section of sections) observer.observe(section);
     return () => observer.disconnect();
-  }, []);
+  }, [links]);
 
   // Menu mobile: trava o scroll do fundo e fecha com Esc
   useEffect(() => {
@@ -69,10 +69,16 @@ export function Header() {
   const closeMenu = useCallback(() => setOpen(false), []);
 
   const solid = scrolled || open;
+  const logoUrl = (menu.logoUrl || theme.logoUrl).trim();
+  const fullscreen = menu.mobileStyle === "fullscreen";
+
+  const waHref = whatsappLink(
+    `Olá, ${site.broker}. Vi seu site e quero informações sobre imóveis em ${site.city}.`,
+  );
 
   return (
     <header
-      className={`fixed inset-x-0 top-0 z-50 transition-[background-color,box-shadow,border-color] duration-500 ${
+      className={`${menu.sticky ? "fixed" : "absolute"} inset-x-0 top-0 z-50 transition-[background-color,box-shadow,border-color] duration-500 ${
         solid
           ? "border-b border-white/10 bg-deep/95 shadow-[0_1px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl"
           : "border-b border-transparent bg-gradient-to-b from-black/60 via-black/25 to-transparent"
@@ -88,12 +94,23 @@ export function Header() {
           onClick={closeMenu}
           className="group flex shrink-0 items-baseline gap-2 text-white"
         >
-          <span className="display text-[26px] leading-none tracking-tight transition-colors duration-300 group-hover:text-brass-soft">
-            {site.brand}
-          </span>
-          <span className="label-xs text-brass-soft transition-opacity duration-300 group-hover:opacity-80">
-            {site.brandSuffix}
-          </span>
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={`${menu.logoText || site.brand} ${menu.logoSuffix || site.brandSuffix}`}
+              style={{ height: `${theme.logoHeight || 34}px` }}
+              className="w-auto object-contain"
+            />
+          ) : (
+            <>
+              <span className="display text-[26px] leading-none tracking-tight transition-colors duration-300 group-hover:text-brass-soft">
+                {menu.logoText || site.brand}
+              </span>
+              <span className="label-xs text-brass-soft transition-opacity duration-300 group-hover:opacity-80">
+                {menu.logoSuffix || site.brandSuffix}
+              </span>
+            </>
+          )}
         </a>
 
         <nav className="hidden items-center gap-9 md:flex lg:gap-11">
@@ -101,7 +118,7 @@ export function Header() {
             const isActive = active === link.href;
             return (
               <a
-                key={link.href}
+                key={link.id}
                 href={link.href}
                 aria-current={isActive ? "true" : undefined}
                 className={`relative py-1.5 text-[12.5px] font-normal tracking-[0.16em] whitespace-nowrap uppercase transition-colors duration-300 after:absolute after:-bottom-px after:left-0 after:h-px after:bg-brass-soft after:transition-[width] after:duration-500 after:ease-out hover:text-brass-soft ${
@@ -117,17 +134,17 @@ export function Header() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-3">
-          <a
-            href={whatsappLink(
-              `Olá, ${site.broker}. Vi seu site e quero informações sobre imóveis em ${site.city}.`,
-            )}
-            target="_blank"
-            rel="noreferrer"
-            className="hidden items-center gap-2 border border-brass bg-brass px-6 py-3 text-[11.5px] tracking-[0.18em] text-white uppercase transition-colors duration-300 hover:border-brass-soft hover:bg-brass-soft sm:flex"
-          >
-            <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
-            WhatsApp
-          </a>
+          {menu.showWhatsapp && (
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noreferrer"
+              className="site-btn site-btn-dark hidden px-6 py-3 sm:inline-flex"
+            >
+              <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
+              {menu.whatsappLabel || "WhatsApp"}
+            </a>
+          )}
 
           <button
             type="button"
@@ -163,20 +180,20 @@ export function Header() {
       <div
         id="menu-mobile"
         className={`overflow-hidden border-t border-white/10 bg-deep transition-[max-height,opacity] duration-500 ease-out md:hidden ${
-          open ? "max-h-[70vh] opacity-100" : "max-h-0 opacity-0"
+          open ? `${fullscreen ? "max-h-[100vh] h-[calc(100vh-68px)]" : "max-h-[70vh]"} opacity-100` : "max-h-0 opacity-0"
         }`}
       >
-        <nav className="px-6 pt-2 pb-6">
+        <nav className={`px-6 pt-2 pb-6 ${fullscreen ? "flex h-full flex-col justify-center" : ""}`}>
           {links.map((link, index) => {
             const isActive = active === link.href;
             return (
               <a
-                key={link.href}
+                key={link.id}
                 href={link.href}
                 onClick={closeMenu}
                 aria-current={isActive ? "true" : undefined}
                 style={{ transitionDelay: open ? `${80 + index * 45}ms` : "0ms" }}
-                className={`flex items-center justify-between border-b border-white/10 py-4 text-[13px] tracking-[0.16em] uppercase transition-all duration-500 ${
+                className={`flex items-center justify-between border-b border-white/10 ${fullscreen ? "py-5 text-[15px]" : "py-4 text-[13px]"} tracking-[0.16em] uppercase transition-all duration-500 ${
                   open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
                 } ${isActive ? "text-brass-soft" : "text-white/85"}`}
               >
@@ -189,21 +206,21 @@ export function Header() {
               </a>
             );
           })}
-          <a
-            href={whatsappLink(
-              `Olá, ${site.broker}. Quero informações sobre imóveis em ${site.city}.`,
-            )}
-            target="_blank"
-            rel="noreferrer"
-            onClick={closeMenu}
-            style={{ transitionDelay: open ? `${80 + links.length * 45}ms` : "0ms" }}
-            className={`mt-6 flex items-center justify-center gap-2 bg-brass px-6 py-4 text-[11.5px] tracking-[0.18em] text-white uppercase transition-all duration-500 hover:bg-brass-soft ${
-              open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
-            }`}
-          >
-            <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
-            Falar no WhatsApp
-          </a>
+          {menu.showWhatsapp && (
+            <a
+              href={whatsappLink(`Olá, ${site.broker}. Quero informações sobre imóveis em ${site.city}.`)}
+              target="_blank"
+              rel="noreferrer"
+              onClick={closeMenu}
+              style={{ transitionDelay: open ? `${80 + links.length * 45}ms` : "0ms" }}
+              className={`site-btn site-btn-dark mt-6 w-full py-4 transition-all duration-500 ${
+                open ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+              }`}
+            >
+              <Phone className="h-3.5 w-3.5" strokeWidth={1.6} />
+              Falar no WhatsApp
+            </a>
+          )}
         </nav>
       </div>
     </header>
