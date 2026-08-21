@@ -36,18 +36,18 @@ export function About() {
             className="reveal display mt-6 text-[clamp(2rem,4vw,3.2rem)] text-deep"
             data-reveal-delay="80"
           >
-            Mais de uma década
+            Atendimento próximo,
             <br />
-            vendendo no litoral
+            do litoral para você
           </h2>
           <div
             className="reveal mt-7 space-y-5 text-base leading-relaxed text-muted"
             data-reveal-delay="140"
           >
             <p>
-              Comecei como corretor autônomo em {site.city} e hoje conduzo uma equipe enxuta, focada
-              em imóveis de médio e alto padrão na orla. A lógica continua a mesma: poucos clientes
-              por vez, atendimento direto e nenhuma promessa que eu não possa cumprir.
+              Atuo em {site.city} com foco em imóveis de médio e alto padrão na orla, hoje com o
+              apoio de uma equipe enxuta. A lógica é simples: poucos clientes por vez, atendimento
+              direto e nenhuma promessa que eu não possa cumprir.
             </p>
             <p>
               Conheço prédio por prédio da orla — quais têm vista permanente, quais têm taxa de

@@ -5,7 +5,6 @@ import { Proof } from "../components/site/proof";
 import { Showcase } from "../components/site/showcase";
 import { Process } from "../components/site/process";
 import { About } from "../components/site/about";
-import { Testimonials } from "../components/site/testimonials";
 import { Faq } from "../components/site/faq";
 import { FinalCta } from "../components/site/final-cta";
 import { Footer } from "../components/site/footer";
@@ -23,7 +22,6 @@ function Index() {
         <Showcase />
         <Process />
         <About />
-        <Testimonials />
         <Faq />
         <FinalCta />
       </main>

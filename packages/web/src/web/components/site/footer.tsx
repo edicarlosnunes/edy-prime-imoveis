@@ -1,4 +1,4 @@
-import { Instagram, Mail, MessageCircle } from "lucide-react";
+import { Facebook, Instagram, Mail, MessageCircle } from "lucide-react";
 import { site, whatsappLink } from "../../lib/site";
 
 export function Footer() {
@@ -75,6 +75,17 @@ export function Footer() {
                 >
                   <Instagram className="h-4 w-4" strokeWidth={1.5} />
                   Instagram
+                </a>
+              </li>
+              <li>
+                <a
+                  href={site.facebook}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 transition-colors hover:text-brass-soft"
+                >
+                  <Facebook className="h-4 w-4" strokeWidth={1.5} />
+                  Facebook
                 </a>
               </li>
             </ul>

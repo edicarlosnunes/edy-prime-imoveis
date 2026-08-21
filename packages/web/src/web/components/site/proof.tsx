@@ -1,25 +1,38 @@
+import { ShieldCheck, MessageCircle, KeyRound } from "lucide-react";
 import { site } from "../../lib/site";
 
-const stats = [
-  { value: "+180", label: "Famílias atendidas" },
-  { value: "12", label: "Anos no litoral paulista" },
-  { value: "9", label: "Bairros com atuação direta" },
-  { value: "4,9", label: "Avaliação média dos clientes" },
+const pillars = [
+  {
+    icon: ShieldCheck,
+    title: "Corretor registrado",
+    text: `Atendimento conduzido por profissional com registro ativo — ${site.creci}.`,
+  },
+  {
+    icon: MessageCircle,
+    title: "Atendimento direto",
+    text: "Você fala comigo do primeiro contato à entrega das chaves, sem intermediários.",
+  },
+  {
+    icon: KeyRound,
+    title: "Compra, venda e locação",
+    text: `Imóveis de médio e alto padrão na orla de ${site.city} e bairros próximos.`,
+  },
 ];
 
 export function Proof() {
   return (
     <section className="border-y border-line bg-bone">
       <div className="mx-auto max-w-[1240px] px-6 py-16 lg:px-8">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-          {stats.map((stat, index) => (
+        <div className="grid gap-10 md:grid-cols-3">
+          {pillars.map(({ icon: Icon, title, text }, index) => (
             <div
-              key={stat.label}
+              key={title}
               className="reveal border-l border-brass/30 pl-5"
               data-reveal-delay={index * 70}
             >
-              <p className="display text-5xl text-deep">{stat.value}</p>
-              <p className="mt-2 label-xs text-muted">{stat.label}</p>
+              <Icon className="h-5 w-5 text-brass" strokeWidth={1.5} />
+              <p className="display mt-4 text-2xl text-deep">{title}</p>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{text}</p>
             </div>
           ))}
         </div>

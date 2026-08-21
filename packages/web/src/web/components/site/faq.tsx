@@ -5,7 +5,7 @@ const faqs = [
   {
     question: "Trabalho com imóvel de qual faixa de valor?",
     answer:
-      "A maior parte da minha carteira fica entre R$ 600 mil e R$ 2,5 milhões, em apartamentos, coberturas e lançamentos na orla e nos bairros próximos. Fora dessa faixa, indico com transparência quem pode atender melhor.",
+      "Trabalho com apartamentos, coberturas e lançamentos de médio e alto padrão na orla e nos bairros próximos. Se o que você procura estiver fora do meu foco, indico com transparência quem pode atender melhor.",
   },
   {
     question: "Preciso pagar algo para ser atendido?",
@@ -20,7 +20,7 @@ const faqs = [
   {
     question: "Atende quem mora em outra cidade?",
     answer:
-      "Boa parte dos meus clientes é de São Paulo e do interior. Gravo vídeos completos do imóvel e do prédio, faço videochamada ao vivo durante a visita e concentro as visitas presenciais em um único dia.",
+      "Sim. Gravo vídeos completos do imóvel e do prédio, faço videochamada ao vivo durante a visita e concentro as visitas presenciais em um único dia.",
   },
   {
     question: "Quero vender meu imóvel. Como funciona?",
