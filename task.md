@@ -23,3 +23,11 @@ usando o banco Turso existente. Vitrine pública passa a ler os imóveis do banc
 6. [x] UI /admin (layout + 9 telas) e integração da vitrine pública
 7. [x] build + testes locais (desktop/mobile, login, CRUD, CRM, vitrine)
 8. [x] build:api + commit + push main + testes em produção
+
+## Estado final (21/08/2026)
+- Commits: 9142e68 (painel completo) e 13712dd (fix do reveal da vitrine) + ajuste de rótulos de origem.
+- Testado local (1440px e 390px) e em produção: login, guard, CRUD de imóvel com foto, publicar/despublicar,
+  destacar, status, CRM (nota, etapa, WhatsApp, perdido), clientes, proprietários, agenda, propostas,
+  configurações, dashboard, vitrine pública e formulário de lead.
+- Dados de teste removidos: banco com 6 imóveis originais, 0 leads, 0 clientes, 0 proprietários, 0 tarefas, 0 propostas.
+- Login inicial: edyprimeimoveis@gmail.com / EdyPremi-0bdb43dd (trocar em Configurações).

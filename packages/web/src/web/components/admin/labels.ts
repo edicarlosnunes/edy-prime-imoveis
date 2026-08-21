@@ -109,6 +109,8 @@ export const captureStatusLabel: Record<string, string> = {
 
 export const leadSources = [
   "site",
+  "hero",
+  "cta-final",
   "manual",
   "whatsapp",
   "instagram",
@@ -121,6 +123,8 @@ export const leadSources = [
 
 export const sourceLabel: Record<string, string> = {
   site: "Site",
+  hero: "Site — formulário do topo",
+  "cta-final": "Site — formulário final",
   manual: "Cadastro manual",
   whatsapp: "WhatsApp",
   instagram: "Instagram",
