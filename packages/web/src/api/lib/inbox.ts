@@ -174,6 +174,8 @@ export interface AiTurnResult {
   handoff?: boolean;
   reason?: string;
   skipped?: string;
+  /** Códigos dos imóveis reais citados no turno (para os cards do chat do site). */
+  usedProperties?: string[];
 }
 
 /**
@@ -222,6 +224,7 @@ export async function aiTurn(
       text: reply.text,
       handoff: reply.handoff,
       reason: reply.handoffReason ?? undefined,
+      usedProperties: reply.usedProperties,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "falha na IA";

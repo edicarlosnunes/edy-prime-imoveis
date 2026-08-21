@@ -376,7 +376,10 @@ export const conversations = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (t) => [index("conversations_status_idx").on(t.status)],
+  (t) => [
+    index("conversations_status_idx").on(t.status),
+    index("conversations_channel_external_idx").on(t.channel, t.externalId),
+  ],
 );
 
 export const messages = sqliteTable(

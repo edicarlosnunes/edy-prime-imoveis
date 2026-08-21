@@ -6,6 +6,7 @@ import { leads } from "./routes/leads";
 import { properties } from "./routes/properties";
 import { siteConfig } from "./routes/site-config";
 import { siteContent } from "./routes/site-content";
+import { siteChat } from "./routes/site-chat";
 import { adminAuth } from "./routes/admin-auth";
 import { adminProperties } from "./routes/admin-properties";
 import { adminPropertyContent } from "./routes/admin-properties-ai";
@@ -51,6 +52,7 @@ export const router = {
   properties,
   siteConfig,
   siteContent,
+  siteChat,
   adminAuth,
   adminProperties,
   adminPropertyContent,

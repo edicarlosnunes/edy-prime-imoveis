@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useReveal } from "../hooks/use-reveal";
 import { Header } from "../components/site/header";
 import { Hero } from "../components/site/hero";
@@ -11,6 +11,9 @@ import { Faq } from "../components/site/faq";
 import { FinalCta } from "../components/site/final-cta";
 import { Footer } from "../components/site/footer";
 import { WhatsappFab } from "../components/site/whatsapp-fab";
+
+/* Chat com IA: carregado sob demanda para não pesar o carregamento do site. */
+const ChatWidget = lazy(() => import("../components/site/chat-widget"));
 import { PreviewBanner, SiteChrome, useSiteContent } from "../components/site/content";
 import { orderedSections, type SectionKey } from "../lib/site-content";
 
@@ -42,6 +45,9 @@ function Index() {
       </main>
       <Footer />
       <WhatsappFab />
+      <Suspense fallback={null}>
+        <ChatWidget />
+      </Suspense>
       <PreviewBanner />
     </div>
   );

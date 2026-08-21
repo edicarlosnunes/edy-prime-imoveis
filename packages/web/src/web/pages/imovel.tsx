@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 import {
   ArrowLeft,
@@ -15,6 +15,9 @@ import {
 import { Header } from "../components/site/header";
 import { Footer } from "../components/site/footer";
 import { WhatsappFab } from "../components/site/whatsapp-fab";
+
+/* Chat com IA: carregado sob demanda, com o imóvel da página como contexto. */
+const ChatWidget = lazy(() => import("../components/site/chat-widget"));
 import { SiteChrome } from "../components/site/content";
 import { usePropertyDetail } from "../queries/properties";
 import { useCreateLead } from "../queries/leads";
@@ -374,6 +377,9 @@ function PropertyPage() {
 
       <Footer />
       <WhatsappFab />
+      <Suspense fallback={null}>
+        <ChatWidget propertySlug={slug} />
+      </Suspense>
     </div>
   );
 }
