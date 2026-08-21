@@ -161,78 +161,313 @@
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* ------------------------------------------------------------------ *
- * Painel administrativo (/admin) — refinamento de contraste.          *
- * Escopado em `.admin-shell`: NÃO afeta o site público (`.site-shell`)*
- * ------------------------------------------------------------------ */
+/* ================================================================== *
+ * PAINEL ADMINISTRATIVO (/admin) — tema escuro CRM/SaaS               *
+ * Tudo escopado em `.admin-shell`. O site público (`.site-shell`)      *
+ * continua claro e NÃO é afetado por nada deste bloco.                 *
+ * ================================================================== */
 
 .admin-shell {
-  /* Verde/preto mais escuros e cinza secundário legível (>= 7:1 no branco) */
-  --color-ink: #0d130f;
-  --color-deep: #0f1e18;
-  --color-muted: #4b514a;
-  --color-line: rgba(15, 30, 24, 0.16);
+  /* Superfícies: azul-marinho quase preto */
+  --adm-bg: #0a111e;
+  --adm-sidebar: #070d18;
+  --adm-surface: #111c2e;
+  --adm-surface-2: #16233a;
+  --adm-hover: rgba(255, 255, 255, 0.06);
 
-  /* Texto base um pouco menos leve que o do site (300 -> 400) */
+  /* Texto */
+  --adm-title: #f5f8fb;
+  --adm-text: #e6edf5;
+  --adm-secondary: #9fb0c4;
+
+  /* Identidade Edy Premi no escuro */
+  --adm-brass: #d3a55a;
+  --adm-green: #1d4b3c;
+
+  color-scheme: dark;
+  background-color: var(--adm-bg);
+  color: var(--adm-text);
   font-weight: 400;
-  color: var(--color-ink);
+
+  /* Tokens do tema (Tailwind) redefinidos só aqui dentro */
+  --color-paper: var(--adm-bg);
+  --color-bone: #1e2d45;
+  --color-ink: #05090f;
+  --color-deep: var(--adm-green);
+  --color-muted: var(--adm-secondary);
+  --color-brass: #d3a55a;
+  --color-brass-soft: #e6c98f;
+  --color-line: rgba(255, 255, 255, 0.1);
 }
 
-/* Títulos (páginas, cards, modais, números dos indicadores) com mais peso */
+/* ---------------------------------------------------------- tipografia */
+
 .admin-shell .display {
   font-weight: 500;
   letter-spacing: -0.015em;
+  color: var(--adm-title);
 }
 
-/* Números dos cards/indicadores: mais fortes e destacados */
-.admin-shell .admin-stat {
-  font-weight: 600;
-  color: var(--color-deep);
-  letter-spacing: -0.02em;
-}
-
-/* Rótulos/eyebrows e textos auxiliares mais firmes */
 .admin-shell .label-xs {
   font-weight: 500;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.18em;
+  color: var(--adm-secondary);
 }
 
-/* Dourado usado como texto: tom mais escuro para contraste no fundo claro */
-.admin-shell .text-brass {
-  color: #7d5d2b;
+.admin-shell .text-deep,
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3 {
+  color: var(--adm-title);
 }
 
-/* Dourado de fundo (estado ativo do menu, botões): garante texto branco legível */
-.admin-shell .bg-brass {
-  background-color: #8a6931;
+.admin-shell .text-ink {
+  color: var(--adm-text);
 }
 
-/* Campos de formulário: borda e placeholder perceptíveis */
+.admin-shell .text-muted {
+  color: var(--adm-secondary);
+}
+
+/* Números de indicadores: grandes, fortes, dourado suave */
+.admin-shell .admin-stat {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--adm-title);
+}
+
+/* ------------------------------------------------------------ layout */
+
+.admin-shell .admin-sidebar {
+  background-color: var(--adm-sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.admin-shell .admin-topbar {
+  background-color: rgba(10, 17, 30, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-shell .admin-auth {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #12243c 0%, transparent 60%),
+    var(--adm-sidebar);
+}
+
+/* --------------------------------------------------- cards e superfícies */
+
+.admin-shell .bg-white,
+.admin-shell .bg-white\/80 {
+  background-color: var(--adm-surface);
+}
+
+.admin-shell .bg-paper {
+  background-color: var(--adm-bg);
+}
+
+/* Cantos arredondados modernos (o projeto usa 3px/4px) */
+.admin-shell .rounded-\[4px\] {
+  border-radius: 14px;
+}
+
+.admin-shell .rounded-\[3px\] {
+  border-radius: 10px;
+}
+
+.admin-shell .admin-card {
+  border-color: rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 28px -20px rgba(0, 0, 0, 0.9);
+}
+
+/* ------------------------------------------------------------ formulários */
+
 .admin-shell input,
 .admin-shell select,
-.admin-shell textarea {
-  border-color: rgba(15, 30, 24, 0.26);
-  color: var(--color-ink);
+.admin-shell textarea,
+.admin-shell .bg-white:is(input, select, textarea),
+.admin-shell .bg-white\/80:is(input, select, textarea) {
+  background-color: #0d1828;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--adm-text);
+}
+
+.admin-shell input:focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  border-color: var(--adm-brass);
+  box-shadow: 0 0 0 3px rgba(211, 165, 90, 0.16);
 }
 
 .admin-shell input::placeholder,
 .admin-shell textarea::placeholder {
-  color: #6a7068;
+  color: #7d8ea3;
   opacity: 1;
 }
 
-/* Tabelas: cabeçalho com peso e contraste; células com texto principal escuro */
+.admin-shell select option {
+  background-color: #0d1828;
+  color: var(--adm-text);
+}
+
+/* --------------------------------------------------------------- tabelas */
+
 .admin-shell th {
-  color: #333b34;
+  color: var(--adm-secondary);
   font-weight: 500;
 }
 
 .admin-shell td {
-  color: var(--color-ink);
+  color: var(--adm-text);
 }
 
-/* Menu lateral escuro: itens um pouco mais claros para leitura confortável */
-.admin-shell aside,
-.admin-shell .admin-sidebar {
-  color: rgba(255, 255, 255, 0.88);
+.admin-shell tbody tr:hover {
+  background-color: var(--adm-hover);
+}
+
+/* ------------------------------------------------------- estados/badges */
+
+.admin-shell .bg-emerald-50,
+.admin-shell .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.14);
+}
+
+.admin-shell .text-emerald-600,
+.admin-shell .text-emerald-700,
+.admin-shell .text-emerald-800 {
+  color: #6ee7b7;
+}
+
+.admin-shell .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.32);
+}
+
+.admin-shell .bg-amber-50,
+.admin-shell .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+
+.admin-shell .text-amber-800,
+.admin-shell .text-amber-900 {
+  color: #fcd34d;
+}
+
+.admin-shell .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.admin-shell .bg-red-50,
+.admin-shell .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.14);
+}
+
+.admin-shell .text-red-500,
+.admin-shell .text-red-600,
+.admin-shell .text-red-700 {
+  color: #fca5a5;
+}
+
+.admin-shell .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+/* Dourado: usado em destaques, estados ativos e detalhes */
+.admin-shell .text-brass {
+  color: #e0b768;
+}
+
+.admin-shell .bg-brass {
+  background-color: #c39a4f;
+}
+
+/* Barra de rolagem discreta */
+.admin-shell *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.admin-shell *::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.admin-shell *::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* ---------------------------------------------- indicadores com cor (KPI) *
+ * Cada card de indicador recebe um tom próprio (rotativo), no espírito de   *
+ * um CRM moderno, mas dentro da identidade Edy Premi (dourado + verde).     */
+
+.admin-shell .admin-card:has(.admin-stat) {
+  --tone: 211, 165, 90;
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--tone), 0.16) 0%,
+    rgba(var(--tone), 0.04) 45%,
+    rgba(255, 255, 255, 0) 75%
+  );
+  border-color: rgba(var(--tone), 0.26);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.admin-shell .admin-card:has(.admin-stat)::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(var(--tone), 0.95), rgba(var(--tone), 0.15));
+}
+
+.admin-shell .admin-card:has(.admin-stat)::after {
+  content: "";
+  position: absolute;
+  right: -38px;
+  bottom: -52px;
+  width: 130px;
+  height: 130px;
+  border-radius: 999px;
+  background: rgba(var(--tone), 0.1);
+  pointer-events: none;
+}
+
+.admin-shell .admin-card:has(.admin-stat):hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--tone), 0.42);
+}
+
+.admin-shell .admin-card:has(.admin-stat) .admin-stat {
+  position: relative;
+  z-index: 1;
+}
+
+/* Rotação de tons: verde · dourado · azul-petróleo · bronze */
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 1) {
+  --tone: 45, 122, 98;
+}
+
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 2) {
+  --tone: 211, 165, 90;
+}
+
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 3) {
+  --tone: 63, 132, 168;
+}
+
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 4) {
+  --tone: 178, 118, 74;
+}
+
+/* Modais: fundo mais escuro e desfocado, para o card ganhar destaque */
+.admin-shell .bg-ink\/50 {
+  background-color: rgba(3, 7, 14, 0.74);
+  backdrop-filter: blur(4px);
 }

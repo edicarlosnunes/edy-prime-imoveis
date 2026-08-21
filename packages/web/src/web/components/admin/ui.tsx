@@ -77,7 +77,7 @@ export function Card({
   return (
     <section
       className={cn(
-        "rounded-[4px] border border-line bg-white p-5 shadow-[0_1px_0_rgba(18,20,15,0.06)]",
+        "admin-card rounded-[4px] border border-line bg-white p-5",
         className,
       )}
     >
@@ -102,9 +102,9 @@ export function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-[4px] border border-line bg-white px-4 py-4">
+    <div className="admin-card rounded-[4px] border border-line bg-white px-4 py-5">
       <p className="label-xs text-muted">{label}</p>
-      <p className="admin-stat display mt-2 text-3xl text-deep">{value}</p>
+      <p className="admin-stat display mt-2 text-4xl text-deep">{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
@@ -141,7 +141,7 @@ export function Badge({
 const buttonTones = {
   primary: "bg-deep text-white hover:bg-deep/85",
   brass: "bg-brass text-white hover:bg-brass/85",
-  outline: "border border-line bg-white text-deep hover:bg-bone/50",
+  outline: "border border-line bg-white text-deep hover:bg-bone/60",
   danger: "border border-red-200 bg-white text-red-700 hover:bg-red-50",
   ghost: "text-deep hover:bg-bone/60",
 };
@@ -188,7 +188,7 @@ export function Field({
 }
 
 const controlClass =
-  "w-full rounded-[3px] border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-muted focus:border-brass";
+  "w-full rounded-[10px] border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-muted focus:border-brass";
 
 export function Input({ className, ...rest }: React.ComponentProps<"input">) {
   return <input {...rest} className={cn(controlClass, className)} />;
@@ -237,7 +237,7 @@ export function Modal({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-4 sm:p-8">
       <div
         className={cn(
-          "w-full rounded-[4px] border border-line bg-paper shadow-xl",
+          "admin-card w-full rounded-[4px] border border-line bg-paper shadow-2xl",
           wide ? "max-w-4xl" : "max-w-xl",
         )}
       >

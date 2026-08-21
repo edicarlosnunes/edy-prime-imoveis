@@ -34,13 +34,13 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="admin-shell flex min-h-screen items-center justify-center bg-deep px-4 py-12">
+    <div className="admin-shell admin-auth flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <p className="display text-4xl text-white">Edy Premi</p>
           <p className="label-xs mt-2 text-brass-soft">Painel administrativo</p>
         </div>
-        <form onSubmit={submit} className="rounded-[4px] bg-paper p-6">
+        <form onSubmit={submit} className="admin-card rounded-[4px] border border-line bg-white p-6">
           <div className="space-y-4">
             <Field label="E-mail">
               <Input

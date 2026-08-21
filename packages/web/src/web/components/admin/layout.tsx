@@ -69,7 +69,7 @@ export function AdminLayout({
   }
 
   const sidebar = (
-    <div className="admin-sidebar flex h-full flex-col bg-deep text-white/85">
+    <div className="admin-sidebar flex h-full flex-col">
       <div className="border-b border-white/10 px-6 py-6">
         <p className="display text-2xl leading-none text-white">Edy Premi</p>
         <p className="label-xs mt-2 text-brass-soft">Painel administrativo</p>
@@ -83,8 +83,10 @@ export function AdminLayout({
               href={item.href}
               onClick={() => setOpen(false)}
               className={cn(
-                "mb-1 flex items-center gap-3 rounded-[3px] px-3 py-2.5 text-sm transition-colors",
-                active ? "bg-brass text-white" : "hover:bg-white/10 hover:text-white",
+                "mb-1 flex items-center gap-3 rounded-[10px] border-l-2 px-3 py-2.5 text-sm transition-colors",
+                active
+                  ? "border-brass bg-brass/15 font-medium text-brass-soft"
+                  : "border-transparent text-white/70 hover:bg-white/8 hover:text-white",
               )}
             >
               <item.icon className="h-4 w-4" strokeWidth={1.6} />
@@ -101,14 +103,14 @@ export function AdminLayout({
             href="/"
             target="_blank"
             rel="noreferrer"
-            className="rounded-[3px] border border-white/20 px-3 py-1.5 text-[11px] tracking-wide uppercase hover:bg-white/10"
+            className="rounded-[10px] border border-white/20 px-3 py-1.5 text-[11px] tracking-wide text-white/80 uppercase transition-colors hover:border-brass/60 hover:bg-white/10 hover:text-white"
           >
             Ver site
           </a>
           <button
             type="button"
             onClick={logout}
-            className="flex items-center gap-1.5 rounded-[3px] border border-white/20 px-3 py-1.5 text-[11px] tracking-wide uppercase hover:bg-white/10"
+            className="flex items-center gap-1.5 rounded-[10px] border border-white/20 px-3 py-1.5 text-[11px] tracking-wide text-white/80 uppercase transition-colors hover:border-brass/60 hover:bg-white/10 hover:text-white"
           >
             <LogOut className="h-3 w-3" /> Sair
           </button>
@@ -134,14 +136,14 @@ export function AdminLayout({
       )}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-30 border-b border-line bg-paper/90 backdrop-blur">
+        <header className="admin-topbar sticky top-0 z-30 backdrop-blur">
           <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-6">
             <div className="flex min-w-0 flex-1 items-center gap-3">
               <button
                 type="button"
                 aria-label="Abrir menu"
                 onClick={() => setOpen((value) => !value)}
-                className="shrink-0 rounded-[3px] border border-line p-2 lg:hidden"
+                className="shrink-0 rounded-[10px] border border-line p-2 text-white/80 lg:hidden"
               >
                 {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </button>
