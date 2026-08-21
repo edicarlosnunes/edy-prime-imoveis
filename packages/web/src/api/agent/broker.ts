@@ -16,7 +16,9 @@ import { z } from "zod";
 import * as schema from "../database/schema";
 import type { AdminDb } from "../lib/admin-base";
 import { propertySlug } from "../lib/slug";
-import { DEFAULT_MODEL, gateway, gatewayConfigured } from "./gateway";
+import { gateway, gatewayConfigured } from "./gateway";
+import { pickModel } from "./model";
+import { readConfig } from "../lib/integrations";
 
 export interface AgentRow {
   id: number;
@@ -243,8 +245,11 @@ export async function agentReply(
     throw new Error("Provedor de IA não configurado no servidor (AI_GATEWAY_BASE_URL / API_KEY).");
   }
   const seen = new Set<string>();
+  /* Precedência do modelo: agente > defaultModel da integração > fallback. */
+  const { config } = await readConfig(db, "ai_gateway");
+  const configured = typeof config.defaultModel === "string" ? config.defaultModel : null;
   const result = await generateText({
-    model: gateway(agent.model || DEFAULT_MODEL),
+    model: gateway(pickModel(agent.model, configured)),
     system: systemPrompt(agent),
     messages: turns.slice(-16).map((turn) => ({ role: turn.role, content: turn.content })),
     tools: propertyTools(db, baseUrl, seen),

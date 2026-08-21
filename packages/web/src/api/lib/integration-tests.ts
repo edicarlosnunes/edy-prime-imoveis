@@ -235,7 +235,7 @@ export async function runTest(
         };
       }
       try {
-        const model = config.defaultModel || "openai/gpt-5.4-mini";
+        const model = pickModel(null, config.defaultModel);
         const { text } = await generateText({
           model: gateway(model),
           prompt: 'Responda apenas com a palavra "ok".',

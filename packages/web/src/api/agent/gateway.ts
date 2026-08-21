@@ -5,7 +5,8 @@ export const gateway = createGateway({
   apiKey: process.env.AI_GATEWAY_API_KEY,
 });
 
-export const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
+/* O modelo default vive em agent/model.ts (fonte única de verdade). */
+export { FALLBACK_MODEL } from "./model";
 
 export function gatewayConfigured() {
   return Boolean(process.env.AI_GATEWAY_BASE_URL && process.env.AI_GATEWAY_API_KEY);

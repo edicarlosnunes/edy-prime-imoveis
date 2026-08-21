@@ -10,12 +10,13 @@ import { audit } from "../lib/audit";
 import { clientIp, siteBaseUrl } from "../lib/base-url";
 import { agentReply, type AgentRow } from "../agent/broker";
 import { gatewayConfigured } from "../agent/gateway";
+import { FALLBACK_MODEL } from "../agent/model";
 import * as schema from "../database/schema";
 
 const agentInput = z.object({
   name: z.string().min(2).max(80),
   active: z.boolean().default(false),
-  model: z.string().min(3).max(80).default("openai/gpt-5.4-mini"),
+  model: z.string().min(3).max(80).default(FALLBACK_MODEL),
   greeting: z.string().max(600).default(""),
   instructions: z.string().max(6000).default(""),
   tone: z.string().max(400).default(""),

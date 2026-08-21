@@ -4207,6 +4207,18 @@ var init_sqlite_core = __esm(() => {
   init_view();
 });
 
+// packages/web/src/api/agent/model.ts
+function pickModel2(agentModel, configuredDefault) {
+  const explicit = (agentModel ?? "").trim();
+  if (explicit)
+    return explicit;
+  const configured = (configuredDefault ?? "").trim();
+  if (configured)
+    return configured;
+  return FALLBACK_MODEL;
+}
+var FALLBACK_MODEL = "openai/gpt-5.4-mini";
+
 // packages/web/src/api/database/schema.ts
 var exports_schema = {};
 __export(exports_schema, {
@@ -4228,6 +4240,7 @@ __export(exports_schema, {
   conversations: () => conversations,
   clients: () => clients,
   clientInteractions: () => clientInteractions,
+  chatGuardEvents: () => chatGuardEvents,
   automations: () => automations,
   automationRuns: () => automationRuns,
   auditLog: () => auditLog,
@@ -4235,7 +4248,7 @@ __export(exports_schema, {
   adminUsers: () => adminUsers,
   adminSessions: () => adminSessions
 });
-var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
+var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
 var init_schema = __esm(() => {
   init_sqlite_core();
   adminUsers = sqliteTable("admin_users", {
@@ -4478,12 +4491,23 @@ var init_schema = __esm(() => {
     externalId: text("external_id"),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   }, (t) => [index("messages_conversation_idx").on(t.conversationId)]);
+  chatGuardEvents = sqliteTable("chat_guard_events", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    channel: text("channel").notNull().default("site"),
+    fingerprint: text("fingerprint").notNull(),
+    kind: text("kind").notNull(),
+    reason: text("reason"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [
+    index("chat_guard_events_lookup_idx").on(t.channel, t.kind, t.createdAt),
+    index("chat_guard_events_fingerprint_idx").on(t.fingerprint, t.createdAt)
+  ]);
   aiAgents = sqliteTable("ai_agents", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
     active: integer2("active").notNull().default(0),
     provider: text("provider").notNull().default("gateway"),
-    model: text("model").notNull().default("openai/gpt-5.4-mini"),
+    model: text("model").notNull().default(FALLBACK_MODEL),
     greeting: text("greeting").notNull().default(""),
     instructions: text("instructions").notNull().default(""),
     tone: text("tone").notNull().default(""),
@@ -46852,7 +46876,6 @@ var gateway2 = createGateway({
   baseURL: process.env.AI_GATEWAY_BASE_URL,
   apiKey: process.env.AI_GATEWAY_API_KEY
 });
-var DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 function gatewayConfigured() {
   return Boolean(process.env.AI_GATEWAY_BASE_URL && process.env.AI_GATEWAY_API_KEY);
 }
@@ -47018,8 +47041,10 @@ async function agentReply(db3, agent, turns, baseUrl) {
     throw new Error("Provedor de IA não configurado no servidor (AI_GATEWAY_BASE_URL / API_KEY).");
   }
   const seen = new Set;
+  const { config: config2 } = await readConfig(db3, "ai_gateway");
+  const configured = typeof config2.defaultModel === "string" ? config2.defaultModel : null;
   const result = await generateText({
-    model: gateway2(agent.model || DEFAULT_MODEL),
+    model: gateway2(pickModel2(agent.model, configured)),
     system: systemPrompt(agent),
     messages: turns.slice(-16).map((turn) => ({ role: turn.role, content: turn.content })),
     tools: propertyTools(db3, baseUrl, seen),
@@ -47173,6 +47198,87 @@ async function aiTurn(db3, conversationId, baseUrl) {
     const message = error48 instanceof Error ? error48.message : "falha na IA";
     await transferToHuman(db3, conversationId, `falha da IA: ${message}`);
     return { replied: false, skipped: message };
+  }
+}
+
+// packages/web/src/api/lib/chat-guard.ts
+init_schema();
+var GUARD_CHANNEL = "site";
+var NEW_CONVERSATIONS_PER_HOUR = 3;
+var NEW_CONVERSATIONS_PER_DAY = 8;
+var AI_CALLS_PER_HOUR = 30;
+var AI_CALLS_PER_DAY = 80;
+var GLOBAL_AI_CALLS_PER_DAY = 600;
+var GUARD_NOTICE = "Chegamos ao limite de atendimento automático para este acesso agora. Deixe seu nome e WhatsApp no formulário ou chame a gente no WhatsApp: um corretor responde em seguida.";
+var HOUR_MS = 60 * 60 * 1000;
+var DAY_MS = 24 * HOUR_MS;
+function guardSecret() {
+  return process.env.SITE_CHAT_HASH_SECRET || process.env.BETTER_AUTH_SECRET || "edy-premi-site-chat";
+}
+async function visitorFingerprint(ip) {
+  const clean = (ip || "desconhecido").trim().slice(0, 80);
+  return (await sha256Hex(`${guardSecret()}:${GUARD_CHANNEL}:${clean}`)).slice(0, 40);
+}
+async function countEvents(db3, kind, since, fingerprint) {
+  const filters = [
+    eq(chatGuardEvents.channel, GUARD_CHANNEL),
+    eq(chatGuardEvents.kind, kind),
+    gte(chatGuardEvents.createdAt, since)
+  ];
+  if (fingerprint)
+    filters.push(eq(chatGuardEvents.fingerprint, fingerprint));
+  const [row] = await db3.select({ total: sql`count(*)` }).from(chatGuardEvents).where(and(...filters));
+  return Number(row?.total ?? 0);
+}
+async function recordGuardEvent(db3, fingerprint, kind, reason) {
+  try {
+    await db3.insert(chatGuardEvents).values({
+      channel: GUARD_CHANNEL,
+      fingerprint,
+      kind,
+      reason: reason ? reason.slice(0, 120) : null
+    });
+  } catch {}
+}
+async function pruneGuardEvents(db3) {
+  try {
+    await db3.delete(chatGuardEvents).where(lt(chatGuardEvents.createdAt, new Date(Date.now() - 7 * DAY_MS)));
+  } catch {}
+}
+var ALLOWED = { allowed: true, notice: null };
+async function guardSiteChat(db3, fingerprint, options) {
+  const now2 = Date.now();
+  const hourAgo = new Date(now2 - HOUR_MS);
+  const dayAgo = new Date(now2 - DAY_MS);
+  const block = async (reason) => {
+    await recordGuardEvent(db3, fingerprint, "block", reason);
+    return { allowed: false, notice: GUARD_NOTICE };
+  };
+  try {
+    if (options.newConversation) {
+      const [perHour, perDay] = await Promise.all([
+        countEvents(db3, "conversation", hourAgo, fingerprint),
+        countEvents(db3, "conversation", dayAgo, fingerprint)
+      ]);
+      if (perHour >= NEW_CONVERSATIONS_PER_HOUR)
+        return block("conversas_novas_hora");
+      if (perDay >= NEW_CONVERSATIONS_PER_DAY)
+        return block("conversas_novas_dia");
+    }
+    const [aiHour, aiDay, aiGlobal] = await Promise.all([
+      countEvents(db3, "ai", hourAgo, fingerprint),
+      countEvents(db3, "ai", dayAgo, fingerprint),
+      countEvents(db3, "ai", dayAgo)
+    ]);
+    if (aiHour >= AI_CALLS_PER_HOUR)
+      return block("ia_hora");
+    if (aiDay >= AI_CALLS_PER_DAY)
+      return block("ia_dia");
+    if (aiGlobal >= GLOBAL_AI_CALLS_PER_DAY)
+      return block("teto_global_dia");
+    return ALLOWED;
+  } catch {
+    return ALLOWED;
   }
 }
 
@@ -47369,10 +47475,26 @@ var siteChat = {
       };
     }
     registerIpHit(ip);
+    const fingerprint = await visitorFingerprint(ip);
+    const existing = await findConversation(db3, token);
+    const guard = await guardSiteChat(db3, fingerprint, { newConversation: !existing });
+    if (!guard.allowed) {
+      const messages3 = existing ? await loadMessages(db3, existing.id) : [];
+      return {
+        state: existing ? toPublicState(token, existing, countClientMessages(messages3)) : emptyState,
+        messages: messages3,
+        properties: [],
+        notice: guard.notice ?? GUARD_NOTICE
+      };
+    }
     const conversation = await ensureConversation(db3, {
       channel: SITE_CHAT_CHANNEL,
       externalId: externalIdFor(token)
     });
+    if (!existing) {
+      await recordGuardEvent(db3, fingerprint, "conversation");
+      await pruneGuardEvents(db3);
+    }
     const limited = await conversationRateLimited(db3, conversation.id);
     if (limited) {
       const messages3 = await loadMessages(db3, conversation.id);
@@ -47398,6 +47520,7 @@ var siteChat = {
       authorName: conversation.contactName ?? null,
       body
     });
+    await recordGuardEvent(db3, fingerprint, "ai");
     const turn = await aiTurn(db3, conversation.id, siteBaseUrl(context.headers));
     const [fresh] = await db3.select().from(conversations).where(eq(conversations.id, conversation.id)).limit(1);
     const messages2 = await loadMessages(db3, conversation.id);
@@ -47862,7 +47985,7 @@ var adminPropertyContent = {
     let text4 = "";
     try {
       const result = await generateText({
-        model: gateway2(DEFAULT_MODEL),
+        model: gateway2(FALLBACK_MODEL),
         temperature: 0.6,
         prompt
       });
@@ -47886,7 +48009,7 @@ var adminPropertyContent = {
     }
     return {
       ok: true,
-      model: DEFAULT_MODEL,
+      model: FALLBACK_MODEL,
       content: parsed.data,
       usedFields: sheet.split(`
 `)
@@ -49036,7 +49159,7 @@ async function runTest(db3, key, config2, baseUrl) {
         };
       }
       try {
-        const model = config2.defaultModel || "openai/gpt-5.4-mini";
+        const model = pickModel(null, config2.defaultModel);
         const { text: text4 } = await generateText({
           model: gateway2(model),
           prompt: 'Responda apenas com a palavra "ok".'
@@ -49568,7 +49691,7 @@ init_schema();
 var agentInput = exports_external.object({
   name: exports_external.string().min(2).max(80),
   active: exports_external.boolean().default(false),
-  model: exports_external.string().min(3).max(80).default("openai/gpt-5.4-mini"),
+  model: exports_external.string().min(3).max(80).default(FALLBACK_MODEL),
   greeting: exports_external.string().max(600).default(""),
   instructions: exports_external.string().max(6000).default(""),
   tone: exports_external.string().max(400).default(""),

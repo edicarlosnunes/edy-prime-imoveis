@@ -1,4 +1,5 @@
 import { sqliteTable, integer, text, real, index } from "drizzle-orm/sqlite-core";
+import { FALLBACK_MODEL } from "../agent/model";
 
 /**
  * Schema do site + painel administrativo.
@@ -401,6 +402,32 @@ export const messages = sqliteTable(
   (t) => [index("messages_conversation_idx").on(t.conversationId)],
 );
 
+/* ------------------------------------------- guarda do chat publico */
+
+/**
+ * Contadores persistentes do chat público (canal `site`) contra abuso e custo.
+ * `fingerprint` é hash com segredo do servidor — o IP nunca é gravado em claro.
+ * `kind`: "conversation" (conversa nova), "ai" (chamada do modelo),
+ * "block" (limite atingido; `reason` guarda o motivo interno para auditoria).
+ */
+export const chatGuardEvents = sqliteTable(
+  "chat_guard_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    channel: text("channel").notNull().default("site"),
+    fingerprint: text("fingerprint").notNull(),
+    kind: text("kind").notNull(),
+    reason: text("reason"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    index("chat_guard_events_lookup_idx").on(t.channel, t.kind, t.createdAt),
+    index("chat_guard_events_fingerprint_idx").on(t.fingerprint, t.createdAt),
+  ],
+);
+
 /* --------------------------------------------------------- agentes IA */
 
 export const aiAgents = sqliteTable("ai_agents", {
@@ -408,7 +435,7 @@ export const aiAgents = sqliteTable("ai_agents", {
   name: text("name").notNull(),
   active: integer("active").notNull().default(0),
   provider: text("provider").notNull().default("gateway"),
-  model: text("model").notNull().default("openai/gpt-5.4-mini"),
+  model: text("model").notNull().default(FALLBACK_MODEL),
   greeting: text("greeting").notNull().default(""),
   instructions: text("instructions").notNull().default(""),
   tone: text("tone").notNull().default(""),

@@ -13,7 +13,8 @@ import { z } from "zod";
 import { ORPCError } from "@orpc/server";
 import { generateText } from "ai";
 import { adminBase } from "../lib/admin-base";
-import { DEFAULT_MODEL, gateway, gatewayConfigured } from "../agent/gateway";
+import { gateway, gatewayConfigured } from "../agent/gateway";
+import { FALLBACK_MODEL } from "../agent/model";
 
 const purposeEnum = z.enum(["venda", "locacao", "venda_locacao"]);
 const typeEnum = z.enum([
@@ -180,7 +181,7 @@ export const adminPropertyContent = {
     let text = "";
     try {
       const result = await generateText({
-        model: gateway(DEFAULT_MODEL),
+        model: gateway(FALLBACK_MODEL),
         temperature: 0.6,
         prompt,
       });
@@ -208,7 +209,7 @@ export const adminPropertyContent = {
 
     return {
       ok: true as const,
-      model: DEFAULT_MODEL,
+      model: FALLBACK_MODEL,
       content: parsed.data,
       /** eco do que foi enviado — ajuda o admin a conferir a origem do texto */
       usedFields: sheet.split("\n"),

@@ -13,6 +13,13 @@ import {
   transferToHuman,
 } from "../lib/inbox";
 import { intakeLead } from "../lib/lead-intake";
+import {
+  GUARD_NOTICE,
+  guardSiteChat,
+  pruneGuardEvents,
+  recordGuardEvent,
+  visitorFingerprint,
+} from "../lib/chat-guard";
 import { codeFromSlug, propertySlug as buildSlug } from "../lib/slug";
 import {
   MAX_MESSAGE_CHARS,
@@ -209,10 +216,32 @@ export const siteChat = {
       }
       registerIpHit(ip);
 
+      /* Guarda persistente (banco): sobrevive a cold start da Vercel e limita
+         conversas novas, chamadas de IA por visitante e o teto diário do chat.
+         Bloqueio aqui NUNCA chega a chamar o modelo. */
+      const fingerprint = await visitorFingerprint(ip);
+      const existing = await findConversation(db, token);
+      const guard = await guardSiteChat(db, fingerprint, { newConversation: !existing });
+      if (!guard.allowed) {
+        const messages = existing ? await loadMessages(db, existing.id) : [];
+        return {
+          state: existing
+            ? toPublicState(token, existing, countClientMessages(messages))
+            : emptyState,
+          messages,
+          properties: [],
+          notice: guard.notice ?? GUARD_NOTICE,
+        };
+      }
+
       const conversation = await ensureConversation(db, {
         channel: SITE_CHAT_CHANNEL,
         externalId: externalIdFor(token),
       });
+      if (!existing) {
+        await recordGuardEvent(db, fingerprint, "conversation");
+        await pruneGuardEvents(db);
+      }
 
       const limited = await conversationRateLimited(db, conversation.id);
       if (limited) {
@@ -251,6 +280,7 @@ export const siteChat = {
         body,
       });
 
+      await recordGuardEvent(db, fingerprint, "ai");
       const turn = await aiTurn(db, conversation.id, siteBaseUrl(context.headers));
 
       const [fresh] = await db
