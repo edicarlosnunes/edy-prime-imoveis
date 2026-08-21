@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Send, User, X } from "lucide-react";
+import { Bot, RotateCcw, Send, User, X } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import {
@@ -9,6 +9,7 @@ import {
   Empty,
   ErrorNote,
   Input,
+  Select,
   Stat,
   Textarea,
   dateTimeLabel,
@@ -19,11 +20,15 @@ import {
   useCloseConversation,
   useConversation,
   useConversations,
+  useReopenConversation,
   useReturnToAi,
   useSendMessage,
   useSimulateConversation,
   useTakeOver,
 } from "../../queries/integrations";
+
+type ModeFilter = "" | "ia" | "humano";
+type ChannelFilter = "" | "whatsapp" | "instagram" | "facebook" | "site" | "teste";
 
 const channelLabel: Record<string, string> = {
   whatsapp: "WhatsApp",
@@ -35,18 +40,25 @@ const channelLabel: Record<string, string> = {
 
 function ConversationsPage() {
   const [filter, setFilter] = useState<"aberta" | "fechada">("aberta");
+  const [mode, setMode] = useState<ModeFilter>("");
+  const [channel, setChannel] = useState<ChannelFilter>("");
   const [selected, setSelected] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [simulation, setSimulation] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const list = useConversations({ status: filter });
+  const list = useConversations({
+    status: filter,
+    ...(mode ? { mode } : {}),
+    ...(channel ? { channel } : {}),
+  });
   const detail = useConversation(selected);
   const takeOver = useTakeOver();
   const returnToAi = useReturnToAi();
   const send = useSendMessage();
   const close = useCloseConversation();
+  const reopen = useReopenConversation();
   const simulate = useSimulateConversation();
 
   const conversation = detail.data?.conversation;
@@ -103,6 +115,25 @@ function ConversationsPage() {
             </div>
           }
         >
+          <div className="mb-3 grid gap-2 sm:grid-cols-2">
+            <Select value={mode} onChange={(event) => setMode(event.target.value as ModeFilter)}>
+              <option value="">Todos os atendimentos</option>
+              <option value="ia">Com a IA</option>
+              <option value="humano">Com humano</option>
+            </Select>
+            <Select
+              value={channel}
+              onChange={(event) => setChannel(event.target.value as ChannelFilter)}
+            >
+              <option value="">Todos os canais</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="instagram">Instagram</option>
+              <option value="facebook">Messenger</option>
+              <option value="site">Site</option>
+              <option value="teste">Teste interno</option>
+            </Select>
+          </div>
+
           {list.isLoading && <Empty>Carregando…</Empty>}
           {!list.isLoading && (list.data?.conversations.length ?? 0) === 0 && (
             <Empty>Nenhuma conversa {filter === "aberta" ? "aberta" : "fechada"}.</Empty>
@@ -177,12 +208,34 @@ function ConversationsPage() {
                       <Bot className="h-3.5 w-3.5" /> Devolver à IA
                     </Btn>
                   )}
-                  <Btn
-                    tone="ghost"
-                    onClick={() => guard(() => close.mutateAsync({ id: conversation.id }))}
-                  >
-                    <X className="h-3.5 w-3.5" /> Fechar
-                  </Btn>
+                  {conversation.status === "fechada" ? (
+                    <Btn
+                      tone="outline"
+                      disabled={reopen.isPending}
+                      onClick={() =>
+                        guard(async () => {
+                          await reopen.mutateAsync({ id: conversation.id });
+                          setFilter("aberta");
+                          return "Conversa reaberta.";
+                        })
+                      }
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Reabrir
+                    </Btn>
+                  ) : (
+                    <Btn
+                      tone="ghost"
+                      disabled={close.isPending}
+                      onClick={() =>
+                        guard(async () => {
+                          await close.mutateAsync({ id: conversation.id });
+                          return "Conversa fechada.";
+                        })
+                      }
+                    >
+                      <X className="h-3.5 w-3.5" /> Fechar
+                    </Btn>
+                  )}
                 </div>
               }
             >

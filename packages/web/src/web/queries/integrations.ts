@@ -114,6 +114,11 @@ export function useCloseConversation() {
   return useMutation(orpc.adminInbox.close.mutationOptions({ onSuccess: invalidate }));
 }
 
+export function useReopenConversation() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminInbox.reopen.mutationOptions({ onSuccess: invalidate }));
+}
+
 export function useSimulateConversation() {
   const invalidate = useInvalidate();
   return useMutation(orpc.adminInbox.simulate.mutationOptions({ onSuccess: invalidate }));
