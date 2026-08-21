@@ -45,7 +45,25 @@ Reveal por scroll (IntersectionObserver + CSS transitions, stagger de 60ms). Hov
 ## API & Dados
 
 - `leads.create` (oRPC) — grava nome, WhatsApp, interesse, mensagem na tabela `leads` (Turso/Drizzle).
-- `properties.list` (oRPC) — 6 imóveis em destaque (dados editáveis em `src/api/routes/properties.ts`).
+- `properties.list` (oRPC) — vitrine pública lendo a tabela `properties` do banco (`published = 1`,
+  ordenado por destaque e data). Os imóveis são cadastrados no painel `/admin`, não mais no código.
+- `siteConfig.get` (oRPC) — dados públicos da imobiliária (WhatsApp, e-mail, CRECI, endereço, redes)
+  vindos de `/admin → Configurações`; `src/web/lib/site.ts` mantém os mesmos valores como padrão.
+
+## Painel administrativo (`/admin`)
+
+Área privada, mesma paleta do site em versão utilitária (sidebar `deep`, cards brancos sobre `paper`,
+acento `brass`, cantos retos, labels em caixa alta).
+
+- Autenticação: `POST /api/admin/login` (cookie `epi_admin`, httpOnly, 12h), senha com PBKDF2-SHA256
+  no banco; todas as rotas de dados exigem sessão (`adminBase`). `AdminGuard` protege as telas.
+- Telas: `/admin` (dashboard), `/admin/imoveis`, `/admin/leads`, `/admin/clientes`,
+  `/admin/proprietarios`, `/admin/agenda`, `/admin/propostas`, `/admin/configuracoes`.
+- Layout responsivo: sidebar fixa no desktop, menu hamburger no mobile (`components/admin/layout.tsx`).
+- Fotos: upload em `POST /api/admin/upload` (redimensionado no navegador, máx 3 MB), guardado na
+  tabela `media` e servido por `GET /api/media/:id` — sem storage externo.
+- Funil do CRM: novo → primeiro contato → qualificado → imóvel apresentado → visita agendada →
+  proposta enviada → negociação → venda fechada (kanban no desktop, lista no mobile).
 
 ## Flows
 

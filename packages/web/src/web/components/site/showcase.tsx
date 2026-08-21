@@ -4,8 +4,9 @@ import { formatBRL, site, whatsappLink } from "../../lib/site";
 
 const statusLabel: Record<string, string> = {
   disponivel: "Disponível",
-  lancamento: "Lançamento",
-  exclusivo: "Exclusivo",
+  reservado: "Reservado",
+  vendido: "Vendido",
+  alugado: "Alugado",
 };
 
 function CardSkeleton() {

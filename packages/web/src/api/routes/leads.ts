@@ -1,20 +1,12 @@
 import { z } from "zod";
-import { desc } from "drizzle-orm";
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
+import { getDb } from "../lib/auth";
 
 /**
- * O cliente do banco (libsql) é carregado sob demanda, dentro do handler.
- * Importar `db` no topo do módulo fazia o cliente ser criado no momento em que
- * a API é carregada — se as credenciais faltarem, ou se o bundle serverless
- * resolver o binário nativo do libsql, a função inteira morre na inicialização
- * e derruba até rotas que não usam banco (health, vitrine de imóveis).
+ * Formulário público do site. A leitura dos leads é protegida e vive em
+ * routes/admin-leads.ts — aqui só entra o que qualquer visitante pode fazer.
  */
-async function getDb() {
-  const { db } = await import("../database");
-  return db;
-}
-
 const createInput = z.object({
   name: z.string().min(2).max(120),
   phone: z.string().min(8).max(30),
@@ -35,15 +27,12 @@ export const leads = {
         interest: input.interest,
         message: input.message?.trim() || null,
         source: input.source ?? "site",
+        stage: "novo",
+        status: "aberto",
+        updatedAt: new Date(),
       })
       .returning();
 
     return { id: lead?.id ?? 0, ok: true };
-  }),
-
-  /** Últimos contatos recebidos (uso interno). */
-  list: base.handler(async () => {
-    const db = await getDb();
-    return db.select().from(schema.leads).orderBy(desc(schema.leads.createdAt)).limit(100);
   }),
 };

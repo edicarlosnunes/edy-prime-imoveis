@@ -1,111 +1,121 @@
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { base } from "../__core/app";
+import * as schema from "../database/schema";
+import { getDb } from "../lib/auth";
 
+/**
+ * Vitrine pública — os imóveis vêm do banco (cadastrados no /admin).
+ * Aparece no site só o que está publicado.
+ */
 export interface Property {
+  id: number;
   code: string;
   title: string;
+  purpose: string;
+  type: string;
   district: string;
   city: string;
   price: number;
+  condoFee: number | null;
+  iptu: number | null;
   bedrooms: number;
   suites: number;
+  bathrooms: number;
   parking: number;
   area: number;
-  status: "disponivel" | "lancamento" | "exclusivo";
+  areaTotal: number | null;
+  status: string;
   highlight: string;
+  description: string;
+  features: string[];
   image: string;
+  images: string[];
+  featured: boolean;
 }
 
-/**
- * Vitrine em destaque. Para atualizar o site, edite esta lista:
- * troque textos, valores e o caminho da imagem (arquivos em packages/web/public/images).
- */
-const featured: Property[] = [
-  {
-    code: "EP-1042",
-    title: "Apartamento frente mar com varanda gourmet",
-    district: "Canto do Forte",
-    city: "Praia Grande",
-    price: 1450000,
-    bedrooms: 3,
-    suites: 1,
-    parking: 2,
-    area: 128,
-    status: "exclusivo",
-    highlight: "Vista definitiva para o mar",
-    image: "/images/imovel-5.jpg",
-  },
-  {
-    code: "EP-1078",
-    title: "Cobertura duplex com piscina privativa",
-    district: "Boqueirão",
-    city: "Praia Grande",
-    price: 2390000,
-    bedrooms: 4,
-    suites: 2,
-    parking: 3,
-    area: 218,
-    status: "exclusivo",
-    highlight: "Piscina e deck no terraço",
-    image: "/images/imovel-6.jpg",
-  },
-  {
-    code: "EP-1015",
-    title: "Apartamento reformado a uma quadra da praia",
-    district: "Guilhermina",
-    city: "Praia Grande",
-    price: 780000,
-    bedrooms: 2,
-    suites: 1,
-    parking: 1,
-    area: 86,
-    status: "disponivel",
-    highlight: "Pronto para morar",
-    image: "/images/imovel-1.jpg",
-  },
-  {
-    code: "EP-1091",
-    title: "Lançamento com lazer completo e vista mar",
-    district: "Aviação",
-    city: "Praia Grande",
-    price: 1120000,
-    bedrooms: 3,
-    suites: 1,
-    parking: 2,
-    area: 104,
-    status: "lancamento",
-    highlight: "Entrada facilitada na planta",
-    image: "/images/imovel-4.jpg",
-  },
-  {
-    code: "EP-1063",
-    title: "Alto padrão com cozinha integrada e armários",
-    district: "Vila Tupi",
-    city: "Praia Grande",
-    price: 960000,
-    bedrooms: 3,
-    suites: 1,
-    parking: 2,
-    area: 98,
-    status: "disponivel",
-    highlight: "Mobiliado e decorado",
-    image: "/images/imovel-2.jpg",
-  },
-  {
-    code: "EP-1087",
-    title: "Suíte master com closet em condomínio-clube",
-    district: "Ocian",
-    city: "Praia Grande",
-    price: 690000,
-    bedrooms: 2,
-    suites: 1,
-    parking: 1,
-    area: 74,
-    status: "disponivel",
-    highlight: "Lazer de resort no condomínio",
-    image: "/images/imovel-3.jpg",
-  },
-];
+const FALLBACK_IMAGE = "/images/imovel-1.jpg";
+
+function parseFeatures(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
 
 export const properties = {
-  list: base.handler((): Property[] => featured),
+  /** Imóveis publicados, destaques primeiro. */
+  list: base.handler(async (): Promise<Property[]> => {
+    const db = await getDb();
+    const rows = await db
+      .select()
+      .from(schema.properties)
+      .where(eq(schema.properties.published, 1))
+      .orderBy(desc(schema.properties.featured), desc(schema.properties.createdAt))
+      .limit(48);
+
+    if (rows.length === 0) return [];
+
+    const images = await db
+      .select()
+      .from(schema.propertyImages)
+      .where(
+        inArray(
+          schema.propertyImages.propertyId,
+          rows.map((row) => row.id),
+        ),
+      )
+      .orderBy(asc(schema.propertyImages.sortOrder), asc(schema.propertyImages.id));
+
+    return rows.map((row) => {
+      const own = images.filter((image) => image.propertyId === row.id);
+      const primary = own.find((image) => image.isPrimary === 1) ?? own[0];
+      return {
+        id: row.id,
+        code: row.code,
+        title: row.title,
+        purpose: row.purpose,
+        type: row.type,
+        district: row.district,
+        city: row.city,
+        price: row.price,
+        condoFee: row.condoFee,
+        iptu: row.iptu,
+        bedrooms: row.bedrooms,
+        suites: row.suites,
+        bathrooms: row.bathrooms,
+        parking: row.parking,
+        area: row.areaUtil,
+        areaTotal: row.areaTotal,
+        status: row.status,
+        highlight: row.highlight ?? "",
+        description: row.description ?? "",
+        features: parseFeatures(row.features),
+        image: primary?.url ?? FALLBACK_IMAGE,
+        images: own.map((image) => image.url),
+        featured: row.featured === 1,
+      };
+    });
+  }),
+
+  /** Contador de interesse usado no ranking "imóveis mais procurados". */
+  registerView: base
+    .input(z.object({ code: z.string().min(1).max(40) }))
+    .handler(async ({ input }) => {
+      const db = await getDb();
+      const [row] = await db
+        .select({ id: schema.properties.id, views: schema.properties.views })
+        .from(schema.properties)
+        .where(and(eq(schema.properties.code, input.code)))
+        .limit(1);
+      if (!row) return { ok: false };
+      await db
+        .update(schema.properties)
+        .set({ views: row.views + 1 })
+        .where(eq(schema.properties.id, row.id));
+      return { ok: true };
+    }),
 };
