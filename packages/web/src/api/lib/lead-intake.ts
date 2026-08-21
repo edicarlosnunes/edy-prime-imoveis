@@ -10,6 +10,7 @@ import * as schema from "../database/schema";
 import type { AdminDb } from "./admin-base";
 import { fireTrigger } from "./automations";
 import { parseConfig } from "./integrations";
+import { logLeadEvent, qualifyLeadFromText } from "./lead-profile";
 
 export interface LeadInput {
   name: string;
@@ -101,6 +102,22 @@ export async function intakeLead(db: AdminDb, input: LeadInput): Promise<LeadRes
         campaign: existing.campaign ?? input.campaign ?? null,
       })
       .where(eq(schema.leads.id, existing.id));
+    /* Qualificação determinística também no contato repetido: o texto novo
+       pode trazer dados que faltavam. Nunca sobrescreve o que já existe. */
+    await logLeadEvent(db, existing.id, {
+      kind: "mensagem",
+      title: `Novo contato via ${input.source}`,
+      detail: [input.interest, input.message].filter(Boolean).join(" — ") || null,
+      actorType: "cliente",
+      actorName: existing.name,
+      dedupeMinutes: 2,
+    });
+    await qualifyLeadFromText(db, existing.id, [input.interest, input.message].filter(Boolean).join(". "), {
+      actorType: "cliente",
+      actorName: existing.name,
+      countMessage: true,
+    });
+
     return {
       id: existing.id,
       duplicated: true,
@@ -132,6 +149,19 @@ export async function intakeLead(db: AdminDb, input: LeadInput): Promise<LeadRes
     .returning();
 
   if (created) {
+    await logLeadEvent(db, created.id, {
+      kind: "criado",
+      title: `Lead criado via ${created.source}`,
+      detail: [created.interest, created.message].filter(Boolean).join(" — ") || null,
+      actorType: "cliente",
+      actorName: created.name,
+      dedupeMinutes: 0,
+    });
+    await qualifyLeadFromText(db, created.id, [input.interest, input.message].filter(Boolean).join(". "), {
+      actorType: "cliente",
+      actorName: created.name,
+      countMessage: true,
+    });
     await fireTrigger(db, "lead_novo", {
       leadId: created.id,
       propertyId: created.propertyId,

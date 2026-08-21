@@ -72,3 +72,6 @@ scripts/
 !packages/mobile/scripts/
 packages/mobile/scripts/*
 !packages/mobile/scripts/generate-ios-certs.py
+!packages/web/scripts/
+packages/web/scripts/*
+!packages/web/scripts/migrate.ts

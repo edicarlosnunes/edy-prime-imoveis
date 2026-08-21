@@ -4233,7 +4233,9 @@ __export(exports_schema, {
   messages: () => messages,
   media: () => media,
   leads: () => leads,
+  leadProfile: () => leadProfile,
   leadNotes: () => leadNotes,
+  leadEvents: () => leadEvents,
   integrations: () => integrations,
   integrationEvents: () => integrationEvents,
   deals: () => deals,
@@ -4248,7 +4250,7 @@ __export(exports_schema, {
   adminUsers: () => adminUsers,
   adminSessions: () => adminSessions
 });
-var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
+var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, leadProfile, leadEvents, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
 var init_schema = __esm(() => {
   init_sqlite_core();
   adminUsers = sqliteTable("admin_users", {
@@ -4369,15 +4371,76 @@ var init_schema = __esm(() => {
     utmMedium: text("utm_medium"),
     utmCampaign: text("utm_campaign"),
     externalId: text("external_id"),
+    score: integer2("score").notNull().default(0),
+    scoreTier: text("score_tier").notNull().default("frio"),
+    scoreReasons: text("score_reasons"),
+    scoreAt: integer2("score_at", { mode: "timestamp" }),
+    qualifiedAt: integer2("qualified_at", { mode: "timestamp" }),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
     updatedAt: integer2("updated_at", { mode: "timestamp" })
-  });
+  }, (table2) => ({
+    stageIdx: index("leads_stage_idx").on(table2.stage),
+    scoreIdx: index("leads_score_idx").on(table2.score),
+    phoneIdx: index("leads_phone_idx").on(table2.phone),
+    nextActionIdx: index("leads_next_action_idx").on(table2.nextActionAt)
+  }));
   leadNotes = sqliteTable("lead_notes", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     leadId: integer2("lead_id").notNull(),
     body: text("body").notNull(),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   });
+  leadProfile = sqliteTable("lead_profile", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    leadId: integer2("lead_id").notNull().unique(),
+    purpose: text("purpose"),
+    propertyType: text("property_type"),
+    city: text("city"),
+    districts: text("districts"),
+    budgetMin: real("budget_min"),
+    budgetMax: real("budget_max"),
+    bedrooms: integer2("bedrooms"),
+    suites: integer2("suites"),
+    parking: integer2("parking"),
+    areaMin: real("area_min"),
+    financing: text("financing"),
+    fgts: text("fgts"),
+    tradeIn: text("trade_in"),
+    tradeInDetail: text("trade_in_detail"),
+    timeframe: text("timeframe"),
+    preferences: text("preferences"),
+    restrictions: text("restrictions"),
+    contactPreference: text("contact_preference"),
+    contactWindow: text("contact_window"),
+    summary: text("summary"),
+    wantsVisit: integer2("wants_visit").notNull().default(0),
+    wantsHuman: integer2("wants_human").notNull().default(0),
+    cashPayment: integer2("cash_payment").notNull().default(0),
+    justLooking: integer2("just_looking").notNull().default(0),
+    messagesCount: integer2("messages_count").notNull().default(0),
+    contactDays: integer2("contact_days").notNull().default(0),
+    lastCustomerAt: integer2("last_customer_at", { mode: "timestamp" }),
+    source: text("source").notNull().default("deterministico"),
+    fieldsSource: text("fields_source"),
+    completeness: integer2("completeness").notNull().default(0),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    updatedAt: integer2("updated_at", { mode: "timestamp" })
+  });
+  leadEvents = sqliteTable("lead_events", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    leadId: integer2("lead_id").notNull(),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    detail: text("detail"),
+    actorType: text("actor_type").notNull().default("sistema"),
+    actorName: text("actor_name"),
+    scoreBefore: integer2("score_before"),
+    scoreAfter: integer2("score_after"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (table2) => ({
+    leadIdx: index("lead_events_lead_idx").on(table2.leadId),
+    createdIdx: index("lead_events_created_idx").on(table2.createdAt)
+  }));
   tasks = sqliteTable("tasks", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     title: text("title").notNull(),
@@ -34396,6 +34459,697 @@ async function sweepTimeRules(db3) {
   return { checked, fired };
 }
 
+// packages/web/src/api/lib/lead-profile.ts
+init_schema();
+
+// packages/web/src/api/lib/lead-score.ts
+var WEIGHTS = {
+  caps: { contato: 30, necessidade: 30, prontidao: 25, engajamento: 15 },
+  contato: {
+    phone: 16,
+    email: 8,
+    name: 6
+  },
+  necessidade: {
+    purpose: 6,
+    propertyType: 5,
+    location: 6,
+    budget: 9,
+    rooms: 4
+  },
+  prontidao: {
+    timeframeImediato: 14,
+    timeframe30: 10,
+    timeframe90: 5,
+    timeframeSemPressa: 0,
+    wantsVisit: 12,
+    wantsHuman: 6,
+    cashPayment: 8,
+    financingReady: 5,
+    fgts: 3,
+    tradeIn: 2
+  },
+  engajamento: {
+    perMessage: 2,
+    perContactDay: 3,
+    contactWindow: 2
+  },
+  penalidades: {
+    justLooking: -12,
+    budgetBelowCatalog: -10,
+    noPhone: -10,
+    invalidContact: -35
+  },
+  tiers: { quente: 65, morno: 35 },
+  visitFloor: 65
+};
+var clamp = (value2, min, max) => Math.min(max, Math.max(min, value2));
+var filled = (value2) => value2 !== null && value2 !== undefined && value2 !== "" && !(Array.isArray(value2) && value2.length === 0);
+function tierOf(score) {
+  if (score >= WEIGHTS.tiers.quente)
+    return "quente";
+  if (score >= WEIGHTS.tiers.morno)
+    return "morno";
+  return "frio";
+}
+function scoreLead(profile, signals) {
+  const p = profile ?? {};
+  const s = signals ?? {};
+  const reasons = [];
+  let contato = 0;
+  if (s.hasPhone) {
+    contato += WEIGHTS.contato.phone;
+    reasons.push("Telefone informado");
+  }
+  if (s.hasEmail) {
+    contato += WEIGHTS.contato.email;
+    reasons.push("E-mail informado");
+  }
+  if (s.hasName) {
+    contato += WEIGHTS.contato.name;
+    reasons.push("Nome informado");
+  }
+  contato = Math.min(contato, WEIGHTS.caps.contato);
+  let necessidade = 0;
+  if (filled(p.purpose)) {
+    necessidade += WEIGHTS.necessidade.purpose;
+    reasons.push(`Finalidade definida (${p.purpose})`);
+  }
+  if (filled(p.propertyType)) {
+    necessidade += WEIGHTS.necessidade.propertyType;
+    reasons.push(`Tipo de imóvel definido (${p.propertyType})`);
+  }
+  if (filled(p.city) || filled(p.districts)) {
+    necessidade += WEIGHTS.necessidade.location;
+    reasons.push("Localização desejada informada");
+  }
+  if (filled(p.budgetMin) || filled(p.budgetMax)) {
+    necessidade += WEIGHTS.necessidade.budget;
+    reasons.push("Orçamento informado");
+  }
+  if (filled(p.bedrooms) || filled(p.suites) || filled(p.parking) || filled(p.areaMin)) {
+    necessidade += WEIGHTS.necessidade.rooms;
+    reasons.push("Requisitos do imóvel informados (dormitórios/suítes/vagas/área)");
+  }
+  necessidade = Math.min(necessidade, WEIGHTS.caps.necessidade);
+  let prontidao = 0;
+  if (p.timeframe === "imediato") {
+    prontidao += WEIGHTS.prontidao.timeframeImediato;
+    reasons.push("Quer resolver de imediato");
+  } else if (p.timeframe === "30_dias") {
+    prontidao += WEIGHTS.prontidao.timeframe30;
+    reasons.push("Prazo de até 30 dias");
+  } else if (p.timeframe === "90_dias") {
+    prontidao += WEIGHTS.prontidao.timeframe90;
+    reasons.push("Prazo de até 90 dias");
+  }
+  if (s.wantsVisit) {
+    prontidao += WEIGHTS.prontidao.wantsVisit;
+    reasons.push("Pediu visita");
+  }
+  if (s.wantsHuman) {
+    prontidao += WEIGHTS.prontidao.wantsHuman;
+    reasons.push("Pediu falar com corretor");
+  }
+  if (s.cashPayment) {
+    prontidao += WEIGHTS.prontidao.cashPayment;
+    reasons.push("Pagamento à vista");
+  }
+  if (p.financing === "sim") {
+    prontidao += WEIGHTS.prontidao.financingReady;
+    reasons.push("Vai usar financiamento");
+  }
+  if (p.fgts === "sim") {
+    prontidao += WEIGHTS.prontidao.fgts;
+    reasons.push("Tem FGTS para usar");
+  }
+  if (p.tradeIn === "sim") {
+    prontidao += WEIGHTS.prontidao.tradeIn;
+    reasons.push("Tem imóvel para permuta");
+  }
+  prontidao = Math.min(prontidao, WEIGHTS.caps.prontidao);
+  let engajamento = 0;
+  const messages2 = Math.max(0, s.messagesCount ?? 0);
+  if (messages2 > 0) {
+    engajamento += Math.min(messages2, 4) * WEIGHTS.engajamento.perMessage;
+    reasons.push(`${messages2} mensagem(ns) do cliente`);
+  }
+  const days = Math.max(0, s.contactDays ?? 0);
+  if (days > 1) {
+    engajamento += Math.min(days - 1, 2) * WEIGHTS.engajamento.perContactDay;
+    reasons.push(`Retornou em ${days} dias diferentes`);
+  }
+  if (filled(p.contactWindow) || filled(p.contactPreference)) {
+    engajamento += WEIGHTS.engajamento.contactWindow;
+    reasons.push("Informou como/quando prefere ser contatado");
+  }
+  engajamento = Math.min(engajamento, WEIGHTS.caps.engajamento);
+  let penalidades = 0;
+  if (s.justLooking) {
+    penalidades += WEIGHTS.penalidades.justLooking;
+    reasons.push("Declarou que está só pesquisando");
+  }
+  if (s.budgetBelowCatalog) {
+    penalidades += WEIGHTS.penalidades.budgetBelowCatalog;
+    reasons.push("Orçamento abaixo do menor imóvel disponível");
+  }
+  if (!s.hasPhone) {
+    penalidades += WEIGHTS.penalidades.noPhone;
+    reasons.push("Sem telefone para contato");
+  }
+  if (s.invalidContact) {
+    penalidades += WEIGHTS.penalidades.invalidContact;
+    reasons.push("Contato inválido ou fora do perfil");
+  }
+  let score = clamp(contato + necessidade + prontidao + engajamento + penalidades, 0, 100);
+  if (s.wantsVisit && s.hasPhone && !s.invalidContact && score < WEIGHTS.visitFloor) {
+    score = WEIGHTS.visitFloor;
+    reasons.push(`Piso aplicado: pediu visita e tem telefone (mínimo ${WEIGHTS.visitFloor})`);
+  }
+  return {
+    score,
+    tier: tierOf(score),
+    reasons,
+    breakdown: { contato, necessidade, prontidao, engajamento, penalidades }
+  };
+}
+
+// packages/web/src/api/lib/qualification.ts
+var stripAccents = (value2) => value2.normalize("NFD").replace(/[̀-ͯ]/g, "");
+var norm = (value2) => stripAccents(value2.toLowerCase()).replace(/\s+/g, " ").trim();
+var WORD_NUMBERS = {
+  um: 1,
+  uma: 1,
+  dois: 2,
+  duas: 2,
+  tres: 3,
+  quatro: 4,
+  cinco: 5,
+  seis: 6,
+  sete: 7,
+  oito: 8,
+  nove: 9,
+  dez: 10
+};
+var NEGATION = /\b(nao|n)\s+(sei|tenho|decidi|defini|faco|fechei|penso|pretendo|quero|posso|consigo|vou)\b|\bsem\s+(ideia|previsao|condicao)\b|\bnenhuma\s+ideia\b|\bainda\s+nao\b|\bnao\s+e\b/;
+function negatedAround(text3, index2, span = 42) {
+  const before = text3.slice(Math.max(0, index2 - span), index2);
+  return NEGATION.test(before);
+}
+function parseMoney(raw2, scaleWord) {
+  let digits = raw2.replace(/[^\d.,]/g, "");
+  if (!digits)
+    return null;
+  const hasComma = digits.includes(",");
+  const hasDot = digits.includes(".");
+  if (hasComma && hasDot) {
+    digits = digits.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    const parts = digits.split(",");
+    digits = parts[parts.length - 1].length <= 2 ? parts.join(".") : parts.join("");
+  } else if (hasDot) {
+    const parts = digits.split(".");
+    digits = parts[parts.length - 1].length === 3 ? parts.join("") : parts.join(".");
+  }
+  let value2 = Number.parseFloat(digits);
+  if (!Number.isFinite(value2))
+    return null;
+  const scale = scaleWord ? norm(scaleWord) : "";
+  if (/^(mil|k)$/.test(scale))
+    value2 *= 1000;
+  else if (/^(mi|milhao|milhoes|kk)$/.test(scale))
+    value2 *= 1e6;
+  if (value2 < 1000 || value2 > 500000000)
+    return null;
+  return Math.round(value2);
+}
+var MONEY = /(?:r\$\s*)?(\d{1,3}(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)\s*(mil|milhao|milhoes|mi|kk|k)?\b/g;
+function moneyHits(text3) {
+  const hits = [];
+  MONEY.lastIndex = 0;
+  let match2;
+  while (match2 = MONEY.exec(text3)) {
+    const scale = match2[2];
+    const rawHasCurrency = /r\$/.test(match2[0]);
+    if (!scale && !rawHasCurrency && !/[.,]/.test(match2[1]))
+      continue;
+    const value2 = parseMoney(match2[1], scale);
+    if (value2 === null)
+      continue;
+    if (negatedAround(text3, match2.index))
+      continue;
+    hits.push({ value: value2, index: match2.index });
+  }
+  return hits;
+}
+function intNear(text3, pattern) {
+  pattern.lastIndex = 0;
+  const match2 = pattern.exec(text3);
+  if (!match2)
+    return null;
+  if (negatedAround(text3, match2.index))
+    return null;
+  const raw2 = (match2[1] ?? match2[2] ?? "").trim();
+  if (!raw2)
+    return null;
+  const numeric3 = Number.parseInt(raw2, 10);
+  if (Number.isFinite(numeric3))
+    return numeric3 >= 0 && numeric3 <= 20 ? numeric3 : null;
+  const word = WORD_NUMBERS[norm(raw2)];
+  return word ?? null;
+}
+function qualifyText(input, options = {}) {
+  const text3 = norm(input ?? "");
+  const patch = {};
+  const signals = {
+    wantsVisit: false,
+    wantsHuman: false,
+    cashPayment: false,
+    justLooking: false,
+    propertyCode: null
+  };
+  if (!text3)
+    return { patch, signals, fields: [] };
+  if (/\b(alugar|aluguel|locacao|para locar)\b/.test(text3))
+    patch.purpose = "alugar";
+  else if (/\b(investir|investimento|renda|rentabilidade)\b/.test(text3))
+    patch.purpose = "investir";
+  else if (/\b(vender|colocar (meu|a) (imovel|casa|apartamento) (a )?venda|anunciar meu imovel)\b/.test(text3))
+    patch.purpose = "vender";
+  else if (/\b(comprar|compra|adquirir|financiar (um|uma)|quero (um|uma) (casa|apartamento|apto))\b/.test(text3))
+    patch.purpose = "comprar";
+  const types = [
+    [/\b(apartamento|apto|aptos|apartamentos)\b/, "apartamento"],
+    [/\b(cobertura|coberturas)\b/, "cobertura"],
+    [/\b(casa|casas|sobrado|sobrados)\b/, "casa"],
+    [/\b(terreno|terrenos|lote|lotes)\b/, "terreno"],
+    [/\b(sala comercial|loja|ponto comercial|comercial|galpao)\b/, "comercial"],
+    [/\b(kitnet|kitinete|studio|estudio)\b/, "kitnet"],
+    [/\b(chacara|sitio|fazenda)\b/, "chacara"]
+  ];
+  for (const [pattern, value2] of types) {
+    const match2 = pattern.exec(text3);
+    if (match2 && !negatedAround(text3, match2.index)) {
+      patch.propertyType = value2;
+      break;
+    }
+  }
+  const hits = moneyHits(text3);
+  if (hits.length) {
+    const between2 = /\b(entre|de)\b[^.]{0,40}?\b(e|a|ate)\b/.test(text3);
+    const upperOnly = /\b(ate|no maximo|maximo de|nao passar de|limite de|teto de)\b/.test(text3);
+    const lowerOnly = /\b(a partir de|acima de|no minimo|minimo de|pelo menos)\b/.test(text3);
+    const sorted = [...hits].sort((a, b) => a.value - b.value);
+    if (between2 && hits.length >= 2) {
+      patch.budgetMin = sorted[0].value;
+      patch.budgetMax = sorted[sorted.length - 1].value;
+    } else if (upperOnly) {
+      patch.budgetMax = sorted[sorted.length - 1].value;
+    } else if (lowerOnly) {
+      patch.budgetMin = sorted[0].value;
+    } else if (hits.length >= 2) {
+      patch.budgetMin = sorted[0].value;
+      patch.budgetMax = sorted[sorted.length - 1].value;
+    } else {
+      patch.budgetMax = sorted[0].value;
+    }
+  }
+  const bedrooms = intNear(text3, /(\d{1,2}|um|uma|dois|duas|tres|quatro|cinco|seis)\s*(?:-|\s)?\s*(?:dormitorios?|dorms?|quartos?|qtos?|suites? e quartos?)\b/g);
+  if (bedrooms !== null)
+    patch.bedrooms = bedrooms;
+  const suites = intNear(text3, /(\d{1,2}|um|uma|dois|duas|tres|quatro)\s*(?:-|\s)?\s*suites?\b/g);
+  if (suites !== null)
+    patch.suites = suites;
+  const parking = intNear(text3, /(\d{1,2}|um|uma|dois|duas|tres|quatro)\s*(?:-|\s)?\s*(?:vagas?|garagens?|vagas? de garagem)\b/g);
+  if (parking !== null)
+    patch.parking = parking;
+  const area = /(\d{2,4})\s*(?:m2|m²|metros(?: quadrados)?)\b/g.exec(text3);
+  if (area && !negatedAround(text3, area.index)) {
+    const value2 = Number.parseInt(area[1], 10);
+    if (value2 >= 15 && value2 <= 1e5)
+      patch.areaMin = value2;
+  }
+  const financingYes = /\b(financiar|financiamento|financiado|carta de credito|caixa|minha casa minha vida)\b/;
+  const financingNo = /\b(sem financiamento|nao (quero|vou|pretendo) financiar|a vista)\b/;
+  if (financingNo.test(text3))
+    patch.financing = "nao";
+  else if (financingYes.test(text3)) {
+    const match2 = financingYes.exec(text3);
+    patch.financing = negatedAround(text3, match2.index) ? "nao_sei" : "sim";
+  }
+  if (/\bfgts\b/.test(text3)) {
+    const match2 = /\bfgts\b/.exec(text3);
+    patch.fgts = negatedAround(text3, match2.index) || /\b(nao tenho|sem) fgts\b/.test(text3) ? "nao" : "sim";
+  }
+  if (/\b(permuta|permutar|dar (meu|um) (imovel|apartamento|casa) (na|como) (troca|entrada)|troca)\b/.test(text3)) {
+    patch.tradeIn = "sim";
+    patch.tradeInDetail = input.trim().slice(0, 300);
+  }
+  if (/\b(a vista|pagamento a vista|dinheiro (na mao|vivo)|pago a vista)\b/.test(text3)) {
+    signals.cashPayment = true;
+  }
+  if (/\b(urgente|urgencia|imediato|para (ja|agora)|essa semana|esta semana|o quanto antes|hoje)\b/.test(text3))
+    patch.timeframe = "imediato";
+  else if (/\b(30 dias|um mes|1 mes|proximo mes|mes que vem)\b/.test(text3))
+    patch.timeframe = "30_dias";
+  else if (/\b(90 dias|tres meses|3 meses|dois meses|2 meses|semestre|seis meses)\b/.test(text3))
+    patch.timeframe = "90_dias";
+  else if (/\b(sem pressa|so pesquisando|apenas pesquisando|ano que vem|futuro|mais pra frente|mais para frente)\b/.test(text3))
+    patch.timeframe = "sem_pressa";
+  if (/\b(whatsapp|whats|zap|wpp)\b/.test(text3))
+    patch.contactPreference = "whatsapp";
+  else if (/\b(ligar|ligacao|me liga|telefone|chamada)\b/.test(text3))
+    patch.contactPreference = "ligacao";
+  else if (/\b(e-?mail)\b/.test(text3))
+    patch.contactPreference = "email";
+  const window2 = /\b(manha|tarde|noite|horario comercial|depois das? \d{1,2}(?::\d{2})?h?|antes das? \d{1,2}(?::\d{2})?h?|apos as? \d{1,2}h?)\b/.exec(text3);
+  if (window2)
+    patch.contactWindow = window2[0].slice(0, 60);
+  const cities = (options.knownCities ?? []).filter(Boolean);
+  for (const city of cities) {
+    if (city && norm(city).length >= 3 && text3.includes(norm(city))) {
+      patch.city = city;
+      break;
+    }
+  }
+  const districts = [];
+  for (const district of options.knownDistricts ?? []) {
+    if (!district)
+      continue;
+    const key = norm(district);
+    if (key.length >= 3 && text3.includes(key) && !districts.includes(district))
+      districts.push(district);
+  }
+  if (districts.length)
+    patch.districts = districts.slice(0, 8);
+  const prefMap = [
+    [/\b(piscina)\b/, "piscina"],
+    [/\b(churrasqueira)\b/, "churrasqueira"],
+    [/\b(vista (para o )?mar|frente ao mar|pe na areia)\b/, "vista para o mar"],
+    [/\b(academia)\b/, "academia"],
+    [/\b(sacada|varanda gourmet|varanda)\b/, "varanda"],
+    [/\b(mobiliado|semi ?mobiliado)\b/, "mobiliado"],
+    [/\b(elevador)\b/, "elevador"],
+    [/\b(portaria 24|seguranca 24)\b/, "portaria 24h"],
+    [/\b(pet|aceita animais|animal de estimacao)\b/, "aceita pet"],
+    [/\b(novo|lancamento|na planta)\b/, "novo/lançamento"]
+  ];
+  const preferences = [];
+  const restrictions = [];
+  for (const [pattern, label] of prefMap) {
+    const match2 = pattern.exec(text3);
+    if (!match2)
+      continue;
+    if (negatedAround(text3, match2.index) || /\bsem\s*$/.test(text3.slice(0, match2.index).slice(-6))) {
+      restrictions.push(`sem ${label}`);
+    } else {
+      preferences.push(label);
+    }
+  }
+  if (/\b(nao|sem) (quero |queremos )?(terreo|andar baixo)\b/.test(text3))
+    restrictions.push("sem térreo");
+  if (preferences.length)
+    patch.preferences = preferences.slice(0, 12);
+  if (restrictions.length)
+    patch.restrictions = restrictions.slice(0, 12);
+  if (/\b(visita|visitar|agendar|marcar|conhecer o imovel|ver o imovel|ver pessoalmente)\b/.test(text3)) {
+    const match2 = /\b(visita|visitar|agendar|marcar|conhecer o imovel|ver o imovel|ver pessoalmente)\b/.exec(text3);
+    if (!negatedAround(text3, match2.index))
+      signals.wantsVisit = true;
+  }
+  if (/\b(falar com (o )?(corretor|humano|atendente|pessoa|responsavel)|atendimento humano|me liga|quero falar com alguem)\b/.test(text3))
+    signals.wantsHuman = true;
+  if (/\b(so (pesquisando|olhando|dando uma olhada)|apenas (pesquisando|olhando)|curiosidade|sem compromisso|so uma ideia)\b/.test(text3))
+    signals.justLooking = true;
+  const code = /\bep[-\s]?(\d{2,6})\b/i.exec(input ?? "");
+  if (code)
+    signals.propertyCode = `EP-${code[1]}`;
+  const fields = [];
+  for (const [key, value2] of Object.entries(patch)) {
+    if (value2 === null || value2 === undefined || Array.isArray(value2) && value2.length === 0) {
+      delete patch[key];
+      continue;
+    }
+    fields.push(key);
+  }
+  return { patch, signals, fields };
+}
+
+// packages/web/src/api/lib/lead-profile.ts
+var JSON_FIELDS = ["districts", "preferences", "restrictions"];
+var parseList = (raw2) => {
+  if (!raw2)
+    return [];
+  try {
+    const parsed = JSON.parse(raw2);
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+var parseSources = (raw2) => {
+  if (!raw2)
+    return {};
+  try {
+    const parsed = JSON.parse(raw2);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {}
+  return {};
+};
+var COMPLETENESS_FIELDS = [
+  "purpose",
+  "propertyType",
+  "city",
+  "districts",
+  "budgetMax",
+  "bedrooms",
+  "parking",
+  "financing",
+  "timeframe",
+  "contactPreference"
+];
+function computeCompleteness(profile) {
+  if (!profile)
+    return 0;
+  let filled2 = 0;
+  for (const field of COMPLETENESS_FIELDS) {
+    const value2 = profile[field];
+    if (value2 === null || value2 === undefined || value2 === "")
+      continue;
+    if (typeof value2 === "string" && JSON_FIELDS.includes(field)) {
+      if (parseList(value2).length === 0)
+        continue;
+    }
+    filled2 += 1;
+  }
+  return Math.round(filled2 / COMPLETENESS_FIELDS.length * 100);
+}
+async function readProfile(db3, leadId) {
+  const [row] = await db3.select().from(leadProfile).where(eq(leadProfile.leadId, leadId)).limit(1);
+  return row ?? null;
+}
+async function ensureProfile(db3, leadId) {
+  const existing = await readProfile(db3, leadId);
+  if (existing)
+    return existing;
+  await db3.insert(leadProfile).values({ leadId, source: "deterministico", updatedAt: new Date }).onConflictDoNothing();
+  const created = await readProfile(db3, leadId);
+  if (!created)
+    throw new Error("não foi possível criar o perfil do lead");
+  return created;
+}
+async function applyProfilePatch(db3, leadId, patch, origin, signals = {}) {
+  const current = await ensureProfile(db3, leadId);
+  const sources = parseSources(current.fieldsSource);
+  const changed = [];
+  const keptManual = [];
+  const values = {};
+  for (const [key, incoming] of Object.entries(patch)) {
+    if (incoming === null || incoming === undefined)
+      continue;
+    if (Array.isArray(incoming) && incoming.length === 0)
+      continue;
+    const existingSource = sources[key];
+    if (origin !== "manual" && existingSource === "manual") {
+      keptManual.push(key);
+      continue;
+    }
+    if (JSON_FIELDS.includes(key)) {
+      const before2 = parseList(current[key]);
+      const incomingList = (Array.isArray(incoming) ? incoming : [incoming]).map(String);
+      const merged = origin === "manual" ? incomingList : Array.from(new Set([...before2, ...incomingList]));
+      if (JSON.stringify(merged) === JSON.stringify(before2))
+        continue;
+      values[key] = JSON.stringify(merged.slice(0, 12));
+      sources[key] = origin;
+      changed.push(key);
+      continue;
+    }
+    const before = current[key];
+    if (origin !== "manual" && before !== null && before !== undefined && before !== "")
+      continue;
+    if (before === incoming)
+      continue;
+    values[key] = incoming;
+    sources[key] = origin;
+    changed.push(key);
+  }
+  if (signals.wantsVisit)
+    values.wantsVisit = 1;
+  if (signals.wantsHuman)
+    values.wantsHuman = 1;
+  if (signals.cashPayment)
+    values.cashPayment = 1;
+  if (signals.justLooking)
+    values.justLooking = 1;
+  if (signals.addMessage)
+    values.messagesCount = (current.messagesCount ?? 0) + 1;
+  if (signals.customerAt) {
+    const previous = current.lastCustomerAt ? new Date(current.lastCustomerAt) : null;
+    const sameDay = previous !== null && previous.toISOString().slice(0, 10) === signals.customerAt.toISOString().slice(0, 10);
+    values.lastCustomerAt = signals.customerAt;
+    if (!sameDay)
+      values.contactDays = (current.contactDays ?? 0) + 1;
+  }
+  if (Object.keys(values).length === 0) {
+    return { profile: current, changed, keptManual };
+  }
+  values.fieldsSource = JSON.stringify(sources);
+  if (origin === "manual")
+    values.source = "manual";
+  values.completeness = computeCompleteness({ ...current, ...values });
+  values.updatedAt = new Date;
+  await db3.update(leadProfile).set(values).where(eq(leadProfile.leadId, leadId));
+  const profile = await readProfile(db3, leadId) ?? current;
+  return { profile, changed, keptManual };
+}
+async function logLeadEvent(db3, leadId, event) {
+  const dedupe = event.dedupeMinutes ?? 5;
+  if (dedupe > 0) {
+    const since = new Date(Date.now() - dedupe * 60 * 1000);
+    const [duplicate] = await db3.select({ id: leadEvents.id }).from(leadEvents).where(and(eq(leadEvents.leadId, leadId), eq(leadEvents.kind, event.kind), eq(leadEvents.title, event.title.slice(0, 160)), gte(leadEvents.createdAt, since))).limit(1);
+    if (duplicate)
+      return false;
+  }
+  await db3.insert(leadEvents).values({
+    leadId,
+    kind: event.kind,
+    title: event.title.slice(0, 160),
+    detail: event.detail?.slice(0, 1000) ?? null,
+    actorType: event.actorType ?? "sistema",
+    actorName: event.actorName?.slice(0, 120) ?? null,
+    scoreBefore: event.scoreBefore ?? null,
+    scoreAfter: event.scoreAfter ?? null
+  });
+  return true;
+}
+async function leadTimeline(db3, leadId, limit = 100) {
+  return db3.select().from(leadEvents).where(eq(leadEvents.leadId, leadId)).orderBy(desc(leadEvents.id)).limit(Math.min(limit, 300));
+}
+async function catalogFloorPrice(db3) {
+  const [row] = await db3.select({ min: sql`min(${properties.price})` }).from(properties).where(and(eq(properties.published, 1), eq(properties.status, "disponivel")));
+  const value2 = row?.min ?? null;
+  return value2 && value2 > 0 ? value2 : null;
+}
+async function recomputeLeadScore(db3, leadId, options = {}) {
+  const [lead] = await db3.select().from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead)
+    return null;
+  const profile = await readProfile(db3, leadId);
+  const floor = await catalogFloorPrice(db3);
+  const budgetMax = profile?.budgetMax ?? null;
+  const result = scoreLead({
+    purpose: profile?.purpose ?? null,
+    propertyType: profile?.propertyType ?? null,
+    city: profile?.city ?? null,
+    districts: parseList(profile?.districts),
+    budgetMin: profile?.budgetMin ?? null,
+    budgetMax,
+    bedrooms: profile?.bedrooms ?? null,
+    suites: profile?.suites ?? null,
+    parking: profile?.parking ?? null,
+    areaMin: profile?.areaMin ?? null,
+    financing: profile?.financing ?? null,
+    fgts: profile?.fgts ?? null,
+    tradeIn: profile?.tradeIn ?? null,
+    timeframe: profile?.timeframe ?? null,
+    contactPreference: profile?.contactPreference ?? null,
+    contactWindow: profile?.contactWindow ?? null
+  }, {
+    hasPhone: Boolean(lead.phone && lead.phone.replace(/\D/g, "").length >= 10),
+    hasEmail: Boolean(lead.email),
+    hasName: Boolean(lead.name && lead.name.trim() && lead.name !== "Contato sem nome"),
+    wantsVisit: (profile?.wantsVisit ?? 0) === 1,
+    wantsHuman: (profile?.wantsHuman ?? 0) === 1,
+    cashPayment: (profile?.cashPayment ?? 0) === 1,
+    justLooking: (profile?.justLooking ?? 0) === 1,
+    messagesCount: profile?.messagesCount ?? 0,
+    contactDays: profile?.contactDays ?? 0,
+    budgetBelowCatalog: floor !== null && budgetMax !== null && budgetMax < floor
+  });
+  const before = lead.score ?? 0;
+  const changed = before !== result.score || lead.scoreTier !== result.tier;
+  const values = {
+    score: result.score,
+    scoreTier: result.tier,
+    scoreReasons: JSON.stringify(result.reasons),
+    scoreAt: new Date,
+    updatedAt: new Date
+  };
+  if (!lead.qualifiedAt && result.tier === "quente")
+    values.qualifiedAt = new Date;
+  await db3.update(leads).set(values).where(eq(leads.id, leadId));
+  if (changed) {
+    await logLeadEvent(db3, leadId, {
+      kind: "score",
+      title: `Score ${before} → ${result.score} (${result.tier})`,
+      detail: result.reasons.join(" · "),
+      actorType: options.actorType ?? "sistema",
+      actorName: options.actorName ?? null,
+      scoreBefore: before,
+      scoreAfter: result.score,
+      dedupeMinutes: 0
+    });
+  }
+  return { score: result.score, tier: result.tier, reasons: result.reasons, changed };
+}
+async function catalogPlaces(db3) {
+  const rows = await db3.select({ district: properties.district, city: properties.city }).from(properties).limit(1000);
+  const districts = Array.from(new Set(rows.map((r) => r.district).filter(Boolean)));
+  const cities = Array.from(new Set(rows.map((r) => r.city).filter(Boolean)));
+  return { districts, cities };
+}
+async function qualifyLeadFromText(db3, leadId, text3, options = {}) {
+  const actorType = options.actorType ?? "cliente";
+  const places = await catalogPlaces(db3);
+  const { patch, signals, fields } = qualifyText(text3 ?? "", {
+    knownDistricts: places.districts,
+    knownCities: places.cities
+  });
+  const applied = await applyProfilePatch(db3, leadId, patch, options.origin ?? "deterministico", {
+    wantsVisit: signals.wantsVisit,
+    wantsHuman: signals.wantsHuman,
+    cashPayment: signals.cashPayment,
+    justLooking: signals.justLooking,
+    addMessage: options.countMessage ?? false,
+    customerAt: actorType === "cliente" ? new Date : null
+  });
+  if (applied.changed.length) {
+    await logLeadEvent(db3, leadId, {
+      kind: "qualificacao",
+      title: `Qualificação automática: ${applied.changed.length} campo(s)`,
+      detail: applied.changed.join(", "),
+      actorType,
+      actorName: options.actorName ?? null,
+      dedupeMinutes: 2
+    });
+  }
+  const score = await recomputeLeadScore(db3, leadId, { actorType, actorName: options.actorName ?? null });
+  return { fields, applied, signals, score };
+}
+
 // packages/web/src/api/lib/lead-intake.ts
 var digits = (value2) => value2.replace(/\D/g, "");
 async function dedupeWindowHours(db3) {
@@ -34442,6 +35196,19 @@ async function intakeLead(db3, input) {
       channel: existing.channel ?? input.channel ?? null,
       campaign: existing.campaign ?? input.campaign ?? null
     }).where(eq(leads.id, existing.id));
+    await logLeadEvent(db3, existing.id, {
+      kind: "mensagem",
+      title: `Novo contato via ${input.source}`,
+      detail: [input.interest, input.message].filter(Boolean).join(" — ") || null,
+      actorType: "cliente",
+      actorName: existing.name,
+      dedupeMinutes: 2
+    });
+    await qualifyLeadFromText(db3, existing.id, [input.interest, input.message].filter(Boolean).join(". "), {
+      actorType: "cliente",
+      actorName: existing.name,
+      countMessage: true
+    });
     return {
       id: existing.id,
       duplicated: true,
@@ -34468,6 +35235,19 @@ async function intakeLead(db3, input) {
     updatedAt: new Date
   }).returning();
   if (created) {
+    await logLeadEvent(db3, created.id, {
+      kind: "criado",
+      title: `Lead criado via ${created.source}`,
+      detail: [created.interest, created.message].filter(Boolean).join(" — ") || null,
+      actorType: "cliente",
+      actorName: created.name,
+      dedupeMinutes: 0
+    });
+    await qualifyLeadFromText(db3, created.id, [input.interest, input.message].filter(Boolean).join(". "), {
+      actorType: "cliente",
+      actorName: created.name,
+      countMessage: true
+    });
     await fireTrigger(db3, "lead_novo", {
       leadId: created.id,
       propertyId: created.propertyId,
@@ -47097,12 +47877,29 @@ async function addMessage(db3, conversationId, message) {
     body: message.body.slice(0, 4000),
     externalId: message.externalId ?? null
   });
-  const [conversation] = await db3.select({ unread: conversations.unread }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  const [conversation] = await db3.select({ unread: conversations.unread, leadId: conversations.leadId }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   await db3.update(conversations).set({
     lastMessage: message.body.slice(0, 240),
     lastMessageAt: new Date,
     unread: message.direction === "in" ? (conversation?.unread ?? 0) + 1 : conversation?.unread ?? 0
   }).where(eq(conversations.id, conversationId));
+  if (message.author === "cliente" && conversation?.leadId) {
+    try {
+      await logLeadEvent(db3, conversation.leadId, {
+        kind: "mensagem",
+        title: "Mensagem do cliente",
+        detail: message.body.slice(0, 300),
+        actorType: "cliente",
+        actorName: message.authorName ?? null,
+        dedupeMinutes: 0
+      });
+      await qualifyLeadFromText(db3, conversation.leadId, message.body, {
+        actorType: "cliente",
+        actorName: message.authorName ?? null,
+        countMessage: true
+      });
+    } catch {}
+  }
 }
 async function conversationTurns(db3, conversationId) {
   const rows = await db3.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(asc(messages.id)).limit(60);
@@ -48163,6 +48960,128 @@ var adminLeads = {
   })
 };
 
+// packages/web/src/api/routes/admin-lead-profile.ts
+init_schema();
+
+// packages/web/src/api/lib/audit.ts
+init_schema();
+async function audit(db3, actor, action, options = {}) {
+  try {
+    await db3.insert(auditLog).values({
+      userId: actor?.id ?? null,
+      userName: actor?.name ?? null,
+      action,
+      entity: options.entity ?? null,
+      entityId: options.entityId === undefined ? null : String(options.entityId),
+      detail: options.detail ? options.detail.slice(0, 500) : null,
+      ip: options.ip ?? null
+    });
+  } catch {}
+}
+async function recentAudit(db3, limit = 100) {
+  return db3.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(Math.min(limit, 300));
+}
+
+// packages/web/src/api/routes/admin-lead-profile.ts
+var list = exports_external.array(exports_external.string().max(80)).max(12).nullable().optional();
+var num = exports_external.number().nonnegative().nullable().optional();
+var int2 = exports_external.number().int().min(0).max(50).nullable().optional();
+var txt = (max) => exports_external.string().max(max).nullable().optional();
+var parseList2 = (raw2) => {
+  if (!raw2)
+    return [];
+  try {
+    const parsed = JSON.parse(raw2);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+};
+async function requireLead(db3, id) {
+  const [lead] = await db3.select().from(leads).where(eq(leads.id, id)).limit(1);
+  if (!lead)
+    throw new ORPCError("NOT_FOUND", { message: "Lead não encontrado" });
+  return lead;
+}
+var adminLeadProfile = {
+  get: adminBase.input(exports_external.object({ leadId: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const lead = await requireLead(context.db, input.leadId);
+    const profile = await readProfile(context.db, input.leadId);
+    const events = await leadTimeline(context.db, input.leadId, 120);
+    return {
+      profile: profile ? {
+        ...profile,
+        districts: parseList2(profile.districts),
+        preferences: parseList2(profile.preferences),
+        restrictions: parseList2(profile.restrictions)
+      } : null,
+      events,
+      score: {
+        score: lead.score ?? 0,
+        tier: lead.scoreTier ?? "frio",
+        reasons: parseList2(lead.scoreReasons),
+        scoreAt: lead.scoreAt,
+        qualifiedAt: lead.qualifiedAt
+      }
+    };
+  }),
+  update: adminBase.input(exports_external.object({
+    leadId: exports_external.number().int(),
+    purpose: txt(40),
+    propertyType: txt(40),
+    city: txt(80),
+    districts: list,
+    budgetMin: num,
+    budgetMax: num,
+    bedrooms: int2,
+    suites: int2,
+    parking: int2,
+    areaMin: num,
+    financing: exports_external.enum(["sim", "nao", "nao_sei"]).nullable().optional(),
+    fgts: exports_external.enum(["sim", "nao", "nao_sei"]).nullable().optional(),
+    tradeIn: exports_external.enum(["sim", "nao", "nao_sei"]).nullable().optional(),
+    tradeInDetail: txt(300),
+    timeframe: exports_external.enum(["imediato", "30_dias", "90_dias", "sem_pressa"]).nullable().optional(),
+    preferences: list,
+    restrictions: list,
+    contactPreference: exports_external.enum(["whatsapp", "ligacao", "email"]).nullable().optional(),
+    contactWindow: txt(60),
+    summary: txt(1000)
+  })).handler(async ({ input, context }) => {
+    await requireLead(context.db, input.leadId);
+    const { leadId, ...patch } = input;
+    const applied = await applyProfilePatch(context.db, leadId, patch, "manual");
+    if (applied.changed.length) {
+      await logLeadEvent(context.db, leadId, {
+        kind: "qualificacao",
+        title: `Necessidade corrigida pelo corretor: ${applied.changed.length} campo(s)`,
+        detail: applied.changed.join(", "),
+        actorType: "corretor",
+        actorName: context.user.name,
+        dedupeMinutes: 0
+      });
+      await audit(context.db, context.user, "lead_profile.update", {
+        entity: "lead",
+        entityId: leadId,
+        detail: applied.changed.join(", ")
+      });
+    }
+    const score = await recomputeLeadScore(context.db, leadId, {
+      actorType: "corretor",
+      actorName: context.user.name
+    });
+    return { changed: applied.changed, score };
+  }),
+  recalc: adminBase.input(exports_external.object({ leadId: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await requireLead(context.db, input.leadId);
+    const score = await recomputeLeadScore(context.db, input.leadId, {
+      actorType: "corretor",
+      actorName: context.user.name
+    });
+    return score;
+  })
+};
+
 // packages/web/src/api/routes/admin-clients.ts
 init_schema();
 var clientInput = exports_external.object({
@@ -48775,25 +49694,6 @@ var adminMedia = {
     return { ok: true };
   })
 };
-
-// packages/web/src/api/lib/audit.ts
-init_schema();
-async function audit(db3, actor, action, options = {}) {
-  try {
-    await db3.insert(auditLog).values({
-      userId: actor?.id ?? null,
-      userName: actor?.name ?? null,
-      action,
-      entity: options.entity ?? null,
-      entityId: options.entityId === undefined ? null : String(options.entityId),
-      detail: options.detail ? options.detail.slice(0, 500) : null,
-      ip: options.ip ?? null
-    });
-  } catch {}
-}
-async function recentAudit(db3, limit = 100) {
-  return db3.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(Math.min(limit, 300));
-}
 // packages/web/src/api/lib/feed.ts
 init_schema();
 var FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"];
@@ -50516,6 +51416,7 @@ var router = {
   adminProperties,
   adminPropertyContent,
   adminLeads,
+  adminLeadProfile,
   adminClients,
   adminOwners,
   adminTasks,

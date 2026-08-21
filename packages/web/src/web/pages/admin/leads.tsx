@@ -20,6 +20,7 @@ import {
   sourceLabel,
   stageLabel,
 } from "../../components/admin/labels";
+import { ScoreBadge } from "../../components/admin/score-badge";
 import { errorMessage } from "../../lib/admin-session";
 import { useAdminLeads, useSetLeadStage } from "../../queries/admin";
 import { LeadDetail } from "./lead-detail";
@@ -33,10 +34,12 @@ export default function AdminLeads() {
 }
 
 type StatusFilter = "" | "aberto" | "perdido" | "ganho";
+type TierFilter = "" | "quente" | "morno" | "frio";
 
 function Content() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("aberto");
+  const [tier, setTier] = useState<TierFilter>("");
   const [view, setView] = useState<"funil" | "lista">(() =>
     typeof window !== "undefined" && window.innerWidth < 768 ? "lista" : "funil",
   );
@@ -50,7 +53,11 @@ function Content() {
   const { data, isLoading } = useAdminLeads(filters);
   const setStage = useSetLeadStage();
 
-  const leads = data ?? [];
+  /* Filtro por temperatura é local: o score já vem no lead. */
+  const leads = useMemo(
+    () => (tier ? (data ?? []).filter((lead) => (lead.scoreTier ?? "frio") === tier) : (data ?? [])),
+    [data, tier],
+  );
 
   async function moveStage(id: number, stage: (typeof LEAD_STAGES)[number]) {
     setError(null);
@@ -78,7 +85,7 @@ function Content() {
     >
       <div className="space-y-4">
         <Card>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_200px_200px]">
             <Input
               placeholder="Buscar por nome ou telefone"
               value={search}
@@ -89,6 +96,12 @@ function Content() {
               <option value="aberto">Em aberto</option>
               <option value="ganho">Ganhos</option>
               <option value="perdido">Perdidos</option>
+            </Select>
+            <Select value={tier} onChange={(event) => setTier(event.target.value as TierFilter)}>
+              <option value="">Todas as temperaturas</option>
+              <option value="quente">Quentes (65+)</option>
+              <option value="morno">Mornos (35-64)</option>
+              <option value="frio">Frios (&lt;35)</option>
             </Select>
           </div>
         </Card>
@@ -116,7 +129,10 @@ function Content() {
                             onClick={() => setOpen(lead.id)}
                             className="block w-full text-left"
                           >
-                            <p className="truncate text-sm font-medium text-deep">{lead.name}</p>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="truncate text-sm font-medium text-deep">{lead.name}</p>
+                              <ScoreBadge score={lead.score ?? 0} tier={lead.scoreTier ?? "frio"} />
+                            </div>
                             <p className="truncate text-xs text-muted">{lead.interest}</p>
                             <p className="mt-1 text-xs text-muted">
                               {lead.phone} · {labelOf(sourceLabel, lead.source)}
@@ -170,10 +186,11 @@ function Content() {
         {!isLoading && leads.length > 0 && view === "lista" && (
           <Card>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-sm">
+              <table className="w-full min-w-[820px] text-sm">
                 <thead>
                   <tr className="border-b border-line text-left">
                     <th className="label-xs py-2 text-muted">Lead</th>
+                    <th className="label-xs py-2 text-muted">Score</th>
                     <th className="label-xs py-2 text-muted">Interesse</th>
                     <th className="label-xs py-2 text-muted">Etapa</th>
                     <th className="label-xs py-2 text-muted">Origem</th>
@@ -194,6 +211,13 @@ function Content() {
                           {lead.name}
                           <span className="block text-xs text-muted">{lead.phone}</span>
                         </button>
+                      </td>
+                      <td className="py-3">
+                        <ScoreBadge
+                          score={lead.score ?? 0}
+                          tier={lead.scoreTier ?? "frio"}
+                          title="Score determinístico — abra o lead para ver os motivos"
+                        />
                       </td>
                       <td className="py-3 text-muted">{lead.interest}</td>
                       <td className="py-3">

@@ -185,11 +185,24 @@ export const leads = sqliteTable("leads", {
   utmMedium: text("utm_medium"),
   utmCampaign: text("utm_campaign"),
   externalId: text("external_id"),
+  /* qualificação determinística (F4.1) — score 0-100, sem IA */
+  score: integer("score").notNull().default(0),
+  /** quente | morno | frio */
+  scoreTier: text("score_tier").notNull().default("frio"),
+  /** JSON string[] com os motivos explicáveis do score */
+  scoreReasons: text("score_reasons"),
+  scoreAt: integer("score_at", { mode: "timestamp" }),
+  qualifiedAt: integer("qualified_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
   updatedAt: integer("updated_at", { mode: "timestamp" }),
-});
+}, (table) => ({
+  stageIdx: index("leads_stage_idx").on(table.stage),
+  scoreIdx: index("leads_score_idx").on(table.score),
+  phoneIdx: index("leads_phone_idx").on(table.phone),
+  nextActionIdx: index("leads_next_action_idx").on(table.nextActionAt),
+}));
 
 export type Lead = typeof leads.$inferSelect;
 
@@ -201,6 +214,86 @@ export const leadNotes = sqliteTable("lead_notes", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/**
+ * Perfil de necessidade do lead (1:1). Tudo nullable de propósito:
+ * `null` significa "não informado" — nunca inventar dado ausente.
+ * `fieldsSource` guarda a origem de cada campo (deterministico | ia | manual);
+ * campo com origem `manual` nunca é sobrescrito automaticamente.
+ */
+export const leadProfile = sqliteTable("lead_profile", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  leadId: integer("lead_id").notNull().unique(),
+  /** comprar | alugar | investir | vender */
+  purpose: text("purpose"),
+  propertyType: text("property_type"),
+  city: text("city"),
+  /** JSON string[] */
+  districts: text("districts"),
+  budgetMin: real("budget_min"),
+  budgetMax: real("budget_max"),
+  bedrooms: integer("bedrooms"),
+  suites: integer("suites"),
+  parking: integer("parking"),
+  areaMin: real("area_min"),
+  /** sim | nao | nao_sei */
+  financing: text("financing"),
+  fgts: text("fgts"),
+  tradeIn: text("trade_in"),
+  tradeInDetail: text("trade_in_detail"),
+  /** imediato | 30_dias | 90_dias | sem_pressa */
+  timeframe: text("timeframe"),
+  /** JSON string[] */
+  preferences: text("preferences"),
+  /** JSON string[] */
+  restrictions: text("restrictions"),
+  /** whatsapp | ligacao | email */
+  contactPreference: text("contact_preference"),
+  contactWindow: text("contact_window"),
+  summary: text("summary"),
+  /* sinais persistidos que alimentam o score */
+  wantsVisit: integer("wants_visit").notNull().default(0),
+  wantsHuman: integer("wants_human").notNull().default(0),
+  cashPayment: integer("cash_payment").notNull().default(0),
+  justLooking: integer("just_looking").notNull().default(0),
+  messagesCount: integer("messages_count").notNull().default(0),
+  contactDays: integer("contact_days").notNull().default(0),
+  lastCustomerAt: integer("last_customer_at", { mode: "timestamp" }),
+  /** deterministico | ia | manual */
+  source: text("source").notNull().default("deterministico"),
+  /** JSON Record<campo, origem> */
+  fieldsSource: text("fields_source"),
+  completeness: integer("completeness").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }),
+});
+
+export type LeadProfile = typeof leadProfile.$inferSelect;
+
+/** Timeline comercial append-only. Nada aqui é editado ou apagado. */
+export const leadEvents = sqliteTable("lead_events", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  leadId: integer("lead_id").notNull(),
+  /** criado | mensagem | qualificacao | score | etapa | nota | automacao */
+  kind: text("kind").notNull(),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  /** cliente | ia | corretor | sistema */
+  actorType: text("actor_type").notNull().default("sistema"),
+  actorName: text("actor_name"),
+  scoreBefore: integer("score_before"),
+  scoreAfter: integer("score_after"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (table) => ({
+  leadIdx: index("lead_events_lead_idx").on(table.leadId),
+  createdIdx: index("lead_events_created_idx").on(table.createdAt),
+}));
+
+export type LeadEvent = typeof leadEvents.$inferSelect;
 
 /* ------------------------------------------------------ agenda/tarefas */
 

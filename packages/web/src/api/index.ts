@@ -11,6 +11,7 @@ import { adminAuth } from "./routes/admin-auth";
 import { adminProperties } from "./routes/admin-properties";
 import { adminPropertyContent } from "./routes/admin-properties-ai";
 import { adminLeads } from "./routes/admin-leads";
+import { adminLeadProfile } from "./routes/admin-lead-profile";
 import { adminClients } from "./routes/admin-clients";
 import { adminOwners } from "./routes/admin-owners";
 import { adminTasks } from "./routes/admin-tasks";
@@ -57,6 +58,7 @@ export const router = {
   adminProperties,
   adminPropertyContent,
   adminLeads,
+  adminLeadProfile,
   adminClients,
   adminOwners,
   adminTasks,

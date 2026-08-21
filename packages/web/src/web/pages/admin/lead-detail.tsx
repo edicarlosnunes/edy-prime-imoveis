@@ -20,6 +20,7 @@ import {
   sourceLabel,
   stageLabel,
 } from "../../components/admin/labels";
+import { LeadNeeds } from "../../components/admin/lead-needs";
 import { errorMessage } from "../../lib/admin-session";
 import {
   useAddLeadNote,
@@ -330,6 +331,8 @@ export function LeadDetail({ leadId, onClose }: { leadId: number | null; onClose
             </ul>
           </div>
         )}
+
+        {leadId !== null && <LeadNeeds leadId={leadId} />}
       </div>
     </Modal>
   );

@@ -10,6 +10,7 @@ import * as schema from "../database/schema";
 import { agentReply, type AgentRow } from "../agent/broker";
 import { gatewayConfigured } from "../agent/gateway";
 import { fireTrigger } from "./automations";
+import { logLeadEvent, qualifyLeadFromText } from "./lead-profile";
 import type { AdminDb } from "./admin-base";
 
 export type Channel = "whatsapp" | "instagram" | "facebook" | "site" | "teste";
@@ -73,7 +74,7 @@ export async function addMessage(
     externalId: message.externalId ?? null,
   });
   const [conversation] = await db
-    .select({ unread: schema.conversations.unread })
+    .select({ unread: schema.conversations.unread, leadId: schema.conversations.leadId })
     .from(schema.conversations)
     .where(eq(schema.conversations.id, conversationId))
     .limit(1);
@@ -86,6 +87,28 @@ export async function addMessage(
         message.direction === "in" ? (conversation?.unread ?? 0) + 1 : (conversation?.unread ?? 0),
     })
     .where(eq(schema.conversations.id, conversationId));
+
+  /* Qualificação determinística SOMENTE sobre fala do cliente. Resposta da IA,
+     do corretor ou do sistema nunca é tratada como dado declarado. */
+  if (message.author === "cliente" && conversation?.leadId) {
+    try {
+      await logLeadEvent(db, conversation.leadId, {
+        kind: "mensagem",
+        title: "Mensagem do cliente",
+        detail: message.body.slice(0, 300),
+        actorType: "cliente",
+        actorName: message.authorName ?? null,
+        dedupeMinutes: 0,
+      });
+      await qualifyLeadFromText(db, conversation.leadId, message.body, {
+        actorType: "cliente",
+        actorName: message.authorName ?? null,
+        countMessage: true,
+      });
+    } catch {
+      /* qualificação nunca pode derrubar o atendimento */
+    }
+  }
 }
 
 export async function conversationTurns(db: AdminDb, conversationId: number) {
