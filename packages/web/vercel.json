@@ -1,7 +1,29 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/handler?__path=/api/:path*" },
-    { "source": "/((?!api).*)", "destination": "/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api/handler?__path=/api/:path*"
+    },
+    {
+      "source": "/feed/:file",
+      "destination": "/api/handler?__path=/api/feed/:file"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/handler?__path=/api/sitemap.xml"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api/handler?__path=/api/robots.txt"
+    },
+    {
+      "source": "/imovel/:slug",
+      "destination": "/api/handler?__path=/api/prerender/imovel/:slug"
+    },
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
+    }
   ]
 }
