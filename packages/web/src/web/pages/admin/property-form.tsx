@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, Star, Trash2, Upload } from "lucide-react";
+import { ArrowLeft, ArrowRight, Sparkles, Star, Trash2, Upload } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { orpc } from "../../lib/api";
 import { Btn, ErrorNote, Field, Input, Modal, Select, Textarea } from "../../components/admin/ui";
@@ -12,7 +12,17 @@ import {
   purposes,
 } from "../../components/admin/labels";
 import { errorMessage, uploadImage } from "../../lib/admin-session";
-import { useOwnerOptions, useSaveProperty } from "../../queries/admin";
+import {
+  useGeneratePropertyContent,
+  useOwnerOptions,
+  useSaveProperty,
+} from "../../queries/admin";
+import { FeaturesPicker } from "../../components/admin/features-picker";
+import {
+  PropertyAiPanel,
+  type GeneratedContent,
+  type GeneratedField,
+} from "./property-ai-panel";
 
 interface ImageItem {
   url: string;
@@ -38,7 +48,7 @@ interface FormState {
   areaTotal: string;
   description: string;
   highlight: string;
-  features: string;
+  features: string[];
   status: (typeof propertyStatuses)[number];
   published: boolean;
   featured: boolean;
@@ -64,7 +74,7 @@ const empty: FormState = {
   areaTotal: "",
   description: "",
   highlight: "",
-  features: "",
+  features: [],
   status: "disponivel",
   published: true,
   featured: false,
@@ -92,7 +102,12 @@ export function PropertyForm({
   const [images, setImages] = useState<ImageItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiContent, setAiContent] = useState<GeneratedContent | null>(null);
+  const [aiUsedFields, setAiUsedFields] = useState<string[]>([]);
 
+  const generate = useGeneratePropertyContent();
   const owners = useOwnerOptions();
   const save = useSaveProperty(propertyId ? "update" : "create");
 
@@ -129,7 +144,7 @@ export function PropertyForm({
       areaTotal: row.areaTotal === null ? "" : String(row.areaTotal),
       description: row.description ?? "",
       highlight: row.highlight ?? "",
-      features: features.join("\n"),
+      features,
       status: row.status as FormState["status"],
       published: row.published === 1,
       featured: row.featured === 1,
@@ -192,6 +207,43 @@ export function PropertyForm({
     });
   }
 
+  /** Chama a IA com os dados que estão no formulário. Nada é salvo aqui. */
+  async function runGenerate() {
+    setAiError(null);
+    setAiContent(null);
+    setAiOpen(true);
+    try {
+      const result = await generate.mutateAsync({
+        purpose: form.purpose,
+        type: form.type,
+        price: optionalNum(form.price),
+        condoFee: optionalNum(form.condoFee),
+        iptu: optionalNum(form.iptu),
+        district: form.district.trim(),
+        city: form.city.trim(),
+        bedrooms: Math.trunc(num(form.bedrooms)),
+        suites: Math.trunc(num(form.suites)),
+        bathrooms: Math.trunc(num(form.bathrooms)),
+        parking: Math.trunc(num(form.parking)),
+        areaUtil: num(form.areaUtil),
+        areaTotal: optionalNum(form.areaTotal),
+        features: form.features.map((item) => item.trim()).filter((item) => item.length > 0),
+        title: form.title.trim(),
+      });
+      setAiContent(result.content);
+      setAiUsedFields(result.usedFields);
+    } catch (caught) {
+      setAiError(errorMessage(caught, "Não foi possível gerar o conteúdo"));
+    }
+  }
+
+  /** Aplica um bloco no campo correspondente — só com clique do administrador. */
+  function applyField(field: GeneratedField, value: string) {
+    if (field === "title") set("title", value);
+    if (field === "highlight") set("highlight", value);
+    if (field === "description") set("description", value);
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -214,10 +266,7 @@ export function PropertyForm({
       areaTotal: optionalNum(form.areaTotal),
       description: form.description.trim() || null,
       highlight: form.highlight.trim() || null,
-      features: form.features
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0),
+      features: form.features.map((item) => item.trim()).filter((item) => item.length > 0),
       status: form.status,
       published: form.published,
       featured: form.featured,
@@ -272,6 +321,17 @@ export function PropertyForm({
           <Input value={form.highlight} onChange={(e) => set("highlight", e.target.value)} />
         </Field>
 
+        <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-brass/40 bg-brass/5 px-3 py-3">
+          <Btn tone="brass" onClick={() => void runGenerate()} disabled={generate.isPending}>
+            <Sparkles className="h-3.5 w-3.5" />
+            {generate.isPending ? "Gerando…" : "Gerar conteúdo com IA"}
+          </Btn>
+          <p className="text-[11px] text-muted">
+            Usa somente os dados já cadastrados deste imóvel. Você revisa antes de aplicar — nada é
+            publicado automaticamente.
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Field label="Preço (R$)">
             <Input value={form.price} onChange={(e) => set("price", e.target.value)} required inputMode="decimal" />
@@ -325,9 +385,19 @@ export function PropertyForm({
           />
         </Field>
 
-        <Field label="Características" hint="Uma por linha (ex: Piscina, Churrasqueira, Vista mar)">
-          <Textarea value={form.features} onChange={(e) => set("features", e.target.value)} />
-        </Field>
+        <div className="border-t border-line pt-4">
+          <p className="label-xs text-muted">Características e diferenciais</p>
+          <p className="mt-1 text-[11px] text-muted">
+            Marque somente o que o imóvel realmente tem. Estes itens alimentam o site, os portais e
+            a geração de conteúdo com IA.
+          </p>
+          <div className="mt-3">
+            <FeaturesPicker
+              value={form.features}
+              onChange={(next) => set("features", next)}
+            />
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Status">
@@ -432,6 +502,23 @@ export function PropertyForm({
           </Btn>
         </div>
       </form>
+
+      <PropertyAiPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        loading={generate.isPending}
+        error={aiError}
+        content={aiContent}
+        usedFields={aiUsedFields}
+        onRegenerate={() => void runGenerate()}
+        onApply={(field, value) => applyField(field, value)}
+        onApplyAll={(content) => {
+          set("title", content.title);
+          set("highlight", content.highlight);
+          set("description", content.description);
+          setAiOpen(false);
+        }}
+      />
     </Modal>
   );
 }

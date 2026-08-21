@@ -48,6 +48,10 @@ export function useRemoveProperty() {
   return useMutation(orpc.adminProperties.remove.mutationOptions({ onSuccess: invalidate }));
 }
 
+export function useGeneratePropertyContent() {
+  return useMutation(orpc.adminPropertyContent.generate.mutationOptions());
+}
+
 export function usePatchProperty() {
   const invalidate = useInvalidate();
   return useMutation(orpc.adminProperties.patch.mutationOptions({ onSuccess: invalidate }));

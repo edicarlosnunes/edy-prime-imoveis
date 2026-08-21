@@ -8,6 +8,7 @@ import { siteConfig } from "./routes/site-config";
 import { siteContent } from "./routes/site-content";
 import { adminAuth } from "./routes/admin-auth";
 import { adminProperties } from "./routes/admin-properties";
+import { adminPropertyContent } from "./routes/admin-properties-ai";
 import { adminLeads } from "./routes/admin-leads";
 import { adminClients } from "./routes/admin-clients";
 import { adminOwners } from "./routes/admin-owners";
@@ -52,6 +53,7 @@ export const router = {
   siteContent,
   adminAuth,
   adminProperties,
+  adminPropertyContent,
   adminLeads,
   adminClients,
   adminOwners,

@@ -34905,782 +34905,6 @@ var adminProperties = {
   })
 };
 
-// packages/web/src/api/routes/admin-leads.ts
-init_schema();
-var LEAD_STAGES = [
-  "novo",
-  "primeiro_contato",
-  "qualificado",
-  "imovel_apresentado",
-  "visita_agendada",
-  "proposta_enviada",
-  "negociacao",
-  "venda_fechada"
-];
-var stageEnum = exports_external.enum(LEAD_STAGES);
-var statusEnum2 = exports_external.enum(["aberto", "perdido", "ganho"]);
-var optionalDate = exports_external.string().max(40).nullable().optional().transform((value2) => value2 ? new Date(value2) : null);
-var adminLeads = {
-  list: adminBase.input(exports_external.object({
-    search: exports_external.string().max(120).optional(),
-    stage: stageEnum.optional(),
-    status: statusEnum2.optional()
-  }).optional()).handler(async ({ input, context }) => {
-    const filters = [];
-    if (input?.stage)
-      filters.push(eq(leads.stage, input.stage));
-    if (input?.status)
-      filters.push(eq(leads.status, input.status));
-    if (input?.search) {
-      const term = `%${input.search.trim()}%`;
-      filters.push(or(like(leads.name, term), like(leads.phone, term)));
-    }
-    return context.db.select().from(leads).where(filters.length > 0 ? and(...filters) : undefined).orderBy(desc(leads.createdAt)).limit(500);
-  }),
-  get: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    const [lead] = await context.db.select().from(leads).where(eq(leads.id, input.id)).limit(1);
-    if (!lead)
-      throw new ORPCError("NOT_FOUND", { message: "Lead não encontrado" });
-    const notes = await context.db.select().from(leadNotes).where(eq(leadNotes.leadId, lead.id)).orderBy(desc(leadNotes.createdAt));
-    return { lead, notes };
-  }),
-  create: adminBase.input(exports_external.object({
-    name: exports_external.string().min(2).max(120),
-    phone: exports_external.string().min(8).max(30),
-    email: exports_external.string().max(160).nullable().optional(),
-    interest: exports_external.string().min(1).max(160),
-    message: exports_external.string().max(2000).nullable().optional(),
-    source: exports_external.string().max(60).default("manual"),
-    stage: stageEnum.default("novo"),
-    propertyId: exports_external.number().int().nullable().optional(),
-    clientId: exports_external.number().int().nullable().optional()
-  })).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(leads).values({
-      name: input.name.trim(),
-      phone: input.phone.trim(),
-      email: input.email?.trim() || null,
-      interest: input.interest,
-      message: input.message?.trim() || null,
-      source: input.source,
-      stage: input.stage,
-      status: "aberto",
-      propertyId: input.propertyId ?? null,
-      clientId: input.clientId ?? null,
-      updatedAt: new Date
-    }).returning();
-    return { id: created?.id ?? 0 };
-  }),
-  update: adminBase.input(exports_external.object({
-    id: exports_external.number().int(),
-    name: exports_external.string().min(2).max(120),
-    phone: exports_external.string().min(8).max(30),
-    email: exports_external.string().max(160).nullable().optional(),
-    interest: exports_external.string().min(1).max(160),
-    message: exports_external.string().max(2000).nullable().optional(),
-    source: exports_external.string().max(60),
-    stage: stageEnum,
-    status: statusEnum2,
-    lostReason: exports_external.string().max(300).nullable().optional(),
-    propertyId: exports_external.number().int().nullable().optional(),
-    clientId: exports_external.number().int().nullable().optional(),
-    nextAction: exports_external.string().max(300).nullable().optional(),
-    nextActionAt: optionalDate
-  })).handler(async ({ input, context }) => {
-    await context.db.update(leads).set({
-      name: input.name.trim(),
-      phone: input.phone.trim(),
-      email: input.email?.trim() || null,
-      interest: input.interest,
-      message: input.message?.trim() || null,
-      source: input.source,
-      stage: input.stage,
-      status: input.status,
-      lostReason: input.status === "perdido" ? input.lostReason?.trim() || null : null,
-      propertyId: input.propertyId ?? null,
-      clientId: input.clientId ?? null,
-      nextAction: input.nextAction?.trim() || null,
-      nextActionAt: input.nextActionAt,
-      updatedAt: new Date
-    }).where(eq(leads.id, input.id));
-    return { ok: true };
-  }),
-  setStage: adminBase.input(exports_external.object({ id: exports_external.number().int(), stage: stageEnum })).handler(async ({ input, context }) => {
-    await context.db.update(leads).set({
-      stage: input.stage,
-      status: input.stage === "venda_fechada" ? "ganho" : "aberto",
-      updatedAt: new Date
-    }).where(eq(leads.id, input.id));
-    return { ok: true };
-  }),
-  markLost: adminBase.input(exports_external.object({ id: exports_external.number().int(), reason: exports_external.string().min(2).max(300) })).handler(async ({ input, context }) => {
-    await context.db.update(leads).set({ status: "perdido", lostReason: input.reason.trim(), updatedAt: new Date }).where(eq(leads.id, input.id));
-    return { ok: true };
-  }),
-  reopen: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    await context.db.update(leads).set({ status: "aberto", lostReason: null, updatedAt: new Date }).where(eq(leads.id, input.id));
-    return { ok: true };
-  }),
-  addNote: adminBase.input(exports_external.object({ id: exports_external.number().int(), body: exports_external.string().min(1).max(2000) })).handler(async ({ input, context }) => {
-    await context.db.insert(leadNotes).values({ leadId: input.id, body: input.body.trim() });
-    await context.db.update(leads).set({ updatedAt: new Date }).where(eq(leads.id, input.id));
-    return { ok: true };
-  }),
-  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    await context.db.delete(leadNotes).where(eq(leadNotes.leadId, input.id));
-    await context.db.delete(leads).where(eq(leads.id, input.id));
-    return { ok: true };
-  })
-};
-
-// packages/web/src/api/routes/admin-clients.ts
-init_schema();
-var clientInput = exports_external.object({
-  name: exports_external.string().min(2).max(120),
-  phone: exports_external.string().min(8).max(30),
-  email: exports_external.string().max(160).nullable().optional(),
-  interest: exports_external.string().max(160).nullable().optional(),
-  priceMin: exports_external.number().min(0).max(999999999).nullable().optional(),
-  priceMax: exports_external.number().min(0).max(999999999).nullable().optional(),
-  districts: exports_external.string().max(300).nullable().optional(),
-  bedrooms: exports_external.number().int().min(0).max(20).nullable().optional(),
-  notes: exports_external.string().max(4000).nullable().optional()
-});
-function toRow2(input) {
-  return {
-    name: input.name.trim(),
-    phone: input.phone.trim(),
-    email: input.email?.trim() || null,
-    interest: input.interest?.trim() || null,
-    priceMin: input.priceMin ?? null,
-    priceMax: input.priceMax ?? null,
-    districts: input.districts?.trim() || null,
-    bedrooms: input.bedrooms ?? null,
-    notes: input.notes?.trim() || null
-  };
-}
-var adminClients = {
-  list: adminBase.input(exports_external.object({ search: exports_external.string().max(120).optional() }).optional()).handler(async ({ input, context }) => {
-    const term = input?.search?.trim();
-    return context.db.select().from(clients).where(term ? or(like(clients.name, `%${term}%`), like(clients.phone, `%${term}%`)) : undefined).orderBy(asc(clients.name)).limit(500);
-  }),
-  get: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    const [client2] = await context.db.select().from(clients).where(eq(clients.id, input.id)).limit(1);
-    if (!client2)
-      throw new ORPCError("NOT_FOUND", { message: "Cliente não encontrado" });
-    const interactions = await context.db.select().from(clientInteractions).where(eq(clientInteractions.clientId, client2.id)).orderBy(desc(clientInteractions.createdAt));
-    return { client: client2, interactions };
-  }),
-  create: adminBase.input(clientInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(clients).values(toRow2(input)).returning();
-    return { id: created?.id ?? 0 };
-  }),
-  update: adminBase.input(clientInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    const { id, ...rest } = input;
-    await context.db.update(clients).set(toRow2(rest)).where(eq(clients.id, id));
-    return { ok: true };
-  }),
-  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    await context.db.delete(clientInteractions).where(eq(clientInteractions.clientId, input.id));
-    await context.db.delete(clients).where(eq(clients.id, input.id));
-    return { ok: true };
-  }),
-  addInteraction: adminBase.input(exports_external.object({ id: exports_external.number().int(), body: exports_external.string().min(1).max(2000) })).handler(async ({ input, context }) => {
-    await context.db.insert(clientInteractions).values({ clientId: input.id, body: input.body.trim() });
-    return { ok: true };
-  }),
-  options: adminBase.handler(async ({ context }) => {
-    return context.db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).orderBy(asc(clients.name)).limit(500);
-  })
-};
-
-// packages/web/src/api/routes/admin-owners.ts
-init_schema();
-var ownerInput = exports_external.object({
-  name: exports_external.string().min(2).max(120),
-  phone: exports_external.string().max(30).nullable().optional(),
-  email: exports_external.string().max(160).nullable().optional(),
-  notes: exports_external.string().max(4000).nullable().optional(),
-  captureStatus: exports_external.enum(["prospeccao", "em_negociacao", "captado", "perdido"]).default("prospeccao")
-});
-function toRow3(input) {
-  return {
-    name: input.name.trim(),
-    phone: input.phone?.trim() || null,
-    email: input.email?.trim() || null,
-    notes: input.notes?.trim() || null,
-    captureStatus: input.captureStatus
-  };
-}
-var adminOwners = {
-  list: adminBase.handler(async ({ context }) => {
-    const owners2 = await context.db.select().from(owners).orderBy(asc(owners.name)).limit(500);
-    const properties3 = await context.db.select({
-      id: properties.id,
-      code: properties.code,
-      title: properties.title,
-      ownerId: properties.ownerId
-    }).from(properties).limit(1000);
-    return owners2.map((owner) => ({
-      ...owner,
-      properties: properties3.filter((property) => property.ownerId === owner.id)
-    }));
-  }),
-  create: adminBase.input(ownerInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(owners).values(toRow3(input)).returning();
-    return { id: created?.id ?? 0 };
-  }),
-  update: adminBase.input(ownerInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    const { id, ...rest } = input;
-    await context.db.update(owners).set(toRow3(rest)).where(eq(owners.id, id));
-    return { ok: true };
-  }),
-  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    await context.db.update(properties).set({ ownerId: null }).where(eq(properties.ownerId, input.id));
-    await context.db.delete(owners).where(eq(owners.id, input.id));
-    return { ok: true };
-  }),
-  options: adminBase.handler(async ({ context }) => {
-    return context.db.select({ id: owners.id, name: owners.name }).from(owners).orderBy(asc(owners.name)).limit(500);
-  })
-};
-
-// packages/web/src/api/routes/admin-tasks.ts
-init_schema();
-var taskInput = exports_external.object({
-  title: exports_external.string().min(2).max(200),
-  type: exports_external.enum(["visita", "retorno", "reuniao", "proposta", "follow_up", "outro"]).default("visita"),
-  dueAt: exports_external.string().min(4).max(40),
-  status: exports_external.enum(["pendente", "concluida", "cancelada"]).default("pendente"),
-  leadId: exports_external.number().int().nullable().optional(),
-  clientId: exports_external.number().int().nullable().optional(),
-  propertyId: exports_external.number().int().nullable().optional(),
-  notes: exports_external.string().max(2000).nullable().optional()
-});
-function toRow4(input) {
-  return {
-    title: input.title.trim(),
-    type: input.type,
-    dueAt: new Date(input.dueAt),
-    status: input.status,
-    leadId: input.leadId ?? null,
-    clientId: input.clientId ?? null,
-    propertyId: input.propertyId ?? null,
-    notes: input.notes?.trim() || null
-  };
-}
-var adminTasks = {
-  list: adminBase.input(exports_external.object({ status: exports_external.enum(["pendente", "concluida", "cancelada"]).optional() }).optional()).handler(async ({ input, context }) => {
-    return context.db.select().from(tasks).where(input?.status ? eq(tasks.status, input.status) : undefined).orderBy(asc(tasks.dueAt)).limit(500);
-  }),
-  create: adminBase.input(taskInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(tasks).values(toRow4(input)).returning();
-    return { id: created?.id ?? 0 };
-  }),
-  update: adminBase.input(taskInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    const { id, ...rest } = input;
-    await context.db.update(tasks).set(toRow4(rest)).where(eq(tasks.id, id));
-    return { ok: true };
-  }),
-  setStatus: adminBase.input(exports_external.object({
-    id: exports_external.number().int(),
-    status: exports_external.enum(["pendente", "concluida", "cancelada"])
-  })).handler(async ({ input, context }) => {
-    await context.db.update(tasks).set({ status: input.status }).where(eq(tasks.id, input.id));
-    return { ok: true };
-  }),
-  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    await context.db.delete(tasks).where(eq(tasks.id, input.id));
-    return { ok: true };
-  })
-};
-
-// packages/web/src/api/routes/admin-deals.ts
-init_schema();
-var dealInput = exports_external.object({
-  clientId: exports_external.number().int().nullable().optional(),
-  leadId: exports_external.number().int().nullable().optional(),
-  propertyId: exports_external.number().int().nullable().optional(),
-  clientName: exports_external.string().max(160).nullable().optional(),
-  askingPrice: exports_external.number().min(0).max(999999999).nullable().optional(),
-  offerPrice: exports_external.number().min(0).max(999999999).nullable().optional(),
-  status: exports_external.enum(["enviada", "em_negociacao", "aceita", "recusada", "fechada"]).default("enviada"),
-  commissionRate: exports_external.number().min(0).max(100).nullable().optional(),
-  notes: exports_external.string().max(4000).nullable().optional(),
-  dealDate: exports_external.string().max(40).nullable().optional()
-});
-function toRow5(input) {
-  const offer = input.offerPrice ?? null;
-  const rate = input.commissionRate ?? null;
-  return {
-    clientId: input.clientId ?? null,
-    leadId: input.leadId ?? null,
-    propertyId: input.propertyId ?? null,
-    clientName: input.clientName?.trim() || null,
-    askingPrice: input.askingPrice ?? null,
-    offerPrice: offer,
-    status: input.status,
-    commissionRate: rate,
-    commissionValue: offer !== null && rate !== null ? offer * rate / 100 : null,
-    notes: input.notes?.trim() || null,
-    dealDate: input.dealDate ? new Date(input.dealDate) : null
-  };
-}
-var adminDeals = {
-  list: adminBase.handler(async ({ context }) => {
-    return context.db.select().from(deals).orderBy(desc(deals.createdAt)).limit(500);
-  }),
-  create: adminBase.input(dealInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(deals).values(toRow5(input)).returning();
-    return { id: created?.id ?? 0 };
-  }),
-  update: adminBase.input(dealInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    const { id, ...rest } = input;
-    await context.db.update(deals).set(toRow5(rest)).where(eq(deals.id, id));
-    return { ok: true };
-  }),
-  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
-    await context.db.delete(deals).where(eq(deals.id, input.id));
-    return { ok: true };
-  })
-};
-
-// packages/web/src/api/routes/admin-dashboard.ts
-init_schema();
-var OPEN_DEAL_STATUS = ["enviada", "em_negociacao", "aceita"];
-var adminDashboard = {
-  summary: adminBase.handler(async ({ context }) => {
-    const [properties3, leads3, deals2, tasks2, images, settingsRow] = await Promise.all([
-      context.db.select().from(properties).limit(1000),
-      context.db.select().from(leads).orderBy(desc(leads.createdAt)).limit(1000),
-      context.db.select().from(deals).limit(1000),
-      context.db.select().from(tasks).where(eq(tasks.status, "pendente")).orderBy(asc(tasks.dueAt)).limit(50),
-      context.db.select().from(propertyImages).limit(2000),
-      context.db.select().from(settings).limit(1)
-    ]);
-    const commissionRate = settingsRow[0]?.commissionRate ?? 6;
-    const available = properties3.filter((p) => p.status === "disponivel");
-    const funnel = LEAD_STAGES.map((stage) => ({
-      stage,
-      total: leads3.filter((lead) => lead.stage === stage && lead.status !== "perdido").length
-    }));
-    const bySource = new Map;
-    for (const lead of leads3)
-      bySource.set(lead.source, (bySource.get(lead.source) ?? 0) + 1);
-    const openDeals = deals2.filter((deal) => OPEN_DEAL_STATUS.includes(deal.status));
-    const closedDeals = deals2.filter((deal) => deal.status === "fechada");
-    const cover = (propertyId) => {
-      const own = images.filter((image) => image.propertyId === propertyId);
-      return (own.find((image) => image.isPrimary === 1) ?? own[0])?.url ?? null;
-    };
-    return {
-      properties: {
-        total: properties3.length,
-        published: properties3.filter((p) => p.published === 1).length,
-        available: available.length,
-        reserved: properties3.filter((p) => p.status === "reservado").length,
-        sold: properties3.filter((p) => p.status === "vendido").length,
-        rented: properties3.filter((p) => p.status === "alugado").length,
-        featured: properties3.filter((p) => p.featured === 1).length
-      },
-      leads: {
-        total: leads3.length,
-        new: leads3.filter((lead) => lead.stage === "novo" && lead.status === "aberto").length,
-        open: leads3.filter((lead) => lead.status === "aberto").length,
-        lost: leads3.filter((lead) => lead.status === "perdido").length,
-        scheduledVisits: leads3.filter((lead) => lead.stage === "visita_agendada").length,
-        negotiating: leads3.filter((lead) => lead.stage === "negociacao").length,
-        closed: leads3.filter((lead) => lead.stage === "venda_fechada").length
-      },
-      deals: {
-        total: deals2.length,
-        open: openDeals.length,
-        negotiating: deals2.filter((deal) => deal.status === "em_negociacao").length,
-        closed: closedDeals.length
-      },
-      money: {
-        vgvPortfolio: available.reduce((sum, p) => sum + (p.price ?? 0), 0),
-        vgvProposals: openDeals.reduce((sum, deal) => sum + (deal.offerPrice ?? 0), 0),
-        vgvClosed: closedDeals.reduce((sum, deal) => sum + (deal.offerPrice ?? 0), 0),
-        expectedCommission: openDeals.reduce((sum, deal) => sum + (deal.commissionValue ?? (deal.offerPrice ?? 0) * (deal.commissionRate ?? commissionRate) / 100), 0),
-        closedCommission: closedDeals.reduce((sum, deal) => sum + (deal.commissionValue ?? (deal.offerPrice ?? 0) * (deal.commissionRate ?? commissionRate) / 100), 0)
-      },
-      funnel,
-      leadsBySource: [...bySource.entries()].map(([source, total]) => ({ source, total })).sort((a, b) => b.total - a.total),
-      recentLeads: leads3.slice(0, 8).map((lead) => ({
-        id: lead.id,
-        name: lead.name,
-        phone: lead.phone,
-        interest: lead.interest,
-        stage: lead.stage,
-        status: lead.status,
-        source: lead.source,
-        createdAt: lead.createdAt
-      })),
-      topProperties: [...properties3].sort((a, b) => b.views - a.views).slice(0, 5).map((property) => ({
-        id: property.id,
-        code: property.code,
-        title: property.title,
-        views: property.views,
-        price: property.price,
-        cover: cover(property.id)
-      })),
-      upcomingTasks: tasks2.slice(0, 8)
-    };
-  })
-};
-
-// packages/web/src/api/routes/admin-settings.ts
-init_schema();
-var settingsInput = exports_external.object({
-  companyName: exports_external.string().min(2).max(160),
-  brokerName: exports_external.string().min(2).max(160),
-  whatsapp: exports_external.string().min(8).max(20),
-  email: exports_external.string().min(5).max(160),
-  creci: exports_external.string().max(60),
-  address: exports_external.string().max(300),
-  instagram: exports_external.string().max(300),
-  facebook: exports_external.string().max(300),
-  commissionRate: exports_external.number().min(0).max(100)
-});
-var adminSettings = {
-  get: adminBase.handler(async ({ context }) => {
-    const [row] = await context.db.select().from(settings).limit(1);
-    return row ?? null;
-  }),
-  update: adminBase.input(settingsInput).handler(async ({ input, context }) => {
-    const payload = {
-      companyName: input.companyName.trim(),
-      brokerName: input.brokerName.trim(),
-      whatsapp: input.whatsapp.replace(/\D/g, ""),
-      email: input.email.trim(),
-      creci: input.creci.trim(),
-      address: input.address.trim(),
-      instagram: input.instagram.trim(),
-      facebook: input.facebook.trim(),
-      commissionRate: input.commissionRate,
-      updatedAt: new Date
-    };
-    const [row] = await context.db.select().from(settings).limit(1);
-    if (row) {
-      await context.db.update(settings).set(payload).where(eq(settings.id, row.id));
-    } else {
-      await context.db.insert(settings).values(payload);
-    }
-    return { ok: true };
-  })
-};
-
-// packages/web/src/api/routes/admin-site.ts
-init_schema();
-var MAX_JSON_BYTES = 400 * 1024;
-var MAX_STRING = 20000;
-var MAX_ARRAY = 200;
-var MAX_DEPTH = 8;
-var MAX_KEYS = 200;
-function sanitize(value2, depth = 0) {
-  if (depth > MAX_DEPTH)
-    return null;
-  if (value2 === null)
-    return null;
-  if (typeof value2 === "string")
-    return value2.slice(0, MAX_STRING);
-  if (typeof value2 === "number")
-    return Number.isFinite(value2) ? value2 : 0;
-  if (typeof value2 === "boolean")
-    return value2;
-  if (Array.isArray(value2)) {
-    return value2.slice(0, MAX_ARRAY).map((item) => sanitize(item, depth + 1));
-  }
-  if (typeof value2 === "object") {
-    const out = {};
-    let count = 0;
-    for (const [key, item] of Object.entries(value2)) {
-      if (count >= MAX_KEYS)
-        break;
-      if (!/^[A-Za-z0-9_-]{1,60}$/.test(key))
-        continue;
-      out[key] = sanitize(item, depth + 1);
-      count += 1;
-    }
-    return out;
-  }
-  return null;
-}
-function serialize(data) {
-  const clean = sanitize(data);
-  const json2 = JSON.stringify(clean);
-  if (json2.length > MAX_JSON_BYTES) {
-    throw new ORPCError("BAD_REQUEST", { message: "Conteúdo muito grande para salvar" });
-  }
-  return json2;
-}
-var contentInput = exports_external.object({
-  data: exports_external.record(exports_external.string(), exports_external.unknown())
-});
-function rowOut(row) {
-  return {
-    id: row.id,
-    status: row.status,
-    label: row.label,
-    author: row.author,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-    publishedAt: row.publishedAt,
-    data: JSON.parse(row.data)
-  };
-}
-async function findDraft(db3) {
-  const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "draft")).orderBy(desc(siteContent.updatedAt)).limit(1);
-  return row ?? null;
-}
-async function findPublished(db3) {
-  const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "published")).orderBy(desc(siteContent.publishedAt)).limit(1);
-  return row ?? null;
-}
-var adminSite = {
-  state: adminBase.handler(async ({ context }) => {
-    const db3 = context.db;
-    const draft = await findDraft(db3);
-    const published = await findPublished(db3);
-    return {
-      draft: draft ? rowOut(draft) : null,
-      published: published ? rowOut(published) : null,
-      hasChanges: Boolean(draft && (!published || draft.data !== published.data))
-    };
-  }),
-  saveDraft: adminBase.input(contentInput).handler(async ({ input, context }) => {
-    const db3 = context.db;
-    const json2 = serialize(input.data);
-    const existing = await findDraft(db3);
-    const now = new Date;
-    if (existing) {
-      await db3.update(siteContent).set({ data: json2, updatedAt: now, author: context.user.name }).where(eq(siteContent.id, existing.id));
-      return { ok: true, id: existing.id, updatedAt: now };
-    }
-    await db3.insert(siteContent).values({
-      status: "draft",
-      data: json2,
-      author: context.user.name,
-      label: "Rascunho",
-      createdAt: now,
-      updatedAt: now
-    });
-    const created = await findDraft(db3);
-    return { ok: true, id: created?.id ?? 0, updatedAt: now };
-  }),
-  publish: adminBase.input(exports_external.object({ data: exports_external.record(exports_external.string(), exports_external.unknown()).optional(), label: exports_external.string().max(120).optional() })).handler(async ({ input, context }) => {
-    const db3 = context.db;
-    const now = new Date;
-    let json2;
-    if (input.data) {
-      json2 = serialize(input.data);
-      const draft = await findDraft(db3);
-      if (draft) {
-        await db3.update(siteContent).set({ data: json2, updatedAt: now, author: context.user.name }).where(eq(siteContent.id, draft.id));
-      } else {
-        await db3.insert(siteContent).values({
-          status: "draft",
-          data: json2,
-          author: context.user.name,
-          label: "Rascunho",
-          createdAt: now,
-          updatedAt: now
-        });
-      }
-    } else {
-      const draft = await findDraft(db3);
-      if (!draft)
-        throw new ORPCError("BAD_REQUEST", { message: "Nada para publicar" });
-      json2 = draft.data;
-    }
-    const current = await findPublished(db3);
-    if (current) {
-      await db3.update(siteContent).set({ status: "archived" }).where(eq(siteContent.id, current.id));
-    }
-    await db3.insert(siteContent).values({
-      status: "published",
-      data: json2,
-      author: context.user.name,
-      label: input.label?.trim() || `Publicado em ${now.toLocaleString("pt-BR")}`,
-      createdAt: now,
-      updatedAt: now,
-      publishedAt: now
-    });
-    try {
-      const company = JSON.parse(json2).company;
-      if (company) {
-        const [row] = await db3.select().from(settings).limit(1);
-        const payload = {
-          companyName: `${company.name ?? ""} ${company.brandSuffix ?? ""}`.trim(),
-          brokerName: company.broker ?? "",
-          whatsapp: (company.whatsapp ?? "").replace(/\D/g, ""),
-          email: company.email ?? "",
-          creci: company.creci ?? "",
-          address: company.address ?? "",
-          instagram: company.instagram ?? "",
-          facebook: company.facebook ?? "",
-          updatedAt: now
-        };
-        if (row) {
-          await db3.update(settings).set(payload).where(eq(settings.id, row.id));
-        }
-      }
-    } catch {}
-    const archived = await db3.select({ id: siteContent.id }).from(siteContent).where(eq(siteContent.status, "archived")).orderBy(desc(siteContent.createdAt));
-    for (const old of archived.slice(20)) {
-      await db3.delete(siteContent).where(eq(siteContent.id, old.id));
-    }
-    return { ok: true, publishedAt: now };
-  }),
-  history: adminBase.handler(async ({ context }) => {
-    const db3 = context.db;
-    const rows = await db3.select({
-      id: siteContent.id,
-      status: siteContent.status,
-      label: siteContent.label,
-      author: siteContent.author,
-      createdAt: siteContent.createdAt,
-      publishedAt: siteContent.publishedAt
-    }).from(siteContent).where(ne(siteContent.status, "draft")).orderBy(desc(siteContent.createdAt)).limit(30);
-    return rows;
-  }),
-  restore: adminBase.input(exports_external.object({ id: exports_external.number().int().positive() })).handler(async ({ input, context }) => {
-    const db3 = context.db;
-    const [version4] = await db3.select().from(siteContent).where(and(eq(siteContent.id, input.id), ne(siteContent.status, "draft"))).limit(1);
-    if (!version4)
-      throw new ORPCError("NOT_FOUND", { message: "Versão não encontrada" });
-    const now = new Date;
-    const draft = await findDraft(db3);
-    if (draft) {
-      await db3.update(siteContent).set({ data: version4.data, updatedAt: now, author: context.user.name }).where(eq(siteContent.id, draft.id));
-    } else {
-      await db3.insert(siteContent).values({
-        status: "draft",
-        data: version4.data,
-        author: context.user.name,
-        label: "Rascunho",
-        createdAt: now,
-        updatedAt: now
-      });
-    }
-    return { ok: true, data: JSON.parse(version4.data) };
-  }),
-  discardDraft: adminBase.handler(async ({ context }) => {
-    const db3 = context.db;
-    const published = await findPublished(db3);
-    const draft = await findDraft(db3);
-    if (!draft)
-      return { ok: true, data: published ? JSON.parse(published.data) : null };
-    if (!published) {
-      await db3.delete(siteContent).where(eq(siteContent.id, draft.id));
-      return { ok: true, data: null };
-    }
-    await db3.update(siteContent).set({ data: published.data, updatedAt: new Date }).where(eq(siteContent.id, draft.id));
-    return { ok: true, data: JSON.parse(published.data) };
-  })
-};
-
-// packages/web/src/api/routes/admin-media.ts
-init_schema();
-var adminMedia = {
-  list: adminBase.input(exports_external.object({ search: exports_external.string().max(80).optional() }).optional()).handler(async ({ input, context }) => {
-    const rows = await context.db.select({
-      id: media.id,
-      mime: media.mime,
-      size: media.size,
-      name: media.name,
-      alt: media.alt,
-      createdAt: media.createdAt
-    }).from(media).orderBy(desc(media.createdAt)).limit(300);
-    const search = input?.search?.trim().toLowerCase();
-    const filtered = search ? rows.filter((row) => (row.name ?? "").toLowerCase().includes(search) || (row.alt ?? "").toLowerCase().includes(search)) : rows;
-    const images = await context.db.select({ url: propertyImages.url }).from(propertyImages);
-    const contentRows = await context.db.select({ data: siteContent.data, status: siteContent.status }).from(siteContent);
-    const inProperties = new Set(images.map((row) => row.url.match(/\/api\/media\/([a-f0-9]+)/)?.[1]).filter((id) => Boolean(id)));
-    const inContent = new Set;
-    for (const row of contentRows) {
-      if (row.status === "archived")
-        continue;
-      for (const match2 of row.data.matchAll(/\/api\/media\/([a-f0-9]+)/g)) {
-        inContent.add(match2[1]);
-      }
-    }
-    return filtered.map((row) => ({
-      ...row,
-      url: `/api/media/${row.id}`,
-      usedInProperties: inProperties.has(row.id),
-      usedInSite: inContent.has(row.id)
-    }));
-  }),
-  update: adminBase.input(exports_external.object({
-    id: exports_external.string().min(4).max(64),
-    name: exports_external.string().max(160).optional(),
-    alt: exports_external.string().max(300).optional()
-  })).handler(async ({ input, context }) => {
-    await context.db.update(media).set({
-      ...input.name === undefined ? {} : { name: input.name.trim() },
-      ...input.alt === undefined ? {} : { alt: input.alt.trim() }
-    }).where(eq(media.id, input.id));
-    return { ok: true };
-  }),
-  remove: adminBase.input(exports_external.object({ id: exports_external.string().min(4).max(64), force: exports_external.boolean().optional() })).handler(async ({ input, context }) => {
-    const url2 = `/api/media/${input.id}`;
-    if (!input.force) {
-      const [used] = await context.db.select({ id: propertyImages.id }).from(propertyImages).where(or(eq(propertyImages.url, url2), like(propertyImages.url, `%${input.id}%`))).limit(1);
-      if (used) {
-        throw new ORPCError("CONFLICT", {
-          message: "Imagem em uso em um imóvel. Troque a foto do imóvel antes de excluir."
-        });
-      }
-      const contentRows = await context.db.select({ data: siteContent.data, status: siteContent.status }).from(siteContent);
-      const inUse = contentRows.some((row) => row.status !== "archived" && row.data.includes(input.id));
-      if (inUse) {
-        throw new ORPCError("CONFLICT", {
-          message: "Imagem em uso no site. Troque a imagem na seção antes de excluir."
-        });
-      }
-    }
-    await context.db.delete(media).where(eq(media.id, input.id));
-    return { ok: true };
-  })
-};
-
-// packages/web/src/api/lib/audit.ts
-init_schema();
-async function audit(db3, actor, action, options = {}) {
-  try {
-    await db3.insert(auditLog).values({
-      userId: actor?.id ?? null,
-      userName: actor?.name ?? null,
-      action,
-      entity: options.entity ?? null,
-      entityId: options.entityId === undefined ? null : String(options.entityId),
-      detail: options.detail ? options.detail.slice(0, 500) : null,
-      ip: options.ip ?? null
-    });
-  } catch {}
-}
-async function recentAudit(db3, limit = 100) {
-  return db3.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(Math.min(limit, 300));
-}
-
-// packages/web/src/api/lib/base-url.ts
-var FALLBACK = "https://www.edyprimeimoveis.com.br";
-function siteBaseUrl(headers) {
-  const fromEnv = (process.env.WEBSITE_URL ?? "").trim().replace(/\/+$/, "");
-  if (fromEnv)
-    return fromEnv;
-  const host = headers?.get("x-forwarded-host") ?? headers?.get("host") ?? "";
-  if (host) {
-    const proto = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
-    return `${proto}://${host}`;
-  }
-  return FALLBACK;
-}
-function clientIp(headers) {
-  return headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-}
-
 // node_modules/.bun/@ai-sdk+provider@4.0.7/node_modules/@ai-sdk/provider/dist/index.js
 var marker = "vercel.ai.error";
 var symbol2 = Symbol.for(marker);
@@ -47828,6 +47052,972 @@ function gatewayConfigured() {
   return Boolean(process.env.AI_GATEWAY_BASE_URL && process.env.AI_GATEWAY_API_KEY);
 }
 
+// packages/web/src/api/routes/admin-properties-ai.ts
+var purposeEnum2 = exports_external.enum(["venda", "locacao", "venda_locacao"]);
+var typeEnum2 = exports_external.enum([
+  "apartamento",
+  "casa",
+  "cobertura",
+  "sobrado",
+  "terreno",
+  "sala_comercial",
+  "chacara",
+  "outro"
+]);
+var purposeLabel = {
+  venda: "venda",
+  locacao: "locação",
+  venda_locacao: "venda e locação"
+};
+var typeLabel = {
+  apartamento: "apartamento",
+  casa: "casa",
+  cobertura: "cobertura",
+  sobrado: "sobrado",
+  terreno: "terreno",
+  sala_comercial: "sala comercial",
+  chacara: "chácara",
+  outro: "imóvel"
+};
+var generateInput = exports_external.object({
+  purpose: purposeEnum2,
+  type: typeEnum2,
+  price: exports_external.number().min(0).max(999999999).nullable().optional(),
+  condoFee: exports_external.number().min(0).max(999999).nullable().optional(),
+  iptu: exports_external.number().min(0).max(999999).nullable().optional(),
+  district: exports_external.string().max(120).default(""),
+  city: exports_external.string().max(120).default(""),
+  bedrooms: exports_external.number().int().min(0).max(40).default(0),
+  suites: exports_external.number().int().min(0).max(40).default(0),
+  bathrooms: exports_external.number().int().min(0).max(40).default(0),
+  parking: exports_external.number().int().min(0).max(40).default(0),
+  areaUtil: exports_external.number().min(0).max(1e6).default(0),
+  areaTotal: exports_external.number().min(0).max(1e6).nullable().optional(),
+  features: exports_external.array(exports_external.string().max(80)).max(60).default([]),
+  title: exports_external.string().max(200).default("")
+});
+var money = (value2) => value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+function buildSheet(input) {
+  const lines = [];
+  lines.push(`Tipo de imóvel: ${typeLabel[input.type] ?? "imóvel"}`);
+  lines.push(`Finalidade: ${purposeLabel[input.purpose] ?? "venda"}`);
+  if (input.district.trim())
+    lines.push(`Bairro: ${input.district.trim()}`);
+  if (input.city.trim())
+    lines.push(`Cidade: ${input.city.trim()}`);
+  if (input.price && input.price > 0)
+    lines.push(`Preço: ${money(input.price)}`);
+  if (input.condoFee && input.condoFee > 0)
+    lines.push(`Condomínio: ${money(input.condoFee)}`);
+  if (input.iptu && input.iptu > 0)
+    lines.push(`IPTU: ${money(input.iptu)}`);
+  if (input.bedrooms > 0)
+    lines.push(`Dormitórios: ${input.bedrooms}`);
+  if (input.suites > 0)
+    lines.push(`Suítes: ${input.suites}`);
+  if (input.bathrooms > 0)
+    lines.push(`Banheiros: ${input.bathrooms}`);
+  if (input.parking > 0)
+    lines.push(`Vagas de garagem: ${input.parking}`);
+  if (input.areaUtil > 0)
+    lines.push(`Área útil: ${input.areaUtil} m²`);
+  if (input.areaTotal && input.areaTotal > 0)
+    lines.push(`Área total: ${input.areaTotal} m²`);
+  const features = input.features.map((item) => item.trim()).filter((item) => item.length > 0);
+  if (features.length > 0) {
+    lines.push(`Características e diferenciais cadastrados: ${features.join("; ")}`);
+  } else {
+    lines.push("Características e diferenciais cadastrados: NENHUMA. Não mencione nenhum diferencial, lazer, vista, mobília, documentação ou condição de pagamento.");
+  }
+  return lines.join(`
+`);
+}
+var RULES = `REGRAS ABSOLUTAS (quebrar qualquer uma torna o texto inútil):
+1. Use SOMENTE os dados da ficha abaixo. Está proibido criar, supor, estimar ou insinuar qualquer informação que não esteja escrita nela.
+2. Nunca mencione: distância ou proximidade da praia, do mar, do comércio, de escolas ou de qualquer ponto; vista (mar, livre, panorâmica); lazer do condomínio (piscina, academia, salão, churrasqueira, portaria, elevador); mobília ou armários; documentação, escritura, financiamento, FGTS, permuta, entrada, parcelamento; andar, posição solar, estado de conservação, reforma, ano de construção; nome de edifício, rua ou número — EXCETO se estiver textualmente na ficha.
+3. Nunca invente número: não crie metragem, quantidade de dormitórios, suítes, banheiros, vagas, valores ou prazos. Se um número não está na ficha, ele não existe.
+4. Não use superlativo vazio nem promessa ("o melhor da cidade", "oportunidade única", "imperdível", "não perca"). Não prometa retorno de investimento nem valorização.
+5. Tom: sofisticado, premium e profissional, humano e direto. Português do Brasil. Sem emoji. Sem CAIXA ALTA. Sem hashtag.
+6. Se a ficha tiver poucos dados, escreva textos mais curtos — jamais complete com suposição.
+7. Não cite o nome da imobiliária, telefone, link, preço em texto de SEO nem chamada para ação com contato inventado.`;
+var FORMAT = `Responda SOMENTE com um objeto JSON válido, sem cercas de código e sem comentários, com exatamente estas chaves:
+{
+  "title": "título profissional do anúncio, 45 a 80 caracteres, sem preço",
+  "highlight": "frase curta de destaque para o card do site, 40 a 90 caracteres, sem ponto final obrigatório",
+  "description": "descrição comercial completa para a página do imóvel, 2 a 4 parágrafos curtos separados por \\n\\n, entre 500 e 1100 caracteres",
+  "whatsapp": "versão curta para enviar no WhatsApp, até 400 caracteres, pode usar quebras de linha e traços simples como marcadores",
+  "portal": "descrição para portais imobiliários, texto corrido objetivo, até 700 caracteres, sem contato e sem link",
+  "metaTitle": "meta title de SEO, até 60 caracteres",
+  "metaDescription": "meta description de SEO, entre 120 e 158 caracteres"
+}`;
+var outputSchema2 = exports_external.object({
+  title: exports_external.string().min(3).max(300),
+  highlight: exports_external.string().min(3).max(300),
+  description: exports_external.string().min(20).max(4000),
+  whatsapp: exports_external.string().min(10).max(1500),
+  portal: exports_external.string().min(20).max(2000),
+  metaTitle: exports_external.string().min(3).max(200),
+  metaDescription: exports_external.string().min(20).max(400)
+});
+function parseJson2(raw2) {
+  let text4 = raw2.trim();
+  if (text4.startsWith("```")) {
+    text4 = text4.replace(/^```[a-zA-Z]*\s*/, "").replace(/```\s*$/, "").trim();
+  }
+  const start = text4.indexOf("{");
+  const end = text4.lastIndexOf("}");
+  if (start > 0 || end < text4.length - 1) {
+    if (start === -1 || end === -1)
+      throw new Error("Resposta da IA fora do formato esperado");
+    text4 = text4.slice(start, end + 1);
+  }
+  return JSON.parse(text4);
+}
+function missingFields(input) {
+  const missing = [];
+  if (!input.district.trim())
+    missing.push("bairro");
+  if (input.areaUtil <= 0)
+    missing.push("área útil");
+  const needsBedrooms = !["terreno", "sala_comercial", "outro"].includes(input.type);
+  if (needsBedrooms && input.bedrooms <= 0)
+    missing.push("dormitórios");
+  return missing;
+}
+var adminPropertyContent = {
+  generate: adminBase.input(generateInput).handler(async ({ input }) => {
+    const missing = missingFields(input);
+    if (missing.length > 0) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: `Preencha antes: ${missing.join(", ")}. A IA só escreve com dados reais do cadastro.`
+      });
+    }
+    if (!gatewayConfigured()) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Provedor de IA não configurado no servidor."
+      });
+    }
+    const sheet = buildSheet(input);
+    const prompt = [
+      "Você redige anúncios de imóveis para a Edy Premi Imóveis, em Praia Grande (SP), com foco em médio e alto padrão.",
+      RULES,
+      "FICHA DO IMÓVEL (única fonte de verdade):",
+      sheet,
+      FORMAT
+    ].join(`
+
+`);
+    let text4 = "";
+    try {
+      const result = await generateText({
+        model: gateway2(DEFAULT_MODEL),
+        temperature: 0.6,
+        prompt
+      });
+      text4 = result.text;
+    } catch (error48) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", {
+        message: error48 instanceof Error ? error48.message : "Falha ao consultar a IA"
+      });
+    }
+    const parsed = outputSchema2.safeParse((() => {
+      try {
+        return parseJson2(text4);
+      } catch {
+        return null;
+      }
+    })());
+    if (!parsed.success) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", {
+        message: "A IA respondeu fora do formato esperado. Tente gerar novamente."
+      });
+    }
+    return {
+      ok: true,
+      model: DEFAULT_MODEL,
+      content: parsed.data,
+      usedFields: sheet.split(`
+`)
+    };
+  })
+};
+
+// packages/web/src/api/routes/admin-leads.ts
+init_schema();
+var LEAD_STAGES = [
+  "novo",
+  "primeiro_contato",
+  "qualificado",
+  "imovel_apresentado",
+  "visita_agendada",
+  "proposta_enviada",
+  "negociacao",
+  "venda_fechada"
+];
+var stageEnum = exports_external.enum(LEAD_STAGES);
+var statusEnum2 = exports_external.enum(["aberto", "perdido", "ganho"]);
+var optionalDate = exports_external.string().max(40).nullable().optional().transform((value2) => value2 ? new Date(value2) : null);
+var adminLeads = {
+  list: adminBase.input(exports_external.object({
+    search: exports_external.string().max(120).optional(),
+    stage: stageEnum.optional(),
+    status: statusEnum2.optional()
+  }).optional()).handler(async ({ input, context }) => {
+    const filters = [];
+    if (input?.stage)
+      filters.push(eq(leads.stage, input.stage));
+    if (input?.status)
+      filters.push(eq(leads.status, input.status));
+    if (input?.search) {
+      const term = `%${input.search.trim()}%`;
+      filters.push(or(like(leads.name, term), like(leads.phone, term)));
+    }
+    return context.db.select().from(leads).where(filters.length > 0 ? and(...filters) : undefined).orderBy(desc(leads.createdAt)).limit(500);
+  }),
+  get: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const [lead] = await context.db.select().from(leads).where(eq(leads.id, input.id)).limit(1);
+    if (!lead)
+      throw new ORPCError("NOT_FOUND", { message: "Lead não encontrado" });
+    const notes = await context.db.select().from(leadNotes).where(eq(leadNotes.leadId, lead.id)).orderBy(desc(leadNotes.createdAt));
+    return { lead, notes };
+  }),
+  create: adminBase.input(exports_external.object({
+    name: exports_external.string().min(2).max(120),
+    phone: exports_external.string().min(8).max(30),
+    email: exports_external.string().max(160).nullable().optional(),
+    interest: exports_external.string().min(1).max(160),
+    message: exports_external.string().max(2000).nullable().optional(),
+    source: exports_external.string().max(60).default("manual"),
+    stage: stageEnum.default("novo"),
+    propertyId: exports_external.number().int().nullable().optional(),
+    clientId: exports_external.number().int().nullable().optional()
+  })).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(leads).values({
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      email: input.email?.trim() || null,
+      interest: input.interest,
+      message: input.message?.trim() || null,
+      source: input.source,
+      stage: input.stage,
+      status: "aberto",
+      propertyId: input.propertyId ?? null,
+      clientId: input.clientId ?? null,
+      updatedAt: new Date
+    }).returning();
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(exports_external.object({
+    id: exports_external.number().int(),
+    name: exports_external.string().min(2).max(120),
+    phone: exports_external.string().min(8).max(30),
+    email: exports_external.string().max(160).nullable().optional(),
+    interest: exports_external.string().min(1).max(160),
+    message: exports_external.string().max(2000).nullable().optional(),
+    source: exports_external.string().max(60),
+    stage: stageEnum,
+    status: statusEnum2,
+    lostReason: exports_external.string().max(300).nullable().optional(),
+    propertyId: exports_external.number().int().nullable().optional(),
+    clientId: exports_external.number().int().nullable().optional(),
+    nextAction: exports_external.string().max(300).nullable().optional(),
+    nextActionAt: optionalDate
+  })).handler(async ({ input, context }) => {
+    await context.db.update(leads).set({
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      email: input.email?.trim() || null,
+      interest: input.interest,
+      message: input.message?.trim() || null,
+      source: input.source,
+      stage: input.stage,
+      status: input.status,
+      lostReason: input.status === "perdido" ? input.lostReason?.trim() || null : null,
+      propertyId: input.propertyId ?? null,
+      clientId: input.clientId ?? null,
+      nextAction: input.nextAction?.trim() || null,
+      nextActionAt: input.nextActionAt,
+      updatedAt: new Date
+    }).where(eq(leads.id, input.id));
+    return { ok: true };
+  }),
+  setStage: adminBase.input(exports_external.object({ id: exports_external.number().int(), stage: stageEnum })).handler(async ({ input, context }) => {
+    await context.db.update(leads).set({
+      stage: input.stage,
+      status: input.stage === "venda_fechada" ? "ganho" : "aberto",
+      updatedAt: new Date
+    }).where(eq(leads.id, input.id));
+    return { ok: true };
+  }),
+  markLost: adminBase.input(exports_external.object({ id: exports_external.number().int(), reason: exports_external.string().min(2).max(300) })).handler(async ({ input, context }) => {
+    await context.db.update(leads).set({ status: "perdido", lostReason: input.reason.trim(), updatedAt: new Date }).where(eq(leads.id, input.id));
+    return { ok: true };
+  }),
+  reopen: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.update(leads).set({ status: "aberto", lostReason: null, updatedAt: new Date }).where(eq(leads.id, input.id));
+    return { ok: true };
+  }),
+  addNote: adminBase.input(exports_external.object({ id: exports_external.number().int(), body: exports_external.string().min(1).max(2000) })).handler(async ({ input, context }) => {
+    await context.db.insert(leadNotes).values({ leadId: input.id, body: input.body.trim() });
+    await context.db.update(leads).set({ updatedAt: new Date }).where(eq(leads.id, input.id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.delete(leadNotes).where(eq(leadNotes.leadId, input.id));
+    await context.db.delete(leads).where(eq(leads.id, input.id));
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/routes/admin-clients.ts
+init_schema();
+var clientInput = exports_external.object({
+  name: exports_external.string().min(2).max(120),
+  phone: exports_external.string().min(8).max(30),
+  email: exports_external.string().max(160).nullable().optional(),
+  interest: exports_external.string().max(160).nullable().optional(),
+  priceMin: exports_external.number().min(0).max(999999999).nullable().optional(),
+  priceMax: exports_external.number().min(0).max(999999999).nullable().optional(),
+  districts: exports_external.string().max(300).nullable().optional(),
+  bedrooms: exports_external.number().int().min(0).max(20).nullable().optional(),
+  notes: exports_external.string().max(4000).nullable().optional()
+});
+function toRow2(input) {
+  return {
+    name: input.name.trim(),
+    phone: input.phone.trim(),
+    email: input.email?.trim() || null,
+    interest: input.interest?.trim() || null,
+    priceMin: input.priceMin ?? null,
+    priceMax: input.priceMax ?? null,
+    districts: input.districts?.trim() || null,
+    bedrooms: input.bedrooms ?? null,
+    notes: input.notes?.trim() || null
+  };
+}
+var adminClients = {
+  list: adminBase.input(exports_external.object({ search: exports_external.string().max(120).optional() }).optional()).handler(async ({ input, context }) => {
+    const term = input?.search?.trim();
+    return context.db.select().from(clients).where(term ? or(like(clients.name, `%${term}%`), like(clients.phone, `%${term}%`)) : undefined).orderBy(asc(clients.name)).limit(500);
+  }),
+  get: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const [client2] = await context.db.select().from(clients).where(eq(clients.id, input.id)).limit(1);
+    if (!client2)
+      throw new ORPCError("NOT_FOUND", { message: "Cliente não encontrado" });
+    const interactions = await context.db.select().from(clientInteractions).where(eq(clientInteractions.clientId, client2.id)).orderBy(desc(clientInteractions.createdAt));
+    return { client: client2, interactions };
+  }),
+  create: adminBase.input(clientInput).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(clients).values(toRow2(input)).returning();
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(clientInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const { id, ...rest } = input;
+    await context.db.update(clients).set(toRow2(rest)).where(eq(clients.id, id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.delete(clientInteractions).where(eq(clientInteractions.clientId, input.id));
+    await context.db.delete(clients).where(eq(clients.id, input.id));
+    return { ok: true };
+  }),
+  addInteraction: adminBase.input(exports_external.object({ id: exports_external.number().int(), body: exports_external.string().min(1).max(2000) })).handler(async ({ input, context }) => {
+    await context.db.insert(clientInteractions).values({ clientId: input.id, body: input.body.trim() });
+    return { ok: true };
+  }),
+  options: adminBase.handler(async ({ context }) => {
+    return context.db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients).orderBy(asc(clients.name)).limit(500);
+  })
+};
+
+// packages/web/src/api/routes/admin-owners.ts
+init_schema();
+var ownerInput = exports_external.object({
+  name: exports_external.string().min(2).max(120),
+  phone: exports_external.string().max(30).nullable().optional(),
+  email: exports_external.string().max(160).nullable().optional(),
+  notes: exports_external.string().max(4000).nullable().optional(),
+  captureStatus: exports_external.enum(["prospeccao", "em_negociacao", "captado", "perdido"]).default("prospeccao")
+});
+function toRow3(input) {
+  return {
+    name: input.name.trim(),
+    phone: input.phone?.trim() || null,
+    email: input.email?.trim() || null,
+    notes: input.notes?.trim() || null,
+    captureStatus: input.captureStatus
+  };
+}
+var adminOwners = {
+  list: adminBase.handler(async ({ context }) => {
+    const owners2 = await context.db.select().from(owners).orderBy(asc(owners.name)).limit(500);
+    const properties3 = await context.db.select({
+      id: properties.id,
+      code: properties.code,
+      title: properties.title,
+      ownerId: properties.ownerId
+    }).from(properties).limit(1000);
+    return owners2.map((owner) => ({
+      ...owner,
+      properties: properties3.filter((property) => property.ownerId === owner.id)
+    }));
+  }),
+  create: adminBase.input(ownerInput).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(owners).values(toRow3(input)).returning();
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(ownerInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const { id, ...rest } = input;
+    await context.db.update(owners).set(toRow3(rest)).where(eq(owners.id, id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.update(properties).set({ ownerId: null }).where(eq(properties.ownerId, input.id));
+    await context.db.delete(owners).where(eq(owners.id, input.id));
+    return { ok: true };
+  }),
+  options: adminBase.handler(async ({ context }) => {
+    return context.db.select({ id: owners.id, name: owners.name }).from(owners).orderBy(asc(owners.name)).limit(500);
+  })
+};
+
+// packages/web/src/api/routes/admin-tasks.ts
+init_schema();
+var taskInput = exports_external.object({
+  title: exports_external.string().min(2).max(200),
+  type: exports_external.enum(["visita", "retorno", "reuniao", "proposta", "follow_up", "outro"]).default("visita"),
+  dueAt: exports_external.string().min(4).max(40),
+  status: exports_external.enum(["pendente", "concluida", "cancelada"]).default("pendente"),
+  leadId: exports_external.number().int().nullable().optional(),
+  clientId: exports_external.number().int().nullable().optional(),
+  propertyId: exports_external.number().int().nullable().optional(),
+  notes: exports_external.string().max(2000).nullable().optional()
+});
+function toRow4(input) {
+  return {
+    title: input.title.trim(),
+    type: input.type,
+    dueAt: new Date(input.dueAt),
+    status: input.status,
+    leadId: input.leadId ?? null,
+    clientId: input.clientId ?? null,
+    propertyId: input.propertyId ?? null,
+    notes: input.notes?.trim() || null
+  };
+}
+var adminTasks = {
+  list: adminBase.input(exports_external.object({ status: exports_external.enum(["pendente", "concluida", "cancelada"]).optional() }).optional()).handler(async ({ input, context }) => {
+    return context.db.select().from(tasks).where(input?.status ? eq(tasks.status, input.status) : undefined).orderBy(asc(tasks.dueAt)).limit(500);
+  }),
+  create: adminBase.input(taskInput).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(tasks).values(toRow4(input)).returning();
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(taskInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const { id, ...rest } = input;
+    await context.db.update(tasks).set(toRow4(rest)).where(eq(tasks.id, id));
+    return { ok: true };
+  }),
+  setStatus: adminBase.input(exports_external.object({
+    id: exports_external.number().int(),
+    status: exports_external.enum(["pendente", "concluida", "cancelada"])
+  })).handler(async ({ input, context }) => {
+    await context.db.update(tasks).set({ status: input.status }).where(eq(tasks.id, input.id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.delete(tasks).where(eq(tasks.id, input.id));
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/routes/admin-deals.ts
+init_schema();
+var dealInput = exports_external.object({
+  clientId: exports_external.number().int().nullable().optional(),
+  leadId: exports_external.number().int().nullable().optional(),
+  propertyId: exports_external.number().int().nullable().optional(),
+  clientName: exports_external.string().max(160).nullable().optional(),
+  askingPrice: exports_external.number().min(0).max(999999999).nullable().optional(),
+  offerPrice: exports_external.number().min(0).max(999999999).nullable().optional(),
+  status: exports_external.enum(["enviada", "em_negociacao", "aceita", "recusada", "fechada"]).default("enviada"),
+  commissionRate: exports_external.number().min(0).max(100).nullable().optional(),
+  notes: exports_external.string().max(4000).nullable().optional(),
+  dealDate: exports_external.string().max(40).nullable().optional()
+});
+function toRow5(input) {
+  const offer = input.offerPrice ?? null;
+  const rate = input.commissionRate ?? null;
+  return {
+    clientId: input.clientId ?? null,
+    leadId: input.leadId ?? null,
+    propertyId: input.propertyId ?? null,
+    clientName: input.clientName?.trim() || null,
+    askingPrice: input.askingPrice ?? null,
+    offerPrice: offer,
+    status: input.status,
+    commissionRate: rate,
+    commissionValue: offer !== null && rate !== null ? offer * rate / 100 : null,
+    notes: input.notes?.trim() || null,
+    dealDate: input.dealDate ? new Date(input.dealDate) : null
+  };
+}
+var adminDeals = {
+  list: adminBase.handler(async ({ context }) => {
+    return context.db.select().from(deals).orderBy(desc(deals.createdAt)).limit(500);
+  }),
+  create: adminBase.input(dealInput).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(deals).values(toRow5(input)).returning();
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(dealInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const { id, ...rest } = input;
+    await context.db.update(deals).set(toRow5(rest)).where(eq(deals.id, id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.delete(deals).where(eq(deals.id, input.id));
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/routes/admin-dashboard.ts
+init_schema();
+var OPEN_DEAL_STATUS = ["enviada", "em_negociacao", "aceita"];
+var adminDashboard = {
+  summary: adminBase.handler(async ({ context }) => {
+    const [properties3, leads3, deals2, tasks2, images, settingsRow] = await Promise.all([
+      context.db.select().from(properties).limit(1000),
+      context.db.select().from(leads).orderBy(desc(leads.createdAt)).limit(1000),
+      context.db.select().from(deals).limit(1000),
+      context.db.select().from(tasks).where(eq(tasks.status, "pendente")).orderBy(asc(tasks.dueAt)).limit(50),
+      context.db.select().from(propertyImages).limit(2000),
+      context.db.select().from(settings).limit(1)
+    ]);
+    const commissionRate = settingsRow[0]?.commissionRate ?? 6;
+    const available = properties3.filter((p) => p.status === "disponivel");
+    const funnel = LEAD_STAGES.map((stage) => ({
+      stage,
+      total: leads3.filter((lead) => lead.stage === stage && lead.status !== "perdido").length
+    }));
+    const bySource = new Map;
+    for (const lead of leads3)
+      bySource.set(lead.source, (bySource.get(lead.source) ?? 0) + 1);
+    const openDeals = deals2.filter((deal) => OPEN_DEAL_STATUS.includes(deal.status));
+    const closedDeals = deals2.filter((deal) => deal.status === "fechada");
+    const cover = (propertyId) => {
+      const own = images.filter((image) => image.propertyId === propertyId);
+      return (own.find((image) => image.isPrimary === 1) ?? own[0])?.url ?? null;
+    };
+    return {
+      properties: {
+        total: properties3.length,
+        published: properties3.filter((p) => p.published === 1).length,
+        available: available.length,
+        reserved: properties3.filter((p) => p.status === "reservado").length,
+        sold: properties3.filter((p) => p.status === "vendido").length,
+        rented: properties3.filter((p) => p.status === "alugado").length,
+        featured: properties3.filter((p) => p.featured === 1).length
+      },
+      leads: {
+        total: leads3.length,
+        new: leads3.filter((lead) => lead.stage === "novo" && lead.status === "aberto").length,
+        open: leads3.filter((lead) => lead.status === "aberto").length,
+        lost: leads3.filter((lead) => lead.status === "perdido").length,
+        scheduledVisits: leads3.filter((lead) => lead.stage === "visita_agendada").length,
+        negotiating: leads3.filter((lead) => lead.stage === "negociacao").length,
+        closed: leads3.filter((lead) => lead.stage === "venda_fechada").length
+      },
+      deals: {
+        total: deals2.length,
+        open: openDeals.length,
+        negotiating: deals2.filter((deal) => deal.status === "em_negociacao").length,
+        closed: closedDeals.length
+      },
+      money: {
+        vgvPortfolio: available.reduce((sum, p) => sum + (p.price ?? 0), 0),
+        vgvProposals: openDeals.reduce((sum, deal) => sum + (deal.offerPrice ?? 0), 0),
+        vgvClosed: closedDeals.reduce((sum, deal) => sum + (deal.offerPrice ?? 0), 0),
+        expectedCommission: openDeals.reduce((sum, deal) => sum + (deal.commissionValue ?? (deal.offerPrice ?? 0) * (deal.commissionRate ?? commissionRate) / 100), 0),
+        closedCommission: closedDeals.reduce((sum, deal) => sum + (deal.commissionValue ?? (deal.offerPrice ?? 0) * (deal.commissionRate ?? commissionRate) / 100), 0)
+      },
+      funnel,
+      leadsBySource: [...bySource.entries()].map(([source, total]) => ({ source, total })).sort((a, b) => b.total - a.total),
+      recentLeads: leads3.slice(0, 8).map((lead) => ({
+        id: lead.id,
+        name: lead.name,
+        phone: lead.phone,
+        interest: lead.interest,
+        stage: lead.stage,
+        status: lead.status,
+        source: lead.source,
+        createdAt: lead.createdAt
+      })),
+      topProperties: [...properties3].sort((a, b) => b.views - a.views).slice(0, 5).map((property) => ({
+        id: property.id,
+        code: property.code,
+        title: property.title,
+        views: property.views,
+        price: property.price,
+        cover: cover(property.id)
+      })),
+      upcomingTasks: tasks2.slice(0, 8)
+    };
+  })
+};
+
+// packages/web/src/api/routes/admin-settings.ts
+init_schema();
+var settingsInput = exports_external.object({
+  companyName: exports_external.string().min(2).max(160),
+  brokerName: exports_external.string().min(2).max(160),
+  whatsapp: exports_external.string().min(8).max(20),
+  email: exports_external.string().min(5).max(160),
+  creci: exports_external.string().max(60),
+  address: exports_external.string().max(300),
+  instagram: exports_external.string().max(300),
+  facebook: exports_external.string().max(300),
+  commissionRate: exports_external.number().min(0).max(100)
+});
+var adminSettings = {
+  get: adminBase.handler(async ({ context }) => {
+    const [row] = await context.db.select().from(settings).limit(1);
+    return row ?? null;
+  }),
+  update: adminBase.input(settingsInput).handler(async ({ input, context }) => {
+    const payload = {
+      companyName: input.companyName.trim(),
+      brokerName: input.brokerName.trim(),
+      whatsapp: input.whatsapp.replace(/\D/g, ""),
+      email: input.email.trim(),
+      creci: input.creci.trim(),
+      address: input.address.trim(),
+      instagram: input.instagram.trim(),
+      facebook: input.facebook.trim(),
+      commissionRate: input.commissionRate,
+      updatedAt: new Date
+    };
+    const [row] = await context.db.select().from(settings).limit(1);
+    if (row) {
+      await context.db.update(settings).set(payload).where(eq(settings.id, row.id));
+    } else {
+      await context.db.insert(settings).values(payload);
+    }
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/routes/admin-site.ts
+init_schema();
+var MAX_JSON_BYTES = 400 * 1024;
+var MAX_STRING = 20000;
+var MAX_ARRAY = 200;
+var MAX_DEPTH = 8;
+var MAX_KEYS = 200;
+function sanitize(value2, depth = 0) {
+  if (depth > MAX_DEPTH)
+    return null;
+  if (value2 === null)
+    return null;
+  if (typeof value2 === "string")
+    return value2.slice(0, MAX_STRING);
+  if (typeof value2 === "number")
+    return Number.isFinite(value2) ? value2 : 0;
+  if (typeof value2 === "boolean")
+    return value2;
+  if (Array.isArray(value2)) {
+    return value2.slice(0, MAX_ARRAY).map((item) => sanitize(item, depth + 1));
+  }
+  if (typeof value2 === "object") {
+    const out = {};
+    let count = 0;
+    for (const [key, item] of Object.entries(value2)) {
+      if (count >= MAX_KEYS)
+        break;
+      if (!/^[A-Za-z0-9_-]{1,60}$/.test(key))
+        continue;
+      out[key] = sanitize(item, depth + 1);
+      count += 1;
+    }
+    return out;
+  }
+  return null;
+}
+function serialize(data) {
+  const clean = sanitize(data);
+  const json3 = JSON.stringify(clean);
+  if (json3.length > MAX_JSON_BYTES) {
+    throw new ORPCError("BAD_REQUEST", { message: "Conteúdo muito grande para salvar" });
+  }
+  return json3;
+}
+var contentInput = exports_external.object({
+  data: exports_external.record(exports_external.string(), exports_external.unknown())
+});
+function rowOut(row) {
+  return {
+    id: row.id,
+    status: row.status,
+    label: row.label,
+    author: row.author,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    publishedAt: row.publishedAt,
+    data: JSON.parse(row.data)
+  };
+}
+async function findDraft(db3) {
+  const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "draft")).orderBy(desc(siteContent.updatedAt)).limit(1);
+  return row ?? null;
+}
+async function findPublished(db3) {
+  const [row] = await db3.select().from(siteContent).where(eq(siteContent.status, "published")).orderBy(desc(siteContent.publishedAt)).limit(1);
+  return row ?? null;
+}
+var adminSite = {
+  state: adminBase.handler(async ({ context }) => {
+    const db3 = context.db;
+    const draft = await findDraft(db3);
+    const published = await findPublished(db3);
+    return {
+      draft: draft ? rowOut(draft) : null,
+      published: published ? rowOut(published) : null,
+      hasChanges: Boolean(draft && (!published || draft.data !== published.data))
+    };
+  }),
+  saveDraft: adminBase.input(contentInput).handler(async ({ input, context }) => {
+    const db3 = context.db;
+    const json3 = serialize(input.data);
+    const existing = await findDraft(db3);
+    const now2 = new Date;
+    if (existing) {
+      await db3.update(siteContent).set({ data: json3, updatedAt: now2, author: context.user.name }).where(eq(siteContent.id, existing.id));
+      return { ok: true, id: existing.id, updatedAt: now2 };
+    }
+    await db3.insert(siteContent).values({
+      status: "draft",
+      data: json3,
+      author: context.user.name,
+      label: "Rascunho",
+      createdAt: now2,
+      updatedAt: now2
+    });
+    const created = await findDraft(db3);
+    return { ok: true, id: created?.id ?? 0, updatedAt: now2 };
+  }),
+  publish: adminBase.input(exports_external.object({ data: exports_external.record(exports_external.string(), exports_external.unknown()).optional(), label: exports_external.string().max(120).optional() })).handler(async ({ input, context }) => {
+    const db3 = context.db;
+    const now2 = new Date;
+    let json3;
+    if (input.data) {
+      json3 = serialize(input.data);
+      const draft = await findDraft(db3);
+      if (draft) {
+        await db3.update(siteContent).set({ data: json3, updatedAt: now2, author: context.user.name }).where(eq(siteContent.id, draft.id));
+      } else {
+        await db3.insert(siteContent).values({
+          status: "draft",
+          data: json3,
+          author: context.user.name,
+          label: "Rascunho",
+          createdAt: now2,
+          updatedAt: now2
+        });
+      }
+    } else {
+      const draft = await findDraft(db3);
+      if (!draft)
+        throw new ORPCError("BAD_REQUEST", { message: "Nada para publicar" });
+      json3 = draft.data;
+    }
+    const current = await findPublished(db3);
+    if (current) {
+      await db3.update(siteContent).set({ status: "archived" }).where(eq(siteContent.id, current.id));
+    }
+    await db3.insert(siteContent).values({
+      status: "published",
+      data: json3,
+      author: context.user.name,
+      label: input.label?.trim() || `Publicado em ${now2.toLocaleString("pt-BR")}`,
+      createdAt: now2,
+      updatedAt: now2,
+      publishedAt: now2
+    });
+    try {
+      const company = JSON.parse(json3).company;
+      if (company) {
+        const [row] = await db3.select().from(settings).limit(1);
+        const payload = {
+          companyName: `${company.name ?? ""} ${company.brandSuffix ?? ""}`.trim(),
+          brokerName: company.broker ?? "",
+          whatsapp: (company.whatsapp ?? "").replace(/\D/g, ""),
+          email: company.email ?? "",
+          creci: company.creci ?? "",
+          address: company.address ?? "",
+          instagram: company.instagram ?? "",
+          facebook: company.facebook ?? "",
+          updatedAt: now2
+        };
+        if (row) {
+          await db3.update(settings).set(payload).where(eq(settings.id, row.id));
+        }
+      }
+    } catch {}
+    const archived = await db3.select({ id: siteContent.id }).from(siteContent).where(eq(siteContent.status, "archived")).orderBy(desc(siteContent.createdAt));
+    for (const old of archived.slice(20)) {
+      await db3.delete(siteContent).where(eq(siteContent.id, old.id));
+    }
+    return { ok: true, publishedAt: now2 };
+  }),
+  history: adminBase.handler(async ({ context }) => {
+    const db3 = context.db;
+    const rows = await db3.select({
+      id: siteContent.id,
+      status: siteContent.status,
+      label: siteContent.label,
+      author: siteContent.author,
+      createdAt: siteContent.createdAt,
+      publishedAt: siteContent.publishedAt
+    }).from(siteContent).where(ne(siteContent.status, "draft")).orderBy(desc(siteContent.createdAt)).limit(30);
+    return rows;
+  }),
+  restore: adminBase.input(exports_external.object({ id: exports_external.number().int().positive() })).handler(async ({ input, context }) => {
+    const db3 = context.db;
+    const [version4] = await db3.select().from(siteContent).where(and(eq(siteContent.id, input.id), ne(siteContent.status, "draft"))).limit(1);
+    if (!version4)
+      throw new ORPCError("NOT_FOUND", { message: "Versão não encontrada" });
+    const now2 = new Date;
+    const draft = await findDraft(db3);
+    if (draft) {
+      await db3.update(siteContent).set({ data: version4.data, updatedAt: now2, author: context.user.name }).where(eq(siteContent.id, draft.id));
+    } else {
+      await db3.insert(siteContent).values({
+        status: "draft",
+        data: version4.data,
+        author: context.user.name,
+        label: "Rascunho",
+        createdAt: now2,
+        updatedAt: now2
+      });
+    }
+    return { ok: true, data: JSON.parse(version4.data) };
+  }),
+  discardDraft: adminBase.handler(async ({ context }) => {
+    const db3 = context.db;
+    const published = await findPublished(db3);
+    const draft = await findDraft(db3);
+    if (!draft)
+      return { ok: true, data: published ? JSON.parse(published.data) : null };
+    if (!published) {
+      await db3.delete(siteContent).where(eq(siteContent.id, draft.id));
+      return { ok: true, data: null };
+    }
+    await db3.update(siteContent).set({ data: published.data, updatedAt: new Date }).where(eq(siteContent.id, draft.id));
+    return { ok: true, data: JSON.parse(published.data) };
+  })
+};
+
+// packages/web/src/api/routes/admin-media.ts
+init_schema();
+var adminMedia = {
+  list: adminBase.input(exports_external.object({ search: exports_external.string().max(80).optional() }).optional()).handler(async ({ input, context }) => {
+    const rows = await context.db.select({
+      id: media.id,
+      mime: media.mime,
+      size: media.size,
+      name: media.name,
+      alt: media.alt,
+      createdAt: media.createdAt
+    }).from(media).orderBy(desc(media.createdAt)).limit(300);
+    const search = input?.search?.trim().toLowerCase();
+    const filtered = search ? rows.filter((row) => (row.name ?? "").toLowerCase().includes(search) || (row.alt ?? "").toLowerCase().includes(search)) : rows;
+    const images = await context.db.select({ url: propertyImages.url }).from(propertyImages);
+    const contentRows = await context.db.select({ data: siteContent.data, status: siteContent.status }).from(siteContent);
+    const inProperties = new Set(images.map((row) => row.url.match(/\/api\/media\/([a-f0-9]+)/)?.[1]).filter((id) => Boolean(id)));
+    const inContent = new Set;
+    for (const row of contentRows) {
+      if (row.status === "archived")
+        continue;
+      for (const match2 of row.data.matchAll(/\/api\/media\/([a-f0-9]+)/g)) {
+        inContent.add(match2[1]);
+      }
+    }
+    return filtered.map((row) => ({
+      ...row,
+      url: `/api/media/${row.id}`,
+      usedInProperties: inProperties.has(row.id),
+      usedInSite: inContent.has(row.id)
+    }));
+  }),
+  update: adminBase.input(exports_external.object({
+    id: exports_external.string().min(4).max(64),
+    name: exports_external.string().max(160).optional(),
+    alt: exports_external.string().max(300).optional()
+  })).handler(async ({ input, context }) => {
+    await context.db.update(media).set({
+      ...input.name === undefined ? {} : { name: input.name.trim() },
+      ...input.alt === undefined ? {} : { alt: input.alt.trim() }
+    }).where(eq(media.id, input.id));
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.string().min(4).max(64), force: exports_external.boolean().optional() })).handler(async ({ input, context }) => {
+    const url2 = `/api/media/${input.id}`;
+    if (!input.force) {
+      const [used] = await context.db.select({ id: propertyImages.id }).from(propertyImages).where(or(eq(propertyImages.url, url2), like(propertyImages.url, `%${input.id}%`))).limit(1);
+      if (used) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imagem em uso em um imóvel. Troque a foto do imóvel antes de excluir."
+        });
+      }
+      const contentRows = await context.db.select({ data: siteContent.data, status: siteContent.status }).from(siteContent);
+      const inUse = contentRows.some((row) => row.status !== "archived" && row.data.includes(input.id));
+      if (inUse) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imagem em uso no site. Troque a imagem na seção antes de excluir."
+        });
+      }
+    }
+    await context.db.delete(media).where(eq(media.id, input.id));
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/lib/audit.ts
+init_schema();
+async function audit(db3, actor, action, options = {}) {
+  try {
+    await db3.insert(auditLog).values({
+      userId: actor?.id ?? null,
+      userName: actor?.name ?? null,
+      action,
+      entity: options.entity ?? null,
+      entityId: options.entityId === undefined ? null : String(options.entityId),
+      detail: options.detail ? options.detail.slice(0, 500) : null,
+      ip: options.ip ?? null
+    });
+  } catch {}
+}
+async function recentAudit(db3, limit = 100) {
+  return db3.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(Math.min(limit, 300));
+}
+
+// packages/web/src/api/lib/base-url.ts
+var FALLBACK = "https://www.edyprimeimoveis.com.br";
+function siteBaseUrl(headers) {
+  const fromEnv = (process.env.WEBSITE_URL ?? "").trim().replace(/\/+$/, "");
+  if (fromEnv)
+    return fromEnv;
+  const host = headers?.get("x-forwarded-host") ?? headers?.get("host") ?? "";
+  if (host) {
+    const proto = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+    return `${proto}://${host}`;
+  }
+  return FALLBACK;
+}
+function clientIp(headers) {
+  return headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+}
+
 // packages/web/src/api/lib/feed.ts
 init_schema();
 var FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"];
@@ -47888,12 +48078,12 @@ function tag(name25, value2) {
   return `      <${name25}>${esc2(String(value2))}</${name25}>
 `;
 }
-var purposeLabel = {
+var purposeLabel2 = {
   venda: "For Sale",
   locacao: "For Rent",
   venda_locacao: "For Sale/Rent"
 };
-var typeLabel = {
+var typeLabel2 = {
   apartamento: "Apartamento",
   casa: "Casa",
   cobertura: "Cobertura",
@@ -47920,9 +48110,9 @@ function feedXml(properties3, options) {
     lines.push("    <Imovel>");
     let body = "";
     body += tag("CodigoImovel", property.code);
-    body += tag("TipoImovel", typeLabel[property.type] ?? "Imóvel");
+    body += tag("TipoImovel", typeLabel2[property.type] ?? "Imóvel");
     body += tag("SubTipoImovel", property.type);
-    body += tag("Finalidade", purposeLabel[property.purpose] ?? property.purpose);
+    body += tag("Finalidade", purposeLabel2[property.purpose] ?? property.purpose);
     body += tag("Titulo", property.title);
     body += tag("Observacao", property.description);
     body += tag("PrecoVenda", property.purpose === "locacao" ? "" : property.price || "");
@@ -48602,7 +48792,7 @@ init_schema();
 
 // packages/web/src/api/agent/broker.ts
 init_schema();
-var money = (value2) => value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+var money2 = (value2) => value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 function propertyTools(db3, baseUrl, seen) {
   return {
     buscarImoveis: tool({
@@ -48667,9 +48857,9 @@ function propertyTools(db3, baseUrl, seen) {
             titulo: row.title,
             tipo: row.type,
             finalidade: row.purpose,
-            preco: money(row.price),
-            condominio: row.condoFee ? money(row.condoFee) : null,
-            iptu: row.iptu ? money(row.iptu) : null,
+            preco: money2(row.price),
+            condominio: row.condoFee ? money2(row.condoFee) : null,
+            iptu: row.iptu ? money2(row.iptu) : null,
             bairro: row.district,
             cidade: row.city,
             dormitorios: row.bedrooms,
@@ -48704,9 +48894,9 @@ function propertyTools(db3, baseUrl, seen) {
           codigo: row.code,
           titulo: row.title,
           descricao: row.description ?? "",
-          preco: money(row.price),
-          condominio: row.condoFee ? money(row.condoFee) : null,
-          iptu: row.iptu ? money(row.iptu) : null,
+          preco: money2(row.price),
+          condominio: row.condoFee ? money2(row.condoFee) : null,
+          iptu: row.iptu ? money2(row.iptu) : null,
           bairro: row.district,
           cidade: row.city,
           endereco: row.address ?? null,
@@ -49864,6 +50054,7 @@ var router = {
   siteContent: siteContent2,
   adminAuth,
   adminProperties,
+  adminPropertyContent,
   adminLeads,
   adminClients,
   adminOwners,
