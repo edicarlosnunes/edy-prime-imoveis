@@ -15,7 +15,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
 
   if (me.isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-paper">
+      <div className="admin-shell flex min-h-screen items-center justify-center bg-paper">
         <p className="label-xs text-muted">Carregando painel…</p>
       </div>
     );

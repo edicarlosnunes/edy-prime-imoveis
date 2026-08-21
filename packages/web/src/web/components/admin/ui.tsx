@@ -77,13 +77,13 @@ export function Card({
   return (
     <section
       className={cn(
-        "rounded-[4px] border border-line bg-white/80 p-5 shadow-[0_1px_0_rgba(18,20,15,0.04)]",
+        "rounded-[4px] border border-line bg-white p-5 shadow-[0_1px_0_rgba(18,20,15,0.06)]",
         className,
       )}
     >
       {(title || action) && (
         <header className="mb-4 flex items-center justify-between gap-3">
-          {title && <h2 className="label-xs text-muted">{title}</h2>}
+          {title && <h2 className="label-xs text-deep">{title}</h2>}
           {action}
         </header>
       )}
@@ -102,9 +102,9 @@ export function Stat({
   hint?: string;
 }) {
   return (
-    <div className="rounded-[4px] border border-line bg-white/80 px-4 py-4">
+    <div className="rounded-[4px] border border-line bg-white px-4 py-4">
       <p className="label-xs text-muted">{label}</p>
-      <p className="display mt-2 text-3xl text-deep">{value}</p>
+      <p className="admin-stat display mt-2 text-3xl text-deep">{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>
   );
@@ -115,7 +115,7 @@ const badgeTones: Record<string, string> = {
   green: "bg-emerald-100 text-emerald-800",
   amber: "bg-amber-100 text-amber-800",
   red: "bg-red-100 text-red-700",
-  brass: "bg-brass/15 text-brass",
+  brass: "bg-brass/20 text-brass",
   deep: "bg-deep text-white",
 };
 
@@ -188,7 +188,7 @@ export function Field({
 }
 
 const controlClass =
-  "w-full rounded-[3px] border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-brass";
+  "w-full rounded-[3px] border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition-colors placeholder:text-muted focus:border-brass";
 
 export function Input({ className, ...rest }: React.ComponentProps<"input">) {
   return <input {...rest} className={cn(controlClass, className)} />;

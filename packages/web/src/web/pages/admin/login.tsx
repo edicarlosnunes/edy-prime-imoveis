@@ -34,7 +34,7 @@ export default function AdminLogin() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-deep px-4 py-12">
+    <div className="admin-shell flex min-h-screen items-center justify-center bg-deep px-4 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <p className="display text-4xl text-white">Edy Premi</p>
@@ -68,7 +68,7 @@ export default function AdminLogin() {
             </Btn>
           </div>
         </form>
-        <p className="mt-6 text-center text-xs text-white/50">
+        <p className="mt-6 text-center text-xs text-white/70">
           Acesso restrito. Todas as ações exigem sessão autenticada.
         </p>
       </div>

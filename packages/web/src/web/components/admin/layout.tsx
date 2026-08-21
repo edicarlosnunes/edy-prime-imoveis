@@ -69,7 +69,7 @@ export function AdminLayout({
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col bg-deep text-white/80">
+    <div className="admin-sidebar flex h-full flex-col bg-deep text-white/85">
       <div className="border-b border-white/10 px-6 py-6">
         <p className="display text-2xl leading-none text-white">Edy Premi</p>
         <p className="label-xs mt-2 text-brass-soft">Painel administrativo</p>
@@ -95,7 +95,7 @@ export function AdminLayout({
       </nav>
       <div className="border-t border-white/10 px-4 py-4">
         <p className="truncate text-sm text-white">{me.data?.user?.name ?? "—"}</p>
-        <p className="truncate text-xs text-white/50">{me.data?.user?.email ?? ""}</p>
+        <p className="truncate text-xs text-white/70">{me.data?.user?.email ?? ""}</p>
         <div className="mt-3 flex flex-wrap gap-2">
           <a
             href="/"
@@ -118,7 +118,7 @@ export function AdminLayout({
   );
 
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="admin-shell min-h-screen bg-paper text-ink">
       <aside className="fixed top-0 left-0 hidden h-screen w-64 lg:block">{sidebar}</aside>
 
       {open && (
