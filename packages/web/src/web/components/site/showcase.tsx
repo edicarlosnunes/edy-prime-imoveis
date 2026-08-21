@@ -1,6 +1,7 @@
 import { BedDouble, Car, Maximize, ArrowUpRight } from "lucide-react";
+import { Link } from "wouter";
 import { useProperties } from "../../queries/properties";
-import { formatBRL, site, whatsappLink } from "../../lib/site";
+import { formatBRL, site } from "../../lib/site";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
 
@@ -72,7 +73,7 @@ export function Showcase() {
             className="reveal group flex flex-col"
             data-reveal-delay={(index % 3) * 80}
           >
-            <div className="relative overflow-hidden">
+            <Link href={`/imovel/${property.slug}`} className="relative block overflow-hidden">
               <img
                 src={property.image}
                 alt={property.title}
@@ -81,12 +82,16 @@ export function Showcase() {
               <span className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
                 {statusLabel[property.status]}
               </span>
-            </div>
+            </Link>
 
             <p className="label-xs mt-5 text-brass">
               {property.district} · {property.code}
             </p>
-            <h3 className="display mt-2 text-2xl leading-snug text-deep">{property.title}</h3>
+            <Link href={`/imovel/${property.slug}`}>
+              <h3 className="display mt-2 text-2xl leading-snug text-deep transition-colors hover:text-brass">
+                {property.title}
+              </h3>
+            </Link>
             <p className="mt-2 text-sm text-muted">{property.highlight}</p>
 
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-xs text-muted">
@@ -107,17 +112,13 @@ export function Showcase() {
 
             <div className="mt-5 flex items-end justify-between gap-4">
               <p className="display text-3xl text-deep">{formatBRL(property.price)}</p>
-              <a
-                href={whatsappLink(
-                  `Olá, ${site.broker}. Tenho interesse no imóvel ${property.code} (${property.district}, ${property.bedrooms} dormitórios). Pode me passar mais detalhes?`,
-                )}
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href={`/imovel/${property.slug}`}
                 className="label-xs flex items-center gap-1.5 border-b border-brass/50 pb-1 text-brass transition-colors hover:border-brass hover:text-deep"
               >
-                Falar sobre este
+                Ver o imóvel
                 <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.6} />
-              </a>
+              </Link>
             </div>
           </article>
         ))}

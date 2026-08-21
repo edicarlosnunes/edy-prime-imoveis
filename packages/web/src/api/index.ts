@@ -17,6 +17,15 @@ import { adminDashboard } from "./routes/admin-dashboard";
 import { adminSettings } from "./routes/admin-settings";
 import { adminSite } from "./routes/admin-site";
 import { adminMedia } from "./routes/admin-media";
+import { adminIntegrations } from "./routes/admin-integrations";
+import { adminChannels } from "./routes/admin-channels";
+import { adminInbox } from "./routes/admin-inbox";
+import { adminAgents } from "./routes/admin-agents";
+import { adminAutomations } from "./routes/admin-automations";
+import { adminWatermark } from "./routes/admin-watermark";
+import { adminAudit } from "./routes/admin-audit";
+import { registerFeedRoutes } from "./http/feed-routes";
+import { registerWebhookRoutes } from "./http/webhook-routes";
 import * as schema from "./database/schema";
 import {
   clearedSessionCookie,
@@ -52,6 +61,13 @@ export const router = {
   adminSettings,
   adminSite,
   adminMedia,
+  adminIntegrations,
+  adminChannels,
+  adminInbox,
+  adminAgents,
+  adminAutomations,
+  adminWatermark,
+  adminAudit,
 };
 
 export type AppRouter = typeof router;
@@ -59,6 +75,10 @@ export type AppRouter = typeof router;
 export type AppRouterClient = RouterClient<AppRouter>;
 
 const app = createApp(router);
+
+/* Arquivos públicos (feed/sitemap/robots/prerender) e webhooks de entrada. */
+registerFeedRoutes(app);
+registerWebhookRoutes(app);
 
 /* ------------------------------------------------------------------ *
  * Rotas HTTP simples: só o que precisa mexer em cookie/binário.      *
@@ -162,12 +182,18 @@ app.post("/api/admin/upload", async (c) => {
   const id = randomHex(12);
   const db = await getDb();
   const safeName = (file.name || "imagem").replace(/[^\w.\-() ]+/g, "").slice(0, 120);
+  // variant/originalId permitem guardar a versão com marca d'água SEM apagar a original
+  const rawVariant = String(form.get("variant") ?? "original");
+  const variant = rawVariant === "watermarked" ? "watermarked" : "original";
+  const originalId = String(form.get("originalId") ?? "").trim() || null;
   await db.insert(schema.media).values({
     id,
     mime: file.type,
     size: buffer.byteLength,
     data: btoa(binary),
     name: safeName,
+    variant,
+    originalId: variant === "watermarked" ? originalId : null,
   });
 
   return c.json({ url: `/api/media/${id}`, id }, 200);

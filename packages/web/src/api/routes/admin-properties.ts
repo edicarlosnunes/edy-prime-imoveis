@@ -2,6 +2,7 @@ import { z } from "zod";
 import { and, asc, desc, eq, like, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { adminBase, type AdminDb } from "../lib/admin-base";
+import { propertySlug } from "../lib/slug";
 import * as schema from "../database/schema";
 
 const statusEnum = z.enum(["disponivel", "reservado", "vendido", "alugado"]);
@@ -19,6 +20,8 @@ const typeEnum = z.enum([
 
 const imageInput = z.object({
   url: z.string().min(1).max(2000),
+  /** foto sem marca d'água — nunca é sobrescrita */
+  originalUrl: z.string().max(2000).nullable().optional(),
   isPrimary: z.boolean().optional(),
 });
 
@@ -46,6 +49,8 @@ const propertyInput = z.object({
   published: z.boolean().default(true),
   featured: z.boolean().default(false),
   ownerId: z.number().int().nullable().optional(),
+  /** desliga a marca d'água só neste imóvel */
+  watermarkOff: z.boolean().default(false),
   images: z.array(imageInput).max(40).default([]),
 });
 
@@ -74,6 +79,14 @@ function toRow(input: z.infer<typeof propertyInput>) {
     published: input.published ? 1 : 0,
     featured: input.featured ? 1 : 0,
     ownerId: input.ownerId ?? null,
+    watermarkOff: input.watermarkOff ? 1 : 0,
+    slug: propertySlug({
+      code: input.code.trim().toUpperCase(),
+      title: input.title.trim(),
+      type: input.type,
+      district: input.district,
+      city: input.city,
+    }),
     updatedAt: new Date(),
   };
 }
@@ -93,6 +106,7 @@ async function syncImages(
     images.map((image, index) => ({
       propertyId,
       url: image.url.trim(),
+      originalUrl: image.originalUrl?.trim() || null,
       sortOrder: index,
       isPrimary: index === primaryIndex ? 1 : 0,
     })),

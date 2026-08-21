@@ -65,6 +65,10 @@ export const properties = sqliteTable(
     featured: integer("featured").notNull().default(0),
     ownerId: integer("owner_id"),
     views: integer("views").notNull().default(0),
+    /** URL amigável da página individual (/imovel/:slug) */
+    slug: text("slug"),
+    /** 1 = não aplicar marca d'água nas fotos deste imóvel */
+    watermarkOff: integer("watermark_off").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -81,6 +85,8 @@ export const propertyImages = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     propertyId: integer("property_id").notNull(),
     url: text("url").notNull(),
+    /** foto original sem marca d'água (nunca sobrescrita) */
+    originalUrl: text("original_url"),
     sortOrder: integer("sort_order").notNull().default(0),
     isPrimary: integer("is_primary").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp" })
@@ -100,6 +106,10 @@ export const media = sqliteTable("media", {
   name: text("name"),
   /** texto alternativo (acessibilidade/SEO) */
   alt: text("alt"),
+  /** id da mídia original quando esta é uma versão derivada (marca d'água) */
+  originalId: text("original_id"),
+  /** original | watermarked */
+  variant: text("variant"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -166,6 +176,14 @@ export const leads = sqliteTable("leads", {
   propertyId: integer("property_id"),
   nextAction: text("next_action"),
   nextActionAt: integer("next_action_at", { mode: "timestamp" }),
+  /* origem externa (portais, Meta, campanhas) */
+  portal: text("portal"),
+  channel: text("channel"),
+  campaign: text("campaign"),
+  utmSource: text("utm_source"),
+  utmMedium: text("utm_medium"),
+  utmCampaign: text("utm_campaign"),
+  externalId: text("external_id"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -268,3 +286,217 @@ export const siteContent = sqliteTable(
 );
 
 export type SiteContentRow = typeof siteContent.$inferSelect;
+
+/* ------------------------------------------------------ integrações */
+
+/**
+ * Integrações externas (portais, WhatsApp/Meta, Google, feeds, IA).
+ * `config` guarda credenciais e SÓ é lido no servidor — a API devolve mascarado.
+ * status: nao_configurado | aguardando_credencial | configurando | conectado | erro
+ */
+export const integrations = sqliteTable("integrations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  key: text("key").notNull().unique(),
+  status: text("status").notNull().default("nao_configurado"),
+  enabled: integer("enabled").notNull().default(0),
+  /** JSON com credenciais/opções — nunca enviado cru ao navegador */
+  config: text("config"),
+  lastSyncAt: integer("last_sync_at", { mode: "timestamp" }),
+  lastTestAt: integer("last_test_at", { mode: "timestamp" }),
+  lastError: text("last_error"),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/** Histórico de testes, sincronizações e webhooks de cada integração. */
+export const integrationEvents = sqliteTable(
+  "integration_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    integrationKey: text("integration_key").notNull(),
+    /** test | sync | webhook | error | config */
+    kind: text("kind").notNull().default("sync"),
+    ok: integer("ok").notNull().default(1),
+    message: text("message"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("integration_events_key_idx").on(t.integrationKey)],
+);
+
+/** Autorização e situação de cada imóvel em cada canal de distribuição. */
+export const propertyChannels = sqliteTable(
+  "property_channels",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    propertyId: integer("property_id").notNull(),
+    /** site | feed | zap | vivareal | olx | imovelweb */
+    channel: text("channel").notNull(),
+    authorized: integer("authorized").notNull().default(0),
+    /** nao_enviado | aguardando | publicado | erro */
+    status: text("status").notNull().default("nao_enviado"),
+    message: text("message"),
+    lastSyncAt: integer("last_sync_at", { mode: "timestamp" }),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("property_channels_property_idx").on(t.propertyId)],
+);
+
+/* -------------------------------------------------- conversas / inbox */
+
+export const conversations = sqliteTable(
+  "conversations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** whatsapp | instagram | facebook | site | teste */
+    channel: text("channel").notNull().default("site"),
+    externalId: text("external_id"),
+    leadId: integer("lead_id"),
+    clientId: integer("client_id"),
+    propertyId: integer("property_id"),
+    agentId: integer("agent_id"),
+    contactName: text("contact_name"),
+    contactPhone: text("contact_phone"),
+    /** ia | humano */
+    mode: text("mode").notNull().default("ia"),
+    assignedTo: integer("assigned_to"),
+    assignedName: text("assigned_name"),
+    transferReason: text("transfer_reason"),
+    transferredAt: integer("transferred_at", { mode: "timestamp" }),
+    /** aberta | fechada */
+    status: text("status").notNull().default("aberta"),
+    unread: integer("unread").notNull().default(0),
+    lastMessage: text("last_message"),
+    lastMessageAt: integer("last_message_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("conversations_status_idx").on(t.status)],
+);
+
+export const messages = sqliteTable(
+  "messages",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    conversationId: integer("conversation_id").notNull(),
+    /** in (cliente) | out (nós) */
+    direction: text("direction").notNull().default("in"),
+    /** cliente | ia | humano | sistema */
+    author: text("author").notNull().default("cliente"),
+    authorName: text("author_name"),
+    body: text("body").notNull(),
+    externalId: text("external_id"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("messages_conversation_idx").on(t.conversationId)],
+);
+
+/* --------------------------------------------------------- agentes IA */
+
+export const aiAgents = sqliteTable("ai_agents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  active: integer("active").notNull().default(0),
+  provider: text("provider").notNull().default("gateway"),
+  model: text("model").notNull().default("openai/gpt-5.4-mini"),
+  greeting: text("greeting").notNull().default(""),
+  instructions: text("instructions").notNull().default(""),
+  tone: text("tone").notNull().default(""),
+  hoursStart: text("hours_start").notNull().default("08:00"),
+  hoursEnd: text("hours_end").notNull().default("20:00"),
+  /** JSON: string[] de canais permitidos */
+  channels: text("channels").notNull().default("[\"site\"]"),
+  qualification: text("qualification").notNull().default(""),
+  transferRules: text("transfer_rules").notNull().default(""),
+  transferMessage: text("transfer_message").notNull().default(""),
+  idleMinutes: integer("idle_minutes").notNull().default(30),
+  humanConditions: text("human_conditions").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/* --------------------------------------------------------- automações */
+
+export const automations = sqliteTable("automations", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  trigger: text("trigger").notNull(),
+  /** JSON */
+  conditions: text("conditions").notNull().default("{}"),
+  /** JSON: array de ações */
+  actions: text("actions").notNull().default("[]"),
+  active: integer("active").notNull().default(0),
+  runCount: integer("run_count").notNull().default(0),
+  errorCount: integer("error_count").notNull().default(0),
+  lastRunAt: integer("last_run_at", { mode: "timestamp" }),
+  lastError: text("last_error"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+export const automationRuns = sqliteTable(
+  "automation_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    automationId: integer("automation_id").notNull(),
+    ok: integer("ok").notNull().default(1),
+    message: text("message"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("automation_runs_automation_idx").on(t.automationId)],
+);
+
+/* ------------------------------------------------------- marca d'água */
+
+/** Linha única (id = 1) com a configuração da marca d'água das fotos. */
+export const watermarkSettings = sqliteTable("watermark_settings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  enabled: integer("enabled").notNull().default(0),
+  logoUrl: text("logo_url"),
+  /** largura da marca em % da largura da foto */
+  size: integer("size").notNull().default(22),
+  /** 0-100 */
+  opacity: integer("opacity").notNull().default(70),
+  /** margem em % da largura da foto */
+  margin: integer("margin").notNull().default(4),
+  /** top-left | top-center | ... | bottom-right */
+  position: text("position").notNull().default("bottom-right"),
+  applyToNewUploads: integer("apply_to_new_uploads").notNull().default(1),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/* ---------------------------------------------------------- auditoria */
+
+export const auditLog = sqliteTable(
+  "audit_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id"),
+    userName: text("user_name"),
+    action: text("action").notNull(),
+    entity: text("entity"),
+    entityId: text("entity_id"),
+    detail: text("detail"),
+    ip: text("ip"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("audit_log_created_idx").on(t.createdAt)],
+);

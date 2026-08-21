@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
+  Bot,
   Building2,
   CalendarClock,
   Handshake,
@@ -8,8 +9,14 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Droplets,
+  Globe2,
+  MessagesSquare,
   Palette,
+  Plug,
+  ScrollText,
   Settings,
+  Zap,
   UserRound,
   Users,
   X,
@@ -28,7 +35,14 @@ const nav: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/admin/proprietarios", label: "Proprietários", icon: KeyRound },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarClock },
   { href: "/admin/propostas", label: "Propostas", icon: Handshake },
+  { href: "/admin/conversas", label: "Conversas", icon: MessagesSquare },
+  { href: "/admin/ia", label: "Agente de IA", icon: Bot },
+  { href: "/admin/automacoes", label: "Automações", icon: Zap },
+  { href: "/admin/integracoes", label: "Integrações", icon: Plug },
+  { href: "/admin/portais", label: "Portais", icon: Globe2 },
+  { href: "/admin/marca-dagua", label: "Marca d'água", icon: Droplets },
   { href: "/admin/editor", label: "Editor do Site", icon: Palette },
+  { href: "/admin/auditoria", label: "IA e Auditoria", icon: ScrollText },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
 ];
 

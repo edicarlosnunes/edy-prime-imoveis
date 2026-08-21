@@ -4210,22 +4210,32 @@ var init_sqlite_core = __esm(() => {
 // packages/web/src/api/database/schema.ts
 var exports_schema = {};
 __export(exports_schema, {
+  watermarkSettings: () => watermarkSettings,
   tasks: () => tasks,
   siteContent: () => siteContent,
   settings: () => settings,
   propertyImages: () => propertyImages,
+  propertyChannels: () => propertyChannels,
   properties: () => properties,
   owners: () => owners,
+  messages: () => messages,
   media: () => media,
   leads: () => leads,
   leadNotes: () => leadNotes,
+  integrations: () => integrations,
+  integrationEvents: () => integrationEvents,
   deals: () => deals,
+  conversations: () => conversations,
   clients: () => clients,
   clientInteractions: () => clientInteractions,
+  automations: () => automations,
+  automationRuns: () => automationRuns,
+  auditLog: () => auditLog,
+  aiAgents: () => aiAgents,
   adminUsers: () => adminUsers,
   adminSessions: () => adminSessions
 });
-var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings, siteContent;
+var adminUsers, adminSessions, properties, propertyImages, media, owners, clients, clientInteractions, leads, leadNotes, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
 var init_schema = __esm(() => {
   init_sqlite_core();
   adminUsers = sqliteTable("admin_users", {
@@ -4271,6 +4281,8 @@ var init_schema = __esm(() => {
     featured: integer2("featured").notNull().default(0),
     ownerId: integer2("owner_id"),
     views: integer2("views").notNull().default(0),
+    slug: text("slug"),
+    watermarkOff: integer2("watermark_off").notNull().default(0),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
     updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   }, (t) => [index("properties_status_idx").on(t.status)]);
@@ -4278,6 +4290,7 @@ var init_schema = __esm(() => {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     propertyId: integer2("property_id").notNull(),
     url: text("url").notNull(),
+    originalUrl: text("original_url"),
     sortOrder: integer2("sort_order").notNull().default(0),
     isPrimary: integer2("is_primary").notNull().default(0),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
@@ -4289,6 +4302,8 @@ var init_schema = __esm(() => {
     data: text("data").notNull(),
     name: text("name"),
     alt: text("alt"),
+    originalId: text("original_id"),
+    variant: text("variant"),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   });
   owners = sqliteTable("owners", {
@@ -4334,6 +4349,13 @@ var init_schema = __esm(() => {
     propertyId: integer2("property_id"),
     nextAction: text("next_action"),
     nextActionAt: integer2("next_action_at", { mode: "timestamp" }),
+    portal: text("portal"),
+    channel: text("channel"),
+    campaign: text("campaign"),
+    utmSource: text("utm_source"),
+    utmMedium: text("utm_medium"),
+    utmCampaign: text("utm_campaign"),
+    externalId: text("external_id"),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
     updatedAt: integer2("updated_at", { mode: "timestamp" })
   });
@@ -4393,6 +4415,128 @@ var init_schema = __esm(() => {
     updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
     publishedAt: integer2("published_at", { mode: "timestamp" })
   }, (t) => [index("site_content_status_idx").on(t.status)]);
+  integrations = sqliteTable("integrations", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    key: text("key").notNull().unique(),
+    status: text("status").notNull().default("nao_configurado"),
+    enabled: integer2("enabled").notNull().default(0),
+    config: text("config"),
+    lastSyncAt: integer2("last_sync_at", { mode: "timestamp" }),
+    lastTestAt: integer2("last_test_at", { mode: "timestamp" }),
+    lastError: text("last_error"),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  });
+  integrationEvents = sqliteTable("integration_events", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    integrationKey: text("integration_key").notNull(),
+    kind: text("kind").notNull().default("sync"),
+    ok: integer2("ok").notNull().default(1),
+    message: text("message"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("integration_events_key_idx").on(t.integrationKey)]);
+  propertyChannels = sqliteTable("property_channels", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    propertyId: integer2("property_id").notNull(),
+    channel: text("channel").notNull(),
+    authorized: integer2("authorized").notNull().default(0),
+    status: text("status").notNull().default("nao_enviado"),
+    message: text("message"),
+    lastSyncAt: integer2("last_sync_at", { mode: "timestamp" }),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("property_channels_property_idx").on(t.propertyId)]);
+  conversations = sqliteTable("conversations", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    channel: text("channel").notNull().default("site"),
+    externalId: text("external_id"),
+    leadId: integer2("lead_id"),
+    clientId: integer2("client_id"),
+    propertyId: integer2("property_id"),
+    agentId: integer2("agent_id"),
+    contactName: text("contact_name"),
+    contactPhone: text("contact_phone"),
+    mode: text("mode").notNull().default("ia"),
+    assignedTo: integer2("assigned_to"),
+    assignedName: text("assigned_name"),
+    transferReason: text("transfer_reason"),
+    transferredAt: integer2("transferred_at", { mode: "timestamp" }),
+    status: text("status").notNull().default("aberta"),
+    unread: integer2("unread").notNull().default(0),
+    lastMessage: text("last_message"),
+    lastMessageAt: integer2("last_message_at", { mode: "timestamp" }),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("conversations_status_idx").on(t.status)]);
+  messages = sqliteTable("messages", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    conversationId: integer2("conversation_id").notNull(),
+    direction: text("direction").notNull().default("in"),
+    author: text("author").notNull().default("cliente"),
+    authorName: text("author_name"),
+    body: text("body").notNull(),
+    externalId: text("external_id"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("messages_conversation_idx").on(t.conversationId)]);
+  aiAgents = sqliteTable("ai_agents", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    active: integer2("active").notNull().default(0),
+    provider: text("provider").notNull().default("gateway"),
+    model: text("model").notNull().default("openai/gpt-5.4-mini"),
+    greeting: text("greeting").notNull().default(""),
+    instructions: text("instructions").notNull().default(""),
+    tone: text("tone").notNull().default(""),
+    hoursStart: text("hours_start").notNull().default("08:00"),
+    hoursEnd: text("hours_end").notNull().default("20:00"),
+    channels: text("channels").notNull().default('["site"]'),
+    qualification: text("qualification").notNull().default(""),
+    transferRules: text("transfer_rules").notNull().default(""),
+    transferMessage: text("transfer_message").notNull().default(""),
+    idleMinutes: integer2("idle_minutes").notNull().default(30),
+    humanConditions: text("human_conditions").notNull().default(""),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  });
+  automations = sqliteTable("automations", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    trigger: text("trigger").notNull(),
+    conditions: text("conditions").notNull().default("{}"),
+    actions: text("actions").notNull().default("[]"),
+    active: integer2("active").notNull().default(0),
+    runCount: integer2("run_count").notNull().default(0),
+    errorCount: integer2("error_count").notNull().default(0),
+    lastRunAt: integer2("last_run_at", { mode: "timestamp" }),
+    lastError: text("last_error"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  });
+  automationRuns = sqliteTable("automation_runs", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    automationId: integer2("automation_id").notNull(),
+    ok: integer2("ok").notNull().default(1),
+    message: text("message"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("automation_runs_automation_idx").on(t.automationId)]);
+  watermarkSettings = sqliteTable("watermark_settings", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    enabled: integer2("enabled").notNull().default(0),
+    logoUrl: text("logo_url"),
+    size: integer2("size").notNull().default(22),
+    opacity: integer2("opacity").notNull().default(70),
+    margin: integer2("margin").notNull().default(4),
+    position: text("position").notNull().default("bottom-right"),
+    applyToNewUploads: integer2("apply_to_new_uploads").notNull().default(1),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  });
+  auditLog = sqliteTable("audit_log", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    userId: integer2("user_id"),
+    userName: text("user_name"),
+    action: text("action").notNull(),
+    entity: text("entity"),
+    entityId: text("entity_id"),
+    detail: text("detail"),
+    ip: text("ip"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("audit_log_created_idx").on(t.createdAt)]);
 });
 
 // node_modules/.bun/@libsql+core@0.17.2/node_modules/@libsql/core/lib-esm/api.js
@@ -6511,7 +6655,7 @@ var require_websocket = __commonJS((exports, module) => {
   var readyStates = ["CONNECTING", "OPEN", "CLOSING", "CLOSED"];
   var subprotocolRegex = /^[!#$%&'*+\-.0-9A-Z^_`|a-z~]+$/;
 
-  class WebSocket extends EventEmitter {
+  class WebSocket2 extends EventEmitter {
     constructor(address, protocols, options) {
       super();
       this._binaryType = BINARY_TYPES[0];
@@ -6524,7 +6668,7 @@ var require_websocket = __commonJS((exports, module) => {
       this._extensions = {};
       this._paused = false;
       this._protocol = "";
-      this._readyState = WebSocket.CONNECTING;
+      this._readyState = WebSocket2.CONNECTING;
       this._receiver = null;
       this._sender = null;
       this._socket = null;
@@ -6624,12 +6768,12 @@ var require_websocket = __commonJS((exports, module) => {
       socket.on("data", socketOnData);
       socket.on("end", socketOnEnd);
       socket.on("error", socketOnError);
-      this._readyState = WebSocket.OPEN;
+      this._readyState = WebSocket2.OPEN;
       this.emit("open");
     }
     emitClose() {
       if (!this._socket) {
-        this._readyState = WebSocket.CLOSED;
+        this._readyState = WebSocket2.CLOSED;
         this.emit("close", this._closeCode, this._closeMessage);
         return;
       }
@@ -6637,24 +6781,24 @@ var require_websocket = __commonJS((exports, module) => {
         this._extensions[PerMessageDeflate.extensionName].cleanup();
       }
       this._receiver.removeAllListeners();
-      this._readyState = WebSocket.CLOSED;
+      this._readyState = WebSocket2.CLOSED;
       this.emit("close", this._closeCode, this._closeMessage);
     }
     close(code, data) {
-      if (this.readyState === WebSocket.CLOSED)
+      if (this.readyState === WebSocket2.CLOSED)
         return;
-      if (this.readyState === WebSocket.CONNECTING) {
+      if (this.readyState === WebSocket2.CONNECTING) {
         const msg = "WebSocket was closed before the connection was established";
         abortHandshake(this, this._req, msg);
         return;
       }
-      if (this.readyState === WebSocket.CLOSING) {
+      if (this.readyState === WebSocket2.CLOSING) {
         if (this._closeFrameSent && (this._closeFrameReceived || this._receiver._writableState.errorEmitted)) {
           this._socket.end();
         }
         return;
       }
-      this._readyState = WebSocket.CLOSING;
+      this._readyState = WebSocket2.CLOSING;
       this._sender.close(code, data, !this._isServer, (err) => {
         if (err)
           return;
@@ -6666,14 +6810,14 @@ var require_websocket = __commonJS((exports, module) => {
       setCloseTimer(this);
     }
     pause() {
-      if (this.readyState === WebSocket.CONNECTING || this.readyState === WebSocket.CLOSED) {
+      if (this.readyState === WebSocket2.CONNECTING || this.readyState === WebSocket2.CLOSED) {
         return;
       }
       this._paused = true;
       this._socket.pause();
     }
     ping(data, mask, cb) {
-      if (this.readyState === WebSocket.CONNECTING) {
+      if (this.readyState === WebSocket2.CONNECTING) {
         throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
       }
       if (typeof data === "function") {
@@ -6685,7 +6829,7 @@ var require_websocket = __commonJS((exports, module) => {
       }
       if (typeof data === "number")
         data = data.toString();
-      if (this.readyState !== WebSocket.OPEN) {
+      if (this.readyState !== WebSocket2.OPEN) {
         sendAfterClose(this, data, cb);
         return;
       }
@@ -6694,7 +6838,7 @@ var require_websocket = __commonJS((exports, module) => {
       this._sender.ping(data || EMPTY_BUFFER, mask, cb);
     }
     pong(data, mask, cb) {
-      if (this.readyState === WebSocket.CONNECTING) {
+      if (this.readyState === WebSocket2.CONNECTING) {
         throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
       }
       if (typeof data === "function") {
@@ -6706,7 +6850,7 @@ var require_websocket = __commonJS((exports, module) => {
       }
       if (typeof data === "number")
         data = data.toString();
-      if (this.readyState !== WebSocket.OPEN) {
+      if (this.readyState !== WebSocket2.OPEN) {
         sendAfterClose(this, data, cb);
         return;
       }
@@ -6715,7 +6859,7 @@ var require_websocket = __commonJS((exports, module) => {
       this._sender.pong(data || EMPTY_BUFFER, mask, cb);
     }
     resume() {
-      if (this.readyState === WebSocket.CONNECTING || this.readyState === WebSocket.CLOSED) {
+      if (this.readyState === WebSocket2.CONNECTING || this.readyState === WebSocket2.CLOSED) {
         return;
       }
       this._paused = false;
@@ -6723,7 +6867,7 @@ var require_websocket = __commonJS((exports, module) => {
         this._socket.resume();
     }
     send(data, options, cb) {
-      if (this.readyState === WebSocket.CONNECTING) {
+      if (this.readyState === WebSocket2.CONNECTING) {
         throw new Error("WebSocket is not open: readyState 0 (CONNECTING)");
       }
       if (typeof options === "function") {
@@ -6732,7 +6876,7 @@ var require_websocket = __commonJS((exports, module) => {
       }
       if (typeof data === "number")
         data = data.toString();
-      if (this.readyState !== WebSocket.OPEN) {
+      if (this.readyState !== WebSocket2.OPEN) {
         sendAfterClose(this, data, cb);
         return;
       }
@@ -6749,48 +6893,48 @@ var require_websocket = __commonJS((exports, module) => {
       this._sender.send(data || EMPTY_BUFFER, opts, cb);
     }
     terminate() {
-      if (this.readyState === WebSocket.CLOSED)
+      if (this.readyState === WebSocket2.CLOSED)
         return;
-      if (this.readyState === WebSocket.CONNECTING) {
+      if (this.readyState === WebSocket2.CONNECTING) {
         const msg = "WebSocket was closed before the connection was established";
         abortHandshake(this, this._req, msg);
         return;
       }
       if (this._socket) {
-        this._readyState = WebSocket.CLOSING;
+        this._readyState = WebSocket2.CLOSING;
         this._socket.destroy();
       }
     }
   }
-  Object.defineProperty(WebSocket, "CONNECTING", {
+  Object.defineProperty(WebSocket2, "CONNECTING", {
     enumerable: true,
     value: readyStates.indexOf("CONNECTING")
   });
-  Object.defineProperty(WebSocket.prototype, "CONNECTING", {
+  Object.defineProperty(WebSocket2.prototype, "CONNECTING", {
     enumerable: true,
     value: readyStates.indexOf("CONNECTING")
   });
-  Object.defineProperty(WebSocket, "OPEN", {
+  Object.defineProperty(WebSocket2, "OPEN", {
     enumerable: true,
     value: readyStates.indexOf("OPEN")
   });
-  Object.defineProperty(WebSocket.prototype, "OPEN", {
+  Object.defineProperty(WebSocket2.prototype, "OPEN", {
     enumerable: true,
     value: readyStates.indexOf("OPEN")
   });
-  Object.defineProperty(WebSocket, "CLOSING", {
+  Object.defineProperty(WebSocket2, "CLOSING", {
     enumerable: true,
     value: readyStates.indexOf("CLOSING")
   });
-  Object.defineProperty(WebSocket.prototype, "CLOSING", {
+  Object.defineProperty(WebSocket2.prototype, "CLOSING", {
     enumerable: true,
     value: readyStates.indexOf("CLOSING")
   });
-  Object.defineProperty(WebSocket, "CLOSED", {
+  Object.defineProperty(WebSocket2, "CLOSED", {
     enumerable: true,
     value: readyStates.indexOf("CLOSED")
   });
-  Object.defineProperty(WebSocket.prototype, "CLOSED", {
+  Object.defineProperty(WebSocket2.prototype, "CLOSED", {
     enumerable: true,
     value: readyStates.indexOf("CLOSED")
   });
@@ -6803,10 +6947,10 @@ var require_websocket = __commonJS((exports, module) => {
     "readyState",
     "url"
   ].forEach((property) => {
-    Object.defineProperty(WebSocket.prototype, property, { enumerable: true });
+    Object.defineProperty(WebSocket2.prototype, property, { enumerable: true });
   });
   ["open", "error", "close", "message"].forEach((method) => {
-    Object.defineProperty(WebSocket.prototype, `on${method}`, {
+    Object.defineProperty(WebSocket2.prototype, `on${method}`, {
       enumerable: true,
       get() {
         for (const listener of this.listeners(method)) {
@@ -6830,9 +6974,9 @@ var require_websocket = __commonJS((exports, module) => {
       }
     });
   });
-  WebSocket.prototype.addEventListener = addEventListener2;
-  WebSocket.prototype.removeEventListener = removeEventListener;
-  module.exports = WebSocket;
+  WebSocket2.prototype.addEventListener = addEventListener2;
+  WebSocket2.prototype.removeEventListener = removeEventListener;
+  module.exports = WebSocket2;
   function initAsClient(websocket, address, protocols, options) {
     const opts = {
       allowSynchronousEvents: true,
@@ -7014,7 +7158,7 @@ var require_websocket = __commonJS((exports, module) => {
     });
     req.on("upgrade", (res, socket, head) => {
       websocket.emit("upgrade", res);
-      if (websocket.readyState !== WebSocket.CONNECTING)
+      if (websocket.readyState !== WebSocket2.CONNECTING)
         return;
       req = websocket._req = null;
       const upgrade = res.headers.upgrade;
@@ -7088,7 +7232,7 @@ var require_websocket = __commonJS((exports, module) => {
     }
   }
   function emitErrorAndClose(websocket, err) {
-    websocket._readyState = WebSocket.CLOSING;
+    websocket._readyState = WebSocket2.CLOSING;
     websocket._errorEmitted = true;
     websocket.emit("error", err);
     websocket.emitClose();
@@ -7105,7 +7249,7 @@ var require_websocket = __commonJS((exports, module) => {
     return tls.connect(options);
   }
   function abortHandshake(websocket, stream, message) {
-    websocket._readyState = WebSocket.CLOSING;
+    websocket._readyState = WebSocket2.CLOSING;
     const err = new Error(message);
     Error.captureStackTrace(err, abortHandshake);
     if (stream.setHeader) {
@@ -7185,10 +7329,10 @@ var require_websocket = __commonJS((exports, module) => {
   }
   function senderOnError(err) {
     const websocket = this[kWebSocket];
-    if (websocket.readyState === WebSocket.CLOSED)
+    if (websocket.readyState === WebSocket2.CLOSED)
       return;
-    if (websocket.readyState === WebSocket.OPEN) {
-      websocket._readyState = WebSocket.CLOSING;
+    if (websocket.readyState === WebSocket2.OPEN) {
+      websocket._readyState = WebSocket2.CLOSING;
       setCloseTimer(websocket);
     }
     this._socket.end();
@@ -7205,7 +7349,7 @@ var require_websocket = __commonJS((exports, module) => {
     this.removeListener("close", socketOnClose);
     this.removeListener("data", socketOnData);
     this.removeListener("end", socketOnEnd);
-    websocket._readyState = WebSocket.CLOSING;
+    websocket._readyState = WebSocket2.CLOSING;
     if (!this._readableState.endEmitted && !websocket._closeFrameReceived && !websocket._receiver._writableState.errorEmitted && this._readableState.length !== 0) {
       const chunk = this.read(this._readableState.length);
       websocket._receiver.write(chunk);
@@ -7227,7 +7371,7 @@ var require_websocket = __commonJS((exports, module) => {
   }
   function socketOnEnd() {
     const websocket = this[kWebSocket];
-    websocket._readyState = WebSocket.CLOSING;
+    websocket._readyState = WebSocket2.CLOSING;
     websocket._receiver.end();
     this.end();
   }
@@ -7236,7 +7380,7 @@ var require_websocket = __commonJS((exports, module) => {
     this.removeListener("error", socketOnError);
     this.on("error", NOOP);
     if (websocket) {
-      websocket._readyState = WebSocket.CLOSING;
+      websocket._readyState = WebSocket2.CLOSING;
       this.destroy();
     }
   }
@@ -7244,7 +7388,7 @@ var require_websocket = __commonJS((exports, module) => {
 
 // node_modules/.bun/ws@8.20.0/node_modules/ws/lib/stream.js
 var require_stream = __commonJS((exports, module) => {
-  var WebSocket = require_websocket();
+  var WebSocket2 = require_websocket();
   var { Duplex } = __require("stream");
   function emitClose(stream) {
     stream.emit("close");
@@ -7399,7 +7543,7 @@ var require_websocket_server = __commonJS((exports, module) => {
   var extension = require_extension();
   var PerMessageDeflate = require_permessage_deflate();
   var subprotocol = require_subprotocol();
-  var WebSocket = require_websocket();
+  var WebSocket2 = require_websocket();
   var { CLOSE_TIMEOUT, GUID, kWebSocket } = require_constants();
   var keyRegex = /^[+/0-9A-Za-z]{22}==$/;
   var RUNNING = 0;
@@ -7425,7 +7569,7 @@ var require_websocket_server = __commonJS((exports, module) => {
         host: null,
         path: null,
         port: null,
-        WebSocket,
+        WebSocket: WebSocket2,
         ...options
       };
       if (options.port == null && !options.server && !options.noServer || options.port != null && (options.server || options.noServer) || options.server && options.noServer) {
@@ -12752,12 +12896,12 @@ var require_lib2 = __commonJS((exports, module) => {
     const dest = new URL$1(destination).protocol;
     return orig === dest;
   };
-  function fetch(url2, opts) {
-    if (!fetch.Promise) {
+  function fetch2(url2, opts) {
+    if (!fetch2.Promise) {
       throw new Error("native promise missing, set fetch.Promise to your favorite alternative");
     }
-    Body.Promise = fetch.Promise;
-    return new fetch.Promise(function(resolve, reject) {
+    Body.Promise = fetch2.Promise;
+    return new fetch2.Promise(function(resolve, reject) {
       const request = new Request3(url2, opts);
       const options = getNodeRequestOptions(request);
       const send = (options.protocol === "https:" ? https : http).request;
@@ -12830,7 +12974,7 @@ var require_lib2 = __commonJS((exports, module) => {
       req.on("response", function(res) {
         clearTimeout(reqTimeout);
         const headers = createHeadersLenient(res.headers);
-        if (fetch.isRedirect(res.statusCode)) {
+        if (fetch2.isRedirect(res.statusCode)) {
           const location = headers.get("Location");
           let locationURL = null;
           try {
@@ -12892,7 +13036,7 @@ var require_lib2 = __commonJS((exports, module) => {
                 requestOpts.body = undefined;
                 requestOpts.headers.delete("content-length");
               }
-              resolve(fetch(new Request3(locationURL, requestOpts)));
+              resolve(fetch2(new Request3(locationURL, requestOpts)));
               finalize2();
               return;
           }
@@ -12985,11 +13129,11 @@ var require_lib2 = __commonJS((exports, module) => {
       stream.end();
     }
   }
-  fetch.isRedirect = function(code) {
+  fetch2.isRedirect = function(code) {
     return code === 301 || code === 302 || code === 303 || code === 307 || code === 308;
   };
-  fetch.Promise = global.Promise;
-  module.exports = exports = fetch;
+  fetch2.Promise = global.Promise;
+  module.exports = exports = fetch2;
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.default = exports;
   exports.Headers = Headers2;
@@ -13003,19 +13147,19 @@ var require_lib2 = __commonJS((exports, module) => {
 var require_node_ponyfill = __commonJS((exports, module) => {
   var nodeFetch = require_lib2();
   var realFetch = nodeFetch.default || nodeFetch;
-  var fetch = function(url2, options) {
+  var fetch2 = function(url2, options) {
     if (/^\/\//.test(url2)) {
       url2 = "https:" + url2;
     }
     return realFetch.call(this, url2, options);
   };
-  fetch.ponyfill = true;
-  module.exports = exports = fetch;
-  exports.fetch = fetch;
+  fetch2.ponyfill = true;
+  module.exports = exports = fetch2;
+  exports.fetch = fetch2;
   exports.Headers = nodeFetch.Headers;
   exports.Request = nodeFetch.Request;
   exports.Response = nodeFetch.Response;
-  exports.default = fetch;
+  exports.default = fetch2;
 });
 
 // node_modules/.bun/@libsql+hrana-client@0.9.0/node_modules/@libsql/hrana-client/lib-esm/queue_microtask.js
@@ -13766,8 +13910,8 @@ var init_stream3 = __esm(() => {
       let promise2;
       try {
         const request = createRequest();
-        const fetch = this.#fetch;
-        promise2 = fetch(request);
+        const fetch2 = this.#fetch;
+        promise2 = fetch2(request);
       } catch (error48) {
         promise2 = Promise.reject(error48);
       }
@@ -13833,11 +13977,11 @@ var init_stream3 = __esm(() => {
 
 // node_modules/.bun/@libsql+hrana-client@0.9.0/node_modules/@libsql/hrana-client/lib-esm/http/client.js
 async function findEndpoint(customFetch, clientUrl) {
-  const fetch2 = customFetch;
+  const fetch3 = customFetch;
   for (const endpoint of checkEndpoints) {
     const url2 = new URL(endpoint.versionPath, clientUrl);
     const request = new import_cross_fetch2.Request(url2.toString(), { method: "GET" });
-    const response = await fetch2(request);
+    const response = await fetch3(request);
     await response.arrayBuffer();
     if (response.ok) {
       return endpoint;
@@ -15242,6 +15386,668 @@ __export(exports_database, {
 });
 var init_database = __esm(() => {
   init___client();
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/get-context.js
+var require_get_context = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var get_context_exports = {};
+  __export2(get_context_exports, {
+    SYMBOL_FOR_REQ_CONTEXT: () => SYMBOL_FOR_REQ_CONTEXT,
+    getContext: () => getContext2
+  });
+  module.exports = __toCommonJS(get_context_exports);
+  var SYMBOL_FOR_REQ_CONTEXT = Symbol.for("@vercel/request-context");
+  function getContext2() {
+    const fromSymbol = globalThis;
+    return fromSymbol[SYMBOL_FOR_REQ_CONTEXT]?.get?.() ?? {};
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/token-error.js
+var require_token_error = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var token_error_exports = {};
+  __export2(token_error_exports, {
+    VercelOidcTokenError: () => VercelOidcTokenError
+  });
+  module.exports = __toCommonJS(token_error_exports);
+
+  class VercelOidcTokenError extends Error {
+    constructor(message, cause) {
+      super(message);
+      this.name = "VercelOidcTokenError";
+      this.cause = cause;
+    }
+    toString() {
+      if (this.cause) {
+        return `${this.name}: ${this.message}: ${this.cause}`;
+      }
+      return `${this.name}: ${this.message}`;
+    }
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/token-io.js
+var require_token_io = __commonJS((exports, module) => {
+  var __create2 = Object.create;
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __getProtoOf2 = Object.getPrototypeOf;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var token_io_exports = {};
+  __export2(token_io_exports, {
+    findRootDir: () => findRootDir,
+    getUserDataDir: () => getUserDataDir
+  });
+  module.exports = __toCommonJS(token_io_exports);
+  var import_path = __toESM2(__require("path"));
+  var import_fs = __toESM2(__require("fs"));
+  var import_os = __toESM2(__require("os"));
+  var import_token_error = require_token_error();
+  function findRootDir() {
+    try {
+      let dir = process.cwd();
+      while (dir !== import_path.default.dirname(dir)) {
+        const pkgPath = import_path.default.join(dir, ".vercel");
+        if (import_fs.default.existsSync(pkgPath)) {
+          return dir;
+        }
+        dir = import_path.default.dirname(dir);
+      }
+    } catch (e) {
+      throw new import_token_error.VercelOidcTokenError("Token refresh only supported in node server environments");
+    }
+    return null;
+  }
+  function getUserDataDir() {
+    if (process.env.XDG_DATA_HOME) {
+      return process.env.XDG_DATA_HOME;
+    }
+    switch (import_os.default.platform()) {
+      case "darwin":
+        return import_path.default.join(import_os.default.homedir(), "Library/Application Support");
+      case "linux":
+        return import_path.default.join(import_os.default.homedir(), ".local/share");
+      case "win32":
+        if (process.env.LOCALAPPDATA) {
+          return process.env.LOCALAPPDATA;
+        }
+        return null;
+      default:
+        return null;
+    }
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/auth-config.js
+var require_auth_config = __commonJS((exports, module) => {
+  var __create2 = Object.create;
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __getProtoOf2 = Object.getPrototypeOf;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var auth_config_exports = {};
+  __export2(auth_config_exports, {
+    isValidAccessToken: () => isValidAccessToken,
+    readAuthConfig: () => readAuthConfig,
+    writeAuthConfig: () => writeAuthConfig
+  });
+  module.exports = __toCommonJS(auth_config_exports);
+  var fs = __toESM2(__require("fs"));
+  var path = __toESM2(__require("path"));
+  var import_token_util = require_token_util();
+  function getAuthConfigPath() {
+    const dataDir = (0, import_token_util.getVercelDataDir)();
+    if (!dataDir) {
+      throw new Error(`Unable to find Vercel CLI data directory. Your platform: ${process.platform}. Supported: darwin, linux, win32.`);
+    }
+    return path.join(dataDir, "auth.json");
+  }
+  function readAuthConfig() {
+    try {
+      const authPath = getAuthConfigPath();
+      if (!fs.existsSync(authPath)) {
+        return null;
+      }
+      const content = fs.readFileSync(authPath, "utf8");
+      if (!content) {
+        return null;
+      }
+      return JSON.parse(content);
+    } catch (error48) {
+      return null;
+    }
+  }
+  function writeAuthConfig(config2) {
+    const authPath = getAuthConfigPath();
+    const authDir = path.dirname(authPath);
+    if (!fs.existsSync(authDir)) {
+      fs.mkdirSync(authDir, { mode: 504, recursive: true });
+    }
+    fs.writeFileSync(authPath, JSON.stringify(config2, null, 2), { mode: 384 });
+  }
+  function isValidAccessToken(authConfig, expirationBufferMs = 0) {
+    if (!authConfig.token)
+      return false;
+    if (typeof authConfig.expiresAt !== "number")
+      return true;
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const bufferInSeconds = expirationBufferMs / 1000;
+    return authConfig.expiresAt >= nowInSeconds + bufferInSeconds;
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/oauth.js
+var require_oauth = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var oauth_exports = {};
+  __export2(oauth_exports, {
+    processTokenResponse: () => processTokenResponse,
+    refreshTokenRequest: () => refreshTokenRequest
+  });
+  module.exports = __toCommonJS(oauth_exports);
+  var import_os = __require("os");
+  var VERCEL_ISSUER = "https://vercel.com";
+  var VERCEL_CLI_CLIENT_ID = "cl_HYyOPBNtFMfHhaUn9L4QPfTZz6TP47bp";
+  var userAgent = `@vercel/oidc node-${process.version} ${(0, import_os.platform)()} (${(0, import_os.arch)()}) ${(0, import_os.hostname)()}`;
+  var _tokenEndpoint = null;
+  async function getTokenEndpoint() {
+    if (_tokenEndpoint) {
+      return _tokenEndpoint;
+    }
+    const discoveryUrl = `${VERCEL_ISSUER}/.well-known/openid-configuration`;
+    const response = await fetch(discoveryUrl, {
+      headers: { "user-agent": userAgent }
+    });
+    if (!response.ok) {
+      throw new Error("Failed to discover OAuth endpoints");
+    }
+    const metadata = await response.json();
+    if (!metadata || typeof metadata.token_endpoint !== "string") {
+      throw new Error("Invalid OAuth discovery response");
+    }
+    const endpoint = metadata.token_endpoint;
+    _tokenEndpoint = endpoint;
+    return endpoint;
+  }
+  async function refreshTokenRequest(options) {
+    const tokenEndpoint = await getTokenEndpoint();
+    return await fetch(tokenEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "user-agent": userAgent
+      },
+      body: new URLSearchParams({
+        client_id: VERCEL_CLI_CLIENT_ID,
+        grant_type: "refresh_token",
+        ...options
+      })
+    });
+  }
+  async function processTokenResponse(response) {
+    const json2 = await response.json();
+    if (!response.ok) {
+      const errorMsg = typeof json2 === "object" && json2 && "error" in json2 ? String(json2.error) : "Token refresh failed";
+      return [new Error(errorMsg)];
+    }
+    if (typeof json2 !== "object" || json2 === null) {
+      return [new Error("Invalid token response")];
+    }
+    if (typeof json2.access_token !== "string") {
+      return [new Error("Missing access_token in response")];
+    }
+    if (json2.token_type !== "Bearer") {
+      return [new Error("Invalid token_type in response")];
+    }
+    if (typeof json2.expires_in !== "number") {
+      return [new Error("Missing expires_in in response")];
+    }
+    return [null, json2];
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/auth-errors.js
+var require_auth_errors = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var auth_errors_exports = {};
+  __export2(auth_errors_exports, {
+    AccessTokenMissingError: () => AccessTokenMissingError2,
+    RefreshAccessTokenFailedError: () => RefreshAccessTokenFailedError2
+  });
+  module.exports = __toCommonJS(auth_errors_exports);
+
+  class AccessTokenMissingError2 extends Error {
+    constructor() {
+      super("No authentication found. Please log in with the Vercel CLI (vercel login).");
+      this.name = "AccessTokenMissingError";
+    }
+  }
+
+  class RefreshAccessTokenFailedError2 extends Error {
+    constructor(cause) {
+      super("Failed to refresh authentication token.", { cause });
+      this.name = "RefreshAccessTokenFailedError";
+    }
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/token-util.js
+var require_token_util = __commonJS((exports, module) => {
+  var __create2 = Object.create;
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __getProtoOf2 = Object.getPrototypeOf;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toESM2 = (mod, isNodeMode, target) => (target = mod != null ? __create2(__getProtoOf2(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", { value: mod, enumerable: true }) : target, mod));
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var token_util_exports = {};
+  __export2(token_util_exports, {
+    assertVercelOidcTokenResponse: () => assertVercelOidcTokenResponse,
+    findProjectInfo: () => findProjectInfo,
+    getTokenPayload: () => getTokenPayload,
+    getVercelDataDir: () => getVercelDataDir,
+    getVercelOidcToken: () => getVercelOidcToken2,
+    getVercelToken: () => getVercelToken2,
+    isExpired: () => isExpired,
+    loadToken: () => loadToken,
+    saveToken: () => saveToken
+  });
+  module.exports = __toCommonJS(token_util_exports);
+  var path = __toESM2(__require("path"));
+  var fs = __toESM2(__require("fs"));
+  var import_token_error = require_token_error();
+  var import_token_io = require_token_io();
+  var import_auth_config = require_auth_config();
+  var import_oauth = require_oauth();
+  var import_auth_errors = require_auth_errors();
+  function getVercelDataDir() {
+    const vercelFolder = "com.vercel.cli";
+    const dataDir = (0, import_token_io.getUserDataDir)();
+    if (!dataDir) {
+      return null;
+    }
+    return path.join(dataDir, vercelFolder);
+  }
+  async function getVercelToken2(options) {
+    const authConfig = (0, import_auth_config.readAuthConfig)();
+    if (!authConfig?.token) {
+      throw new import_auth_errors.AccessTokenMissingError;
+    }
+    if ((0, import_auth_config.isValidAccessToken)(authConfig, options?.expirationBufferMs)) {
+      return authConfig.token;
+    }
+    if (!authConfig.refreshToken) {
+      (0, import_auth_config.writeAuthConfig)({});
+      throw new import_auth_errors.RefreshAccessTokenFailedError("No refresh token available");
+    }
+    try {
+      const tokenResponse = await (0, import_oauth.refreshTokenRequest)({
+        refresh_token: authConfig.refreshToken
+      });
+      const [tokensError, tokens] = await (0, import_oauth.processTokenResponse)(tokenResponse);
+      if (tokensError || !tokens) {
+        (0, import_auth_config.writeAuthConfig)({});
+        throw new import_auth_errors.RefreshAccessTokenFailedError(tokensError);
+      }
+      const updatedConfig = {
+        token: tokens.access_token,
+        expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in
+      };
+      if (tokens.refresh_token) {
+        updatedConfig.refreshToken = tokens.refresh_token;
+      }
+      (0, import_auth_config.writeAuthConfig)(updatedConfig);
+      return updatedConfig.token;
+    } catch (error48) {
+      (0, import_auth_config.writeAuthConfig)({});
+      if (error48 instanceof import_auth_errors.AccessTokenMissingError || error48 instanceof import_auth_errors.RefreshAccessTokenFailedError) {
+        throw error48;
+      }
+      throw new import_auth_errors.RefreshAccessTokenFailedError(error48);
+    }
+  }
+  async function getVercelOidcToken2(authToken, projectId, teamId) {
+    const url2 = `https://api.vercel.com/v1/projects/${projectId}/token?source=vercel-oidc-refresh${teamId ? `&teamId=${teamId}` : ""}`;
+    const res = await fetch(url2, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${authToken}`
+      }
+    });
+    if (!res.ok) {
+      throw new import_token_error.VercelOidcTokenError(`Failed to refresh OIDC token: ${res.statusText}`);
+    }
+    const tokenRes = await res.json();
+    assertVercelOidcTokenResponse(tokenRes);
+    return tokenRes;
+  }
+  function assertVercelOidcTokenResponse(res) {
+    if (!res || typeof res !== "object") {
+      throw new TypeError("Vercel OIDC token is malformed. Expected an object. Please run `vc env pull` and try again");
+    }
+    if (!("token" in res) || typeof res.token !== "string") {
+      throw new TypeError("Vercel OIDC token is malformed. Expected a string-valued token property. Please run `vc env pull` and try again");
+    }
+  }
+  function findProjectInfo() {
+    const dir = (0, import_token_io.findRootDir)();
+    if (!dir) {
+      throw new import_token_error.VercelOidcTokenError("Unable to find project root directory. Have you linked your project with `vc link?`");
+    }
+    const prjPath = path.join(dir, ".vercel", "project.json");
+    if (!fs.existsSync(prjPath)) {
+      throw new import_token_error.VercelOidcTokenError("project.json not found, have you linked your project with `vc link?`");
+    }
+    const prj = JSON.parse(fs.readFileSync(prjPath, "utf8"));
+    if (typeof prj.projectId !== "string" && typeof prj.orgId !== "string") {
+      throw new TypeError("Expected a string-valued projectId property. Try running `vc link` to re-link your project.");
+    }
+    return { projectId: prj.projectId, teamId: prj.orgId };
+  }
+  function saveToken(token, projectId) {
+    const dir = (0, import_token_io.getUserDataDir)();
+    if (!dir) {
+      throw new import_token_error.VercelOidcTokenError("Unable to find user data directory. Please reach out to Vercel support.");
+    }
+    const tokenPath = path.join(dir, "com.vercel.token", `${projectId}.json`);
+    const tokenJson = JSON.stringify(token);
+    fs.mkdirSync(path.dirname(tokenPath), { mode: 504, recursive: true });
+    fs.writeFileSync(tokenPath, tokenJson);
+    fs.chmodSync(tokenPath, 432);
+    return;
+  }
+  function loadToken(projectId) {
+    const dir = (0, import_token_io.getUserDataDir)();
+    if (!dir) {
+      throw new import_token_error.VercelOidcTokenError("Unable to find user data directory. Please reach out to Vercel support.");
+    }
+    const tokenPath = path.join(dir, "com.vercel.token", `${projectId}.json`);
+    if (!fs.existsSync(tokenPath)) {
+      return null;
+    }
+    const token = JSON.parse(fs.readFileSync(tokenPath, "utf8"));
+    assertVercelOidcTokenResponse(token);
+    return token;
+  }
+  function getTokenPayload(token) {
+    const tokenParts = token.split(".");
+    if (tokenParts.length !== 3) {
+      throw new import_token_error.VercelOidcTokenError("Invalid token. Please run `vc env pull` and try again");
+    }
+    const base643 = tokenParts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base643.padEnd(base643.length + (4 - base643.length % 4) % 4, "=");
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+  }
+  function isExpired(token, bufferMs = 0) {
+    return token.exp * 1000 < Date.now() + bufferMs;
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/token.js
+var require_token = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var token_exports = {};
+  __export2(token_exports, {
+    refreshToken: () => refreshToken
+  });
+  module.exports = __toCommonJS(token_exports);
+  var import_token_error = require_token_error();
+  var import_token_util = require_token_util();
+  async function refreshToken(options) {
+    let projectId = options?.project;
+    let teamId = options?.team;
+    if (!projectId && !teamId) {
+      const projectInfo = (0, import_token_util.findProjectInfo)();
+      projectId = projectInfo.projectId;
+      teamId = projectInfo.teamId;
+    } else if (!projectId || !teamId) {
+      const projectInfo = (0, import_token_util.findProjectInfo)();
+      projectId = projectId ?? projectInfo.projectId;
+      teamId = teamId ?? projectInfo.teamId;
+    }
+    if (!projectId) {
+      throw new import_token_error.VercelOidcTokenError("Failed to refresh OIDC token: No project specified. Try re-linking your project with `vc link`");
+    }
+    let maybeToken = (0, import_token_util.loadToken)(projectId);
+    if (!maybeToken || (0, import_token_util.isExpired)((0, import_token_util.getTokenPayload)(maybeToken.token), options?.expirationBufferMs)) {
+      const authToken = await (0, import_token_util.getVercelToken)({
+        expirationBufferMs: options?.expirationBufferMs
+      });
+      maybeToken = await (0, import_token_util.getVercelOidcToken)(authToken, projectId, teamId);
+      if (!maybeToken) {
+        throw new import_token_error.VercelOidcTokenError("Failed to refresh OIDC token");
+      }
+      (0, import_token_util.saveToken)(maybeToken, projectId);
+    }
+    process.env.VERCEL_OIDC_TOKEN = maybeToken.token;
+    return;
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/get-vercel-oidc-token.js
+var require_get_vercel_oidc_token = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var get_vercel_oidc_token_exports = {};
+  __export2(get_vercel_oidc_token_exports, {
+    getVercelOidcToken: () => getVercelOidcToken2,
+    getVercelOidcTokenSync: () => getVercelOidcTokenSync2
+  });
+  module.exports = __toCommonJS(get_vercel_oidc_token_exports);
+  var import_get_context = require_get_context();
+  var import_token_error = require_token_error();
+  async function getVercelOidcToken2(options) {
+    let token = "";
+    let err;
+    try {
+      token = getVercelOidcTokenSync2();
+    } catch (error48) {
+      err = error48;
+    }
+    try {
+      const [{ getTokenPayload, isExpired }, { refreshToken }] = await Promise.all([
+        await Promise.resolve().then(() => __toESM(require_token_util())),
+        await Promise.resolve().then(() => __toESM(require_token()))
+      ]);
+      if (!token || isExpired(getTokenPayload(token), options?.expirationBufferMs)) {
+        await refreshToken(options);
+        token = getVercelOidcTokenSync2();
+      }
+    } catch (error48) {
+      let message = err instanceof Error ? err.message : "";
+      if (error48 instanceof Error) {
+        message = `${message}
+${error48.message}`;
+      }
+      if (message) {
+        throw new import_token_error.VercelOidcTokenError(message);
+      }
+      throw error48;
+    }
+    return token;
+  }
+  function getVercelOidcTokenSync2() {
+    const token = (0, import_get_context.getContext)().headers?.["x-vercel-oidc-token"] ?? process.env.VERCEL_OIDC_TOKEN;
+    if (!token) {
+      throw new Error(`The 'x-vercel-oidc-token' header is missing from the request. Do you have the OIDC option enabled in the Vercel project settings?`);
+    }
+    return token;
+  }
+});
+
+// node_modules/.bun/@vercel+oidc@3.2.0/node_modules/@vercel/oidc/dist/index.js
+var require_dist = __commonJS((exports, module) => {
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __export2 = (target, all) => {
+    for (var name16 in all)
+      __defProp2(target, name16, { get: all[name16], enumerable: true });
+  };
+  var __copyProps = (to, from, except2, desc2) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames2(from))
+        if (!__hasOwnProp2.call(to, key) && key !== except2)
+          __defProp2(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp2({}, "__esModule", { value: true }), mod);
+  var src_exports = {};
+  __export2(src_exports, {
+    AccessTokenMissingError: () => import_auth_errors.AccessTokenMissingError,
+    RefreshAccessTokenFailedError: () => import_auth_errors.RefreshAccessTokenFailedError,
+    getContext: () => import_get_context.getContext,
+    getVercelOidcToken: () => import_get_vercel_oidc_token.getVercelOidcToken,
+    getVercelOidcTokenSync: () => import_get_vercel_oidc_token.getVercelOidcTokenSync,
+    getVercelToken: () => import_token_util.getVercelToken
+  });
+  module.exports = __toCommonJS(src_exports);
+  var import_get_vercel_oidc_token = require_get_vercel_oidc_token();
+  var import_get_context = require_get_context();
+  var import_auth_errors = require_auth_errors();
+  var import_token_util = require_token_util();
 });
 
 // node_modules/.bun/hono@4.12.10/node_modules/hono/dist/compose.js
@@ -32802,33 +33608,935 @@ async function destroySession(headers) {
   } catch {}
 }
 
+// packages/web/src/api/lib/lead-intake.ts
+init_schema();
+
+// packages/web/src/api/lib/automations.ts
+init_schema();
+
+// packages/web/src/api/lib/integrations.ts
+init_schema();
+var CATEGORIES = [
+  "Portais de Imóveis",
+  "Entrada de Leads",
+  "WhatsApp",
+  "Instagram / Facebook / Meta",
+  "Google",
+  "XML / Feeds",
+  "Site Edy Premi",
+  "Agentes de IA"
+];
+var imageVariantField = {
+  key: "imageVariant",
+  label: "Fotos enviadas ao canal",
+  type: "select",
+  help: "Cada portal tem regra própria sobre marca d'água. A foto original nunca é alterada.",
+  options: [
+    { value: "marcada", label: "Com marca d'água (quando ativa)" },
+    { value: "original", label: "Original, sem marca" }
+  ]
+};
+var feedFields = [
+  {
+    key: "notes",
+    label: "Observações internas",
+    type: "textarea",
+    help: "Anote aqui o e-mail/protocolo do contato com o portal."
+  }
+];
+var INTEGRATIONS = [
+  {
+    key: "zap_vivareal",
+    category: "Portais de Imóveis",
+    name: "ZAP Imóveis / VivaReal (Canal Pro)",
+    mark: "ZV",
+    purpose: "Publicar os imóveis autorizados no ZAP e no VivaReal.",
+    method: "Importação por XML: o portal lê o feed em uma URL pública a cada ~12 h. Não existe API pública de publicação.",
+    pending: [
+      "Contrato ativo do Canal Pro (Grupo ZAP)",
+      "Cadastrar a URL do nosso feed XML no Canal Pro",
+      "Aguardar a primeira leitura do portal e conferir os imóveis importados"
+    ],
+    fields: [
+      { key: "accountId", label: "Identificação do anunciante (Canal Pro)", type: "text" },
+      imageVariantField,
+      ...feedFields
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://ajuda.zapimoveis.com.br/s/article/como-ativar-a-integracao-de-imoveis",
+    available: true
+  },
+  {
+    key: "olx",
+    category: "Portais de Imóveis",
+    name: "OLX Imóveis",
+    mark: "OL",
+    purpose: "Publicar os imóveis autorizados na OLX.",
+    method: "Importação de anúncios por XML documentada pela OLX (developers.olx.com.br) — o portal busca o arquivo na URL informada.",
+    pending: [
+      "Conta elegível para importação por XML na OLX",
+      "Informar a URL do feed no painel da OLX"
+    ],
+    fields: [
+      { key: "accountId", label: "Conta/anunciante OLX", type: "text" },
+      imageVariantField,
+      ...feedFields
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://developers.olx.com.br/anuncio/xml/real_estate/home.html",
+    available: true
+  },
+  {
+    key: "imovelweb",
+    category: "Portais de Imóveis",
+    name: "Imovelweb / Wimoveis",
+    mark: "IW",
+    purpose: "Publicar os imóveis autorizados no Imovelweb.",
+    method: "XML cadastrado na Central do Anunciante + integração de leads configurada no painel do portal.",
+    pending: [
+      "Plano ativo na Central do Anunciante",
+      "Cadastrar a URL do feed XML",
+      "Ativar a integração de leads apontando para o nosso webhook"
+    ],
+    fields: [
+      { key: "accountId", label: "Código do anunciante", type: "text" },
+      imageVariantField,
+      ...feedFields
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://help.imovelweb.com.br/s/article/Como-habilito-uma-integra%C3%A7%C3%A3o-de-leads",
+    available: true
+  },
+  {
+    key: "mercadolivre",
+    category: "Portais de Imóveis",
+    name: "Mercado Livre Imóveis",
+    mark: "ML",
+    purpose: "Publicar imóveis no Mercado Livre.",
+    method: "Não há hoje caminho oficial de publicação de imóveis por API/feed liberado para imobiliárias no Brasil. Anúncio é manual no painel do Mercado Livre.",
+    pending: ["Depende do Mercado Livre liberar publicação de imóveis por API ou XML."],
+    fields: [],
+    canTest: false,
+    canSync: false,
+    available: false
+  },
+  {
+    key: "lead_webhook",
+    category: "Entrada de Leads",
+    name: "Webhook de leads (portais e parceiros)",
+    mark: "WH",
+    purpose: "Endereço único para portais/parceiros entregarem leads direto no CRM, com origem, campanha e UTM.",
+    method: "POST JSON em /api/webhooks/leads/:token — token gerado aqui, validado no servidor.",
+    pending: ["Informar a URL do webhook no painel de cada portal/parceiro"],
+    fields: [
+      {
+        key: "token",
+        label: "Token do webhook",
+        type: "password",
+        secret: true,
+        help: "Gerado automaticamente ao salvar. Faz parte da URL."
+      }
+    ],
+    canTest: true,
+    canSync: false,
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "meta_lead_ads",
+    category: "Entrada de Leads",
+    name: "Meta Lead Ads (Facebook/Instagram)",
+    mark: "LA",
+    purpose: "Receber leads dos formulários de anúncio da Meta no CRM.",
+    method: "Webhook oficial da Graph API (campo leadgen) + token de página com permissão leads_retrieval.",
+    pending: [
+      "App na Meta for Developers com produto Webhooks",
+      "Página do Facebook conectada e token de página (leads_retrieval)",
+      "Revisão/permissões aprovadas pela Meta",
+      "App Secret para validar a assinatura X-Hub-Signature-256"
+    ],
+    fields: [
+      { key: "appId", label: "App ID", type: "text" },
+      { key: "appSecret", label: "App Secret", type: "password", secret: true },
+      { key: "pageId", label: "ID da página", type: "text" },
+      { key: "pageToken", label: "Token da página", type: "password", secret: true },
+      { key: "verifyToken", label: "Verify token do webhook", type: "password", secret: true }
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://developers.facebook.com/docs/marketing-api/guides/lead-ads",
+    available: true
+  },
+  {
+    key: "whatsapp_cloud",
+    category: "WhatsApp",
+    name: "WhatsApp Cloud API (oficial)",
+    mark: "WA",
+    purpose: "Receber e responder mensagens de WhatsApp dentro do painel (com ou sem IA).",
+    method: "WhatsApp Cloud API da Meta: número aprovado, token do sistema, webhook verificado. Nada de WhatsApp Web/scraping.",
+    pending: [
+      "Conta Meta Business verificada",
+      "App na Meta for Developers com o produto WhatsApp",
+      "Número de telefone aprovado e registrado na Cloud API",
+      "Phone Number ID + WABA ID",
+      "Token permanente (system user) com whatsapp_business_messaging",
+      "Webhook apontando para /api/webhooks/whatsapp com o verify token abaixo",
+      "Templates aprovados para mensagens fora da janela de 24 h"
+    ],
+    fields: [
+      { key: "phoneNumberId", label: "Phone Number ID", type: "text" },
+      { key: "wabaId", label: "WhatsApp Business Account ID", type: "text" },
+      { key: "accessToken", label: "Access token permanente", type: "password", secret: true },
+      { key: "verifyToken", label: "Verify token do webhook", type: "password", secret: true },
+      { key: "appSecret", label: "App Secret (assinatura)", type: "password", secret: true }
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api",
+    available: true
+  },
+  {
+    key: "instagram_dm",
+    category: "Instagram / Facebook / Meta",
+    name: "Instagram Direct",
+    mark: "IG",
+    purpose: "Atender mensagens do Instagram no painel.",
+    method: "Instagram Messaging API (Graph) com conta profissional ligada a uma página do Facebook.",
+    pending: [
+      "Conta Instagram profissional vinculada a uma página",
+      "App Meta com Instagram Messaging e permissões aprovadas",
+      "Token de página e webhook de mensagens"
+    ],
+    fields: [
+      { key: "igUserId", label: "Instagram User ID", type: "text" },
+      { key: "pageToken", label: "Token da página", type: "password", secret: true },
+      { key: "verifyToken", label: "Verify token do webhook", type: "password", secret: true }
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://developers.facebook.com/docs/messenger-platform/instagram",
+    available: true
+  },
+  {
+    key: "facebook_messenger",
+    category: "Instagram / Facebook / Meta",
+    name: "Facebook Messenger",
+    mark: "FB",
+    purpose: "Atender mensagens da página do Facebook no painel.",
+    method: "Messenger Platform (Graph API) com token de página e webhook de mensagens.",
+    pending: [
+      "Página do Facebook com token de acesso",
+      "App Meta com Messenger e permissão pages_messaging aprovada"
+    ],
+    fields: [
+      { key: "pageId", label: "ID da página", type: "text" },
+      { key: "pageToken", label: "Token da página", type: "password", secret: true },
+      { key: "verifyToken", label: "Verify token do webhook", type: "password", secret: true }
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://developers.facebook.com/docs/messenger-platform",
+    available: true
+  },
+  {
+    key: "google_search_console",
+    category: "Google",
+    name: "Google Search Console",
+    mark: "SC",
+    purpose: "Provar a propriedade do site e acompanhar a indexação.",
+    method: "Verificação por meta tag HTML: o código colado aqui é publicado no <head> do site público.",
+    pending: ["Código de verificação da propriedade no Search Console"],
+    fields: [
+      {
+        key: "verification",
+        label: "Código google-site-verification",
+        type: "text",
+        placeholder: "Só o conteúdo do content=..."
+      }
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://search.google.com/search-console",
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "google_analytics",
+    category: "Google",
+    name: "Google Analytics 4",
+    mark: "GA",
+    purpose: "Medir acessos e origem das visitas.",
+    method: "Tag gtag.js carregada no site público com o ID de medição G-XXXXXXX.",
+    pending: ["ID de medição do GA4"],
+    fields: [{ key: "measurementId", label: "ID de medição (G-...)", type: "text" }],
+    canTest: true,
+    canSync: false,
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "google_ads",
+    category: "Google",
+    name: "Google Ads (conversões)",
+    mark: "AD",
+    purpose: "Registrar conversão quando um lead é enviado pelo site.",
+    method: "Tag de conversão do Google Ads (AW-...) disparada no envio do formulário.",
+    pending: ["ID de conversão (AW-...) e rótulo da conversão"],
+    fields: [
+      { key: "conversionId", label: "ID de conversão (AW-...)", type: "text" },
+      { key: "conversionLabel", label: "Rótulo da conversão", type: "text" }
+    ],
+    canTest: true,
+    canSync: false,
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "google_business",
+    category: "Google",
+    name: "Google Business Profile",
+    mark: "GB",
+    purpose: "Ficha da imobiliária no Google Maps/Busca.",
+    method: "A Business Profile API exige solicitação de acesso aprovada pelo Google por projeto. Sem isso, a gestão é manual no painel do Google.",
+    pending: [
+      "Ficha verificada no Google Business Profile",
+      "Acesso à Business Profile API aprovado pelo Google (formulário de solicitação)"
+    ],
+    fields: [
+      { key: "profileUrl", label: "Link da ficha (Maps)", type: "url" },
+      { key: "placeId", label: "Place ID", type: "text" }
+    ],
+    canTest: false,
+    canSync: false,
+    docsUrl: "https://developers.google.com/my-business",
+    available: true
+  },
+  {
+    key: "feed_imoveis",
+    category: "XML / Feeds",
+    name: "Feed XML dos imóveis",
+    mark: "XM",
+    purpose: "Arquivo público com os imóveis autorizados, lido pelos portais.",
+    method: "Gerado por este sistema em /feed/imoveis.xml, sempre com o dado atual do banco.",
+    pending: [],
+    fields: [
+      imageVariantField,
+      {
+        key: "includeUnpublished",
+        label: "Incluir imóveis não publicados",
+        type: "switch",
+        help: "Padrão: não. Só entram imóveis publicados e autorizados no canal."
+      }
+    ],
+    canTest: true,
+    canSync: true,
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "sitemap",
+    category: "XML / Feeds",
+    name: "Sitemap e robots.txt",
+    mark: "SM",
+    purpose: "Ajudar o Google a encontrar a home e cada página de imóvel.",
+    method: "Gerados por este sistema em /sitemap.xml e /robots.txt.",
+    pending: [],
+    fields: [],
+    canTest: true,
+    canSync: true,
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "site_leads",
+    category: "Site Edy Premi",
+    name: "Formulários do site",
+    mark: "SI",
+    purpose: "Leads da home e das páginas de imóvel caem direto no CRM.",
+    method: "Rota interna leads.create (oRPC) com deduplicação por telefone/e-mail.",
+    pending: [],
+    fields: [
+      {
+        key: "dedupeHours",
+        label: "Janela de deduplicação (horas)",
+        type: "text",
+        help: "Mesma pessoa dentro dessa janela vira nota no lead existente. Padrão: 72."
+      }
+    ],
+    canTest: true,
+    canSync: false,
+    available: true,
+    selfServed: true
+  },
+  {
+    key: "ai_gateway",
+    category: "Agentes de IA",
+    name: "Provedor de IA (gateway)",
+    mark: "IA",
+    purpose: "Modelo de linguagem usado pelos agentes de atendimento.",
+    method: "Gateway já provisionado no servidor (AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY). Chaves ficam só no servidor.",
+    pending: [],
+    fields: [
+      {
+        key: "defaultModel",
+        label: "Modelo padrão",
+        type: "select",
+        options: [
+          { value: "openai/gpt-5.4-mini", label: "openai/gpt-5.4-mini (rápido)" },
+          { value: "openai/gpt-5.4", label: "openai/gpt-5.4" },
+          { value: "anthropic/claude-haiku-4.5", label: "anthropic/claude-haiku-4.5" },
+          { value: "anthropic/claude-sonnet-4.6", label: "anthropic/claude-sonnet-4.6" },
+          { value: "google/gemini-3-flash", label: "google/gemini-3-flash" }
+        ]
+      }
+    ],
+    canTest: true,
+    canSync: false,
+    available: true,
+    selfServed: true
+  }
+];
+function findIntegration(key) {
+  return INTEGRATIONS.find((item) => item.key === key);
+}
+function parseConfig(raw2) {
+  if (!raw2)
+    return {};
+  try {
+    const parsed = JSON.parse(raw2);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
+    const out = {};
+    for (const [key, value2] of Object.entries(parsed)) {
+      if (typeof value2 === "string")
+        out[key] = value2;
+      else if (typeof value2 === "number" || typeof value2 === "boolean")
+        out[key] = String(value2);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function maskConfig(def, config2) {
+  const out = {};
+  const filled = [];
+  for (const field of def.fields) {
+    const value2 = config2[field.key] ?? "";
+    if (value2)
+      filled.push(field.key);
+    out[field.key] = field.secret && value2 ? `••••${value2.slice(-4)}` : value2;
+  }
+  return { config: out, filled };
+}
+async function getIntegrationRow(db3, key) {
+  const [row] = await db3.select().from(integrations).where(eq(integrations.key, key)).limit(1);
+  return row ?? null;
+}
+async function readConfig(db3, key) {
+  const row = await getIntegrationRow(db3, key);
+  return { row, config: parseConfig(row?.config) };
+}
+async function saveIntegration(db3, key, patch) {
+  const row = await getIntegrationRow(db3, key);
+  const config2 = patch.config ? JSON.stringify(patch.config) : undefined;
+  if (!row) {
+    await db3.insert(integrations).values({
+      key,
+      config: config2 ?? "{}",
+      status: patch.status ?? "nao_configurado",
+      enabled: patch.enabled ? 1 : 0,
+      lastError: patch.lastError ?? null,
+      updatedAt: new Date
+    });
+    return;
+  }
+  await db3.update(integrations).set({
+    ...config2 === undefined ? {} : { config: config2 },
+    ...patch.status === undefined ? {} : { status: patch.status },
+    ...patch.enabled === undefined ? {} : { enabled: patch.enabled ? 1 : 0 },
+    ...patch.lastError === undefined ? {} : { lastError: patch.lastError },
+    updatedAt: new Date
+  }).where(eq(integrations.key, key));
+}
+async function logEvent(db3, key, kind, ok, message) {
+  try {
+    await db3.insert(integrationEvents).values({
+      integrationKey: key,
+      kind,
+      ok: ok ? 1 : 0,
+      message: message.slice(0, 500)
+    });
+  } catch {}
+}
+async function listEvents(db3, key, limit = 20) {
+  return db3.select().from(integrationEvents).where(eq(integrationEvents.integrationKey, key)).orderBy(desc(integrationEvents.createdAt)).limit(limit);
+}
+function statusFromConfig(def, config2) {
+  if (!def.available)
+    return "nao_disponivel";
+  const required2 = def.fields.filter((field) => field.secret);
+  if (def.selfServed) {
+    return "conectado";
+  }
+  const anyFilled = def.fields.some((field) => (config2[field.key] ?? "").trim() !== "");
+  if (!anyFilled)
+    return "nao_configurado";
+  const missingSecret = required2.some((field) => (config2[field.key] ?? "").trim() === "");
+  return missingSecret ? "aguardando_credencial" : "configurando";
+}
+
+// packages/web/src/api/lib/whatsapp.ts
+var GRAPH = "https://graph.facebook.com/v21.0";
+async function sendWhatsappText(config2, to, body) {
+  const token = config2.accessToken;
+  const phoneNumberId = config2.phoneNumberId;
+  if (!token || !phoneNumberId)
+    throw new Error("WhatsApp Cloud API sem credenciais");
+  const response = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: to.replace(/\D/g, ""),
+      type: "text",
+      text: { preview_url: false, body: body.slice(0, 4000) }
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new Error(payload.error?.message ?? `HTTP ${response.status}`);
+  return payload.messages?.[0]?.id ?? null;
+}
+async function sendMetaMessage(config2, recipientId, body, platform) {
+  const token = config2.pageToken;
+  const senderId = platform === "instagram" ? config2.igUserId : config2.pageId;
+  if (!token || !senderId)
+    throw new Error("Token/ID da página não configurado");
+  const response = await fetch(`${GRAPH}/${senderId}/messages`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      recipient: { id: recipientId },
+      message: { text: body.slice(0, 1000) },
+      messaging_type: "RESPONSE"
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new Error(payload.error?.message ?? `HTTP ${response.status}`);
+  return true;
+}
+async function verifyMetaSignature(appSecret, rawBody, signatureHeader) {
+  if (!appSecret)
+    return { ok: false, reason: "App Secret não configurado" };
+  if (!signatureHeader?.startsWith("sha256=")) {
+    return { ok: false, reason: "Assinatura ausente" };
+  }
+  const expected = signatureHeader.slice("sha256=".length).toLowerCase();
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(appSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac3 = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(rawBody));
+  const digest = Array.from(new Uint8Array(mac3), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  if (digest.length !== expected.length)
+    return { ok: false, reason: "Assinatura inválida" };
+  let diff = 0;
+  for (let i = 0;i < digest.length; i++)
+    diff |= digest.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0 ? { ok: true, reason: "" } : { ok: false, reason: "Assinatura inválida" };
+}
+function parseWhatsappWebhook(payload) {
+  const out = [];
+  const body = payload;
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      const value2 = change.value;
+      const contactName = value2?.contacts?.[0]?.profile?.name ?? null;
+      for (const message of value2?.messages ?? []) {
+        const isText = message.type ? message.type === "text" : Boolean(message.text?.body);
+        if (!isText || !message.from)
+          continue;
+        out.push({
+          from: message.from,
+          name: contactName,
+          text: message.text?.body ?? "",
+          messageId: message.id ?? null
+        });
+      }
+    }
+  }
+  return out;
+}
+function parseMetaMessaging(payload) {
+  const out = [];
+  const body = payload;
+  const platform = body.object === "instagram" ? "instagram" : "facebook";
+  for (const entry of body.entry ?? []) {
+    for (const event of entry.messaging ?? []) {
+      if (!event.message?.text || event.message.is_echo)
+        continue;
+      if (!event.sender?.id)
+        continue;
+      out.push({
+        platform,
+        senderId: event.sender.id,
+        text: event.message.text,
+        messageId: event.message.mid ?? null
+      });
+    }
+  }
+  return out;
+}
+function parseLeadgenWebhook(payload) {
+  const out = [];
+  const body = payload;
+  for (const entry of body.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      if (change.field !== "leadgen" || !change.value?.leadgen_id)
+        continue;
+      out.push({
+        leadgenId: change.value.leadgen_id,
+        formId: change.value.form_id ?? null,
+        pageId: change.value.page_id ?? null,
+        createdTime: change.value.created_time ?? null
+      });
+    }
+  }
+  return out;
+}
+async function fetchLeadgen(leadgenId, pageToken) {
+  const response = await fetch(`${GRAPH}/${leadgenId}?fields=field_data,created_time,campaign_name,adset_name,ad_name,form_id&access_token=${encodeURIComponent(pageToken)}`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new Error(payload.error?.message ?? `HTTP ${response.status}`);
+  const fields = {};
+  for (const item of payload.field_data ?? []) {
+    if (item.name)
+      fields[item.name] = (item.values ?? []).join(", ");
+  }
+  return { fields, campaign: payload.campaign_name ?? null, ad: payload.ad_name ?? null };
+}
+
+// packages/web/src/api/lib/automations.ts
+var TRIGGERS = [
+  { value: "lead_novo", label: "Lead novo entrou no CRM" },
+  { value: "lead_sem_resposta", label: "Lead sem contato há X horas" },
+  { value: "conversa_transferida", label: "IA transferiu conversa para humano" },
+  { value: "imovel_publicado", label: "Imóvel publicado no site" },
+  { value: "proposta_enviada", label: "Proposta enviada" }
+];
+var ACTIONS = [
+  { value: "criar_tarefa", label: "Criar tarefa na agenda" },
+  { value: "nota_lead", label: "Registrar nota no lead" },
+  { value: "mudar_etapa", label: "Mover lead de etapa" },
+  { value: "whatsapp_texto", label: "Enviar WhatsApp (exige Cloud API conectada)" }
+];
+function parseJson(raw2, fallback) {
+  try {
+    return JSON.parse(raw2);
+  } catch {
+    return fallback;
+  }
+}
+function fill(text3, context) {
+  return text3.replace(/\{nome\}/g, context.name ?? "cliente").replace(/\{origem\}/g, context.source ?? "site");
+}
+async function runAction(db3, action, context) {
+  switch (action.type) {
+    case "criar_tarefa": {
+      const hours = action.hours && action.hours > 0 ? action.hours : 2;
+      await db3.insert(tasks).values({
+        title: fill(action.text || "Retornar contato", context).slice(0, 160),
+        type: "follow_up",
+        dueAt: new Date(Date.now() + hours * 60 * 60 * 1000),
+        status: "pendente",
+        leadId: context.leadId ?? null,
+        propertyId: context.propertyId ?? null,
+        notes: "Criada por automação"
+      });
+      return { ok: true, message: "Tarefa criada" };
+    }
+    case "nota_lead": {
+      if (!context.leadId)
+        return { ok: false, message: "Sem lead para anotar" };
+      await db3.insert(leadNotes).values({
+        leadId: context.leadId,
+        body: fill(action.text || "Automação executada", context).slice(0, 1000)
+      });
+      return { ok: true, message: "Nota registrada" };
+    }
+    case "mudar_etapa": {
+      if (!context.leadId)
+        return { ok: false, message: "Sem lead para mover" };
+      if (!action.stage)
+        return { ok: false, message: "Etapa destino não definida" };
+      await db3.update(leads).set({ stage: action.stage, updatedAt: new Date }).where(eq(leads.id, context.leadId));
+      return { ok: true, message: `Lead movido para ${action.stage}` };
+    }
+    case "whatsapp_texto": {
+      if (!context.phone)
+        return { ok: false, message: "Contato sem telefone" };
+      const { config: config2 } = await readConfig(db3, "whatsapp_cloud");
+      if (!config2.accessToken || !config2.phoneNumberId) {
+        return { ok: false, message: "WhatsApp Cloud API ainda não conectada (falta credencial)" };
+      }
+      try {
+        await sendWhatsappText(config2, context.phone, fill(action.text || "", context));
+        return { ok: true, message: "WhatsApp enviado" };
+      } catch (error48) {
+        return {
+          ok: false,
+          message: `Falha no WhatsApp: ${error48 instanceof Error ? error48.message : "erro"}`
+        };
+      }
+    }
+    default:
+      return { ok: false, message: `Ação desconhecida: ${action.type}` };
+  }
+}
+async function record2(db3, automationId, ok, message) {
+  await db3.insert(automationRuns).values({ automationId, ok: ok ? 1 : 0, message });
+  const [row] = await db3.select().from(automations).where(eq(automations.id, automationId)).limit(1);
+  await db3.update(automations).set({
+    runCount: (row?.runCount ?? 0) + 1,
+    errorCount: (row?.errorCount ?? 0) + (ok ? 0 : 1),
+    lastRunAt: new Date,
+    lastError: ok ? null : message.slice(0, 300)
+  }).where(eq(automations.id, automationId));
+}
+async function fireTrigger(db3, trigger, context) {
+  const rows = await db3.select().from(automations).where(and(eq(automations.active, 1), eq(automations.trigger, trigger)));
+  const results = [];
+  for (const row of rows) {
+    const conditions2 = parseJson(row.conditions, {});
+    if (conditions2.source && context.source && conditions2.source !== context.source)
+      continue;
+    const actions = parseJson(row.actions, []);
+    const messages2 = [];
+    let ok = true;
+    for (const action of actions) {
+      const result = await runAction(db3, action, context);
+      if (!result.ok)
+        ok = false;
+      messages2.push(`${action.type}: ${result.message}`);
+    }
+    await record2(db3, row.id, ok, messages2.join(" | ") || "sem ações");
+    results.push({ automation: row.name, ok, message: messages2.join(" | ") });
+  }
+  return results;
+}
+async function sweepTimeRules(db3) {
+  const rows = await db3.select().from(automations).where(and(eq(automations.active, 1), eq(automations.trigger, "lead_sem_resposta")));
+  if (rows.length === 0)
+    return { checked: 0, fired: 0 };
+  let fired = 0;
+  let checked = 0;
+  for (const row of rows) {
+    const conditions2 = parseJson(row.conditions, {});
+    const hours = conditions2.hours && conditions2.hours > 0 ? conditions2.hours : 24;
+    const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const leads2 = await db3.select().from(leads).where(and(eq(leads.status, "aberto"), eq(leads.stage, "novo"), or(lt(leads.updatedAt, cutoff), isNull(leads.updatedAt)))).orderBy(desc(leads.createdAt)).limit(50);
+    checked += leads2.length;
+    for (const lead of leads2) {
+      const notes = await db3.select().from(leadNotes).where(eq(leadNotes.leadId, lead.id)).limit(50);
+      const marker = `[auto:${row.id}]`;
+      if (notes.some((note) => note.body.includes(marker)))
+        continue;
+      const actions = parseJson(row.actions, []);
+      const messages2 = [];
+      let ok = true;
+      for (const action of actions) {
+        const result = await runAction(db3, action, {
+          leadId: lead.id,
+          phone: lead.phone,
+          name: lead.name,
+          source: lead.source
+        });
+        if (!result.ok)
+          ok = false;
+        messages2.push(`${action.type}: ${result.message}`);
+      }
+      await db3.insert(leadNotes).values({
+        leadId: lead.id,
+        body: `${marker} ${row.name}: ${messages2.join(" | ")}`
+      });
+      await record2(db3, row.id, ok, `lead #${lead.id} — ${messages2.join(" | ")}`);
+      fired += 1;
+    }
+  }
+  return { checked, fired };
+}
+
+// packages/web/src/api/lib/lead-intake.ts
+var digits = (value2) => value2.replace(/\D/g, "");
+async function dedupeWindowHours(db3) {
+  const [row] = await db3.select().from(integrations).where(eq(integrations.key, "site_leads")).limit(1);
+  const config2 = parseConfig(row?.config);
+  const parsed = Number.parseInt(config2.dedupeHours ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 8760 ? parsed : 72;
+}
+async function intakeLead(db3, input) {
+  const phone = digits(input.phone).slice(0, 20);
+  const email3 = input.email?.trim().toLowerCase() || null;
+  const hours = await dedupeWindowHours(db3);
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  if (input.externalId) {
+    const [same] = await db3.select().from(leads).where(eq(leads.externalId, input.externalId)).limit(1);
+    if (same) {
+      return { id: same.id, duplicated: true, detail: "Lead já recebido antes (mesmo id externo)." };
+    }
+  }
+  const matchers = [];
+  if (phone)
+    matchers.push(eq(leads.phone, phone));
+  if (email3)
+    matchers.push(eq(leads.email, email3));
+  let existing;
+  if (matchers.length) {
+    const rows = await db3.select().from(leads).where(and(gte(leads.createdAt, since), matchers.length > 1 ? or(...matchers) : matchers[0])).orderBy(desc(leads.createdAt)).limit(1);
+    existing = rows[0];
+  }
+  if (existing) {
+    const lines = [
+      `Novo contato (${input.source}) dentro da janela de ${hours}h.`,
+      input.interest ? `Interesse: ${input.interest}` : "",
+      input.message ? `Mensagem: ${input.message}` : "",
+      input.campaign ? `Campanha: ${input.campaign}` : ""
+    ].filter(Boolean);
+    await db3.insert(leadNotes).values({ leadId: existing.id, body: lines.join(`
+`) });
+    await db3.update(leads).set({
+      updatedAt: new Date,
+      email: existing.email ?? email3,
+      propertyId: existing.propertyId ?? input.propertyId ?? null,
+      portal: existing.portal ?? input.portal ?? null,
+      channel: existing.channel ?? input.channel ?? null,
+      campaign: existing.campaign ?? input.campaign ?? null
+    }).where(eq(leads.id, existing.id));
+    return {
+      id: existing.id,
+      duplicated: true,
+      detail: `Contato adicionado ao lead #${existing.id} (deduplicação de ${hours}h).`
+    };
+  }
+  const [created] = await db3.insert(leads).values({
+    name: input.name.trim().slice(0, 120) || "Contato sem nome",
+    phone,
+    email: email3,
+    interest: input.interest.slice(0, 160) || "Contato",
+    message: input.message?.slice(0, 1000) || null,
+    source: input.source.slice(0, 60),
+    portal: input.portal ?? null,
+    channel: input.channel ?? null,
+    campaign: input.campaign?.slice(0, 160) ?? null,
+    utmSource: input.utmSource?.slice(0, 120) ?? null,
+    utmMedium: input.utmMedium?.slice(0, 120) ?? null,
+    utmCampaign: input.utmCampaign?.slice(0, 160) ?? null,
+    externalId: input.externalId?.slice(0, 120) ?? null,
+    propertyId: input.propertyId ?? null,
+    stage: "novo",
+    status: "aberto",
+    updatedAt: new Date
+  }).returning();
+  if (created) {
+    await fireTrigger(db3, "lead_novo", {
+      leadId: created.id,
+      propertyId: created.propertyId,
+      phone: created.phone,
+      name: created.name,
+      source: created.source
+    });
+  }
+  return { id: created?.id ?? 0, duplicated: false, detail: "Lead criado no CRM." };
+}
+function normalizeWebhookLead(payload, fallbackSource) {
+  const pick2 = (...keys) => {
+    for (const key of keys) {
+      const value2 = payload[key];
+      if (typeof value2 === "string" && value2.trim())
+        return value2.trim();
+      if (typeof value2 === "number")
+        return String(value2);
+    }
+    return "";
+  };
+  return {
+    name: pick2("name", "nome", "lead_name", "contactName", "cliente") || "Contato sem nome",
+    phone: pick2("phone", "telefone", "celular", "whatsapp", "phoneNumber", "telephone"),
+    email: pick2("email", "e-mail", "mail") || null,
+    interest: pick2("interest", "interesse", "propertyCode", "codigoImovel", "listing", "message", "mensagem") || "Contato via integração",
+    message: pick2("message", "mensagem", "comment", "observacao") || null,
+    source: pick2("source", "origem", "portal") || fallbackSource,
+    portal: pick2("portal", "source", "origem") || fallbackSource,
+    channel: pick2("channel", "canal") || "webhook",
+    campaign: pick2("campaign", "campanha") || null,
+    utmSource: pick2("utm_source", "utmSource") || null,
+    utmMedium: pick2("utm_medium", "utmMedium") || null,
+    utmCampaign: pick2("utm_campaign", "utmCampaign") || null,
+    externalId: pick2("id", "lead_id", "leadId", "external_id", "externalId") || null,
+    propertyCode: pick2("propertyCode", "codigoImovel", "codigo", "listingId") || null
+  };
+}
+
 // packages/web/src/api/routes/leads.ts
 var createInput = exports_external.object({
   name: exports_external.string().min(2).max(120),
   phone: exports_external.string().min(8).max(30),
+  email: exports_external.string().max(160).optional(),
   interest: exports_external.string().min(1).max(160),
   message: exports_external.string().max(1000).optional(),
-  source: exports_external.string().max(60).optional()
+  source: exports_external.string().max(60).optional(),
+  propertyCode: exports_external.string().max(40).optional(),
+  utmSource: exports_external.string().max(120).optional(),
+  utmMedium: exports_external.string().max(120).optional(),
+  utmCampaign: exports_external.string().max(160).optional()
 });
 var leads2 = {
   create: base.input(createInput).handler(async ({ input }) => {
     const db3 = await getDb();
-    const [lead] = await db3.insert(leads).values({
-      name: input.name.trim(),
-      phone: input.phone.trim(),
+    let propertyId = null;
+    if (input.propertyCode) {
+      const [property] = await db3.select({ id: properties.id }).from(properties).where(eq(properties.code, input.propertyCode.trim().toUpperCase())).limit(1);
+      propertyId = property?.id ?? null;
+    }
+    const result = await intakeLead(db3, {
+      name: input.name,
+      phone: input.phone,
+      email: input.email ?? null,
       interest: input.interest,
-      message: input.message?.trim() || null,
+      message: input.message ?? null,
       source: input.source ?? "site",
-      stage: "novo",
-      status: "aberto",
-      updatedAt: new Date
-    }).returning();
-    return { id: lead?.id ?? 0, ok: true };
+      channel: "site",
+      utmSource: input.utmSource ?? null,
+      utmMedium: input.utmMedium ?? null,
+      utmCampaign: input.utmCampaign ?? null,
+      propertyId
+    });
+    return { id: result.id, ok: true };
   })
 };
 
 // packages/web/src/api/routes/properties.ts
 init_schema();
+
+// packages/web/src/api/lib/slug.ts
+function slugify2(value2) {
+  return value2.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 90);
+}
+function propertySlug(input) {
+  const parts = [input.title, input.district ?? "", input.city ?? ""].filter(Boolean).join(" ");
+  const base2 = slugify2(parts) || slugify2(input.type ?? "imovel");
+  const code = slugify2(input.code);
+  return base2.endsWith(code) ? base2 : `${base2}-${code}`;
+}
+function codeFromSlug(slug) {
+  const parts = slugify2(slug).split("-");
+  return parts[parts.length - 1] ?? "";
+}
+
+// packages/web/src/api/routes/properties.ts
 var FALLBACK_IMAGE = "/images/imovel-1.jpg";
 function parseFeatures(raw2) {
   if (!raw2)
@@ -32873,9 +34581,57 @@ var properties2 = {
         features: parseFeatures(row.features),
         image: primary?.url ?? FALLBACK_IMAGE,
         images: own.map((image) => image.url),
-        featured: row.featured === 1
+        featured: row.featured === 1,
+        slug: row.slug ?? propertySlug(row)
       };
     });
+  }),
+  detail: base.input(exports_external.object({ slug: exports_external.string().min(1).max(160) })).handler(async ({ input }) => {
+    const db3 = await getDb();
+    const rows = await db3.select().from(properties).where(eq(properties.published, 1)).limit(500);
+    const wanted = input.slug.trim().toLowerCase();
+    const code = codeFromSlug(wanted).toUpperCase();
+    const row = rows.find((item) => (item.slug ?? propertySlug(item)).toLowerCase() === wanted) ?? rows.find((item) => item.code.toLowerCase() === wanted) ?? rows.find((item) => item.code.toUpperCase() === code);
+    if (!row)
+      return null;
+    const images = await db3.select().from(propertyImages).where(eq(propertyImages.propertyId, row.id)).orderBy(asc(propertyImages.sortOrder), asc(propertyImages.id));
+    const primary = images.find((image) => image.isPrimary === 1) ?? images[0];
+    const toProperty = (item, list) => {
+      const cover = list.find((image) => image.isPrimary === 1) ?? list[0];
+      return {
+        id: item.id,
+        code: item.code,
+        title: item.title,
+        purpose: item.purpose,
+        type: item.type,
+        district: item.district,
+        city: item.city,
+        price: item.price,
+        condoFee: item.condoFee,
+        iptu: item.iptu,
+        bedrooms: item.bedrooms,
+        suites: item.suites,
+        bathrooms: item.bathrooms,
+        parking: item.parking,
+        area: item.areaUtil,
+        areaTotal: item.areaTotal,
+        status: item.status,
+        highlight: item.highlight ?? "",
+        description: item.description ?? "",
+        features: parseFeatures(item.features),
+        image: cover?.url ?? FALLBACK_IMAGE,
+        images: list.map((image) => image.url),
+        featured: item.featured === 1,
+        slug: item.slug ?? propertySlug(item),
+        address: item.address
+      };
+    };
+    const relatedRows = rows.filter((item) => item.id !== row.id && (item.district === row.district || item.type === row.type) && (item.status === "disponivel" || item.status === "reservado")).slice(0, 3);
+    const relatedImages = relatedRows.length ? await db3.select().from(propertyImages).where(inArray(propertyImages.propertyId, relatedRows.map((item) => item.id))).orderBy(asc(propertyImages.sortOrder), asc(propertyImages.id)) : [];
+    return {
+      property: toProperty(row, images),
+      related: relatedRows.map((item) => toProperty(item, relatedImages.filter((image) => image.propertyId === item.id)))
+    };
   }),
   registerView: base.input(exports_external.object({ code: exports_external.string().min(1).max(40) })).handler(async ({ input }) => {
     const db3 = await getDb();
@@ -32980,6 +34736,7 @@ var typeEnum = exports_external.enum([
 ]);
 var imageInput = exports_external.object({
   url: exports_external.string().min(1).max(2000),
+  originalUrl: exports_external.string().max(2000).nullable().optional(),
   isPrimary: exports_external.boolean().optional()
 });
 var propertyInput = exports_external.object({
@@ -33006,6 +34763,7 @@ var propertyInput = exports_external.object({
   published: exports_external.boolean().default(true),
   featured: exports_external.boolean().default(false),
   ownerId: exports_external.number().int().nullable().optional(),
+  watermarkOff: exports_external.boolean().default(false),
   images: exports_external.array(imageInput).max(40).default([])
 });
 function toRow(input) {
@@ -33033,6 +34791,14 @@ function toRow(input) {
     published: input.published ? 1 : 0,
     featured: input.featured ? 1 : 0,
     ownerId: input.ownerId ?? null,
+    watermarkOff: input.watermarkOff ? 1 : 0,
+    slug: propertySlug({
+      code: input.code.trim().toUpperCase(),
+      title: input.title.trim(),
+      type: input.type,
+      district: input.district,
+      city: input.city
+    }),
     updatedAt: new Date
   };
 }
@@ -33044,6 +34810,7 @@ async function syncImages(db3, propertyId, images) {
   await db3.insert(propertyImages).values(images.map((image, index2) => ({
     propertyId,
     url: image.url.trim(),
+    originalUrl: image.originalUrl?.trim() || null,
     sortOrder: index2,
     isPrimary: index2 === primaryIndex ? 1 : 0
   })));
@@ -33878,6 +35645,14215 @@ var adminMedia = {
   })
 };
 
+// packages/web/src/api/lib/audit.ts
+init_schema();
+async function audit(db3, actor, action, options = {}) {
+  try {
+    await db3.insert(auditLog).values({
+      userId: actor?.id ?? null,
+      userName: actor?.name ?? null,
+      action,
+      entity: options.entity ?? null,
+      entityId: options.entityId === undefined ? null : String(options.entityId),
+      detail: options.detail ? options.detail.slice(0, 500) : null,
+      ip: options.ip ?? null
+    });
+  } catch {}
+}
+async function recentAudit(db3, limit = 100) {
+  return db3.select().from(auditLog).orderBy(desc(auditLog.createdAt)).limit(Math.min(limit, 300));
+}
+
+// packages/web/src/api/lib/base-url.ts
+var FALLBACK = "https://www.edyprimeimoveis.com.br";
+function siteBaseUrl(headers) {
+  const fromEnv = (process.env.WEBSITE_URL ?? "").trim().replace(/\/+$/, "");
+  if (fromEnv)
+    return fromEnv;
+  const host = headers?.get("x-forwarded-host") ?? headers?.get("host") ?? "";
+  if (host) {
+    const proto = host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https";
+    return `${proto}://${host}`;
+  }
+  return FALLBACK;
+}
+function clientIp(headers) {
+  return headers?.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+}
+
+// node_modules/.bun/@ai-sdk+provider@4.0.7/node_modules/@ai-sdk/provider/dist/index.js
+var marker = "vercel.ai.error";
+var symbol2 = Symbol.for(marker);
+var _a2;
+var _b;
+var AISDKError = class _AISDKError extends (_b = Error, _a2 = symbol2, _b) {
+  constructor({
+    name: name15,
+    message,
+    cause
+  }) {
+    super(message);
+    this[_a2] = true;
+    this.name = name15;
+    this.cause = cause;
+  }
+  static isInstance(error48) {
+    return _AISDKError.hasMarker(error48, marker);
+  }
+  static hasMarker(error48, marker16) {
+    const markerSymbol = Symbol.for(marker16);
+    return error48 != null && typeof error48 === "object" && markerSymbol in error48 && typeof error48[markerSymbol] === "boolean" && error48[markerSymbol] === true;
+  }
+};
+var name = "AI_APICallError";
+var marker2 = `vercel.ai.error.${name}`;
+var symbol22 = Symbol.for(marker2);
+var _a22;
+var _b2;
+var APICallError = class extends (_b2 = AISDKError, _a22 = symbol22, _b2) {
+  constructor({
+    message,
+    url: url2,
+    requestBodyValues,
+    statusCode,
+    responseHeaders,
+    responseBody,
+    cause,
+    isRetryable = statusCode != null && (statusCode === 408 || statusCode === 409 || statusCode === 429 || statusCode >= 500),
+    data
+  }) {
+    super({ name, message, cause });
+    this[_a22] = true;
+    this.url = url2;
+    this.requestBodyValues = requestBodyValues;
+    this.statusCode = statusCode;
+    this.responseHeaders = responseHeaders;
+    this.responseBody = responseBody;
+    this.isRetryable = isRetryable;
+    this.data = data;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker2);
+  }
+};
+var name2 = "AI_EmptyResponseBodyError";
+var marker3 = `vercel.ai.error.${name2}`;
+var symbol3 = Symbol.for(marker3);
+var _a3;
+var _b3;
+var EmptyResponseBodyError = class extends (_b3 = AISDKError, _a3 = symbol3, _b3) {
+  constructor({ message = "Empty response body" } = {}) {
+    super({ name: name2, message });
+    this[_a3] = true;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker3);
+  }
+};
+function getErrorMessage(error48) {
+  if (error48 == null) {
+    return "unknown error";
+  }
+  if (typeof error48 === "string") {
+    return error48;
+  }
+  if (error48 instanceof Error) {
+    return error48.toString();
+  }
+  return JSON.stringify(error48);
+}
+var name3 = "AI_InvalidArgumentError";
+var marker4 = `vercel.ai.error.${name3}`;
+var symbol4 = Symbol.for(marker4);
+var _a4;
+var _b4;
+var InvalidArgumentError = class extends (_b4 = AISDKError, _a4 = symbol4, _b4) {
+  constructor({
+    message,
+    cause,
+    argument
+  }) {
+    super({ name: name3, message, cause });
+    this[_a4] = true;
+    this.argument = argument;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker4);
+  }
+};
+var name4 = "AI_InvalidPromptError";
+var marker5 = `vercel.ai.error.${name4}`;
+var symbol5 = Symbol.for(marker5);
+var _a5;
+var _b5;
+var InvalidPromptError = class extends (_b5 = AISDKError, _a5 = symbol5, _b5) {
+  constructor({
+    prompt,
+    message,
+    cause
+  }) {
+    super({ name: name4, message: `Invalid prompt: ${message}`, cause });
+    this[_a5] = true;
+    this.prompt = prompt;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker5);
+  }
+};
+var name5 = "AI_InvalidResponseDataError";
+var marker6 = `vercel.ai.error.${name5}`;
+var symbol6 = Symbol.for(marker6);
+var _a6;
+var _b6;
+var InvalidResponseDataError = class extends (_b6 = AISDKError, _a6 = symbol6, _b6) {
+  constructor({
+    data,
+    message = `Invalid response data: ${JSON.stringify(data)}.`
+  }) {
+    super({ name: name5, message });
+    this[_a6] = true;
+    this.data = data;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker6);
+  }
+};
+var name6 = "AI_JSONParseError";
+var marker7 = `vercel.ai.error.${name6}`;
+var symbol7 = Symbol.for(marker7);
+var _a7;
+var _b7;
+var JSONParseError = class extends (_b7 = AISDKError, _a7 = symbol7, _b7) {
+  constructor({ text: text3, cause }) {
+    super({
+      name: name6,
+      message: `JSON parsing failed: Text: ${text3}.
+Error message: ${getErrorMessage(cause)}`,
+      cause
+    });
+    this[_a7] = true;
+    this.text = text3;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker7);
+  }
+};
+var name7 = "AI_LoadAPIKeyError";
+var marker8 = `vercel.ai.error.${name7}`;
+var symbol8 = Symbol.for(marker8);
+var _a8;
+var _b8;
+var LoadAPIKeyError = class extends (_b8 = AISDKError, _a8 = symbol8, _b8) {
+  constructor({ message }) {
+    super({ name: name7, message });
+    this[_a8] = true;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker8);
+  }
+};
+var name8 = "AI_LoadSettingError";
+var marker9 = `vercel.ai.error.${name8}`;
+var symbol9 = Symbol.for(marker9);
+var _a9;
+var _b9;
+var LoadSettingError = class extends (_b9 = AISDKError, _a9 = symbol9, _b9) {
+  constructor({ message }) {
+    super({ name: name8, message });
+    this[_a9] = true;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker9);
+  }
+};
+var name9 = "AI_NoContentGeneratedError";
+var marker10 = `vercel.ai.error.${name9}`;
+var symbol10 = Symbol.for(marker10);
+var _a10;
+var _b10;
+var NoContentGeneratedError = class extends (_b10 = AISDKError, _a10 = symbol10, _b10) {
+  constructor({
+    message = "No content generated."
+  } = {}) {
+    super({ name: name9, message });
+    this[_a10] = true;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker10);
+  }
+};
+var name10 = "AI_NoSuchModelError";
+var marker11 = `vercel.ai.error.${name10}`;
+var symbol11 = Symbol.for(marker11);
+var _a11;
+var _b11;
+var NoSuchModelError = class extends (_b11 = AISDKError, _a11 = symbol11, _b11) {
+  constructor({
+    errorName = name10,
+    modelId,
+    modelType,
+    message = `No such ${modelType}: ${modelId}`
+  }) {
+    super({ name: errorName, message });
+    this[_a11] = true;
+    this.modelId = modelId;
+    this.modelType = modelType;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker11);
+  }
+};
+var name11 = "AI_NoSuchProviderReferenceError";
+var marker12 = `vercel.ai.error.${name11}`;
+var symbol12 = Symbol.for(marker12);
+var _a12;
+var _b12;
+var NoSuchProviderReferenceError = class extends (_b12 = AISDKError, _a12 = symbol12, _b12) {
+  constructor({
+    provider,
+    reference,
+    message = `No provider reference found for provider '${provider}'. Available providers: ${Object.keys(reference).join(", ")}`
+  }) {
+    super({ name: name11, message });
+    this[_a12] = true;
+    this.provider = provider;
+    this.reference = reference;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker12);
+  }
+};
+var name12 = "AI_TooManyEmbeddingValuesForCallError";
+var marker13 = `vercel.ai.error.${name12}`;
+var symbol13 = Symbol.for(marker13);
+var _a13;
+var _b13;
+var TooManyEmbeddingValuesForCallError = class extends (_b13 = AISDKError, _a13 = symbol13, _b13) {
+  constructor(options) {
+    super({
+      name: name12,
+      message: `Too many values for a single embedding call. The ${options.provider} model "${options.modelId}" can only embed up to ${options.maxEmbeddingsPerCall} values per call, but ${options.values.length} values were provided.`
+    });
+    this[_a13] = true;
+    this.provider = options.provider;
+    this.modelId = options.modelId;
+    this.maxEmbeddingsPerCall = options.maxEmbeddingsPerCall;
+    this.values = options.values;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker13);
+  }
+};
+var name13 = "AI_TypeValidationError";
+var marker14 = `vercel.ai.error.${name13}`;
+var symbol14 = Symbol.for(marker14);
+var _a14;
+var _b14;
+var TypeValidationError = class _TypeValidationError extends (_b14 = AISDKError, _a14 = symbol14, _b14) {
+  constructor({
+    value: value2,
+    cause,
+    context
+  }) {
+    let contextPrefix = "Type validation failed";
+    if (context == null ? undefined : context.field) {
+      contextPrefix += ` for ${context.field}`;
+    }
+    if ((context == null ? undefined : context.entityName) || (context == null ? undefined : context.entityId)) {
+      contextPrefix += " (";
+      const parts = [];
+      if (context.entityName) {
+        parts.push(context.entityName);
+      }
+      if (context.entityId) {
+        parts.push(`id: "${context.entityId}"`);
+      }
+      contextPrefix += parts.join(", ");
+      contextPrefix += ")";
+    }
+    super({
+      name: name13,
+      message: `${contextPrefix}: Value: ${JSON.stringify(value2)}.
+Error message: ${getErrorMessage(cause)}`,
+      cause
+    });
+    this[_a14] = true;
+    this.value = value2;
+    this.context = context;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker14);
+  }
+  static wrap({
+    value: value2,
+    cause,
+    context
+  }) {
+    var _a16, _b16, _c;
+    if (_TypeValidationError.isInstance(cause) && cause.value === value2 && ((_a16 = cause.context) == null ? undefined : _a16.field) === (context == null ? undefined : context.field) && ((_b16 = cause.context) == null ? undefined : _b16.entityName) === (context == null ? undefined : context.entityName) && ((_c = cause.context) == null ? undefined : _c.entityId) === (context == null ? undefined : context.entityId)) {
+      return cause;
+    }
+    return new _TypeValidationError({ value: value2, cause, context });
+  }
+};
+var name14 = "AI_UnsupportedFunctionalityError";
+var marker15 = `vercel.ai.error.${name14}`;
+var symbol15 = Symbol.for(marker15);
+var _a15;
+var _b15;
+var UnsupportedFunctionalityError = class extends (_b15 = AISDKError, _a15 = symbol15, _b15) {
+  constructor({
+    functionality,
+    message = `'${functionality}' functionality not supported.`
+  }) {
+    super({ name: name14, message });
+    this[_a15] = true;
+    this.functionality = functionality;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker15);
+  }
+};
+
+// node_modules/.bun/eventsource-parser@3.1.1/node_modules/eventsource-parser/dist/index.js
+class ParseError extends Error {
+  constructor(message, options) {
+    super(message), this.name = "ParseError", this.type = options.type, this.field = options.field, this.value = options.value, this.line = options.line;
+  }
+}
+var LF = 10;
+var CR = 13;
+var SPACE = 32;
+function noop(_arg) {}
+function createParser(config2) {
+  if (typeof config2 == "function")
+    throw new TypeError("`config` must be an object, got a function instead. Did you mean `createParser({onEvent: fn})`?");
+  const { onEvent = noop, onError = noop, onRetry = noop, onComment, maxBufferSize } = config2, pendingFragments = [];
+  let pendingFragmentsLength = 0, isFirstChunk = true, id, data = "", dataLines = 0, eventType, terminated = false;
+  function feed(chunk) {
+    if (terminated)
+      throw new Error("Cannot feed parser: it was terminated after exceeding the configured max buffer size. Call `reset()` to resume parsing.");
+    if (isFirstChunk && (isFirstChunk = false, chunk.charCodeAt(0) === 239 && chunk.charCodeAt(1) === 187 && chunk.charCodeAt(2) === 191 && (chunk = chunk.slice(3))), pendingFragments.length === 0) {
+      const trailing2 = processLines(chunk);
+      trailing2 !== "" && (pendingFragments.push(trailing2), pendingFragmentsLength = trailing2.length), checkBufferSize();
+      return;
+    }
+    if (chunk.indexOf(`
+`) === -1 && chunk.indexOf("\r") === -1) {
+      pendingFragments.push(chunk), pendingFragmentsLength += chunk.length, checkBufferSize();
+      return;
+    }
+    pendingFragments.push(chunk);
+    const input = pendingFragments.join("");
+    pendingFragments.length = 0, pendingFragmentsLength = 0;
+    const trailing = processLines(input);
+    trailing !== "" && (pendingFragments.push(trailing), pendingFragmentsLength = trailing.length), checkBufferSize();
+  }
+  function checkBufferSize() {
+    maxBufferSize !== undefined && (pendingFragmentsLength + data.length <= maxBufferSize || (terminated = true, pendingFragments.length = 0, pendingFragmentsLength = 0, id = undefined, data = "", dataLines = 0, eventType = undefined, onError(new ParseError(`Buffered data exceeded max buffer size of ${maxBufferSize} characters`, {
+      type: "max-buffer-size-exceeded"
+    }))));
+  }
+  function processLines(chunk) {
+    let searchIndex = 0;
+    if (chunk.indexOf("\r") === -1) {
+      let lfIndex = chunk.indexOf(`
+`, searchIndex);
+      for (;lfIndex !== -1; ) {
+        if (searchIndex === lfIndex) {
+          dataLines > 0 && onEvent({ id, event: eventType, data }), id = undefined, data = "", dataLines = 0, eventType = undefined, searchIndex = lfIndex + 1, lfIndex = chunk.indexOf(`
+`, searchIndex);
+          continue;
+        }
+        const firstCharCode = chunk.charCodeAt(searchIndex);
+        if (isDataPrefix(chunk, searchIndex, firstCharCode)) {
+          const valueStart = chunk.charCodeAt(searchIndex + 5) === SPACE ? searchIndex + 6 : searchIndex + 5, value2 = chunk.slice(valueStart, lfIndex);
+          if (dataLines === 0 && chunk.charCodeAt(lfIndex + 1) === LF) {
+            onEvent({ id, event: eventType, data: value2 }), id = undefined, data = "", eventType = undefined, searchIndex = lfIndex + 2, lfIndex = chunk.indexOf(`
+`, searchIndex);
+            continue;
+          }
+          data = dataLines === 0 ? value2 : `${data}
+${value2}`, dataLines++;
+        } else
+          isEventPrefix(chunk, searchIndex, firstCharCode) ? eventType = chunk.slice(chunk.charCodeAt(searchIndex + 6) === SPACE ? searchIndex + 7 : searchIndex + 6, lfIndex) || undefined : parseLine(chunk, searchIndex, lfIndex);
+        searchIndex = lfIndex + 1, lfIndex = chunk.indexOf(`
+`, searchIndex);
+      }
+      return chunk.slice(searchIndex);
+    }
+    for (;searchIndex < chunk.length; ) {
+      const crIndex = chunk.indexOf("\r", searchIndex), lfIndex = chunk.indexOf(`
+`, searchIndex);
+      let lineEnd = -1;
+      if (crIndex !== -1 && lfIndex !== -1 ? lineEnd = crIndex < lfIndex ? crIndex : lfIndex : crIndex !== -1 ? crIndex === chunk.length - 1 ? lineEnd = -1 : lineEnd = crIndex : lfIndex !== -1 && (lineEnd = lfIndex), lineEnd === -1)
+        break;
+      parseLine(chunk, searchIndex, lineEnd), searchIndex = lineEnd + 1, chunk.charCodeAt(searchIndex - 1) === CR && chunk.charCodeAt(searchIndex) === LF && searchIndex++;
+    }
+    return chunk.slice(searchIndex);
+  }
+  function parseLine(chunk, start, end) {
+    if (start === end) {
+      dispatchEvent();
+      return;
+    }
+    const firstCharCode = chunk.charCodeAt(start);
+    if (isDataPrefix(chunk, start, firstCharCode)) {
+      const valueStart = chunk.charCodeAt(start + 5) === SPACE ? start + 6 : start + 5, value22 = chunk.slice(valueStart, end);
+      data = dataLines === 0 ? value22 : `${data}
+${value22}`, dataLines++;
+      return;
+    }
+    if (isEventPrefix(chunk, start, firstCharCode)) {
+      eventType = chunk.slice(chunk.charCodeAt(start + 6) === SPACE ? start + 7 : start + 6, end) || undefined;
+      return;
+    }
+    if (firstCharCode === 105 && chunk.charCodeAt(start + 1) === 100 && chunk.charCodeAt(start + 2) === 58) {
+      const value22 = chunk.slice(chunk.charCodeAt(start + 3) === SPACE ? start + 4 : start + 3, end);
+      value22.includes("\x00") || (id = value22);
+      return;
+    }
+    if (firstCharCode === 58) {
+      if (onComment) {
+        const line2 = chunk.slice(start, end);
+        onComment(line2.slice(chunk.charCodeAt(start + 1) === SPACE ? 2 : 1));
+      }
+      return;
+    }
+    const line = chunk.slice(start, end), fieldSeparatorIndex = line.indexOf(":");
+    if (fieldSeparatorIndex === -1) {
+      processField(line, "", line);
+      return;
+    }
+    const field = line.slice(0, fieldSeparatorIndex), offset = line.charCodeAt(fieldSeparatorIndex + 1) === SPACE ? 2 : 1, value2 = line.slice(fieldSeparatorIndex + offset);
+    processField(field, value2, line);
+  }
+  function processField(field, value2, line) {
+    switch (field) {
+      case "event":
+        eventType = value2 || undefined;
+        break;
+      case "data":
+        data = dataLines === 0 ? value2 : `${data}
+${value2}`, dataLines++;
+        break;
+      case "id":
+        value2.includes("\x00") || (id = value2);
+        break;
+      case "retry":
+        /^\d+$/.test(value2) ? onRetry(parseInt(value2, 10)) : onError(new ParseError(`Invalid \`retry\` value: "${value2}"`, {
+          type: "invalid-retry",
+          value: value2,
+          line
+        }));
+        break;
+      default:
+        onError(new ParseError(`Unknown field "${field.length > 20 ? `${field.slice(0, 20)}…` : field}"`, { type: "unknown-field", field, value: value2, line }));
+        break;
+    }
+  }
+  function dispatchEvent() {
+    dataLines > 0 && onEvent({
+      id,
+      event: eventType,
+      data
+    }), id = undefined, data = "", dataLines = 0, eventType = undefined;
+  }
+  function reset(options = {}) {
+    if (options.consume && pendingFragments.length > 0) {
+      const incompleteLine = pendingFragments.join("");
+      parseLine(incompleteLine, 0, incompleteLine.length);
+    }
+    isFirstChunk = true, id = undefined, data = "", dataLines = 0, eventType = undefined, pendingFragments.length = 0, pendingFragmentsLength = 0, terminated = false;
+  }
+  return { feed, reset };
+}
+function isDataPrefix(chunk, i, firstCharCode) {
+  return firstCharCode === 100 && chunk.charCodeAt(i + 1) === 97 && chunk.charCodeAt(i + 2) === 116 && chunk.charCodeAt(i + 3) === 97 && chunk.charCodeAt(i + 4) === 58;
+}
+function isEventPrefix(chunk, i, firstCharCode) {
+  return firstCharCode === 101 && chunk.charCodeAt(i + 1) === 118 && chunk.charCodeAt(i + 2) === 101 && chunk.charCodeAt(i + 3) === 110 && chunk.charCodeAt(i + 4) === 116 && chunk.charCodeAt(i + 5) === 58;
+}
+
+// node_modules/.bun/eventsource-parser@3.1.1/node_modules/eventsource-parser/dist/stream.js
+class EventSourceParserStream extends TransformStream {
+  constructor({ onError, onRetry, onComment, maxBufferSize } = {}) {
+    let parser;
+    super({
+      start(controller) {
+        parser = createParser({
+          onEvent: (event) => {
+            controller.enqueue(event);
+          },
+          onError(error48) {
+            typeof onError == "function" && onError(error48), (onError === "terminate" || error48.type === "max-buffer-size-exceeded") && controller.error(error48);
+          },
+          onRetry,
+          onComment,
+          maxBufferSize
+        });
+      },
+      transform(chunk) {
+        parser.feed(chunk);
+      }
+    });
+  }
+}
+
+// node_modules/.bun/@workflow+serde@4.1.0/node_modules/@workflow/serde/dist/index.js
+var WORKFLOW_SERIALIZE = Symbol.for("workflow-serialize");
+var WORKFLOW_DESERIALIZE = Symbol.for("workflow-deserialize");
+
+// node_modules/.bun/@ai-sdk+provider-utils@5.0.28+3c5d820c62823f0b/node_modules/@ai-sdk/provider-utils/dist/index.js
+function asArray(value2) {
+  return value2 === undefined ? [] : Array.isArray(value2) ? value2 : [value2];
+}
+function combineHeaders(...headers) {
+  return headers.reduce((combinedHeaders, currentHeaders) => ({
+    ...combinedHeaders,
+    ...currentHeaders != null ? currentHeaders : {}
+  }), {});
+}
+function removeUndefinedEntries(record3) {
+  return Object.fromEntries(Object.entries(record3).filter(([_key, value2]) => value2 != null));
+}
+async function delay(delayInMs, options) {
+  if (delayInMs == null) {
+    return Promise.resolve();
+  }
+  const signal = options == null ? undefined : options.abortSignal;
+  return new Promise((resolve2, reject) => {
+    if (signal == null ? undefined : signal.aborted) {
+      reject(createAbortError());
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      resolve2();
+    }, delayInMs);
+    const cleanup = () => {
+      clearTimeout(timeoutId);
+      signal == null || signal.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError());
+    };
+    signal == null || signal.addEventListener("abort", onAbort);
+  });
+}
+function createAbortError() {
+  return new DOMException("Delay was aborted", "AbortError");
+}
+function getWebSocketConstructor(webSocket) {
+  const WebSocketConstructor = webSocket != null ? webSocket : globalThis.WebSocket;
+  if (WebSocketConstructor == null) {
+    throw new Error("No WebSocket implementation available.");
+  }
+  return WebSocketConstructor;
+}
+var textDecoder2 = new TextDecoder;
+async function readWebSocketMessageText(data) {
+  if (typeof data === "string")
+    return data;
+  if (data instanceof ArrayBuffer)
+    return textDecoder2.decode(data);
+  if (ArrayBuffer.isView(data)) {
+    return textDecoder2.decode(data);
+  }
+  if (typeof Blob !== "undefined" && data instanceof Blob) {
+    return data.text();
+  }
+  return String(data);
+}
+var WEBSOCKET_OPEN_STATE = 1;
+async function waitForWebSocketBufferDrain(socket, {
+  highWaterMark = 1024 * 1024,
+  pollIntervalMs = 20,
+  abortSignal
+} = {}) {
+  var _a32;
+  while (socket.readyState === WEBSOCKET_OPEN_STATE && ((_a32 = socket.bufferedAmount) != null ? _a32 : 0) > highWaterMark) {
+    if ((abortSignal == null ? undefined : abortSignal.aborted) === true) {
+      return;
+    }
+    await delay(pollIntervalMs);
+  }
+}
+function connectToWebSocket({
+  url: url2,
+  protocols,
+  headers,
+  webSocket,
+  abortSignal,
+  onOpen,
+  onMessageText,
+  onProcessingError,
+  onSocketError,
+  onClose,
+  onAbort
+}) {
+  var _a32;
+  let socket;
+  let abortListener;
+  const close = (code) => {
+    if (abortListener != null) {
+      abortSignal == null || abortSignal.removeEventListener("abort", abortListener);
+      abortListener = undefined;
+    }
+    try {
+      socket == null || socket.close(code);
+    } catch (e) {}
+  };
+  if (abortSignal == null ? undefined : abortSignal.aborted) {
+    onAbort == null || onAbort((_a32 = abortSignal.reason) != null ? _a32 : new Error("Aborted"));
+    return { socket: undefined, close };
+  }
+  try {
+    const WebSocketConstructor = getWebSocketConstructor(webSocket);
+    socket = new WebSocketConstructor(url2, protocols, {
+      headers: removeUndefinedEntries(headers != null ? headers : {})
+    });
+  } catch (error48) {
+    onProcessingError(error48);
+    return { socket: undefined, close };
+  }
+  if (abortSignal != null && onAbort != null) {
+    abortListener = () => {
+      var _a42;
+      return onAbort((_a42 = abortSignal.reason) != null ? _a42 : new Error("Aborted"));
+    };
+    abortSignal.addEventListener("abort", abortListener, { once: true });
+  }
+  const openedSocket = socket;
+  socket.onopen = () => {
+    try {
+      onOpen == null || onOpen(openedSocket);
+    } catch (error48) {
+      onProcessingError(error48);
+    }
+  };
+  let tail = Promise.resolve();
+  socket.onmessage = (event) => {
+    tail = tail.then(() => readWebSocketMessageText(event.data)).then((text3) => onMessageText(text3)).catch(onProcessingError);
+  };
+  socket.onerror = () => {
+    tail = tail.then(() => onSocketError == null ? undefined : onSocketError()).catch(onProcessingError);
+  };
+  socket.onclose = (event) => {
+    const closeEvent = event;
+    const code = typeof (closeEvent == null ? undefined : closeEvent.code) === "number" ? closeEvent.code : undefined;
+    const reason = typeof (closeEvent == null ? undefined : closeEvent.reason) === "string" ? closeEvent.reason : undefined;
+    tail = tail.then(() => onClose == null ? undefined : onClose({ code, reason })).catch(onProcessingError);
+  };
+  return { socket, close };
+}
+function convertAsyncIteratorToReadableStream(iterator) {
+  let cancelled = false;
+  return new ReadableStream({
+    async pull(controller) {
+      if (cancelled)
+        return;
+      try {
+        const { value: value2, done } = await iterator.next();
+        if (done) {
+          controller.close();
+        } else {
+          controller.enqueue(value2);
+        }
+      } catch (error48) {
+        controller.error(error48);
+      }
+    },
+    async cancel(reason) {
+      cancelled = true;
+      if (iterator.return) {
+        try {
+          await iterator.return(reason);
+        } catch (e) {}
+      }
+    }
+  });
+}
+var { btoa: btoa2, atob: atob2 } = globalThis;
+function convertBase64ToUint8Array(base64String) {
+  const base64Url = base64String.replace(/-/g, "+").replace(/_/g, "/");
+  const latin1string = atob2(base64Url);
+  return Uint8Array.from(latin1string, (byte) => byte.codePointAt(0));
+}
+function convertUint8ArrayToBase64(array3) {
+  let latin1string = "";
+  for (let i = 0;i < array3.length; i++) {
+    latin1string += String.fromCodePoint(array3[i]);
+  }
+  return btoa2(latin1string);
+}
+var imageMediaTypeSignatures = [
+  {
+    mediaType: "image/gif",
+    bytesPrefix: [71, 73, 70]
+  },
+  {
+    mediaType: "image/png",
+    bytesPrefix: [137, 80, 78, 71]
+  },
+  {
+    mediaType: "image/jpeg",
+    bytesPrefix: [255, 216]
+  },
+  {
+    mediaType: "image/webp",
+    bytesPrefix: [
+      82,
+      73,
+      70,
+      70,
+      null,
+      null,
+      null,
+      null,
+      87,
+      69,
+      66,
+      80
+    ]
+  },
+  {
+    mediaType: "image/bmp",
+    bytesPrefix: [66, 77]
+  },
+  {
+    mediaType: "image/tiff",
+    bytesPrefix: [73, 73, 42, 0]
+  },
+  {
+    mediaType: "image/tiff",
+    bytesPrefix: [77, 77, 0, 42]
+  },
+  {
+    mediaType: "image/avif",
+    bytesPrefix: [
+      0,
+      0,
+      0,
+      32,
+      102,
+      116,
+      121,
+      112,
+      97,
+      118,
+      105,
+      102
+    ]
+  },
+  {
+    mediaType: "image/heic",
+    bytesPrefix: [
+      0,
+      0,
+      0,
+      32,
+      102,
+      116,
+      121,
+      112,
+      104,
+      101,
+      105,
+      99
+    ]
+  }
+];
+var documentMediaTypeSignatures = [
+  {
+    mediaType: "application/pdf",
+    bytesPrefix: [37, 80, 68, 70]
+  }
+];
+var audioMediaTypeSignaturesWithoutMp4 = [
+  {
+    mediaType: "audio/mpeg",
+    bytesPrefix: [255, 251]
+  },
+  {
+    mediaType: "audio/mpeg",
+    bytesPrefix: [255, 250]
+  },
+  {
+    mediaType: "audio/mpeg",
+    bytesPrefix: [255, 243]
+  },
+  {
+    mediaType: "audio/mpeg",
+    bytesPrefix: [255, 242]
+  },
+  {
+    mediaType: "audio/mpeg",
+    bytesPrefix: [255, 227]
+  },
+  {
+    mediaType: "audio/mpeg",
+    bytesPrefix: [255, 226]
+  },
+  {
+    mediaType: "audio/wav",
+    bytesPrefix: [
+      82,
+      73,
+      70,
+      70,
+      null,
+      null,
+      null,
+      null,
+      87,
+      65,
+      86,
+      69
+    ]
+  },
+  {
+    mediaType: "audio/ogg",
+    bytesPrefix: [79, 103, 103, 83]
+  },
+  {
+    mediaType: "audio/flac",
+    bytesPrefix: [102, 76, 97, 67]
+  },
+  {
+    mediaType: "audio/aac",
+    bytesPrefix: [64, 21, 0, 0]
+  },
+  {
+    mediaType: "audio/webm",
+    bytesPrefix: [26, 69, 223, 163]
+  }
+];
+var audioMediaTypeSignatures = [
+  ...audioMediaTypeSignaturesWithoutMp4,
+  {
+    mediaType: "audio/mp4",
+    bytesPrefix: [
+      0,
+      0,
+      0,
+      null,
+      102,
+      116,
+      121,
+      112
+    ]
+  }
+];
+var videoMediaTypeSignatures = [
+  {
+    mediaType: "video/mp4",
+    bytesPrefix: [
+      0,
+      0,
+      0,
+      null,
+      102,
+      116,
+      121,
+      112
+    ]
+  },
+  {
+    mediaType: "video/webm",
+    bytesPrefix: [26, 69, 223, 163]
+  },
+  {
+    mediaType: "video/quicktime",
+    bytesPrefix: [
+      0,
+      0,
+      0,
+      20,
+      102,
+      116,
+      121,
+      112,
+      113,
+      116
+    ]
+  },
+  {
+    mediaType: "video/x-msvideo",
+    bytesPrefix: [82, 73, 70, 70]
+  }
+];
+var DEFAULT_SNIFF_BYTES = 18;
+var MAX_SIGNATURE_BYTES = 12;
+var MAX_ID3_TAG_BYTES = 128 * 1024;
+var ID3_SCAN_BYTES = MAX_ID3_TAG_BYTES + MAX_SIGNATURE_BYTES;
+function decodePrefix(data, maxBytes) {
+  if (typeof data !== "string") {
+    return data.length > maxBytes ? data.subarray(0, maxBytes) : data;
+  }
+  const maxChars = Math.ceil(maxBytes / 3) * 4;
+  const bytes = convertBase64ToUint8Array(data.substring(0, Math.min(data.length, maxChars)));
+  return bytes.length > maxBytes ? bytes.subarray(0, maxBytes) : bytes;
+}
+function hasID3(bytes) {
+  return bytes.length > 10 && bytes[0] === 73 && bytes[1] === 68 && bytes[2] === 51;
+}
+var stripID3 = (bytes) => {
+  const id3Size = (bytes[6] & 127) << 21 | (bytes[7] & 127) << 14 | (bytes[8] & 127) << 7 | bytes[9] & 127;
+  return bytes.subarray(id3Size + 10);
+};
+function detectMediaTypeBySignatures({
+  data,
+  signatures
+}) {
+  let bytes = decodePrefix(data, DEFAULT_SNIFF_BYTES);
+  if (hasID3(bytes)) {
+    bytes = stripID3(decodePrefix(data, ID3_SCAN_BYTES));
+  }
+  for (const signature of signatures) {
+    if (bytes.length >= signature.bytesPrefix.length && signature.bytesPrefix.every((byte, index2) => byte === null || bytes[index2] === byte)) {
+      return signature.mediaType;
+    }
+  }
+  return;
+}
+var topLevelSignatureTables = {
+  image: imageMediaTypeSignatures,
+  audio: audioMediaTypeSignatures,
+  video: videoMediaTypeSignatures,
+  application: documentMediaTypeSignatures
+};
+function detectMediaType({
+  data,
+  topLevelType
+}) {
+  if (topLevelType === undefined) {
+    return detectMediaTypeBySignatures({
+      data,
+      signatures: [
+        ...imageMediaTypeSignatures,
+        ...documentMediaTypeSignatures,
+        ...audioMediaTypeSignaturesWithoutMp4,
+        ...videoMediaTypeSignatures
+      ]
+    });
+  }
+  const signatures = topLevelSignatureTables[topLevelType];
+  if (signatures === undefined) {
+    return;
+  }
+  return detectMediaTypeBySignatures({ data, signatures });
+}
+function isFullMediaType(mediaType) {
+  const slashIndex = mediaType.indexOf("/");
+  if (slashIndex === -1) {
+    return false;
+  }
+  const subtype = mediaType.substring(slashIndex + 1);
+  return subtype.length > 0 && subtype !== "*";
+}
+async function cancelResponseBody(response) {
+  var _a32;
+  try {
+    await ((_a32 = response.body) == null ? undefined : _a32.cancel());
+  } catch (e) {}
+}
+var name15 = "AI_DownloadError";
+var marker16 = `vercel.ai.error.${name15}`;
+var symbol16 = Symbol.for(marker16);
+var _a16;
+var _b16;
+var DownloadError = class extends (_b16 = AISDKError, _a16 = symbol16, _b16) {
+  constructor({
+    url: url2,
+    statusCode,
+    statusText,
+    cause,
+    message = cause == null ? `Failed to download ${url2}: ${statusCode} ${statusText}` : `Failed to download ${url2}: ${cause}`
+  }) {
+    super({ name: name15, message, cause });
+    this[_a16] = true;
+    this.url = url2;
+    this.statusCode = statusCode;
+    this.statusText = statusText;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker16);
+  }
+};
+function isBrowserRuntime(globalThisAny = globalThis) {
+  return globalThisAny.window != null;
+}
+function isSameOrigin(url2, baseUrl) {
+  try {
+    return new URL(url2).origin === new URL(baseUrl).origin;
+  } catch (e) {
+    return false;
+  }
+}
+function validateDownloadUrl(url2) {
+  let parsed;
+  try {
+    parsed = new URL(url2);
+  } catch (e) {
+    throw new DownloadError({
+      url: url2,
+      message: `Invalid URL: ${url2}`
+    });
+  }
+  if (parsed.protocol === "data:") {
+    return;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new DownloadError({
+      url: url2,
+      message: `URL scheme must be http, https, or data, got ${parsed.protocol}`
+    });
+  }
+  const hostname3 = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+  if (!hostname3) {
+    throw new DownloadError({
+      url: url2,
+      message: `URL must have a hostname`
+    });
+  }
+  if (hostname3 === "localhost" || hostname3.endsWith(".local") || hostname3.endsWith(".localhost")) {
+    throw new DownloadError({
+      url: url2,
+      message: `URL with hostname ${hostname3} is not allowed`
+    });
+  }
+  if (hostname3.startsWith("[") && hostname3.endsWith("]")) {
+    const ipv63 = hostname3.slice(1, -1);
+    if (isPrivateIPv6(ipv63)) {
+      throw new DownloadError({
+        url: url2,
+        message: `URL with IPv6 address ${hostname3} is not allowed`
+      });
+    }
+    return;
+  }
+  if (isIPv4(hostname3)) {
+    if (isPrivateIPv4(hostname3)) {
+      throw new DownloadError({
+        url: url2,
+        message: `URL with IP address ${hostname3} is not allowed`
+      });
+    }
+    return;
+  }
+}
+function validateDownloadAddress({
+  address,
+  family,
+  hostname: hostname3
+}) {
+  const isUnsafe = family === 4 ? !isIPv4(address) || isPrivateIPv4(address) : family === 6 ? isPrivateIPv6(address) : true;
+  if (isUnsafe) {
+    throw new DownloadError({
+      url: hostname3,
+      message: `Hostname ${hostname3} resolved to disallowed IP address ${address}`
+    });
+  }
+}
+function isIPv4(hostname3) {
+  const parts = hostname3.split(".");
+  if (parts.length !== 4)
+    return false;
+  return parts.every((part) => {
+    const num = Number(part);
+    return Number.isInteger(num) && num >= 0 && num <= 255 && String(num) === part;
+  });
+}
+function isPrivateIPv4(ip) {
+  const parts = ip.split(".").map(Number);
+  const [a, b, c] = parts;
+  if (a === 0)
+    return true;
+  if (a === 10)
+    return true;
+  if (a === 100 && b >= 64 && b <= 127)
+    return true;
+  if (a === 127)
+    return true;
+  if (a === 169 && b === 254)
+    return true;
+  if (a === 172 && b >= 16 && b <= 31)
+    return true;
+  if (a === 192 && b === 0 && c === 0)
+    return true;
+  if (a === 192 && b === 0 && c === 2)
+    return true;
+  if (a === 192 && b === 168)
+    return true;
+  if (a === 198 && (b === 18 || b === 19))
+    return true;
+  if (a === 198 && b === 51 && c === 100)
+    return true;
+  if (a === 203 && b === 0 && c === 113)
+    return true;
+  if (a >= 224)
+    return true;
+  return false;
+}
+function parseIPv6(ip) {
+  let address = ip.toLowerCase();
+  const zoneIndex = address.indexOf("%");
+  if (zoneIndex !== -1) {
+    address = address.slice(0, zoneIndex);
+  }
+  const halves = address.split("::");
+  if (halves.length > 2)
+    return null;
+  const toGroups = (segment) => {
+    if (segment === "")
+      return [];
+    const groups = [];
+    const parts = segment.split(":");
+    for (let i = 0;i < parts.length; i++) {
+      const part = parts[i];
+      if (part.includes(".")) {
+        if (i !== parts.length - 1 || !isIPv4(part))
+          return null;
+        const [a, b, c, d] = part.split(".").map(Number);
+        groups.push(a << 8 | b, c << 8 | d);
+        continue;
+      }
+      if (!/^[0-9a-f]{1,4}$/.test(part))
+        return null;
+      groups.push(parseInt(part, 16));
+    }
+    return groups;
+  };
+  const head = toGroups(halves[0]);
+  if (head === null)
+    return null;
+  if (halves.length === 2) {
+    const tail = toGroups(halves[1]);
+    if (tail === null)
+      return null;
+    const fill2 = 8 - head.length - tail.length;
+    if (fill2 < 0)
+      return null;
+    return [...head, ...new Array(fill2).fill(0), ...tail];
+  }
+  return head.length === 8 ? head : null;
+}
+function isPrivateIPv6(ip) {
+  const groups = parseIPv6(ip);
+  if (groups === null)
+    return true;
+  const topZero = (count) => groups.slice(0, count).every((group) => group === 0);
+  if (topZero(7) && (groups[7] === 0 || groups[7] === 1))
+    return true;
+  if ((groups[0] & 65024) === 64512)
+    return true;
+  if ((groups[0] & 65472) === 65152)
+    return true;
+  if ((groups[0] & 65472) === 65216)
+    return true;
+  if ((groups[0] & 65280) === 65280)
+    return true;
+  if (groups[0] === 8193 && groups[1] === 3512)
+    return true;
+  if (groups[0] === 16383 && (groups[1] & 61440) === 0)
+    return true;
+  const embedsIPv4 = topZero(6) || topZero(5) && groups[5] === 65535 || topZero(4) && groups[4] === 65535 && groups[5] === 0 || groups[0] === 100 && groups[1] === 65435 && groups[2] === 0 && groups[3] === 0 && groups[4] === 0 && groups[5] === 0 || groups[0] === 100 && groups[1] === 65435 && groups[2] === 1;
+  if (embedsIPv4) {
+    const a = groups[6] >> 8 & 255;
+    const b = groups[6] & 255;
+    const c = groups[7] >> 8 & 255;
+    const d = groups[7] & 255;
+    return isPrivateIPv4(`${a}.${b}.${c}.${d}`);
+  }
+  return false;
+}
+function createSafeLookup(lookup) {
+  return (hostname3, options, callback) => {
+    lookup(hostname3, { ...options, all: true }, (error48, addresses) => {
+      if (error48) {
+        callback(error48);
+        return;
+      }
+      try {
+        const [firstAddress] = addresses;
+        if (firstAddress == null) {
+          throw new Error(`Hostname ${hostname3} did not resolve to an address`);
+        }
+        for (const { address, family } of addresses) {
+          validateDownloadAddress({ address, family, hostname: hostname3 });
+        }
+        if (options.all === true) {
+          callback(null, addresses);
+        } else {
+          callback(null, firstAddress.address, firstAddress.family);
+        }
+      } catch (error210) {
+        callback(error210 instanceof Error ? error210 : new Error(String(error210)));
+      }
+    });
+  };
+}
+var safeNodeFetchPromise;
+var initialGlobalFetch = globalThis.fetch;
+var initialGlobalFetchIsNodeDefault = isNodeDefaultFetch(initialGlobalFetch);
+function isNodeRuntime() {
+  var _a32, _b32;
+  const runtimeProcess = globalThis.process;
+  return ((_a32 = runtimeProcess == null ? undefined : runtimeProcess.release) == null ? undefined : _a32.name) === "node" && ((_b32 = runtimeProcess.versions) == null ? undefined : _b32.bun) == null;
+}
+async function getDefaultDownloadFetch() {
+  if (!isNodeRuntime() || !initialGlobalFetchIsNodeDefault || globalThis.fetch !== initialGlobalFetch) {
+    return globalThis.fetch;
+  }
+  return safeNodeFetchPromise != null ? safeNodeFetchPromise : safeNodeFetchPromise = Promise.resolve().then(createSafeNodeFetch);
+}
+function isNodeDefaultFetch(fetch4) {
+  if (typeof fetch4 !== "function") {
+    return false;
+  }
+  const source = Function.prototype.toString.call(fetch4);
+  return source.includes("internal/deps/undici") || source.includes("lazy loading of undici");
+}
+function createSafeNodeFetch() {
+  const { createRequire: createRequire2 } = loadBuiltinModule("node:module");
+  const { lookup } = loadBuiltinModule("node:dns");
+  const { Agent, fetch: fetch4 } = createRequire2(getCurrentModulePath())("undici");
+  const dispatcher = new Agent({
+    connect: {
+      lookup: createSafeLookup(lookup)
+    }
+  });
+  return (input, init) => fetch4(input, {
+    ...init,
+    dispatcher
+  });
+}
+function loadBuiltinModule(id) {
+  var _a32;
+  const processWithBuiltins = globalThis.process;
+  const builtinModule = (_a32 = processWithBuiltins == null ? undefined : processWithBuiltins.getBuiltinModule) == null ? undefined : _a32.call(processWithBuiltins, id);
+  if (builtinModule == null) {
+    throw new Error(`Node.js built-in module ${id} is unavailable`);
+  }
+  return builtinModule;
+}
+function getCurrentModulePath() {
+  const originalPrepareStackTrace = Error.prepareStackTrace;
+  try {
+    Error.prepareStackTrace = (_error, callSites) => callSites;
+    const error48 = new Error("Capture current module path");
+    Error.captureStackTrace(error48, getCurrentModulePath);
+    const [caller] = error48.stack;
+    const fileName = caller == null ? undefined : caller.getFileName();
+    if (fileName == null) {
+      throw new Error("Unable to determine the current module path");
+    }
+    return fileName;
+  } finally {
+    Error.prepareStackTrace = originalPrepareStackTrace;
+  }
+}
+var BLOCKED_REQUEST_HEADERS = [
+  "connection",
+  "keep-alive",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "host",
+  "forwarded",
+  "proxy-authorization",
+  "via",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-real-ip",
+  "metadata",
+  "metadata-flavor",
+  "x-aws-ec2-metadata-token",
+  "x-metadata-token",
+  "cookie",
+  "set-cookie"
+];
+function sanitizeRequestHeaders(input) {
+  const headers = new Headers(input);
+  for (const name32 of BLOCKED_REQUEST_HEADERS) {
+    headers.delete(name32);
+  }
+  return headers;
+}
+var MAX_DOWNLOAD_REDIRECTS = 10;
+var REDIRECT_STATUS_CODES = /* @__PURE__ */ new Set([301, 302, 303, 307, 308]);
+async function fetchWithValidatedRedirects({
+  url: url2,
+  headers,
+  abortSignal,
+  maxRedirects = MAX_DOWNLOAD_REDIRECTS,
+  fetch: customFetch,
+  trustedOrigin
+}) {
+  let currentHeaders = headers === undefined ? undefined : sanitizeRequestHeaders(headers);
+  const perHopInit = (redirect) => {
+    const init = { signal: abortSignal, redirect };
+    if (currentHeaders !== undefined) {
+      init.headers = new Headers(currentHeaders);
+    }
+    return init;
+  };
+  let currentUrl = url2;
+  for (let redirectCount = 0;redirectCount <= maxRedirects; redirectCount++) {
+    const isTrustedHop = trustedOrigin !== undefined && isSameOrigin(currentUrl, trustedOrigin);
+    if (!isTrustedHop) {
+      validateDownloadUrl(currentUrl);
+    }
+    const fetch4 = customFetch != null ? customFetch : isTrustedHop ? globalThis.fetch : await getDefaultDownloadFetch();
+    const response = await fetch4(currentUrl, perHopInit("manual"));
+    if (response.type === "opaqueredirect") {
+      if (!isBrowserRuntime()) {
+        throw new DownloadError({
+          url: url2,
+          message: `Redirect from ${currentUrl} could not be validated and was blocked`
+        });
+      }
+      return await fetch4(currentUrl, perHopInit("follow"));
+    }
+    const location = response.headers.get("location");
+    if (REDIRECT_STATUS_CODES.has(response.status) && location) {
+      await cancelResponseBody(response);
+      const nextUrl = new URL(location, currentUrl).toString();
+      if (currentHeaders !== undefined && !isSameOrigin(nextUrl, currentUrl)) {
+        const userAgent = currentHeaders.get("user-agent");
+        currentHeaders = new Headers(userAgent == null ? undefined : { "user-agent": userAgent });
+      }
+      currentUrl = nextUrl;
+      continue;
+    }
+    return response;
+  }
+  throw new DownloadError({
+    url: url2,
+    message: `Too many redirects (max ${maxRedirects})`
+  });
+}
+var DEFAULT_MAX_DOWNLOAD_SIZE = 2 * 1024 * 1024 * 1024;
+async function readResponseWithSizeLimit({
+  response,
+  url: url2,
+  maxBytes = DEFAULT_MAX_DOWNLOAD_SIZE
+}) {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength != null) {
+    const length = parseInt(contentLength, 10);
+    if (!isNaN(length) && length > maxBytes) {
+      await cancelResponseBody(response);
+      throw new DownloadError({
+        url: url2,
+        message: `Download of ${url2} exceeded maximum size of ${maxBytes} bytes (Content-Length: ${length}).`
+      });
+    }
+  }
+  const body = response.body;
+  if (body == null) {
+    return new Uint8Array(0);
+  }
+  const reader = body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value: value2 } = await reader.read();
+      if (done) {
+        break;
+      }
+      totalBytes += value2.length;
+      if (totalBytes > maxBytes) {
+        throw new DownloadError({
+          url: url2,
+          message: `Download of ${url2} exceeded maximum size of ${maxBytes} bytes.`
+        });
+      }
+      chunks.push(value2);
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch (e) {} finally {
+      reader.releaseLock();
+    }
+  }
+  const result = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
+}
+function extractResponseHeaders(response) {
+  return Object.fromEntries([...response.headers]);
+}
+function filterNullable(...values) {
+  return values.filter((value2) => value2 != null);
+}
+var createIdGenerator = ({
+  prefix,
+  size = 16,
+  alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+  separator = "-"
+} = {}) => {
+  const generator = () => {
+    const alphabetLength = alphabet.length;
+    const chars = new Array(size);
+    for (let i = 0;i < size; i++) {
+      chars[i] = alphabet[Math.random() * alphabetLength | 0];
+    }
+    return chars.join("");
+  };
+  if (prefix == null) {
+    return generator;
+  }
+  if (alphabet.includes(separator)) {
+    throw new InvalidArgumentError({
+      argument: "separator",
+      message: `The separator "${separator}" must not be part of the alphabet "${alphabet}".`
+    });
+  }
+  return () => `${prefix}${separator}${generator()}`;
+};
+var generateId = createIdGenerator();
+function isAbortError(error48) {
+  return (error48 instanceof Error || error48 instanceof DOMException) && (error48.name === "AbortError" || error48.name === "ResponseAborted" || error48.name === "TimeoutError");
+}
+var FETCH_FAILED_ERROR_MESSAGES = ["fetch failed", "failed to fetch"];
+var BUN_ERROR_CODES = [
+  "ConnectionRefused",
+  "ConnectionClosed",
+  "FailedToOpenSocket",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "EPIPE"
+];
+function isBunNetworkError(error48) {
+  if (!(error48 instanceof Error)) {
+    return false;
+  }
+  const code = error48.code;
+  if (typeof code === "string" && BUN_ERROR_CODES.includes(code)) {
+    return true;
+  }
+  return false;
+}
+function handleFetchError({
+  error: error48,
+  url: url2,
+  requestBodyValues
+}) {
+  if (isAbortError(error48)) {
+    return error48;
+  }
+  if (error48 instanceof TypeError && FETCH_FAILED_ERROR_MESSAGES.includes(error48.message.toLowerCase())) {
+    const cause = error48.cause;
+    if (cause != null) {
+      return new APICallError({
+        message: `Cannot connect to API: ${cause.message}`,
+        cause,
+        url: url2,
+        requestBodyValues,
+        isRetryable: true
+      });
+    }
+  }
+  if (isBunNetworkError(error48)) {
+    return new APICallError({
+      message: `Cannot connect to API: ${error48.message}`,
+      cause: error48,
+      url: url2,
+      requestBodyValues,
+      isRetryable: true
+    });
+  }
+  return error48;
+}
+function getRuntimeEnvironmentUserAgent(globalThisAny = globalThis) {
+  var _a32, _b32, _c;
+  if (globalThisAny.window) {
+    return `runtime/browser`;
+  }
+  if ((_a32 = globalThisAny.navigator) == null ? undefined : _a32.userAgent) {
+    return `runtime/${globalThisAny.navigator.userAgent.toLowerCase()}`;
+  }
+  if ((_c = (_b32 = globalThisAny.process) == null ? undefined : _b32.versions) == null ? undefined : _c.node) {
+    return `runtime/node.js/${globalThisAny.process.version.substring(0)}`;
+  }
+  if (globalThisAny.EdgeRuntime) {
+    return `runtime/vercel-edge`;
+  }
+  return "runtime/unknown";
+}
+function normalizeHeaders(headers) {
+  if (headers == null) {
+    return {};
+  }
+  const normalized = {};
+  if (headers instanceof Headers) {
+    headers.forEach((value2, key) => {
+      normalized[key.toLowerCase()] = value2;
+    });
+  } else {
+    if (!Array.isArray(headers)) {
+      headers = Object.entries(headers);
+    }
+    for (const [key, value2] of headers) {
+      if (value2 != null) {
+        normalized[key.toLowerCase()] = value2;
+      }
+    }
+  }
+  return normalized;
+}
+function withUserAgentSuffix(headers, ...userAgentSuffixParts) {
+  const normalizedHeaders = new Headers(normalizeHeaders(headers));
+  const currentUserAgentHeader = normalizedHeaders.get("user-agent") || "";
+  normalizedHeaders.set("user-agent", [currentUserAgentHeader, ...userAgentSuffixParts].filter(Boolean).join(" "));
+  return Object.fromEntries(normalizedHeaders.entries());
+}
+var VERSION2 = "5.0.28";
+var getOriginalFetch = () => globalThis.fetch;
+var getFromApi = async ({
+  url: url2,
+  headers = {},
+  successfulResponseHandler,
+  failedResponseHandler,
+  abortSignal,
+  fetch: fetch4,
+  validateUrl,
+  credentialedOrigin,
+  trustedOrigin
+}) => {
+  try {
+    const requestFetch = fetch4 != null ? fetch4 : getOriginalFetch();
+    const outgoingHeaders = credentialedOrigin !== undefined && !isSameOrigin(url2, credentialedOrigin) ? {} : headers;
+    const requestHeaders = withUserAgentSuffix(outgoingHeaders, `ai-sdk/provider-utils/${VERSION2}`, getRuntimeEnvironmentUserAgent());
+    const response = validateUrl ? await fetchWithValidatedRedirects({
+      url: url2,
+      headers: requestHeaders,
+      abortSignal,
+      fetch: fetch4,
+      trustedOrigin
+    }) : await requestFetch(url2, {
+      method: "GET",
+      headers: requestHeaders,
+      signal: abortSignal
+    });
+    const responseHeaders = extractResponseHeaders(response);
+    if (!response.ok) {
+      let errorInformation;
+      try {
+        errorInformation = await failedResponseHandler({
+          response,
+          url: url2,
+          requestBodyValues: {}
+        });
+      } catch (error48) {
+        if (isAbortError(error48) || APICallError.isInstance(error48)) {
+          throw error48;
+        }
+        throw new APICallError({
+          message: "Failed to process error response",
+          cause: error48,
+          statusCode: response.status,
+          url: url2,
+          responseHeaders,
+          requestBodyValues: {}
+        });
+      }
+      throw errorInformation.value;
+    }
+    try {
+      return await successfulResponseHandler({
+        response,
+        url: url2,
+        requestBodyValues: {}
+      });
+    } catch (error48) {
+      if (error48 instanceof Error) {
+        if (isAbortError(error48) || APICallError.isInstance(error48)) {
+          throw error48;
+        }
+      }
+      throw new APICallError({
+        message: "Failed to process successful response",
+        cause: error48,
+        statusCode: response.status,
+        url: url2,
+        responseHeaders,
+        requestBodyValues: {}
+      });
+    }
+  } catch (error48) {
+    throw handleFetchError({ error: error48, url: url2, requestBodyValues: {} });
+  }
+};
+function isBuffer(value2) {
+  var _a32, _b32;
+  return (_b32 = (_a32 = globalThis.Buffer) == null ? undefined : _a32.isBuffer(value2)) != null ? _b32 : false;
+}
+function isProviderReference(data) {
+  return typeof data === "object" && data !== null && !(data instanceof Uint8Array) && !(data instanceof URL) && !(data instanceof ArrayBuffer) && !isBuffer(data) && !("type" in data);
+}
+function isRecord(value2) {
+  return value2 != null && typeof value2 === "object" && !Array.isArray(value2);
+}
+function isUrlSupported({
+  mediaType,
+  url: url2,
+  supportedUrls
+}) {
+  url2 = url2.toLowerCase();
+  mediaType = mediaType.toLowerCase();
+  const isTopLevelOnly = !mediaType.includes("/");
+  return Object.entries(supportedUrls).map(([key, value2]) => {
+    const mediaType2 = key.toLowerCase();
+    return mediaType2 === "*" || mediaType2 === "*/*" ? { mediaTypePrefix: "", regexes: value2 } : { mediaTypePrefix: mediaType2.replace(/\*/, ""), regexes: value2 };
+  }).filter(({ mediaTypePrefix }) => {
+    if (mediaTypePrefix === "") {
+      return true;
+    }
+    if (isTopLevelOnly) {
+      return `${mediaType}/` === mediaTypePrefix;
+    }
+    return mediaType.startsWith(mediaTypePrefix);
+  }).flatMap(({ regexes }) => regexes).some((pattern) => testRegExpFromStart(pattern, url2));
+}
+function testRegExpFromStart(pattern, value2) {
+  if (!pattern.global && !pattern.sticky) {
+    return pattern.test(value2);
+  }
+  const lastIndex = pattern.lastIndex;
+  pattern.lastIndex = 0;
+  try {
+    return pattern.test(value2);
+  } finally {
+    pattern.lastIndex = lastIndex;
+  }
+}
+function loadOptionalSetting({
+  settingValue,
+  environmentVariableName
+}) {
+  if (typeof settingValue === "string") {
+    return settingValue;
+  }
+  if (settingValue != null || typeof process === "undefined") {
+    return;
+  }
+  settingValue = process.env[environmentVariableName];
+  if (settingValue == null || typeof settingValue !== "string") {
+    return;
+  }
+  return settingValue;
+}
+var suspectProtoRx = /"(?:_|\\u005[Ff])(?:_|\\u005[Ff])(?:p|\\u0070)(?:r|\\u0072)(?:o|\\u006[Ff])(?:t|\\u0074)(?:o|\\u006[Ff])(?:_|\\u005[Ff])(?:_|\\u005[Ff])"\s*:/;
+var suspectConstructorRx = /"(?:c|\\u0063)(?:o|\\u006[Ff])(?:n|\\u006[Ee])(?:s|\\u0073)(?:t|\\u0074)(?:r|\\u0072)(?:u|\\u0075)(?:c|\\u0063)(?:t|\\u0074)(?:o|\\u006[Ff])(?:r|\\u0072)"\s*:/;
+function _parse2(text3) {
+  const obj = JSON.parse(text3);
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  if (suspectProtoRx.test(text3) === false && suspectConstructorRx.test(text3) === false) {
+    return obj;
+  }
+  return filter(obj);
+}
+function filter(obj) {
+  let next = [obj];
+  while (next.length) {
+    const nodes = next;
+    next = [];
+    for (const node of nodes) {
+      if (Object.prototype.hasOwnProperty.call(node, "__proto__")) {
+        throw new SyntaxError("Object contains forbidden prototype property");
+      }
+      if (Object.prototype.hasOwnProperty.call(node, "constructor") && node.constructor !== null && typeof node.constructor === "object" && Object.prototype.hasOwnProperty.call(node.constructor, "prototype")) {
+        throw new SyntaxError("Object contains forbidden prototype property");
+      }
+      for (const key in node) {
+        const value2 = node[key];
+        if (value2 && typeof value2 === "object") {
+          next.push(value2);
+        }
+      }
+    }
+  }
+  return obj;
+}
+function secureJsonParse(text3) {
+  const { stackTraceLimit } = Error;
+  try {
+    Error.stackTraceLimit = 0;
+  } catch (e) {
+    return _parse2(text3);
+  }
+  try {
+    return _parse2(text3);
+  } finally {
+    Error.stackTraceLimit = stackTraceLimit;
+  }
+}
+function addAdditionalPropertiesToJsonSchema(jsonSchema2) {
+  if (jsonSchema2.type === "object" || Array.isArray(jsonSchema2.type) && jsonSchema2.type.includes("object")) {
+    jsonSchema2.additionalProperties = false;
+    const { properties: properties3 } = jsonSchema2;
+    if (properties3 != null) {
+      for (const key of Object.keys(properties3)) {
+        properties3[key] = visit(properties3[key]);
+      }
+    }
+  }
+  if (jsonSchema2.items != null) {
+    jsonSchema2.items = Array.isArray(jsonSchema2.items) ? jsonSchema2.items.map(visit) : visit(jsonSchema2.items);
+  }
+  if (jsonSchema2.anyOf != null) {
+    jsonSchema2.anyOf = jsonSchema2.anyOf.map(visit);
+  }
+  if (jsonSchema2.allOf != null) {
+    jsonSchema2.allOf = jsonSchema2.allOf.map(visit);
+  }
+  if (jsonSchema2.oneOf != null) {
+    jsonSchema2.oneOf = jsonSchema2.oneOf.map(visit);
+  }
+  const { definitions } = jsonSchema2;
+  if (definitions != null) {
+    for (const key of Object.keys(definitions)) {
+      definitions[key] = visit(definitions[key]);
+    }
+  }
+  return jsonSchema2;
+}
+function visit(def) {
+  if (typeof def === "boolean")
+    return def;
+  return addAdditionalPropertiesToJsonSchema(def);
+}
+var ignoreOverride = /* @__PURE__ */ Symbol("Let zodToJsonSchema decide on which parser to use");
+var defaultOptions = {
+  name: undefined,
+  $refStrategy: "root",
+  basePath: ["#"],
+  effectStrategy: "input",
+  pipeStrategy: "all",
+  dateStrategy: "format:date-time",
+  mapStrategy: "entries",
+  removeAdditionalStrategy: "passthrough",
+  allowedAdditionalProperties: true,
+  rejectedAdditionalProperties: false,
+  definitionPath: "definitions",
+  strictUnions: false,
+  definitions: {},
+  errorMessages: false,
+  patternStrategy: "escape",
+  applyRegexFlags: false,
+  emailStrategy: "format:email",
+  base64Strategy: "contentEncoding:base64",
+  nameStrategy: "ref"
+};
+var getDefaultOptions = (options) => typeof options === "string" ? {
+  ...defaultOptions,
+  name: options
+} : {
+  ...defaultOptions,
+  ...options
+};
+function parseAnyDef() {
+  return {};
+}
+function parseArrayDef(def, refs) {
+  var _a32, _b32, _c;
+  const res = {
+    type: "array"
+  };
+  if (((_a32 = def.type) == null ? undefined : _a32._def) && ((_c = (_b32 = def.type) == null ? undefined : _b32._def) == null ? undefined : _c.typeName) !== "ZodAny") {
+    res.items = parseDef(def.type._def, {
+      ...refs,
+      currentPath: [...refs.currentPath, "items"]
+    });
+  }
+  if (def.minLength) {
+    res.minItems = def.minLength.value;
+  }
+  if (def.maxLength) {
+    res.maxItems = def.maxLength.value;
+  }
+  if (def.exactLength) {
+    res.minItems = def.exactLength.value;
+    res.maxItems = def.exactLength.value;
+  }
+  return res;
+}
+function parseBigintDef(def) {
+  const res = {
+    type: "integer",
+    format: "int64"
+  };
+  if (!def.checks)
+    return res;
+  for (const check2 of def.checks) {
+    switch (check2.kind) {
+      case "min":
+        if (check2.inclusive) {
+          res.minimum = check2.value;
+        } else {
+          res.exclusiveMinimum = check2.value;
+        }
+        break;
+      case "max":
+        if (check2.inclusive) {
+          res.maximum = check2.value;
+        } else {
+          res.exclusiveMaximum = check2.value;
+        }
+        break;
+      case "multipleOf":
+        res.multipleOf = check2.value;
+        break;
+    }
+  }
+  return res;
+}
+function parseBooleanDef() {
+  return { type: "boolean" };
+}
+function parseBrandedDef(_def, refs) {
+  return parseDef(_def.type._def, refs);
+}
+var parseCatchDef = (def, refs) => {
+  return parseDef(def.innerType._def, refs);
+};
+function parseDateDef(def, refs, overrideDateStrategy) {
+  const strategy = overrideDateStrategy != null ? overrideDateStrategy : refs.dateStrategy;
+  if (Array.isArray(strategy)) {
+    return {
+      anyOf: strategy.map((item) => parseDateDef(def, refs, item))
+    };
+  }
+  switch (strategy) {
+    case "string":
+    case "format:date-time":
+      return {
+        type: "string",
+        format: "date-time"
+      };
+    case "format:date":
+      return {
+        type: "string",
+        format: "date"
+      };
+    case "integer":
+      return integerDateParser(def);
+  }
+}
+var integerDateParser = (def) => {
+  const res = {
+    type: "integer",
+    format: "unix-time"
+  };
+  for (const check2 of def.checks) {
+    switch (check2.kind) {
+      case "min":
+        res.minimum = check2.value;
+        break;
+      case "max":
+        res.maximum = check2.value;
+        break;
+    }
+  }
+  return res;
+};
+function parseDefaultDef(_def, refs) {
+  return {
+    ...parseDef(_def.innerType._def, refs),
+    default: _def.defaultValue()
+  };
+}
+function parseEffectsDef(_def, refs) {
+  return refs.effectStrategy === "input" ? parseDef(_def.schema._def, refs) : parseAnyDef();
+}
+function parseEnumDef(def) {
+  return {
+    type: "string",
+    enum: Array.from(def.values)
+  };
+}
+var isJsonSchema7AllOfType = (type) => {
+  if ("type" in type && type.type === "string")
+    return false;
+  return "allOf" in type;
+};
+function parseIntersectionDef(def, refs) {
+  const allOf = [
+    parseDef(def.left._def, {
+      ...refs,
+      currentPath: [...refs.currentPath, "allOf", "0"]
+    }),
+    parseDef(def.right._def, {
+      ...refs,
+      currentPath: [...refs.currentPath, "allOf", "1"]
+    })
+  ].filter((x) => !!x);
+  const mergedAllOf = [];
+  allOf.forEach((schema) => {
+    if (isJsonSchema7AllOfType(schema)) {
+      mergedAllOf.push(...schema.allOf);
+    } else {
+      let nestedSchema = schema;
+      if ("additionalProperties" in schema && schema.additionalProperties === false) {
+        const { additionalProperties: _additionalProperties, ...rest } = schema;
+        nestedSchema = rest;
+      }
+      mergedAllOf.push(nestedSchema);
+    }
+  });
+  return mergedAllOf.length ? { allOf: mergedAllOf } : undefined;
+}
+function parseLiteralDef(def) {
+  const parsedType2 = typeof def.value;
+  if (parsedType2 !== "bigint" && parsedType2 !== "number" && parsedType2 !== "boolean" && parsedType2 !== "string") {
+    return {
+      type: Array.isArray(def.value) ? "array" : "object"
+    };
+  }
+  return {
+    type: parsedType2 === "bigint" ? "integer" : parsedType2,
+    const: def.value
+  };
+}
+var emojiRegex = undefined;
+var zodPatterns = {
+  cuid: /^[cC][^\s-]{8,}$/,
+  cuid2: /^[0-9a-z]+$/,
+  ulid: /^[0-9A-HJKMNP-TV-Z]{26}$/,
+  email: /^(?!\.)(?!.*\.\.)([a-zA-Z0-9_'+\-\.]*)[a-zA-Z0-9_+-]@([a-zA-Z0-9][a-zA-Z0-9\-]*\.)+[a-zA-Z]{2,}$/,
+  emoji: () => {
+    if (emojiRegex === undefined) {
+      emojiRegex = RegExp("^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$", "u");
+    }
+    return emojiRegex;
+  },
+  uuid: /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/,
+  ipv4: /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/,
+  ipv4Cidr: /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/,
+  ipv6: /^(([a-f0-9]{1,4}:){7}|::([a-f0-9]{1,4}:){0,6}|([a-f0-9]{1,4}:){1}:([a-f0-9]{1,4}:){0,5}|([a-f0-9]{1,4}:){2}:([a-f0-9]{1,4}:){0,4}|([a-f0-9]{1,4}:){3}:([a-f0-9]{1,4}:){0,3}|([a-f0-9]{1,4}:){4}:([a-f0-9]{1,4}:){0,2}|([a-f0-9]{1,4}:){5}:([a-f0-9]{1,4}:){0,1})([a-f0-9]{1,4}|(((25[0-5])|(2[0-4][0-9])|(1[0-9]{2})|([0-9]{1,2}))\.){3}((25[0-5])|(2[0-4][0-9])|(1[0-9]{2})|([0-9]{1,2})))$/,
+  ipv6Cidr: /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/,
+  base64: /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/,
+  base64url: /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/,
+  nanoid: /^[a-zA-Z0-9_-]{21}$/,
+  jwt: /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/
+};
+function parseStringDef(def, refs) {
+  const res = {
+    type: "string"
+  };
+  if (def.checks) {
+    for (const check2 of def.checks) {
+      switch (check2.kind) {
+        case "min":
+          res.minLength = typeof res.minLength === "number" ? Math.max(res.minLength, check2.value) : check2.value;
+          break;
+        case "max":
+          res.maxLength = typeof res.maxLength === "number" ? Math.min(res.maxLength, check2.value) : check2.value;
+          break;
+        case "email":
+          switch (refs.emailStrategy) {
+            case "format:email":
+              addFormat(res, "email", check2.message, refs);
+              break;
+            case "format:idn-email":
+              addFormat(res, "idn-email", check2.message, refs);
+              break;
+            case "pattern:zod":
+              addPattern(res, zodPatterns.email, check2.message, refs);
+              break;
+          }
+          break;
+        case "url":
+          addFormat(res, "uri", check2.message, refs);
+          break;
+        case "uuid":
+          addFormat(res, "uuid", check2.message, refs);
+          break;
+        case "regex":
+          addPattern(res, check2.regex, check2.message, refs);
+          break;
+        case "cuid":
+          addPattern(res, zodPatterns.cuid, check2.message, refs);
+          break;
+        case "cuid2":
+          addPattern(res, zodPatterns.cuid2, check2.message, refs);
+          break;
+        case "startsWith":
+          addPattern(res, RegExp(`^${escapeLiteralCheckValue(check2.value, refs)}`), check2.message, refs);
+          break;
+        case "endsWith":
+          addPattern(res, RegExp(`${escapeLiteralCheckValue(check2.value, refs)}$`), check2.message, refs);
+          break;
+        case "datetime":
+          addFormat(res, "date-time", check2.message, refs);
+          break;
+        case "date":
+          addFormat(res, "date", check2.message, refs);
+          break;
+        case "time":
+          addFormat(res, "time", check2.message, refs);
+          break;
+        case "duration":
+          addFormat(res, "duration", check2.message, refs);
+          break;
+        case "length":
+          res.minLength = typeof res.minLength === "number" ? Math.max(res.minLength, check2.value) : check2.value;
+          res.maxLength = typeof res.maxLength === "number" ? Math.min(res.maxLength, check2.value) : check2.value;
+          break;
+        case "includes": {
+          addPattern(res, RegExp(escapeLiteralCheckValue(check2.value, refs)), check2.message, refs);
+          break;
+        }
+        case "ip": {
+          if (check2.version !== "v6") {
+            addFormat(res, "ipv4", check2.message, refs);
+          }
+          if (check2.version !== "v4") {
+            addFormat(res, "ipv6", check2.message, refs);
+          }
+          break;
+        }
+        case "base64url":
+          addPattern(res, zodPatterns.base64url, check2.message, refs);
+          break;
+        case "jwt":
+          addPattern(res, zodPatterns.jwt, check2.message, refs);
+          break;
+        case "cidr": {
+          if (check2.version !== "v6") {
+            addPattern(res, zodPatterns.ipv4Cidr, check2.message, refs);
+          }
+          if (check2.version !== "v4") {
+            addPattern(res, zodPatterns.ipv6Cidr, check2.message, refs);
+          }
+          break;
+        }
+        case "emoji":
+          addPattern(res, zodPatterns.emoji(), check2.message, refs);
+          break;
+        case "ulid": {
+          addPattern(res, zodPatterns.ulid, check2.message, refs);
+          break;
+        }
+        case "base64": {
+          switch (refs.base64Strategy) {
+            case "format:binary": {
+              addFormat(res, "binary", check2.message, refs);
+              break;
+            }
+            case "contentEncoding:base64": {
+              res.contentEncoding = "base64";
+              break;
+            }
+            case "pattern:zod": {
+              addPattern(res, zodPatterns.base64, check2.message, refs);
+              break;
+            }
+          }
+          break;
+        }
+        case "nanoid": {
+          addPattern(res, zodPatterns.nanoid, check2.message, refs);
+        }
+        case "toLowerCase":
+        case "toUpperCase":
+        case "trim":
+          break;
+        default:
+      }
+    }
+  }
+  return res;
+}
+function escapeLiteralCheckValue(literal2, refs) {
+  return refs.patternStrategy === "escape" ? escapeNonAlphaNumeric(literal2) : literal2;
+}
+var ALPHA_NUMERIC = new Set("ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvxyz0123456789");
+function escapeNonAlphaNumeric(source) {
+  let result = "";
+  for (let i = 0;i < source.length; i++) {
+    if (!ALPHA_NUMERIC.has(source[i])) {
+      result += "\\";
+    }
+    result += source[i];
+  }
+  return result;
+}
+function addFormat(schema, value2, message, refs) {
+  var _a32;
+  if (schema.format || ((_a32 = schema.anyOf) == null ? undefined : _a32.some((x) => x.format))) {
+    if (!schema.anyOf) {
+      schema.anyOf = [];
+    }
+    if (schema.format) {
+      schema.anyOf.push({
+        format: schema.format
+      });
+      delete schema.format;
+    }
+    schema.anyOf.push({
+      format: value2,
+      ...message && refs.errorMessages && { errorMessage: { format: message } }
+    });
+  } else {
+    schema.format = value2;
+  }
+}
+function addPattern(schema, regex, message, refs) {
+  var _a32;
+  if (schema.pattern || ((_a32 = schema.allOf) == null ? undefined : _a32.some((x) => x.pattern))) {
+    if (!schema.allOf) {
+      schema.allOf = [];
+    }
+    if (schema.pattern) {
+      schema.allOf.push({
+        pattern: schema.pattern
+      });
+      delete schema.pattern;
+    }
+    schema.allOf.push({
+      pattern: stringifyRegExpWithFlags(regex, refs),
+      ...message && refs.errorMessages && { errorMessage: { pattern: message } }
+    });
+  } else {
+    schema.pattern = stringifyRegExpWithFlags(regex, refs);
+  }
+}
+function stringifyRegExpWithFlags(regex, refs) {
+  var _a32;
+  if (!refs.applyRegexFlags || !regex.flags) {
+    return regex.source;
+  }
+  const flags = {
+    i: regex.flags.includes("i"),
+    m: regex.flags.includes("m"),
+    s: regex.flags.includes("s")
+  };
+  const source = flags.i ? regex.source.toLowerCase() : regex.source;
+  let pattern = "";
+  let isEscaped = false;
+  let inCharGroup = false;
+  let inCharRange = false;
+  for (let i = 0;i < source.length; i++) {
+    if (isEscaped) {
+      pattern += source[i];
+      isEscaped = false;
+      continue;
+    }
+    if (flags.i) {
+      if (inCharGroup) {
+        if (source[i].match(/[a-z]/)) {
+          if (inCharRange) {
+            pattern += source[i];
+            pattern += `${source[i - 2]}-${source[i]}`.toUpperCase();
+            inCharRange = false;
+          } else if (source[i + 1] === "-" && ((_a32 = source[i + 2]) == null ? undefined : _a32.match(/[a-z]/))) {
+            pattern += source[i];
+            inCharRange = true;
+          } else {
+            pattern += `${source[i]}${source[i].toUpperCase()}`;
+          }
+          continue;
+        }
+      } else if (source[i].match(/[a-z]/)) {
+        pattern += `[${source[i]}${source[i].toUpperCase()}]`;
+        continue;
+      }
+    }
+    if (flags.m) {
+      if (source[i] === "^") {
+        pattern += `(^|(?<=[\r
+]))`;
+        continue;
+      } else if (source[i] === "$") {
+        pattern += `($|(?=[\r
+]))`;
+        continue;
+      }
+    }
+    if (flags.s && source[i] === ".") {
+      pattern += inCharGroup ? `${source[i]}\r
+` : `[${source[i]}\r
+]`;
+      continue;
+    }
+    pattern += source[i];
+    if (source[i] === "\\") {
+      isEscaped = true;
+    } else if (inCharGroup && source[i] === "]") {
+      inCharGroup = false;
+    } else if (!inCharGroup && source[i] === "[") {
+      inCharGroup = true;
+    }
+  }
+  try {
+    new RegExp(pattern);
+  } catch (e) {
+    console.warn(`Could not convert regex pattern at ${refs.currentPath.join("/")} to a flag-independent form! Falling back to the flag-ignorant source`);
+    return regex.source;
+  }
+  return pattern;
+}
+function parseRecordDef(def, refs) {
+  var _a32, _b32, _c, _d, _e, _f;
+  const schema = {
+    type: "object",
+    additionalProperties: (_a32 = parseDef(def.valueType._def, {
+      ...refs,
+      currentPath: [...refs.currentPath, "additionalProperties"]
+    })) != null ? _a32 : refs.allowedAdditionalProperties
+  };
+  if (((_b32 = def.keyType) == null ? undefined : _b32._def.typeName) === "ZodString" && ((_c = def.keyType._def.checks) == null ? undefined : _c.length)) {
+    const { type: _type, ...keyType } = parseStringDef(def.keyType._def, refs);
+    return {
+      ...schema,
+      propertyNames: keyType
+    };
+  } else if (((_d = def.keyType) == null ? undefined : _d._def.typeName) === "ZodEnum") {
+    return {
+      ...schema,
+      propertyNames: {
+        enum: def.keyType._def.values
+      }
+    };
+  } else if (((_e = def.keyType) == null ? undefined : _e._def.typeName) === "ZodBranded" && def.keyType._def.type._def.typeName === "ZodString" && ((_f = def.keyType._def.type._def.checks) == null ? undefined : _f.length)) {
+    const { type: _type, ...keyType } = parseBrandedDef(def.keyType._def, refs);
+    return {
+      ...schema,
+      propertyNames: keyType
+    };
+  }
+  return schema;
+}
+function parseMapDef(def, refs) {
+  if (refs.mapStrategy === "record") {
+    return parseRecordDef(def, refs);
+  }
+  const keys = parseDef(def.keyType._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "items", "items", "0"]
+  }) || parseAnyDef();
+  const values = parseDef(def.valueType._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "items", "items", "1"]
+  }) || parseAnyDef();
+  return {
+    type: "array",
+    maxItems: 125,
+    items: {
+      type: "array",
+      items: [keys, values],
+      minItems: 2,
+      maxItems: 2
+    }
+  };
+}
+function parseNativeEnumDef(def) {
+  const object3 = def.values;
+  const actualKeys = Object.keys(def.values).filter((key) => {
+    return typeof object3[object3[key]] !== "number";
+  });
+  const actualValues = actualKeys.map((key) => object3[key]);
+  const parsedTypes = Array.from(new Set(actualValues.map((values) => typeof values)));
+  return {
+    type: parsedTypes.length === 1 ? parsedTypes[0] === "string" ? "string" : "number" : ["string", "number"],
+    enum: actualValues
+  };
+}
+function parseNeverDef() {
+  return { not: parseAnyDef() };
+}
+function parseNullDef() {
+  return {
+    type: "null"
+  };
+}
+var primitiveMappings = {
+  ZodString: "string",
+  ZodNumber: "number",
+  ZodBigInt: "integer",
+  ZodBoolean: "boolean",
+  ZodNull: "null"
+};
+function parseUnionDef(def, refs) {
+  const options = def.options instanceof Map ? Array.from(def.options.values()) : def.options;
+  if (options.every((x) => (x._def.typeName in primitiveMappings) && (!x._def.checks || !x._def.checks.length))) {
+    const types = options.reduce((types2, x) => {
+      const type = primitiveMappings[x._def.typeName];
+      return type && !types2.includes(type) ? [...types2, type] : types2;
+    }, []);
+    return {
+      type: types.length > 1 ? types : types[0]
+    };
+  } else if (options.every((x) => x._def.typeName === "ZodLiteral" && !x.description)) {
+    const types = options.reduce((acc, x) => {
+      const type = typeof x._def.value;
+      switch (type) {
+        case "string":
+        case "number":
+        case "boolean":
+          return [...acc, type];
+        case "bigint":
+          return [...acc, "integer"];
+        case "object":
+          if (x._def.value === null)
+            return [...acc, "null"];
+        case "symbol":
+        case "undefined":
+        case "function":
+        default:
+          return acc;
+      }
+    }, []);
+    if (types.length === options.length) {
+      const uniqueTypes = types.filter((x, i, a) => a.indexOf(x) === i);
+      return {
+        type: uniqueTypes.length > 1 ? uniqueTypes : uniqueTypes[0],
+        enum: options.reduce((acc, x) => {
+          return acc.includes(x._def.value) ? acc : [...acc, x._def.value];
+        }, [])
+      };
+    }
+  } else if (options.every((x) => x._def.typeName === "ZodEnum")) {
+    return {
+      type: "string",
+      enum: options.reduce((acc, x) => [
+        ...acc,
+        ...x._def.values.filter((x2) => !acc.includes(x2))
+      ], [])
+    };
+  }
+  return asAnyOf(def, refs);
+}
+var asAnyOf = (def, refs) => {
+  const anyOf = (def.options instanceof Map ? Array.from(def.options.values()) : def.options).map((x, i) => parseDef(x._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "anyOf", `${i}`]
+  })).filter((x) => !!x && (!refs.strictUnions || typeof x === "object" && Object.keys(x).length > 0));
+  return anyOf.length ? { anyOf } : undefined;
+};
+function parseNullableDef(def, refs) {
+  if (["ZodString", "ZodNumber", "ZodBigInt", "ZodBoolean", "ZodNull"].includes(def.innerType._def.typeName) && (!def.innerType._def.checks || !def.innerType._def.checks.length)) {
+    return {
+      type: [
+        primitiveMappings[def.innerType._def.typeName],
+        "null"
+      ]
+    };
+  }
+  const base2 = parseDef(def.innerType._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "anyOf", "0"]
+  });
+  return base2 && { anyOf: [base2, { type: "null" }] };
+}
+function parseNumberDef(def) {
+  const res = {
+    type: "number"
+  };
+  if (!def.checks)
+    return res;
+  for (const check2 of def.checks) {
+    switch (check2.kind) {
+      case "int":
+        res.type = "integer";
+        break;
+      case "min":
+        if (check2.inclusive) {
+          res.minimum = check2.value;
+        } else {
+          res.exclusiveMinimum = check2.value;
+        }
+        break;
+      case "max":
+        if (check2.inclusive) {
+          res.maximum = check2.value;
+        } else {
+          res.exclusiveMaximum = check2.value;
+        }
+        break;
+      case "multipleOf":
+        res.multipleOf = check2.value;
+        break;
+    }
+  }
+  return res;
+}
+function parseObjectDef(def, refs) {
+  const result = {
+    type: "object",
+    properties: {}
+  };
+  const required2 = [];
+  const shape = def.shape();
+  for (const propName in shape) {
+    let propDef = shape[propName];
+    if (propDef === undefined || propDef._def === undefined) {
+      continue;
+    }
+    const propOptional = safeIsOptional(propDef);
+    const parsedDef = parseDef(propDef._def, {
+      ...refs,
+      currentPath: [...refs.currentPath, "properties", propName],
+      propertyPath: [...refs.currentPath, "properties", propName]
+    });
+    if (parsedDef === undefined) {
+      continue;
+    }
+    result.properties[propName] = parsedDef;
+    if (!propOptional) {
+      required2.push(propName);
+    }
+  }
+  if (required2.length) {
+    result.required = required2;
+  }
+  const additionalProperties = decideAdditionalProperties(def, refs);
+  if (additionalProperties !== undefined) {
+    result.additionalProperties = additionalProperties;
+  }
+  return result;
+}
+function decideAdditionalProperties(def, refs) {
+  if (def.catchall._def.typeName !== "ZodNever") {
+    return parseDef(def.catchall._def, {
+      ...refs,
+      currentPath: [...refs.currentPath, "additionalProperties"]
+    });
+  }
+  switch (def.unknownKeys) {
+    case "passthrough":
+      return refs.allowedAdditionalProperties;
+    case "strict":
+      return refs.rejectedAdditionalProperties;
+    case "strip":
+      return refs.removeAdditionalStrategy === "strict" ? refs.allowedAdditionalProperties : refs.rejectedAdditionalProperties;
+  }
+}
+function safeIsOptional(schema) {
+  try {
+    return schema.isOptional();
+  } catch (e) {
+    return true;
+  }
+}
+var parseOptionalDef = (def, refs) => {
+  var _a32;
+  if (refs.currentPath.toString() === ((_a32 = refs.propertyPath) == null ? undefined : _a32.toString())) {
+    return parseDef(def.innerType._def, refs);
+  }
+  const innerSchema = parseDef(def.innerType._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "anyOf", "1"]
+  });
+  return innerSchema ? { anyOf: [{ not: parseAnyDef() }, innerSchema] } : parseAnyDef();
+};
+var parsePipelineDef = (def, refs) => {
+  if (refs.pipeStrategy === "input") {
+    return parseDef(def.in._def, refs);
+  } else if (refs.pipeStrategy === "output") {
+    return parseDef(def.out._def, refs);
+  }
+  const inputSchema = parseDef(def.in._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "allOf", "0"]
+  });
+  const outputSchema = parseDef(def.out._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "allOf", inputSchema ? "1" : "0"]
+  });
+  return {
+    allOf: [inputSchema, outputSchema].filter((schema) => schema !== undefined)
+  };
+};
+function parsePromiseDef(def, refs) {
+  return parseDef(def.type._def, refs);
+}
+function parseSetDef(def, refs) {
+  const items = parseDef(def.valueType._def, {
+    ...refs,
+    currentPath: [...refs.currentPath, "items"]
+  });
+  const schema = {
+    type: "array",
+    uniqueItems: true,
+    items
+  };
+  if (def.minSize) {
+    schema.minItems = def.minSize.value;
+  }
+  if (def.maxSize) {
+    schema.maxItems = def.maxSize.value;
+  }
+  return schema;
+}
+function parseTupleDef(def, refs) {
+  if (def.rest) {
+    return {
+      type: "array",
+      minItems: def.items.length,
+      items: def.items.map((x, i) => parseDef(x._def, {
+        ...refs,
+        currentPath: [...refs.currentPath, "items", `${i}`]
+      })).reduce((acc, x) => x === undefined ? acc : [...acc, x], []),
+      additionalItems: parseDef(def.rest._def, {
+        ...refs,
+        currentPath: [...refs.currentPath, "additionalItems"]
+      })
+    };
+  } else {
+    return {
+      type: "array",
+      minItems: def.items.length,
+      maxItems: def.items.length,
+      items: def.items.map((x, i) => parseDef(x._def, {
+        ...refs,
+        currentPath: [...refs.currentPath, "items", `${i}`]
+      })).reduce((acc, x) => x === undefined ? acc : [...acc, x], [])
+    };
+  }
+}
+function parseUndefinedDef() {
+  return {
+    not: parseAnyDef()
+  };
+}
+function parseUnknownDef() {
+  return parseAnyDef();
+}
+var parseReadonlyDef = (def, refs) => {
+  return parseDef(def.innerType._def, refs);
+};
+var selectParser = (def, typeName, refs) => {
+  switch (typeName) {
+    case "ZodString":
+      return parseStringDef(def, refs);
+    case "ZodNumber":
+      return parseNumberDef(def);
+    case "ZodObject":
+      return parseObjectDef(def, refs);
+    case "ZodBigInt":
+      return parseBigintDef(def);
+    case "ZodBoolean":
+      return parseBooleanDef();
+    case "ZodDate":
+      return parseDateDef(def, refs);
+    case "ZodUndefined":
+      return parseUndefinedDef();
+    case "ZodNull":
+      return parseNullDef();
+    case "ZodArray":
+      return parseArrayDef(def, refs);
+    case "ZodUnion":
+    case "ZodDiscriminatedUnion":
+      return parseUnionDef(def, refs);
+    case "ZodIntersection":
+      return parseIntersectionDef(def, refs);
+    case "ZodTuple":
+      return parseTupleDef(def, refs);
+    case "ZodRecord":
+      return parseRecordDef(def, refs);
+    case "ZodLiteral":
+      return parseLiteralDef(def);
+    case "ZodEnum":
+      return parseEnumDef(def);
+    case "ZodNativeEnum":
+      return parseNativeEnumDef(def);
+    case "ZodNullable":
+      return parseNullableDef(def, refs);
+    case "ZodOptional":
+      return parseOptionalDef(def, refs);
+    case "ZodMap":
+      return parseMapDef(def, refs);
+    case "ZodSet":
+      return parseSetDef(def, refs);
+    case "ZodLazy":
+      return () => def.getter()._def;
+    case "ZodPromise":
+      return parsePromiseDef(def, refs);
+    case "ZodNaN":
+    case "ZodNever":
+      return parseNeverDef();
+    case "ZodEffects":
+      return parseEffectsDef(def, refs);
+    case "ZodAny":
+      return parseAnyDef();
+    case "ZodUnknown":
+      return parseUnknownDef();
+    case "ZodDefault":
+      return parseDefaultDef(def, refs);
+    case "ZodBranded":
+      return parseBrandedDef(def, refs);
+    case "ZodReadonly":
+      return parseReadonlyDef(def, refs);
+    case "ZodCatch":
+      return parseCatchDef(def, refs);
+    case "ZodPipeline":
+      return parsePipelineDef(def, refs);
+    case "ZodFunction":
+    case "ZodVoid":
+    case "ZodSymbol":
+      return;
+    default:
+      return /* @__PURE__ */ ((_) => {
+        return;
+      })(typeName);
+  }
+};
+var getRelativePath = (pathA, pathB) => {
+  let i = 0;
+  for (;i < pathA.length && i < pathB.length; i++) {
+    if (pathA[i] !== pathB[i])
+      break;
+  }
+  return [(pathA.length - i).toString(), ...pathB.slice(i)].join("/");
+};
+function parseDef(def, refs, forceResolution = false) {
+  var _a32;
+  const seenItem = refs.seen.get(def);
+  if (refs.override) {
+    const overrideResult = (_a32 = refs.override) == null ? undefined : _a32.call(refs, def, refs, seenItem, forceResolution);
+    if (overrideResult !== ignoreOverride) {
+      return overrideResult;
+    }
+  }
+  if (seenItem && !forceResolution) {
+    const seenSchema = get$ref(seenItem, refs);
+    if (seenSchema !== undefined) {
+      return seenSchema;
+    }
+  }
+  const newItem = { def, path: refs.currentPath, jsonSchema: undefined };
+  refs.seen.set(def, newItem);
+  const jsonSchemaOrGetter = selectParser(def, def.typeName, refs);
+  const jsonSchema2 = typeof jsonSchemaOrGetter === "function" ? parseDef(jsonSchemaOrGetter(), refs) : jsonSchemaOrGetter;
+  if (jsonSchema2) {
+    addMeta(def, refs, jsonSchema2);
+  }
+  if (refs.postProcess) {
+    const postProcessResult = refs.postProcess(jsonSchema2, def, refs);
+    newItem.jsonSchema = jsonSchema2;
+    return postProcessResult;
+  }
+  newItem.jsonSchema = jsonSchema2;
+  return jsonSchema2;
+}
+var get$ref = (item, refs) => {
+  switch (refs.$refStrategy) {
+    case "root":
+      return { $ref: item.path.join("/") };
+    case "relative":
+      return { $ref: getRelativePath(refs.currentPath, item.path) };
+    case "none":
+    case "seen": {
+      if (item.path.length < refs.currentPath.length && item.path.every((value2, index2) => refs.currentPath[index2] === value2)) {
+        console.warn(`Recursive reference detected at ${refs.currentPath.join("/")}! Defaulting to any`);
+        return parseAnyDef();
+      }
+      return refs.$refStrategy === "seen" ? parseAnyDef() : undefined;
+    }
+  }
+};
+var addMeta = (def, refs, jsonSchema2) => {
+  if (def.description) {
+    jsonSchema2.description = def.description;
+  }
+  return jsonSchema2;
+};
+var getRefs = (options) => {
+  const _options = getDefaultOptions(options);
+  const currentPath = _options.name !== undefined ? [..._options.basePath, _options.definitionPath, _options.name] : _options.basePath;
+  return {
+    ..._options,
+    currentPath,
+    propertyPath: undefined,
+    seen: new Map(Object.entries(_options.definitions).map(([name32, def]) => [
+      def._def,
+      {
+        def: def._def,
+        path: [..._options.basePath, _options.definitionPath, name32],
+        jsonSchema: undefined
+      }
+    ]))
+  };
+};
+var zod3ToJsonSchema = (schema, options) => {
+  var _a32;
+  const refs = getRefs(options);
+  let definitions = typeof options === "object" && options.definitions ? Object.entries(options.definitions).reduce((acc, [name42, schema2]) => {
+    var _a42;
+    return {
+      ...acc,
+      [name42]: (_a42 = parseDef(schema2._def, {
+        ...refs,
+        currentPath: [...refs.basePath, refs.definitionPath, name42]
+      }, true)) != null ? _a42 : parseAnyDef()
+    };
+  }, {}) : undefined;
+  const name32 = typeof options === "string" ? options : (options == null ? undefined : options.nameStrategy) === "title" ? undefined : options == null ? undefined : options.name;
+  const main = (_a32 = parseDef(schema._def, name32 === undefined ? refs : {
+    ...refs,
+    currentPath: [...refs.basePath, refs.definitionPath, name32]
+  }, false)) != null ? _a32 : parseAnyDef();
+  const title = typeof options === "object" && options.name !== undefined && options.nameStrategy === "title" ? options.name : undefined;
+  if (title !== undefined) {
+    main.title = title;
+  }
+  const combined = name32 === undefined ? definitions ? {
+    ...main,
+    [refs.definitionPath]: definitions
+  } : main : {
+    $ref: [
+      ...refs.$refStrategy === "relative" ? [] : refs.basePath,
+      refs.definitionPath,
+      name32
+    ].join("/"),
+    [refs.definitionPath]: {
+      ...definitions,
+      [name32]: main
+    }
+  };
+  combined.$schema = "http://json-schema.org/draft-07/schema#";
+  return combined;
+};
+var schemaSymbol = /* @__PURE__ */ Symbol.for("vercel.ai.schema");
+function lazySchema(createSchema) {
+  let schema;
+  return () => {
+    if (schema == null) {
+      schema = createSchema();
+    }
+    return schema;
+  };
+}
+function jsonSchema(jsonSchema2, {
+  validate
+} = {}) {
+  return {
+    [schemaSymbol]: true,
+    _type: undefined,
+    get jsonSchema() {
+      if (typeof jsonSchema2 === "function") {
+        jsonSchema2 = jsonSchema2();
+      }
+      return jsonSchema2;
+    },
+    validate
+  };
+}
+function isSchema(value2) {
+  return typeof value2 === "object" && value2 !== null && schemaSymbol in value2 && value2[schemaSymbol] === true && "jsonSchema" in value2 && "validate" in value2;
+}
+function asSchema(schema) {
+  return schema == null ? jsonSchema({
+    type: "object",
+    properties: {},
+    additionalProperties: false
+  }) : isSchema(schema) ? schema : ("~standard" in schema) ? schema["~standard"].vendor === "zod" ? zodSchema(schema) : standardSchema(schema) : schema();
+}
+function standardSchema(standardSchema2) {
+  return jsonSchema(() => {
+    if (!hasStandardJsonSchema(standardSchema2)) {
+      throw new Error(`Standard schema vendor '${standardSchema2["~standard"].vendor}' does not support JSON Schema conversion.`);
+    }
+    return addAdditionalPropertiesToJsonSchema(standardSchema2["~standard"].jsonSchema.input({
+      target: "draft-07"
+    }));
+  }, {
+    validate: async (value2) => {
+      const result = await standardSchema2["~standard"].validate(value2);
+      return "value" in result ? { success: true, value: result.value } : {
+        success: false,
+        error: new TypeValidationError({
+          value: value2,
+          cause: result.issues
+        })
+      };
+    }
+  });
+}
+function hasStandardJsonSchema(schema) {
+  return schema["~standard"].jsonSchema != null;
+}
+function zod3Schema(zodSchema2, options) {
+  var _a32;
+  const useReferences = (_a32 = options == null ? undefined : options.useReferences) != null ? _a32 : false;
+  return jsonSchema(() => zod3ToJsonSchema(zodSchema2, {
+    $refStrategy: useReferences ? "root" : "none"
+  }), {
+    validate: async (value2) => {
+      const result = await zodSchema2.safeParseAsync(value2);
+      return result.success ? { success: true, value: result.data } : { success: false, error: result.error };
+    }
+  });
+}
+function zod4Schema(zodSchema2, options) {
+  var _a32;
+  const useReferences = (_a32 = options == null ? undefined : options.useReferences) != null ? _a32 : false;
+  return jsonSchema(() => addAdditionalPropertiesToJsonSchema(toJSONSchema(zodSchema2, {
+    target: "draft-7",
+    io: "input",
+    reused: useReferences ? "ref" : "inline"
+  })), {
+    validate: async (value2) => {
+      const result = await safeParseAsync2(zodSchema2, value2);
+      return result.success ? { success: true, value: result.data } : { success: false, error: result.error };
+    }
+  });
+}
+function isZod4Schema(zodSchema2) {
+  return "_zod" in zodSchema2;
+}
+function zodSchema(zodSchema2, options) {
+  if (isZod4Schema(zodSchema2)) {
+    return zod4Schema(zodSchema2, options);
+  } else {
+    return zod3Schema(zodSchema2, options);
+  }
+}
+async function validateTypes({
+  value: value2,
+  schema,
+  context
+}) {
+  const result = await safeValidateTypes({ value: value2, schema, context });
+  if (!result.success) {
+    throw TypeValidationError.wrap({ value: value2, cause: result.error, context });
+  }
+  return result.value;
+}
+async function safeValidateTypes({
+  value: value2,
+  schema,
+  context
+}) {
+  const actualSchema = asSchema(schema);
+  try {
+    if (actualSchema.validate == null) {
+      return { success: true, value: value2, rawValue: value2 };
+    }
+    const result = await actualSchema.validate(value2);
+    if (result.success) {
+      return { success: true, value: result.value, rawValue: value2 };
+    }
+    return {
+      success: false,
+      error: TypeValidationError.wrap({ value: value2, cause: result.error, context }),
+      rawValue: value2
+    };
+  } catch (error48) {
+    return {
+      success: false,
+      error: TypeValidationError.wrap({ value: value2, cause: error48, context }),
+      rawValue: value2
+    };
+  }
+}
+async function parseJSON({
+  text: text3,
+  schema
+}) {
+  try {
+    const value2 = secureJsonParse(text3);
+    if (schema == null) {
+      return value2;
+    }
+    return await validateTypes({ value: value2, schema });
+  } catch (error48) {
+    if (JSONParseError.isInstance(error48) || TypeValidationError.isInstance(error48)) {
+      throw error48;
+    }
+    throw new JSONParseError({ text: text3, cause: error48 });
+  }
+}
+async function safeParseJSON({
+  text: text3,
+  schema
+}) {
+  try {
+    const value2 = secureJsonParse(text3);
+    if (schema == null) {
+      return { success: true, value: value2, rawValue: value2 };
+    }
+    return await safeValidateTypes({ value: value2, schema });
+  } catch (error48) {
+    return {
+      success: false,
+      error: JSONParseError.isInstance(error48) ? error48 : new JSONParseError({ text: text3, cause: error48 }),
+      rawValue: undefined
+    };
+  }
+}
+function parseJsonEventStream({
+  stream,
+  schema
+}) {
+  return stream.pipeThrough(new TextDecoderStream).pipeThrough(new EventSourceParserStream).pipeThrough(new TransformStream({
+    async transform({ data }, controller) {
+      if (data === "[DONE]") {
+        return;
+      }
+      controller.enqueue(await safeParseJSON({ text: data, schema }));
+    }
+  }));
+}
+var getOriginalFetch2 = () => globalThis.fetch;
+var postJsonToApi = async ({
+  url: url2,
+  headers,
+  body,
+  failedResponseHandler,
+  successfulResponseHandler,
+  abortSignal,
+  fetch: fetch4
+}) => await postToApi({
+  url: url2,
+  headers: {
+    "Content-Type": "application/json",
+    ...headers
+  },
+  body: {
+    content: JSON.stringify(body),
+    values: body
+  },
+  failedResponseHandler,
+  successfulResponseHandler,
+  abortSignal,
+  fetch: fetch4
+});
+var postToApi = async ({
+  url: url2,
+  headers = {},
+  body,
+  successfulResponseHandler,
+  failedResponseHandler,
+  abortSignal,
+  fetch: fetch4 = getOriginalFetch2()
+}) => {
+  try {
+    const response = await fetch4(url2, {
+      method: "POST",
+      headers: withUserAgentSuffix(headers, `ai-sdk/provider-utils/${VERSION2}`, getRuntimeEnvironmentUserAgent()),
+      body: body.content,
+      signal: abortSignal
+    });
+    const responseHeaders = extractResponseHeaders(response);
+    if (!response.ok) {
+      let errorInformation;
+      try {
+        errorInformation = await failedResponseHandler({
+          response,
+          url: url2,
+          requestBodyValues: body.values
+        });
+      } catch (error48) {
+        if (isAbortError(error48) || APICallError.isInstance(error48)) {
+          throw error48;
+        }
+        throw new APICallError({
+          message: "Failed to process error response",
+          cause: error48,
+          statusCode: response.status,
+          url: url2,
+          responseHeaders,
+          requestBodyValues: body.values
+        });
+      }
+      throw errorInformation.value;
+    }
+    try {
+      return await successfulResponseHandler({
+        response,
+        url: url2,
+        requestBodyValues: body.values
+      });
+    } catch (error48) {
+      if (error48 instanceof Error) {
+        if (isAbortError(error48) || APICallError.isInstance(error48)) {
+          throw error48;
+        }
+      }
+      throw new APICallError({
+        message: "Failed to process successful response",
+        cause: error48,
+        statusCode: response.status,
+        url: url2,
+        responseHeaders,
+        requestBodyValues: body.values
+      });
+    }
+  } catch (error48) {
+    throw handleFetchError({ error: error48, url: url2, requestBodyValues: body.values });
+  }
+};
+function tool(tool2) {
+  return tool2;
+}
+function createProviderExecutedToolFactory({
+  id,
+  inputSchema,
+  outputSchema,
+  supportsDeferredResults
+}) {
+  return ({
+    onInputStart,
+    onInputDelta,
+    onInputAvailable,
+    ...args
+  }) => tool({
+    type: "provider",
+    isProviderExecuted: true,
+    id,
+    args,
+    inputSchema,
+    outputSchema,
+    onInputStart,
+    onInputDelta,
+    onInputAvailable,
+    supportsDeferredResults
+  });
+}
+async function resolve(value2) {
+  if (typeof value2 === "function") {
+    value2 = value2();
+  }
+  return Promise.resolve(value2);
+}
+var retryWithExponentialBackoff = ({
+  maxRetries = 2,
+  initialDelayInMs = 2000,
+  backoffFactor = 2,
+  abortSignal,
+  shouldRetry,
+  getDelayInMs = ({ exponentialBackoffDelay }) => exponentialBackoffDelay,
+  createRetryError = ({ message }) => new Error(message)
+}) => async (f) => retryWithExponentialBackoffInternal(f, {
+  maxRetries,
+  delayInMs: initialDelayInMs,
+  backoffFactor,
+  abortSignal,
+  shouldRetry,
+  getDelayInMs,
+  createRetryError
+});
+async function retryWithExponentialBackoffInternal(f, {
+  maxRetries,
+  delayInMs,
+  backoffFactor,
+  abortSignal,
+  shouldRetry,
+  getDelayInMs,
+  createRetryError
+}, errors4 = []) {
+  try {
+    return await f();
+  } catch (error48) {
+    if (isAbortError(error48)) {
+      throw error48;
+    }
+    if (maxRetries === 0) {
+      throw error48;
+    }
+    const errorMessage = getErrorMessage(error48);
+    const newErrors = [...errors4, error48];
+    const tryNumber = newErrors.length;
+    if (tryNumber > maxRetries) {
+      throw createRetryError({
+        message: `Failed after ${tryNumber} attempts. Last error: ${errorMessage}`,
+        reason: "maxRetriesExceeded",
+        errors: newErrors
+      });
+    }
+    if (await shouldRetry(error48) && tryNumber <= maxRetries) {
+      await delay(getDelayInMs({
+        error: error48,
+        exponentialBackoffDelay: delayInMs
+      }), { abortSignal });
+      return retryWithExponentialBackoffInternal(f, {
+        maxRetries,
+        delayInMs: backoffFactor * delayInMs,
+        backoffFactor,
+        abortSignal,
+        shouldRetry,
+        getDelayInMs,
+        createRetryError
+      }, newErrors);
+    }
+    if (tryNumber === 1) {
+      throw error48;
+    }
+    throw createRetryError({
+      message: `Failed after ${tryNumber} attempts with non-retryable error: '${errorMessage}'`,
+      reason: "errorNotRetryable",
+      errors: newErrors
+    });
+  }
+}
+var textDecoder22 = new TextDecoder;
+async function readResponseBodyAsText({
+  response,
+  url: url2
+}) {
+  return textDecoder22.decode(await readResponseWithSizeLimit({
+    response,
+    url: url2
+  }));
+}
+var createJsonErrorResponseHandler = ({
+  errorSchema,
+  errorToMessage,
+  isRetryable
+}) => async ({ response, url: url2, requestBodyValues }) => {
+  const responseBody = await readResponseBodyAsText({ response, url: url2 });
+  const responseHeaders = extractResponseHeaders(response);
+  if (responseBody.trim() === "") {
+    return {
+      responseHeaders,
+      value: new APICallError({
+        message: response.statusText,
+        url: url2,
+        requestBodyValues,
+        statusCode: response.status,
+        responseHeaders,
+        responseBody,
+        isRetryable: isRetryable == null ? undefined : isRetryable(response)
+      })
+    };
+  }
+  try {
+    const parsedError = await parseJSON({
+      text: responseBody,
+      schema: errorSchema
+    });
+    return {
+      responseHeaders,
+      value: new APICallError({
+        message: errorToMessage(parsedError),
+        url: url2,
+        requestBodyValues,
+        statusCode: response.status,
+        responseHeaders,
+        responseBody,
+        data: parsedError,
+        isRetryable: isRetryable == null ? undefined : isRetryable(response, parsedError)
+      })
+    };
+  } catch (e) {
+    return {
+      responseHeaders,
+      value: new APICallError({
+        message: response.statusText,
+        url: url2,
+        requestBodyValues,
+        statusCode: response.status,
+        responseHeaders,
+        responseBody,
+        isRetryable: isRetryable == null ? undefined : isRetryable(response)
+      })
+    };
+  }
+};
+var createEventSourceResponseHandler = (chunkSchema) => async ({ response }) => {
+  const responseHeaders = extractResponseHeaders(response);
+  if (response.body == null) {
+    throw new EmptyResponseBodyError({});
+  }
+  return {
+    responseHeaders,
+    value: parseJsonEventStream({
+      stream: response.body,
+      schema: chunkSchema
+    })
+  };
+};
+var createJsonResponseHandler = (responseSchema) => async ({ response, url: url2, requestBodyValues }) => {
+  const responseBody = await readResponseBodyAsText({ response, url: url2 });
+  const parsedResult = await safeParseJSON({
+    text: responseBody,
+    schema: responseSchema
+  });
+  const responseHeaders = extractResponseHeaders(response);
+  if (!parsedResult.success) {
+    throw new APICallError({
+      message: "Invalid JSON response",
+      cause: parsedResult.error,
+      statusCode: response.status,
+      responseHeaders,
+      responseBody,
+      url: url2,
+      requestBodyValues
+    });
+  }
+  return {
+    responseHeaders,
+    value: parsedResult.value,
+    rawValue: parsedResult.rawValue
+  };
+};
+function isJSONSerializable(value2) {
+  if (value2 === null || value2 === undefined)
+    return true;
+  const type = typeof value2;
+  if (type === "string" || type === "number" || type === "boolean")
+    return true;
+  if (type === "function" || type === "symbol" || type === "bigint")
+    return false;
+  if (Array.isArray(value2)) {
+    return value2.every(isJSONSerializable);
+  }
+  if (Object.getPrototypeOf(value2) === Object.prototype) {
+    return Object.values(value2).every(isJSONSerializable);
+  }
+  return false;
+}
+var name22 = "AI_SerializationError";
+var marker22 = `vercel.ai.error.${name22}`;
+var symbol23 = Symbol.for(marker22);
+var _a23;
+var _b22;
+var SerializationError = class extends (_b22 = AISDKError, _a23 = symbol23, _b22) {
+  constructor({
+    message = "Failed to serialize value.",
+    cause
+  } = {}) {
+    super({ name: name22, message, cause });
+    this[_a23] = true;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker22);
+  }
+};
+function serializeModelOptions(options) {
+  const serializableConfig = {};
+  for (const [key, value2] of Object.entries(options.config)) {
+    if (key === "headers") {
+      const resolvedHeaders = resolveSync(value2);
+      if (isJSONSerializable(resolvedHeaders)) {
+        serializableConfig[key] = resolvedHeaders;
+      }
+    } else if (isJSONSerializable(value2)) {
+      serializableConfig[key] = value2;
+    }
+  }
+  return { modelId: options.modelId, config: serializableConfig };
+}
+function resolveSync(value2) {
+  let next = value2;
+  if (typeof value2 === "function") {
+    next = value2();
+  }
+  if (next instanceof Promise) {
+    throw new SerializationError({
+      message: "Cannot serialize asynchronous model options."
+    });
+  }
+  return next;
+}
+var TRANSCRIPTION_STREAM_START_FRAME_TYPE = "transcription-stream.start";
+var TRANSCRIPTION_STREAM_AUDIO_DONE_FRAME_TYPE = "transcription-stream.audio-done";
+function parseTranscriptionStreamPart(text3) {
+  let value2;
+  try {
+    value2 = secureJsonParse(text3);
+  } catch (e) {
+    return;
+  }
+  if (value2 == null || typeof value2 !== "object" || Array.isArray(value2)) {
+    return;
+  }
+  const part = value2;
+  switch (part.type) {
+    case "stream-start":
+      return Array.isArray(part.warnings) && part.warnings.every(isWarning) ? part : undefined;
+    case "transcript-delta":
+      return isString(part.delta) && isOptional(part.id, isString) && isOptional(part.providerMetadata, isRecord) ? part : undefined;
+    case "transcript-partial":
+      return isString(part.text) && isOptional(part.id, isString) && isOptional(part.startSecond, isNumber) && isOptional(part.durationInSeconds, isNumber) && isOptional(part.channelIndex, isNumber) && isOptional(part.providerMetadata, isRecord) ? part : undefined;
+    case "transcript-final":
+      return isString(part.text) && isOptional(part.id, isString) && isOptional(part.startSecond, isNumber) && isOptional(part.endSecond, isNumber) && isOptional(part.channelIndex, isNumber) && isOptional(part.providerMetadata, isRecord) ? part : undefined;
+    case "finish":
+      return isString(part.text) && Array.isArray(part.segments) && part.segments.every(isSegment) && isOptional(part.language, isString) && isOptional(part.durationInSeconds, isNumber) && isOptional(part.providerMetadata, isRecord) ? part : undefined;
+    case "response-metadata": {
+      if (!(isOptional(part.modelId, isString) && isOptional(part.headers, isRecord))) {
+        return;
+      }
+      const timestamp = part.timestamp;
+      if (timestamp == null) {
+        return { ...part, timestamp: undefined };
+      }
+      if (typeof timestamp !== "string") {
+        return;
+      }
+      const revived = new Date(timestamp);
+      return Number.isNaN(revived.getTime()) ? undefined : { ...part, timestamp: revived };
+    }
+    case "raw":
+      return "rawValue" in part ? part : undefined;
+    case "error":
+      return "error" in part ? part : undefined;
+    default:
+      return;
+  }
+}
+function isString(value2) {
+  return typeof value2 === "string";
+}
+function isNumber(value2) {
+  return typeof value2 === "number";
+}
+function isOptional(value2, check2) {
+  return value2 === undefined || check2(value2);
+}
+function isWarning(value2) {
+  return isRecord(value2) && isString(value2.type);
+}
+function isSegment(value2) {
+  return isRecord(value2) && isString(value2.text) && isNumber(value2.startSecond) && isNumber(value2.endSecond);
+}
+function withoutTrailingSlash(url2) {
+  return url2 == null ? undefined : url2.replace(/\/$/, "");
+}
+function isExecutableTool(tool2) {
+  return tool2 != null && typeof tool2.execute === "function";
+}
+function isAsyncIterable(obj) {
+  return obj != null && typeof obj[Symbol.asyncIterator] === "function";
+}
+async function* executeTool({
+  tool: tool2,
+  input,
+  options
+}) {
+  const result = tool2.execute(input, options);
+  if (isAsyncIterable(result)) {
+    let lastOutput;
+    for await (const output of result) {
+      lastOutput = output;
+      yield { type: "preliminary", output };
+    }
+    yield { type: "final", output: lastOutput };
+  } else {
+    yield { type: "final", output: await result };
+  }
+}
+function getToolCaller(tool2) {
+  return tool2 == null ? undefined : tool2.experimental_toolCaller;
+}
+
+// node_modules/.bun/@ai-sdk+gateway@4.0.57+3c5d820c62823f0b/node_modules/@ai-sdk/gateway/dist/index.js
+var import_oidc = __toESM(require_dist(), 1);
+var import_oidc2 = __toESM(require_dist(), 1);
+var GATEWAY_REALTIME_SUBPROTOCOL = "ai-gateway-realtime.v1";
+var GATEWAY_TRANSCRIPTION_SUBPROTOCOL = "ai-gateway-transcription.v1";
+var GATEWAY_AUTH_SUBPROTOCOL_PREFIX = "ai-gateway-auth.";
+var GATEWAY_TEAM_SUBPROTOCOL_PREFIX = "ai-gateway-team.";
+function getGatewayRealtimeProtocols(token, options) {
+  return buildGatewayProtocols(GATEWAY_REALTIME_SUBPROTOCOL, token, options);
+}
+function getGatewayTranscriptionProtocols(token, options) {
+  return buildGatewayProtocols(GATEWAY_TRANSCRIPTION_SUBPROTOCOL, token, options);
+}
+function buildGatewayProtocols(marker122, token, options) {
+  const protocols = [marker122, `${GATEWAY_AUTH_SUBPROTOCOL_PREFIX}${token}`];
+  if (options == null ? undefined : options.teamIdOrSlug) {
+    protocols.push(`${GATEWAY_TEAM_SUBPROTOCOL_PREFIX}${encodeSubprotocolValue(options.teamIdOrSlug)}`);
+  }
+  return protocols;
+}
+function encodeSubprotocolValue(value2) {
+  const bytes = new TextEncoder().encode(value2);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/u, "");
+}
+var z2 = {
+  any,
+  array,
+  boolean: boolean2,
+  discriminatedUnion,
+  enum: _enum2,
+  literal,
+  number: number2,
+  object,
+  record,
+  string: string2,
+  union,
+  unknown
+};
+var marker18 = "vercel.ai.gateway.error";
+var symbol18 = Symbol.for(marker18);
+var _a18;
+var _b18;
+var GatewayError = class _GatewayError extends (_b18 = Error, _a18 = symbol18, _b18) {
+  constructor({
+    message,
+    statusCode = 500,
+    cause,
+    generationId,
+    isRetryable = statusCode != null && (statusCode === 408 || statusCode === 409 || statusCode === 429 || statusCode >= 500)
+  }) {
+    super(generationId ? `${message} [${generationId}]` : message);
+    this[_a18] = true;
+    this.statusCode = statusCode;
+    this.cause = cause;
+    this.generationId = generationId;
+    this.isRetryable = isRetryable;
+  }
+  static isInstance(error48) {
+    return _GatewayError.hasMarker(error48);
+  }
+  static hasMarker(error48) {
+    return typeof error48 === "object" && error48 !== null && symbol18 in error48 && error48[symbol18] === true;
+  }
+};
+var name17 = "GatewayAuthenticationError";
+var marker23 = `vercel.ai.gateway.error.${name17}`;
+var symbol24 = Symbol.for(marker23);
+var _a24;
+var _b23;
+var GatewayAuthenticationError = class _GatewayAuthenticationError extends (_b23 = GatewayError, _a24 = symbol24, _b23) {
+  constructor({
+    message = "Authentication failed",
+    statusCode = 401,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a24] = true;
+    this.name = name17;
+    this.type = "authentication_error";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol24 in error48;
+  }
+  static createContextualError({
+    apiKeyProvided,
+    oidcTokenProvided,
+    statusCode = 401,
+    cause,
+    generationId
+  }) {
+    let contextualMessage;
+    if (apiKeyProvided) {
+      contextualMessage = `AI Gateway authentication failed: Invalid API key or token.
+
+Create a new API key: https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%2Fapi-keys
+
+Provide an API key or Vercel access token via 'apiKey' option or 'AI_GATEWAY_API_KEY' environment variable.`;
+    } else if (oidcTokenProvided) {
+      contextualMessage = `AI Gateway authentication failed: Invalid OIDC token.
+
+Run 'npx vercel link' to link your project, then 'vc env pull' to fetch the token.
+
+Alternatively, use an API key: https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%2Fapi-keys
+or pass a Vercel access token via the 'apiKey' option.`;
+    } else {
+      contextualMessage = `AI Gateway authentication failed: No authentication provided.
+
+Option 1 - API key:
+Create an API key: https://vercel.com/d?to=%2F%5Bteam%5D%2F%7E%2Fai%2Fapi-keys
+Provide via 'apiKey' option or 'AI_GATEWAY_API_KEY' environment variable.
+
+Option 2 - Vercel access token:
+Pass a Vercel personal access token or Vercel app access token via the 'apiKey' option.
+
+Option 3 - OIDC token:
+Run 'npx vercel link' to link your project, then 'vc env pull' to fetch the token.`;
+    }
+    return new _GatewayAuthenticationError({
+      message: contextualMessage,
+      statusCode,
+      cause,
+      generationId
+    });
+  }
+};
+var name23 = "GatewayInvalidRequestError";
+var marker32 = `vercel.ai.gateway.error.${name23}`;
+var symbol32 = Symbol.for(marker32);
+var _a32;
+var _b32;
+var GatewayInvalidRequestError = class extends (_b32 = GatewayError, _a32 = symbol32, _b32) {
+  constructor({
+    message = "Invalid request",
+    statusCode = 400,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a32] = true;
+    this.name = name23;
+    this.type = "invalid_request_error";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol32 in error48;
+  }
+};
+var name32 = "GatewayRateLimitError";
+var marker42 = `vercel.ai.gateway.error.${name32}`;
+var symbol42 = Symbol.for(marker42);
+var _a42;
+var _b42;
+var GatewayRateLimitError = class extends (_b42 = GatewayError, _a42 = symbol42, _b42) {
+  constructor({
+    message = "Rate limit exceeded",
+    statusCode = 429,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a42] = true;
+    this.name = name32;
+    this.type = "rate_limit_exceeded";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol42 in error48;
+  }
+};
+var name42 = "GatewayModelNotFoundError";
+var marker52 = `vercel.ai.gateway.error.${name42}`;
+var symbol52 = Symbol.for(marker52);
+var modelNotFoundParamSchema = lazySchema(() => zodSchema(z2.object({
+  modelId: z2.string()
+})));
+var _a52;
+var _b52;
+var GatewayModelNotFoundError = class extends (_b52 = GatewayError, _a52 = symbol52, _b52) {
+  constructor({
+    message = "Model not found",
+    statusCode = 404,
+    modelId,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a52] = true;
+    this.name = name42;
+    this.type = "model_not_found";
+    this.modelId = modelId;
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol52 in error48;
+  }
+};
+var name52 = "GatewayNotFoundError";
+var marker62 = `vercel.ai.gateway.error.${name52}`;
+var symbol62 = Symbol.for(marker62);
+var _a62;
+var _b62;
+var GatewayNotFoundError = class extends (_b62 = GatewayError, _a62 = symbol62, _b62) {
+  constructor({
+    message = "Resource not found",
+    statusCode = 404,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a62] = true;
+    this.name = name52;
+    this.type = "not_found";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol62 in error48;
+  }
+};
+var name62 = "GatewayInternalServerError";
+var marker72 = `vercel.ai.gateway.error.${name62}`;
+var symbol72 = Symbol.for(marker72);
+var _a72;
+var _b72;
+var GatewayInternalServerError = class extends (_b72 = GatewayError, _a72 = symbol72, _b72) {
+  constructor({
+    message = "Internal server error",
+    statusCode = 500,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a72] = true;
+    this.name = name62;
+    this.type = "internal_server_error";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol72 in error48;
+  }
+};
+var name72 = "GatewayFailedDependencyError";
+var marker82 = `vercel.ai.gateway.error.${name72}`;
+var symbol82 = Symbol.for(marker82);
+var _a82;
+var _b82;
+var GatewayFailedDependencyError = class extends (_b82 = GatewayError, _a82 = symbol82, _b82) {
+  constructor({
+    message = "Failed dependency",
+    statusCode = 424,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a82] = true;
+    this.name = name72;
+    this.type = "failed_dependency";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol82 in error48;
+  }
+};
+var name82 = "GatewayForbiddenError";
+var marker92 = `vercel.ai.gateway.error.${name82}`;
+var symbol92 = Symbol.for(marker92);
+var forbiddenParamSchema = lazySchema(() => zodSchema(z2.object({
+  ruleId: z2.string()
+})));
+var _a92;
+var _b92;
+var GatewayForbiddenError = class extends (_b92 = GatewayError, _a92 = symbol92, _b92) {
+  constructor({
+    message = "Forbidden",
+    statusCode = 403,
+    cause,
+    generationId,
+    ruleId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a92] = true;
+    this.name = name82;
+    this.type = "forbidden";
+    this.ruleId = ruleId;
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol92 in error48;
+  }
+};
+var name92 = "GatewayResponseError";
+var marker102 = `vercel.ai.gateway.error.${name92}`;
+var symbol102 = Symbol.for(marker102);
+var _a102;
+var _b102;
+var GatewayResponseError = class extends (_b102 = GatewayError, _a102 = symbol102, _b102) {
+  constructor({
+    message = "Invalid response from Gateway",
+    statusCode = 502,
+    response,
+    validationError,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a102] = true;
+    this.name = name92;
+    this.type = "response_error";
+    this.response = response;
+    this.validationError = validationError;
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol102 in error48;
+  }
+};
+async function createGatewayErrorFromResponse({
+  response,
+  statusCode,
+  defaultMessage = "Gateway request failed",
+  cause,
+  authMethod
+}) {
+  var _a122;
+  const parseResult = await safeValidateTypes({
+    value: response,
+    schema: gatewayErrorResponseSchema
+  });
+  if (!parseResult.success) {
+    const rawGenerationId = typeof response === "object" && response !== null && "generationId" in response ? response.generationId : undefined;
+    return new GatewayResponseError({
+      message: `Invalid error response format: ${defaultMessage}`,
+      statusCode,
+      response,
+      validationError: parseResult.error,
+      cause,
+      generationId: rawGenerationId
+    });
+  }
+  const validatedResponse = parseResult.value;
+  const errorType = validatedResponse.error.type;
+  const message = validatedResponse.error.message;
+  const generationId = (_a122 = validatedResponse.generationId) != null ? _a122 : undefined;
+  switch (errorType) {
+    case "authentication_error":
+      return GatewayAuthenticationError.createContextualError({
+        apiKeyProvided: authMethod === "api-key",
+        oidcTokenProvided: authMethod === "oidc",
+        statusCode,
+        cause,
+        generationId
+      });
+    case "invalid_request_error":
+      return new GatewayInvalidRequestError({
+        message,
+        statusCode,
+        cause,
+        generationId
+      });
+    case "rate_limit_exceeded":
+      return new GatewayRateLimitError({
+        message,
+        statusCode,
+        cause,
+        generationId
+      });
+    case "model_not_found": {
+      const modelResult = await safeValidateTypes({
+        value: validatedResponse.error.param,
+        schema: modelNotFoundParamSchema
+      });
+      return new GatewayModelNotFoundError({
+        message,
+        statusCode,
+        modelId: modelResult.success ? modelResult.value.modelId : undefined,
+        cause,
+        generationId
+      });
+    }
+    case "not_found":
+      return new GatewayNotFoundError({
+        message,
+        statusCode,
+        cause,
+        generationId
+      });
+    case "internal_server_error":
+      return new GatewayInternalServerError({
+        message,
+        statusCode,
+        cause,
+        generationId
+      });
+    case "failed_dependency":
+      return new GatewayFailedDependencyError({
+        message,
+        statusCode,
+        cause,
+        generationId
+      });
+    case "forbidden": {
+      const ruleResult = await safeValidateTypes({
+        value: validatedResponse.error.param,
+        schema: forbiddenParamSchema
+      });
+      return new GatewayForbiddenError({
+        message,
+        statusCode,
+        cause,
+        generationId,
+        ruleId: ruleResult.success ? ruleResult.value.ruleId : undefined
+      });
+    }
+    default:
+      return new GatewayInternalServerError({
+        message,
+        statusCode,
+        cause,
+        generationId
+      });
+  }
+}
+var gatewayErrorResponseSchema = lazySchema(() => zodSchema(z2.object({
+  error: z2.object({
+    message: z2.string(),
+    type: z2.string().nullish(),
+    param: z2.unknown().nullish(),
+    code: z2.union([z2.string(), z2.number()]).nullish()
+  }),
+  generationId: z2.string().nullish()
+})));
+function extractApiCallResponse(error48) {
+  if (error48.data !== undefined) {
+    return error48.data;
+  }
+  if (error48.responseBody != null) {
+    try {
+      return secureJsonParse(error48.responseBody);
+    } catch (e) {
+      return error48.responseBody;
+    }
+  }
+  return {};
+}
+var name102 = "GatewayTimeoutError";
+var marker112 = `vercel.ai.gateway.error.${name102}`;
+var symbol112 = Symbol.for(marker112);
+var _a112;
+var _b112;
+var GatewayTimeoutError = class _GatewayTimeoutError extends (_b112 = GatewayError, _a112 = symbol112, _b112) {
+  constructor({
+    message = "Request timed out",
+    statusCode = 408,
+    cause,
+    generationId
+  } = {}) {
+    super({ message, statusCode, cause, generationId });
+    this[_a112] = true;
+    this.name = name102;
+    this.type = "timeout_error";
+  }
+  static isInstance(error48) {
+    return GatewayError.hasMarker(error48) && symbol112 in error48;
+  }
+  static createTimeoutError({
+    originalMessage,
+    statusCode = 408,
+    cause,
+    generationId
+  }) {
+    const message = `Gateway request timed out: ${originalMessage}
+
+    This is a client-side timeout. To resolve this, increase your timeout configuration: https://vercel.com/docs/ai-gateway/capabilities/video-generation#extending-timeouts-for-node.js`;
+    return new _GatewayTimeoutError({
+      message,
+      statusCode,
+      cause,
+      generationId
+    });
+  }
+};
+function isTimeoutError(error48) {
+  if (!(error48 instanceof Error)) {
+    return false;
+  }
+  const errorCode = error48.code;
+  if (typeof errorCode === "string") {
+    const undiciTimeoutCodes = [
+      "UND_ERR_HEADERS_TIMEOUT",
+      "UND_ERR_BODY_TIMEOUT",
+      "UND_ERR_CONNECT_TIMEOUT"
+    ];
+    return undiciTimeoutCodes.includes(errorCode);
+  }
+  return false;
+}
+async function asGatewayError(error48, authMethod) {
+  var _a122;
+  if (GatewayError.isInstance(error48)) {
+    return error48;
+  }
+  if (isTimeoutError(error48)) {
+    return GatewayTimeoutError.createTimeoutError({
+      originalMessage: error48 instanceof Error ? error48.message : "Unknown error",
+      cause: error48
+    });
+  }
+  if (APICallError.isInstance(error48)) {
+    if (error48.cause && isTimeoutError(error48.cause)) {
+      return GatewayTimeoutError.createTimeoutError({
+        originalMessage: error48.message,
+        cause: error48
+      });
+    }
+    return await createGatewayErrorFromResponse({
+      response: extractApiCallResponse(error48),
+      statusCode: (_a122 = error48.statusCode) != null ? _a122 : 500,
+      defaultMessage: "Gateway request failed",
+      cause: error48,
+      authMethod
+    });
+  }
+  return await createGatewayErrorFromResponse({
+    response: {},
+    statusCode: 500,
+    defaultMessage: error48 instanceof Error ? `Gateway request failed: ${error48.message}` : "Unknown Gateway error",
+    cause: error48,
+    authMethod
+  });
+}
+var GATEWAY_AUTH_METHOD_HEADER = "ai-gateway-auth-method";
+var VERCEL_AI_GATEWAY_TEAM_HEADER = "x-vercel-ai-gateway-team";
+async function parseAuthMethod(headers) {
+  const result = await safeValidateTypes({
+    value: headers[GATEWAY_AUTH_METHOD_HEADER],
+    schema: gatewayAuthMethodSchema
+  });
+  return result.success ? result.value : undefined;
+}
+var gatewayAuthMethodSchema = lazySchema(() => zodSchema(z2.union([z2.literal("api-key"), z2.literal("oidc")])));
+var KNOWN_MODEL_TYPES = [
+  "embedding",
+  "image",
+  "language",
+  "realtime",
+  "reranking",
+  "speech",
+  "transcription",
+  "video"
+];
+var GatewayFetchMetadata = class {
+  constructor(config2) {
+    this.config = config2;
+  }
+  async getAvailableModels() {
+    try {
+      const { value: value2 } = await getFromApi({
+        url: `${this.config.baseURL}/config`,
+        validateUrl: false,
+        headers: this.config.headers ? await resolve(this.config.headers) : undefined,
+        successfulResponseHandler: createJsonResponseHandler(gatewayAvailableModelsResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        fetch: this.config.fetch
+      });
+      return value2;
+    } catch (error48) {
+      throw await asGatewayError(error48);
+    }
+  }
+  async getCredits() {
+    try {
+      const baseUrl = new URL(this.config.baseURL);
+      const { value: value2 } = await getFromApi({
+        url: `${baseUrl.origin}/v1/credits`,
+        validateUrl: false,
+        headers: this.config.headers ? await resolve(this.config.headers) : undefined,
+        successfulResponseHandler: createJsonResponseHandler(gatewayCreditsResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        fetch: this.config.fetch
+      });
+      return value2;
+    } catch (error48) {
+      throw await asGatewayError(error48);
+    }
+  }
+};
+var gatewayAvailableModelsResponseSchema = lazySchema(() => zodSchema(z2.object({
+  models: z2.array(z2.object({
+    id: z2.string(),
+    name: z2.string(),
+    description: z2.string().nullish(),
+    pricing: z2.object({
+      input: z2.string(),
+      output: z2.string(),
+      input_cache_read: z2.string().nullish(),
+      input_cache_write: z2.string().nullish()
+    }).transform(({ input, output, input_cache_read, input_cache_write }) => ({
+      input,
+      output,
+      ...input_cache_read ? { cachedInputTokens: input_cache_read } : {},
+      ...input_cache_write ? { cacheCreationInputTokens: input_cache_write } : {}
+    })).nullish(),
+    specification: z2.object({
+      specificationVersion: z2.literal("v4"),
+      provider: z2.string(),
+      modelId: z2.string()
+    }),
+    modelType: z2.string().nullish()
+  })).transform((models) => models.filter((m) => m.modelType == null || KNOWN_MODEL_TYPES.includes(m.modelType)))
+})));
+var gatewayCreditsResponseSchema = lazySchema(() => zodSchema(z2.object({
+  balance: z2.string(),
+  total_used: z2.string()
+}).transform(({ balance, total_used }) => ({
+  balance,
+  totalUsed: total_used
+}))));
+var GatewaySpendReport = class {
+  constructor(config2) {
+    this.config = config2;
+  }
+  async getSpendReport(params) {
+    try {
+      const baseUrl = new URL(this.config.baseURL);
+      const searchParams = new URLSearchParams;
+      searchParams.set("start_date", params.startDate);
+      searchParams.set("end_date", params.endDate);
+      if (params.groupBy) {
+        searchParams.set("group_by", params.groupBy);
+      }
+      if (params.datePart) {
+        searchParams.set("date_part", params.datePart);
+      }
+      if (params.userId) {
+        searchParams.set("user_id", params.userId);
+      }
+      if (params.model) {
+        searchParams.set("model", params.model);
+      }
+      if (params.provider) {
+        searchParams.set("provider", params.provider);
+      }
+      if (params.credentialType) {
+        searchParams.set("credential_type", params.credentialType);
+      }
+      if (params.tags && params.tags.length > 0) {
+        searchParams.set("tags", params.tags.join(","));
+      }
+      const { value: value2 } = await getFromApi({
+        url: `${baseUrl.origin}/v1/report?${searchParams.toString()}`,
+        validateUrl: false,
+        headers: this.config.headers ? await resolve(this.config.headers) : undefined,
+        successfulResponseHandler: createJsonResponseHandler(gatewaySpendReportResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        fetch: this.config.fetch
+      });
+      return value2;
+    } catch (error48) {
+      throw await asGatewayError(error48);
+    }
+  }
+};
+var gatewaySpendReportResponseSchema = lazySchema(() => zodSchema(z2.object({
+  results: z2.array(z2.object({
+    day: z2.string().optional(),
+    hour: z2.string().optional(),
+    user: z2.string().optional(),
+    model: z2.string().optional(),
+    tag: z2.string().optional(),
+    provider: z2.string().optional(),
+    credential_type: z2.enum(["byok", "system"]).optional(),
+    total_cost: z2.number(),
+    market_cost: z2.number().optional(),
+    input_tokens: z2.number().optional(),
+    output_tokens: z2.number().optional(),
+    cached_input_tokens: z2.number().optional(),
+    cache_creation_input_tokens: z2.number().optional(),
+    reasoning_tokens: z2.number().optional(),
+    request_count: z2.number().optional()
+  }).transform(({
+    credential_type,
+    total_cost,
+    market_cost,
+    input_tokens,
+    output_tokens,
+    cached_input_tokens,
+    cache_creation_input_tokens,
+    reasoning_tokens,
+    request_count,
+    ...rest
+  }) => ({
+    ...rest,
+    ...credential_type !== undefined ? { credentialType: credential_type } : {},
+    totalCost: total_cost,
+    ...market_cost !== undefined ? { marketCost: market_cost } : {},
+    ...input_tokens !== undefined ? { inputTokens: input_tokens } : {},
+    ...output_tokens !== undefined ? { outputTokens: output_tokens } : {},
+    ...cached_input_tokens !== undefined ? { cachedInputTokens: cached_input_tokens } : {},
+    ...cache_creation_input_tokens !== undefined ? { cacheCreationInputTokens: cache_creation_input_tokens } : {},
+    ...reasoning_tokens !== undefined ? { reasoningTokens: reasoning_tokens } : {},
+    ...request_count !== undefined ? { requestCount: request_count } : {}
+  })))
+})));
+var GatewayGenerationInfoFetcher = class {
+  constructor(config2) {
+    this.config = config2;
+  }
+  async getGenerationInfo(params) {
+    try {
+      const baseUrl = new URL(this.config.baseURL);
+      const { value: value2 } = await getFromApi({
+        url: `${baseUrl.origin}/v1/generation?id=${encodeURIComponent(params.id)}`,
+        validateUrl: false,
+        headers: this.config.headers ? await resolve(this.config.headers) : undefined,
+        successfulResponseHandler: createJsonResponseHandler(gatewayGenerationInfoResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        fetch: this.config.fetch
+      });
+      return value2;
+    } catch (error48) {
+      throw await asGatewayError(error48);
+    }
+  }
+};
+var gatewayGenerationInfoResponseSchema = lazySchema(() => zodSchema(z2.object({
+  data: z2.object({
+    id: z2.string(),
+    total_cost: z2.number(),
+    upstream_inference_cost: z2.number(),
+    usage: z2.number(),
+    created_at: z2.string(),
+    model: z2.string(),
+    is_byok: z2.boolean(),
+    provider_name: z2.string(),
+    streamed: z2.boolean(),
+    finish_reason: z2.string(),
+    latency: z2.number(),
+    generation_time: z2.number(),
+    native_tokens_prompt: z2.number(),
+    native_tokens_completion: z2.number(),
+    native_tokens_reasoning: z2.number(),
+    native_tokens_cached: z2.number(),
+    native_tokens_cache_creation: z2.number(),
+    billable_web_search_calls: z2.number()
+  }).transform(({
+    total_cost,
+    upstream_inference_cost,
+    created_at,
+    is_byok,
+    provider_name,
+    finish_reason,
+    generation_time,
+    native_tokens_prompt,
+    native_tokens_completion,
+    native_tokens_reasoning,
+    native_tokens_cached,
+    native_tokens_cache_creation,
+    billable_web_search_calls,
+    ...rest
+  }) => ({
+    ...rest,
+    totalCost: total_cost,
+    upstreamInferenceCost: upstream_inference_cost,
+    createdAt: created_at,
+    isByok: is_byok,
+    providerName: provider_name,
+    finishReason: finish_reason,
+    generationTime: generation_time,
+    promptTokens: native_tokens_prompt,
+    completionTokens: native_tokens_completion,
+    reasoningTokens: native_tokens_reasoning,
+    cachedTokens: native_tokens_cached,
+    cacheCreationTokens: native_tokens_cache_creation,
+    billableWebSearchCalls: billable_web_search_calls
+  }))
+}).transform(({ data }) => data)));
+var GatewayLanguageModel = class _GatewayLanguageModel {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+    this.supportedUrls = { "*/*": [/.*/] };
+  }
+  static [WORKFLOW_SERIALIZE](model) {
+    return serializeModelOptions({
+      modelId: model.modelId,
+      config: model.config
+    });
+  }
+  static [WORKFLOW_DESERIALIZE](options) {
+    return new _GatewayLanguageModel(options.modelId, options.config);
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async getArgs(options) {
+    const { abortSignal: _abortSignal, ...optionsWithoutSignal } = options;
+    return {
+      args: this.maybeEncodeFileParts(optionsWithoutSignal),
+      warnings: []
+    };
+  }
+  async doGenerate(options) {
+    const { args, warnings } = await this.getArgs(options);
+    const { abortSignal } = options;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const {
+        responseHeaders,
+        value: responseBody,
+        rawValue: rawResponse
+      } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, options.headers, this.getModelConfigHeaders(this.modelId, false), await resolve(this.config.o11yHeaders)),
+        body: args,
+        successfulResponseHandler: createJsonResponseHandler(z2.any()),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        ...responseBody,
+        request: { body: args },
+        response: { headers: responseHeaders, body: rawResponse },
+        warnings
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  async doStream(options) {
+    const { args, warnings } = await this.getArgs(options);
+    const { abortSignal } = options;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { value: response, responseHeaders } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, options.headers, this.getModelConfigHeaders(this.modelId, true), await resolve(this.config.o11yHeaders)),
+        body: args,
+        successfulResponseHandler: createEventSourceResponseHandler(z2.any()),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        stream: response.pipeThrough(new TransformStream({
+          start(controller) {
+            if (warnings.length > 0) {
+              controller.enqueue({ type: "stream-start", warnings });
+            }
+          },
+          transform(chunk, controller) {
+            if (chunk.success) {
+              const streamPart = chunk.value;
+              if (streamPart.type === "raw" && !options.includeRawChunks) {
+                return;
+              }
+              if (streamPart.type === "response-metadata" && streamPart.timestamp && typeof streamPart.timestamp === "string") {
+                streamPart.timestamp = new Date(streamPart.timestamp);
+              }
+              controller.enqueue(streamPart);
+            } else {
+              controller.error(chunk.error);
+            }
+          }
+        })),
+        request: { body: args },
+        response: { headers: responseHeaders }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  maybeEncodeFileParts(options) {
+    for (const message of options.prompt) {
+      if (!Array.isArray(message.content)) {
+        continue;
+      }
+      for (const part of message.content) {
+        if (part.type === "file" || part.type === "reasoning-file") {
+          part.data = maybeBase64EncodeFileData(part.data);
+        } else if (part.type === "tool-result" && part.output.type === "content") {
+          for (const contentPart of part.output.value) {
+            if (contentPart.type === "file") {
+              contentPart.data = maybeBase64EncodeFileData(contentPart.data);
+            }
+          }
+        }
+      }
+    }
+    return options;
+  }
+  getUrl() {
+    return `${this.config.baseURL}/language-model`;
+  }
+  getModelConfigHeaders(modelId, streaming) {
+    return {
+      "ai-language-model-specification-version": "4",
+      "ai-language-model-id": modelId,
+      "ai-language-model-streaming": String(streaming)
+    };
+  }
+};
+function maybeBase64EncodeFileData(data) {
+  if (data.type === "data") {
+    const bytes = data.data;
+    if (bytes instanceof Uint8Array) {
+      return { ...data, data: Buffer.from(bytes).toString("base64") };
+    }
+  }
+  return data;
+}
+var GatewayBatchLanguageModel = class _GatewayBatchLanguageModel extends GatewayLanguageModel {
+  static [WORKFLOW_SERIALIZE](model) {
+    return GatewayLanguageModel[WORKFLOW_SERIALIZE](model);
+  }
+  static [WORKFLOW_DESERIALIZE](options) {
+    return new _GatewayBatchLanguageModel(options.modelId, options.config);
+  }
+  constructor(modelId, config2) {
+    super(modelId, config2);
+  }
+  async experimental_doStartBatch({
+    requests,
+    providerOptions,
+    headers,
+    abortSignal
+  }) {
+    var _a122;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    const idempotencyKey = getGatewayBatchIdempotencyKey(providerOptions);
+    const forwardedProviderOptions = omitGatewayIdempotencyKey(providerOptions);
+    try {
+      const { value: responseBody } = await postJsonToApi({
+        url: this.getBatchUrl("start"),
+        headers: combineHeaders(resolvedHeaders, headers, this.getBatchConfigHeaders(), await resolve(this.config.o11yHeaders), idempotencyKey != null ? { "idempotency-key": idempotencyKey } : undefined),
+        body: {
+          modelId: this.modelId,
+          requests: requests.map((request) => ({
+            id: request.id,
+            options: this.maybeEncodeFileParts(request.options)
+          })),
+          ...forwardedProviderOptions != null && {
+            providerOptions: forwardedProviderOptions
+          }
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayBatchStartResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        batchId: responseBody.batchId,
+        ...convertGatewayBatchStatus(responseBody),
+        warnings: (_a122 = responseBody.warnings) != null ? _a122 : []
+      };
+    } catch (error48) {
+      if (isAbortOrTimeoutError(error48)) {
+        throw error48;
+      }
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  async experimental_doGetBatchStatus({
+    batchId,
+    headers,
+    abortSignal
+  }) {
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { value: responseBody } = await postJsonToApi({
+        url: this.getBatchUrl("status"),
+        headers: combineHeaders(resolvedHeaders, headers, this.getBatchConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: { batchId },
+        successfulResponseHandler: createJsonResponseHandler(gatewayBatchStatusResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return convertGatewayBatchStatus(responseBody);
+    } catch (error48) {
+      if (isAbortOrTimeoutError(error48)) {
+        throw error48;
+      }
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  async experimental_doGetBatchResults({
+    batchId,
+    headers,
+    abortSignal
+  }) {
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { value: stream } = await postJsonToApi({
+        url: this.getBatchUrl("results"),
+        headers: combineHeaders(resolvedHeaders, headers, this.getBatchConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: { batchId },
+        successfulResponseHandler: async ({
+          response,
+          url: url2,
+          requestBodyValues
+        }) => {
+          if (response.body == null) {
+            throw new APICallError({
+              message: "Batch results response body is empty",
+              url: url2,
+              requestBodyValues,
+              statusCode: response.status
+            });
+          }
+          return {
+            value: response.body,
+            responseHeaders: Object.fromEntries([...response.headers])
+          };
+        },
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a122;
+            return (_a122 = getErrorMessage(data)) != null ? _a122 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return convertAsyncIteratorToReadableStream(parseGatewayBatchResultLines(stream));
+    } catch (error48) {
+      if (isAbortOrTimeoutError(error48)) {
+        throw error48;
+      }
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  getBatchUrl(path) {
+    return `${this.config.baseURL}/batch/${path}`;
+  }
+  getBatchConfigHeaders() {
+    return {
+      "ai-model-id": this.modelId
+    };
+  }
+};
+function getGatewayBatchIdempotencyKey(providerOptions) {
+  const gatewayOptions = providerOptions == null ? undefined : providerOptions.gateway;
+  if (gatewayOptions == null || typeof gatewayOptions !== "object" || Array.isArray(gatewayOptions)) {
+    return;
+  }
+  const key = gatewayOptions.idempotencyKey;
+  return typeof key === "string" && key.length > 0 ? key : undefined;
+}
+function omitGatewayIdempotencyKey(providerOptions) {
+  const gatewayOptions = providerOptions == null ? undefined : providerOptions.gateway;
+  if (gatewayOptions == null || typeof gatewayOptions !== "object" || Array.isArray(gatewayOptions) || !("idempotencyKey" in gatewayOptions)) {
+    return providerOptions;
+  }
+  const { idempotencyKey: _idempotencyKey, ...restGatewayOptions } = gatewayOptions;
+  const restProviderOptions = { ...providerOptions };
+  if (Object.keys(restGatewayOptions).length === 0) {
+    delete restProviderOptions.gateway;
+  } else {
+    restProviderOptions.gateway = restGatewayOptions;
+  }
+  if (Object.keys(restProviderOptions).length === 0) {
+    return;
+  }
+  return restProviderOptions;
+}
+function isAbortOrTimeoutError(error48) {
+  if (!(error48 instanceof Error || error48 instanceof DOMException)) {
+    return false;
+  }
+  return error48.name === "AbortError" || error48.name === "TimeoutError";
+}
+function convertGatewayBatchStatus(body) {
+  const requestCounts = convertGatewayBatchRequestCounts(body.requestCounts);
+  return {
+    status: body.status,
+    ...body.rawStatus != null && { rawStatus: body.rawStatus },
+    ...requestCounts != null && { requestCounts },
+    ...body.error != null && {
+      error: {
+        message: body.error.message,
+        ...body.error.type != null && { type: body.error.type },
+        ...body.error.code != null && { code: body.error.code },
+        ...body.error.statusCode != null && {
+          statusCode: body.error.statusCode
+        }
+      }
+    },
+    ...body.createdAt != null && { createdAt: body.createdAt },
+    ...body.expiresAt != null && { expiresAt: body.expiresAt },
+    ...body.providerMetadata != null && {
+      providerMetadata: body.providerMetadata
+    }
+  };
+}
+function convertGatewayBatchRequestCounts(counts) {
+  if (counts == null || typeof counts.total !== "number" || typeof counts.pending !== "number" || typeof counts.completed !== "number" || typeof counts.failed !== "number") {
+    return;
+  }
+  return {
+    total: counts.total,
+    pending: counts.pending,
+    completed: counts.completed,
+    failed: counts.failed
+  };
+}
+async function* parseGatewayBatchResultLines(stream) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder;
+  let buffer = "";
+  let finished = false;
+  try {
+    while (true) {
+      const { done, value: value2 } = await reader.read();
+      if (done) {
+        finished = true;
+        buffer += decoder.decode();
+        break;
+      }
+      buffer += decoder.decode(value2, { stream: true });
+      let lineEnd = buffer.indexOf(`
+`);
+      while (lineEnd !== -1) {
+        const line = buffer.slice(0, lineEnd).replace(/\r$/, "");
+        buffer = buffer.slice(lineEnd + 1);
+        if (line.trim().length > 0) {
+          yield await parseGatewayBatchResultLine(line);
+        }
+        lineEnd = buffer.indexOf(`
+`);
+      }
+    }
+    const finalLine = buffer.replace(/\r$/, "");
+    if (finalLine.trim().length > 0) {
+      yield await parseGatewayBatchResultLine(finalLine);
+    }
+  } finally {
+    if (!finished) {
+      await reader.cancel().catch(() => {});
+    }
+    reader.releaseLock();
+  }
+}
+async function parseGatewayBatchResultLine(line) {
+  var _a122;
+  const parsed = await parseJSON({
+    text: line,
+    schema: gatewayBatchItemResultLineSchema
+  });
+  const item = parsed;
+  if (item.status === "succeeded") {
+    const response = (_a122 = item.result) == null ? undefined : _a122.response;
+    if (response !== undefined && typeof response.timestamp === "string") {
+      response.timestamp = new Date(response.timestamp);
+    }
+  }
+  return item;
+}
+var gatewayBatchItemResultLineSchema = z2.object({
+  id: z2.string(),
+  status: z2.enum(["cancelled", "expired", "failed", "succeeded"])
+}).catchall(z2.unknown());
+var gatewayBatchErrorSchema = z2.object({
+  message: z2.string(),
+  type: z2.string().nullish(),
+  code: z2.string().nullish(),
+  statusCode: z2.number().nullish()
+});
+var gatewayBatchRequestCountsSchema = z2.object({
+  total: z2.number().nullish(),
+  pending: z2.number().nullish(),
+  completed: z2.number().nullish(),
+  failed: z2.number().nullish()
+});
+var gatewayBatchProviderMetadataSchema = z2.record(z2.string(), z2.record(z2.string(), z2.unknown()));
+var gatewayBatchStatusFieldsSchema = z2.object({
+  status: z2.enum(["completed", "failed", "pending"]),
+  rawStatus: z2.string().nullish(),
+  requestCounts: gatewayBatchRequestCountsSchema.nullish(),
+  error: gatewayBatchErrorSchema.nullish(),
+  createdAt: z2.string().nullish(),
+  expiresAt: z2.string().nullish(),
+  providerMetadata: gatewayBatchProviderMetadataSchema.nullish()
+});
+var gatewayBatchStartResponseSchema = gatewayBatchStatusFieldsSchema.extend({
+  batchId: z2.string(),
+  warnings: z2.array(z2.object({
+    requestId: z2.string().nullish(),
+    warning: z2.unknown()
+  }).catchall(z2.unknown())).nullish()
+});
+var gatewayBatchStatusResponseSchema = gatewayBatchStatusFieldsSchema;
+var GatewayEmbeddingModel = class _GatewayEmbeddingModel {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+    this.maxEmbeddingsPerCall = 2048;
+    this.supportsParallelCalls = true;
+  }
+  static [WORKFLOW_SERIALIZE](model) {
+    return serializeModelOptions({
+      modelId: model.modelId,
+      config: model.config
+    });
+  }
+  static [WORKFLOW_DESERIALIZE](options) {
+    return new _GatewayEmbeddingModel(options.modelId, options.config);
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async doEmbed({
+    values,
+    headers,
+    abortSignal,
+    providerOptions
+  }) {
+    var _a122, _b122;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const {
+        responseHeaders,
+        value: responseBody,
+        rawValue
+      } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: {
+          values,
+          ...providerOptions ? { providerOptions } : {}
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayEmbeddingResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        embeddings: responseBody.embeddings,
+        usage: (_a122 = responseBody.usage) != null ? _a122 : undefined,
+        providerMetadata: responseBody.providerMetadata,
+        response: { headers: responseHeaders, body: rawValue },
+        warnings: (_b122 = responseBody.warnings) != null ? _b122 : []
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  getUrl() {
+    return `${this.config.baseURL}/embedding-model`;
+  }
+  getModelConfigHeaders() {
+    return {
+      "ai-embedding-model-specification-version": "4",
+      "ai-model-id": this.modelId
+    };
+  }
+};
+var gatewayEmbeddingWarningSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("unsupported"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("compatibility"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("deprecated"),
+    setting: z2.string(),
+    message: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("other"),
+    message: z2.string()
+  })
+]);
+var gatewayEmbeddingResponseSchema = lazySchema(() => zodSchema(z2.object({
+  embeddings: z2.array(z2.array(z2.number())),
+  usage: z2.object({ tokens: z2.number() }).nullish(),
+  warnings: z2.array(gatewayEmbeddingWarningSchema).optional(),
+  providerMetadata: z2.record(z2.string(), z2.record(z2.string(), z2.unknown())).optional()
+})));
+var GatewayImageModel = class _GatewayImageModel {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+    this.maxImagesPerCall = Number.MAX_SAFE_INTEGER;
+  }
+  static [WORKFLOW_SERIALIZE](model) {
+    return serializeModelOptions({
+      modelId: model.modelId,
+      config: model.config
+    });
+  }
+  static [WORKFLOW_DESERIALIZE](options) {
+    return new _GatewayImageModel(options.modelId, options.config);
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async doGenerate({
+    prompt,
+    n,
+    size,
+    aspectRatio,
+    seed,
+    files,
+    mask,
+    providerOptions,
+    headers,
+    abortSignal
+  }) {
+    var _a122, _b122, _c, _d;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { responseHeaders, value: responseBody } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: {
+          prompt,
+          n,
+          ...size && { size },
+          ...aspectRatio && { aspectRatio },
+          ...seed && { seed },
+          ...providerOptions && { providerOptions },
+          ...files && {
+            files: files.map((file2) => maybeEncodeImageFile(file2))
+          },
+          ...mask && { mask: maybeEncodeImageFile(mask) }
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayImageResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        images: responseBody.images,
+        warnings: (_a122 = responseBody.warnings) != null ? _a122 : [],
+        providerMetadata: responseBody.providerMetadata,
+        response: {
+          timestamp: /* @__PURE__ */ new Date,
+          modelId: this.modelId,
+          headers: responseHeaders
+        },
+        ...responseBody.usage != null && {
+          usage: {
+            inputTokens: (_b122 = responseBody.usage.inputTokens) != null ? _b122 : undefined,
+            outputTokens: (_c = responseBody.usage.outputTokens) != null ? _c : undefined,
+            totalTokens: (_d = responseBody.usage.totalTokens) != null ? _d : undefined
+          }
+        }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  getUrl() {
+    return `${this.config.baseURL}/image-model`;
+  }
+  getModelConfigHeaders() {
+    return {
+      "ai-image-model-specification-version": "4",
+      "ai-model-id": this.modelId
+    };
+  }
+};
+function maybeEncodeImageFile(file2) {
+  if (file2.type === "file" && file2.data instanceof Uint8Array) {
+    return {
+      ...file2,
+      data: convertUint8ArrayToBase64(file2.data)
+    };
+  }
+  return file2;
+}
+var providerMetadataEntrySchema = z2.object({
+  images: z2.array(z2.unknown()).optional()
+}).catchall(z2.unknown());
+var gatewayImageWarningSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("unsupported"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("compatibility"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("deprecated"),
+    setting: z2.string(),
+    message: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("other"),
+    message: z2.string()
+  })
+]);
+var gatewayImageUsageSchema = z2.object({
+  inputTokens: z2.number().nullish(),
+  outputTokens: z2.number().nullish(),
+  totalTokens: z2.number().nullish()
+});
+var gatewayImageResponseSchema = z2.object({
+  images: z2.array(z2.string()),
+  warnings: z2.array(gatewayImageWarningSchema).optional(),
+  providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema).optional(),
+  usage: gatewayImageUsageSchema.optional()
+});
+var GatewayVideoModel = class {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+    this.maxVideosPerCall = Number.MAX_SAFE_INTEGER;
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async doGenerate(options) {
+    var _a122, _b122;
+    const { headers, abortSignal } = options;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { responseHeaders, value: responseBody } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders), { accept: "text/event-stream" }),
+        body: this.buildRequestBody(options),
+        successfulResponseHandler: async ({
+          response,
+          url: url2,
+          requestBodyValues
+        }) => {
+          if (response.body == null) {
+            throw new APICallError({
+              message: "SSE response body is empty",
+              url: url2,
+              requestBodyValues,
+              statusCode: response.status
+            });
+          }
+          const eventStream = parseJsonEventStream({
+            stream: response.body,
+            schema: gatewayVideoEventSchema
+          });
+          const reader = eventStream.getReader();
+          const { done, value: parseResult } = await reader.read();
+          reader.releaseLock();
+          if (done || !parseResult) {
+            throw new APICallError({
+              message: "SSE stream ended without a data event",
+              url: url2,
+              requestBodyValues,
+              statusCode: response.status
+            });
+          }
+          if (!parseResult.success) {
+            throw new APICallError({
+              message: "Failed to parse video SSE event",
+              cause: parseResult.error,
+              url: url2,
+              requestBodyValues,
+              statusCode: response.status
+            });
+          }
+          const event = parseResult.value;
+          if (event.type === "error") {
+            throw new APICallError({
+              message: event.message,
+              statusCode: event.statusCode,
+              url: url2,
+              requestBodyValues,
+              responseHeaders: Object.fromEntries([...response.headers]),
+              responseBody: JSON.stringify(event),
+              data: {
+                error: {
+                  message: event.message,
+                  type: event.errorType,
+                  param: event.param
+                }
+              }
+            });
+          }
+          return {
+            value: {
+              videos: event.videos,
+              warnings: event.warnings,
+              providerMetadata: event.providerMetadata
+            },
+            responseHeaders: Object.fromEntries([...response.headers])
+          };
+        },
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        videos: responseBody.videos,
+        warnings: (_a122 = responseBody.warnings) != null ? _a122 : [],
+        providerMetadata: (_b122 = responseBody.providerMetadata) != null ? _b122 : undefined,
+        response: {
+          timestamp: /* @__PURE__ */ new Date,
+          modelId: this.modelId,
+          headers: responseHeaders
+        }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  async doStart(options) {
+    var _a122, _b122;
+    const { headers, abortSignal, webhookUrl } = options;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { responseHeaders, value: responseBody } = await postJsonToApi({
+        url: this.getStartUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: {
+          ...this.buildRequestBody(options),
+          ...webhookUrl && { callbackUrl: webhookUrl }
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayVideoStartResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        operation: responseBody.operation,
+        warnings: (_a122 = responseBody.warnings) != null ? _a122 : [],
+        providerMetadata: (_b122 = responseBody.providerMetadata) != null ? _b122 : undefined,
+        response: {
+          timestamp: /* @__PURE__ */ new Date,
+          modelId: this.modelId,
+          headers: responseHeaders
+        }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  async doStatus({
+    operation,
+    abortSignal,
+    headers
+  }) {
+    var _a122, _b122, _c, _d, _e, _f;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const { responseHeaders, value: responseBody } = await postJsonToApi({
+        url: this.getStatusUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: { operation },
+        successfulResponseHandler: createJsonResponseHandler(gatewayVideoStatusResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      const response = {
+        timestamp: /* @__PURE__ */ new Date,
+        modelId: this.modelId,
+        headers: responseHeaders
+      };
+      if (responseBody.status === "completed") {
+        return {
+          status: "completed",
+          videos: responseBody.videos,
+          warnings: (_a122 = responseBody.warnings) != null ? _a122 : [],
+          providerMetadata: (_b122 = responseBody.providerMetadata) != null ? _b122 : undefined,
+          response
+        };
+      }
+      if (responseBody.status === "error") {
+        return {
+          status: "error",
+          error: responseBody.error,
+          providerMetadata: (_c = responseBody.providerMetadata) != null ? _c : undefined,
+          response
+        };
+      }
+      if (responseBody.status === "cancelled") {
+        return {
+          status: "error",
+          error: "Video generation was cancelled.",
+          providerMetadata: (_d = responseBody.providerMetadata) != null ? _d : undefined,
+          response
+        };
+      }
+      return {
+        status: "pending",
+        warnings: (_e = responseBody.warnings) != null ? _e : [],
+        providerMetadata: (_f = responseBody.providerMetadata) != null ? _f : undefined,
+        response
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  buildRequestBody({
+    prompt,
+    n,
+    aspectRatio,
+    resolution,
+    duration: duration3,
+    fps,
+    seed,
+    generateAudio,
+    image,
+    frameImages,
+    inputReferences,
+    providerOptions
+  }) {
+    return {
+      prompt,
+      n,
+      ...aspectRatio && { aspectRatio },
+      ...resolution && { resolution },
+      ...duration3 && { duration: duration3 },
+      ...fps && { fps },
+      ...seed && { seed },
+      ...generateAudio !== undefined && { generateAudio },
+      ...providerOptions && { providerOptions },
+      ...image && { image: maybeEncodeVideoFile(image) },
+      ...frameImages && {
+        frameImages: frameImages.map((frame) => ({
+          ...frame,
+          image: maybeEncodeVideoFile(frame.image)
+        }))
+      },
+      ...inputReferences && {
+        inputReferences: inputReferences.map((reference) => maybeEncodeVideoFile(reference))
+      }
+    };
+  }
+  getUrl() {
+    return `${this.config.baseURL}/video-model`;
+  }
+  getStartUrl() {
+    return `${this.config.baseURL}/video-model/start`;
+  }
+  getStatusUrl() {
+    return `${this.config.baseURL}/video-model/status`;
+  }
+  getModelConfigHeaders() {
+    return {
+      "ai-video-model-specification-version": "4",
+      "ai-model-id": this.modelId
+    };
+  }
+};
+function maybeEncodeVideoFile(file2) {
+  if (file2.type === "file" && file2.data instanceof Uint8Array) {
+    return {
+      ...file2,
+      data: convertUint8ArrayToBase64(file2.data)
+    };
+  }
+  return file2;
+}
+var providerMetadataEntrySchema2 = z2.object({
+  videos: z2.array(z2.unknown()).optional()
+}).catchall(z2.unknown());
+var gatewayVideoDataSchema = z2.union([
+  z2.object({
+    type: z2.literal("url"),
+    url: z2.string(),
+    mediaType: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("base64"),
+    data: z2.string(),
+    mediaType: z2.string()
+  })
+]);
+var gatewayVideoWarningSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("unsupported"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("compatibility"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("deprecated"),
+    setting: z2.string(),
+    message: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("other"),
+    message: z2.string()
+  })
+]);
+var gatewayVideoEventSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("result"),
+    videos: z2.array(gatewayVideoDataSchema),
+    warnings: z2.array(gatewayVideoWarningSchema).optional(),
+    providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema2).optional()
+  }),
+  z2.object({
+    type: z2.literal("error"),
+    message: z2.string(),
+    errorType: z2.string(),
+    statusCode: z2.number(),
+    param: z2.unknown().nullable()
+  })
+]);
+var gatewayVideoStartResponseSchema = z2.object({
+  operation: z2.unknown(),
+  warnings: z2.array(gatewayVideoWarningSchema).nullish(),
+  providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema2).nullish()
+});
+var gatewayVideoStatusResponseSchema = z2.discriminatedUnion("status", [
+  z2.object({
+    status: z2.literal("pending"),
+    warnings: z2.array(gatewayVideoWarningSchema).nullish(),
+    providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema2).nullish()
+  }),
+  z2.object({
+    status: z2.literal("completed"),
+    videos: z2.array(gatewayVideoDataSchema),
+    warnings: z2.array(gatewayVideoWarningSchema).nullish(),
+    providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema2).nullish()
+  }),
+  z2.object({
+    status: z2.literal("error"),
+    error: z2.string(),
+    providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema2).nullish()
+  }),
+  z2.object({
+    status: z2.literal("cancelled"),
+    providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema2).nullish()
+  })
+]);
+var GatewayRerankingModel = class {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async doRerank({
+    documents,
+    query,
+    topN,
+    headers,
+    abortSignal,
+    providerOptions
+  }) {
+    var _a122;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const {
+        responseHeaders,
+        value: responseBody,
+        rawValue
+      } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: {
+          documents,
+          query,
+          ...topN != null ? { topN } : {},
+          ...providerOptions ? { providerOptions } : {}
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayRerankingResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        ranking: responseBody.ranking,
+        providerMetadata: responseBody.providerMetadata,
+        response: { headers: responseHeaders, body: rawValue },
+        warnings: (_a122 = responseBody.warnings) != null ? _a122 : []
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  getUrl() {
+    return `${this.config.baseURL}/reranking-model`;
+  }
+  getModelConfigHeaders() {
+    return {
+      "ai-reranking-model-specification-version": "4",
+      "ai-model-id": this.modelId
+    };
+  }
+};
+var gatewayRerankingWarningSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("unsupported"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("compatibility"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("deprecated"),
+    setting: z2.string(),
+    message: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("other"),
+    message: z2.string()
+  })
+]);
+var gatewayRerankingResponseSchema = lazySchema(() => zodSchema(z2.object({
+  ranking: z2.array(z2.object({
+    index: z2.number(),
+    relevanceScore: z2.number()
+  })),
+  warnings: z2.array(gatewayRerankingWarningSchema).optional(),
+  providerMetadata: z2.record(z2.string(), z2.record(z2.string(), z2.unknown())).optional()
+})));
+var GatewaySpeechModel = class {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async doGenerate({
+    text: text3,
+    voice,
+    outputFormat,
+    instructions,
+    speed,
+    language,
+    providerOptions,
+    headers,
+    abortSignal
+  }) {
+    var _a122;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const {
+        responseHeaders,
+        value: responseBody,
+        rawValue
+      } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: {
+          text: text3,
+          ...voice && { voice },
+          ...outputFormat && { outputFormat },
+          ...instructions && { instructions },
+          ...speed != null && { speed },
+          ...language && { language },
+          ...providerOptions && { providerOptions }
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewaySpeechResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        audio: responseBody.audio,
+        warnings: (_a122 = responseBody.warnings) != null ? _a122 : [],
+        providerMetadata: responseBody.providerMetadata,
+        response: {
+          timestamp: /* @__PURE__ */ new Date,
+          modelId: this.modelId,
+          headers: responseHeaders,
+          body: rawValue
+        }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  getUrl() {
+    return `${this.config.baseURL}/speech-model`;
+  }
+  getModelConfigHeaders() {
+    return {
+      "ai-speech-model-specification-version": "4",
+      "ai-model-id": this.modelId
+    };
+  }
+};
+var providerMetadataEntrySchema3 = z2.object({}).catchall(z2.unknown());
+var gatewaySpeechWarningSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("unsupported"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("compatibility"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("deprecated"),
+    setting: z2.string(),
+    message: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("other"),
+    message: z2.string()
+  })
+]);
+var gatewaySpeechResponseSchema = z2.object({
+  audio: z2.string(),
+  warnings: z2.array(gatewaySpeechWarningSchema).optional(),
+  providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema3).optional()
+});
+var GatewayTranscriptionModel = class {
+  constructor(modelId, config2) {
+    this.modelId = modelId;
+    this.config = config2;
+    this.specificationVersion = "v4";
+  }
+  get provider() {
+    return this.config.provider;
+  }
+  async doGenerate({
+    audio,
+    mediaType,
+    providerOptions,
+    headers,
+    abortSignal
+  }) {
+    var _a122, _b122, _c, _d;
+    const resolvedHeaders = this.config.headers ? await resolve(this.config.headers) : undefined;
+    try {
+      const {
+        responseHeaders,
+        value: responseBody,
+        rawValue
+      } = await postJsonToApi({
+        url: this.getUrl(),
+        headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
+        body: {
+          audio: audio instanceof Uint8Array ? convertUint8ArrayToBase64(audio) : audio,
+          mediaType,
+          ...providerOptions && { providerOptions }
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayTranscriptionResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        ...abortSignal && { abortSignal },
+        fetch: this.config.fetch
+      });
+      return {
+        text: responseBody.text,
+        segments: (_a122 = responseBody.segments) != null ? _a122 : [],
+        language: (_b122 = responseBody.language) != null ? _b122 : undefined,
+        durationInSeconds: (_c = responseBody.durationInSeconds) != null ? _c : undefined,
+        warnings: (_d = responseBody.warnings) != null ? _d : [],
+        providerMetadata: responseBody.providerMetadata,
+        response: {
+          timestamp: /* @__PURE__ */ new Date,
+          modelId: this.modelId,
+          headers: responseHeaders,
+          body: rawValue
+        }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(resolvedHeaders != null ? resolvedHeaders : {}));
+    }
+  }
+  async doStream(options) {
+    var _a122, _b122, _c, _d, _e;
+    const currentDate = (_c = (_b122 = (_a122 = this.config._internal) == null ? undefined : _a122.currentDate) == null ? undefined : _b122.call(_a122)) != null ? _c : /* @__PURE__ */ new Date;
+    const headers = combineHeaders(await resolve((_d = this.config.headers) != null ? _d : {}), (_e = options.headers) != null ? _e : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders));
+    const authMethod = await parseAuthMethod(headers);
+    const startFrame = {
+      type: TRANSCRIPTION_STREAM_START_FRAME_TYPE,
+      inputAudioFormat: options.inputAudioFormat,
+      ...options.providerOptions != null && {
+        providerOptions: options.providerOptions
+      },
+      ...options.includeRawChunks != null && {
+        includeRawChunks: options.includeRawChunks
+      }
+    };
+    return {
+      stream: createGatewayTranscriptionStream({
+        webSocket: this.config.webSocket,
+        url: toGatewayTranscriptionUrl(this.config.baseURL, this.modelId),
+        protocols: getProtocolsFromHeaders(headers),
+        headers,
+        startFrame,
+        audio: options.audio,
+        abortSignal: options.abortSignal,
+        authMethod
+      }),
+      request: { body: startFrame },
+      response: { timestamp: currentDate, modelId: this.modelId }
+    };
+  }
+  getUrl() {
+    return `${this.config.baseURL}/transcription-model`;
+  }
+  getModelConfigHeaders() {
+    return {
+      "ai-transcription-model-specification-version": "4",
+      "ai-model-id": this.modelId
+    };
+  }
+};
+function toGatewayTranscriptionUrl(baseURL, modelId) {
+  const url2 = new URL(`${baseURL.replace(/^http/, "ws")}/transcription-model`);
+  url2.searchParams.set("ai-model-id", modelId);
+  return url2.toString();
+}
+function getProtocolsFromHeaders(headers) {
+  const normalizedHeaders = normalizeHeaders(headers);
+  const authorization = normalizedHeaders.authorization;
+  const token = (authorization == null ? undefined : authorization.startsWith("Bearer ")) ? authorization.slice("Bearer ".length) : undefined;
+  return token == null ? [GATEWAY_TRANSCRIPTION_SUBPROTOCOL] : getGatewayTranscriptionProtocols(token, {
+    teamIdOrSlug: normalizedHeaders[VERCEL_AI_GATEWAY_TEAM_HEADER]
+  });
+}
+var MAX_AUDIO_FRAME_BYTES = 64 * 1024;
+function createGatewayTranscriptionStream({
+  webSocket,
+  url: url2,
+  protocols,
+  headers,
+  startFrame,
+  audio,
+  abortSignal,
+  authMethod
+}) {
+  let finished = false;
+  let cleanup = () => {};
+  return new ReadableStream({
+    start: (controller) => {
+      let audioReader;
+      let hasServerErrorPart = false;
+      let lastServerError;
+      let audioStopped = false;
+      let connection;
+      cleanup = (closeCode) => {
+        if (audioReader != null) {
+          audioReader.cancel().catch(() => {});
+        } else {
+          audio.cancel().catch(() => {});
+        }
+        connection == null || connection.close(closeCode);
+      };
+      const stopAudio = () => {
+        audioStopped = true;
+        if (audioReader != null) {
+          audioReader.cancel().catch(() => {});
+          audioReader = undefined;
+        } else {
+          audio.cancel().catch(() => {});
+        }
+      };
+      const finishWithError = (error48) => {
+        if (finished)
+          return;
+        finished = true;
+        cleanup();
+        errorControllerWithGatewayError(controller, error48, authMethod);
+      };
+      const sendAudio = async (socket) => {
+        const reader = audio.getReader();
+        audioReader = reader;
+        try {
+          while (true) {
+            const { done, value: value2 } = await reader.read();
+            if (done || finished)
+              break;
+            const bytes = typeof value2 === "string" ? convertBase64ToUint8Array(value2) : value2;
+            for (let offset = 0;offset < bytes.length; offset += MAX_AUDIO_FRAME_BYTES) {
+              if (finished)
+                break;
+              socket.send(bytes.subarray(offset, offset + MAX_AUDIO_FRAME_BYTES));
+              await waitForWebSocketBufferDrain(socket);
+            }
+          }
+        } finally {
+          reader.releaseLock();
+          if (audioReader === reader) {
+            audioReader = undefined;
+          }
+        }
+        if (!finished && !audioStopped) {
+          socket.send(JSON.stringify({
+            type: TRANSCRIPTION_STREAM_AUDIO_DONE_FRAME_TYPE
+          }));
+        }
+      };
+      connection = connectToWebSocket({
+        url: url2,
+        protocols,
+        headers,
+        webSocket,
+        abortSignal,
+        onAbort: (reason) => {
+          if (finished)
+            return;
+          finished = true;
+          cleanup();
+          controller.error(reason);
+        },
+        onProcessingError: finishWithError,
+        onOpen: (socket) => {
+          socket.send(JSON.stringify(startFrame));
+          sendAudio(socket).catch(finishWithError);
+        },
+        onMessageText: (text3) => {
+          if (finished)
+            return;
+          const part = parseTranscriptionStreamPart(text3);
+          if (part == null)
+            return;
+          if (part.type === "finish") {
+            finished = true;
+            controller.enqueue(part);
+            controller.close();
+            cleanup(1000);
+            return;
+          }
+          if (part.type === "error") {
+            hasServerErrorPart = true;
+            lastServerError = part.error;
+            stopAudio();
+          }
+          controller.enqueue(part);
+        },
+        onSocketError: () => {
+          finishWithError(new Error("Connection error on AI Gateway transcription stream"));
+        },
+        onClose: () => {
+          if (hasServerErrorPart) {
+            if (finished)
+              return;
+            createErrorFromServerErrorPart(lastServerError, authMethod).then(finishWithError);
+            return;
+          }
+          finishWithError(new Error("AI Gateway transcription stream closed before a finish part was received"));
+        }
+      });
+    },
+    cancel: () => {
+      if (finished)
+        return;
+      finished = true;
+      cleanup();
+    }
+  });
+}
+var providerMetadataEntrySchema4 = z2.object({}).catchall(z2.unknown());
+var gatewayTranscriptionWarningSchema = z2.discriminatedUnion("type", [
+  z2.object({
+    type: z2.literal("unsupported"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("compatibility"),
+    feature: z2.string(),
+    details: z2.string().optional()
+  }),
+  z2.object({
+    type: z2.literal("deprecated"),
+    setting: z2.string(),
+    message: z2.string()
+  }),
+  z2.object({
+    type: z2.literal("other"),
+    message: z2.string()
+  })
+]);
+var gatewayTranscriptionResponseSchema = z2.object({
+  text: z2.string(),
+  segments: z2.array(z2.object({
+    text: z2.string(),
+    startSecond: z2.number(),
+    endSecond: z2.number()
+  })).optional(),
+  language: z2.string().nullish(),
+  durationInSeconds: z2.number().nullish(),
+  warnings: z2.array(gatewayTranscriptionWarningSchema).optional(),
+  providerMetadata: z2.record(z2.string(), providerMetadataEntrySchema4).optional()
+});
+async function errorControllerWithGatewayError(controller, error48, authMethod) {
+  controller.error(await asGatewayError(error48, authMethod));
+}
+function getServerErrorMessage(error48) {
+  if (error48 != null && typeof error48 === "object" && "message" in error48 && typeof error48.message === "string") {
+    return error48.message;
+  }
+  return getErrorMessage(error48);
+}
+var SERVER_ERROR_STATUS_CODES = {
+  authentication_error: 401,
+  failed_dependency: 424,
+  forbidden: 403,
+  internal_server_error: 500,
+  invalid_request_error: 400,
+  model_not_found: 404,
+  rate_limit_exceeded: 429
+};
+async function createErrorFromServerErrorPart(error48, authMethod) {
+  if (typeof error48 === "object" && error48 != null && "message" in error48 && typeof error48.message === "string" && "type" in error48 && typeof error48.type === "string" && error48.type in SERVER_ERROR_STATUS_CODES) {
+    return createGatewayErrorFromResponse({
+      response: { error: { message: error48.message, type: error48.type } },
+      statusCode: SERVER_ERROR_STATUS_CODES[error48.type],
+      authMethod
+    });
+  }
+  return new Error(`AI Gateway transcription stream failed: ${getServerErrorMessage(error48)}`);
+}
+var GatewayRealtimeModel = class {
+  constructor(modelId, config2) {
+    this.specificationVersion = "v4";
+    this.modelId = modelId;
+    this.provider = config2.provider;
+    this.config = config2;
+  }
+  async doCreateClientSecret(options) {
+    const secret = await this.config.createClientSecret({
+      modelId: this.modelId,
+      ...(options == null ? undefined : options.expiresAfterSeconds) != null && {
+        expiresAfterSeconds: options.expiresAfterSeconds
+      }
+    });
+    return {
+      token: secret.token,
+      url: toGatewayRealtimeUrl(this.config.baseURL, this.modelId),
+      ...secret.expiresAt != null && { expiresAt: secret.expiresAt }
+    };
+  }
+  getWebSocketConfig(options) {
+    return {
+      url: options.url,
+      protocols: getGatewayRealtimeProtocols(options.token, {
+        teamIdOrSlug: this.config.teamIdOrSlug
+      })
+    };
+  }
+  parseServerEvent(raw2) {
+    return raw2;
+  }
+  serializeClientEvent(event) {
+    return event;
+  }
+  buildSessionConfig(config2) {
+    return config2;
+  }
+};
+function toGatewayRealtimeUrl(baseURL, modelId) {
+  const url2 = new URL(`${baseURL.replace(/^http/, "ws")}/realtime-model`);
+  url2.searchParams.set("ai-model-id", modelId);
+  return url2.toString();
+}
+var exaSearchInputSchema = lazySchema(() => zodSchema(z2.object({
+  query: z2.string().describe("Natural-language web search query. This is required."),
+  type: z2.enum(["auto", "fast", "instant"]).optional().describe("Search method. Use auto for the default balance of speed and quality."),
+  num_results: z2.number().optional().describe("Maximum number of results to return (1-100, default: 10)."),
+  category: z2.enum([
+    "company",
+    "people",
+    "research paper",
+    "news",
+    "personal site",
+    "financial report"
+  ]).optional().describe("Optional content category to focus results."),
+  user_location: z2.string().optional().describe("Two-letter ISO country code such as 'US'."),
+  include_domains: z2.array(z2.string()).optional().describe("Only return results from these domains."),
+  exclude_domains: z2.array(z2.string()).optional().describe("Exclude results from these domains."),
+  start_published_date: z2.string().optional().describe("Only return links published after this ISO 8601 date."),
+  end_published_date: z2.string().optional().describe("Only return links published before this ISO 8601 date."),
+  contents: z2.object({
+    text: z2.union([
+      z2.boolean(),
+      z2.object({
+        max_characters: z2.number().optional(),
+        include_html_tags: z2.boolean().optional(),
+        verbosity: z2.enum(["compact", "standard", "full"]).optional(),
+        include_sections: z2.array(z2.enum([
+          "header",
+          "navigation",
+          "banner",
+          "body",
+          "sidebar",
+          "footer",
+          "metadata"
+        ])).optional(),
+        exclude_sections: z2.array(z2.enum([
+          "header",
+          "navigation",
+          "banner",
+          "body",
+          "sidebar",
+          "footer",
+          "metadata"
+        ])).optional()
+      })
+    ]).optional(),
+    highlights: z2.union([
+      z2.boolean(),
+      z2.object({
+        query: z2.string().optional(),
+        max_characters: z2.number().optional()
+      })
+    ]).optional(),
+    max_age_hours: z2.number().optional(),
+    livecrawl_timeout: z2.number().optional(),
+    subpages: z2.number().optional(),
+    subpage_target: z2.union([z2.string(), z2.array(z2.string())]).optional(),
+    extras: z2.object({
+      links: z2.number().optional(),
+      image_links: z2.number().optional()
+    }).optional()
+  }).optional().describe("Controls extracted page content and freshness.")
+})));
+var exaSearchOutputSchema = lazySchema(() => zodSchema(z2.union([
+  z2.object({
+    requestId: z2.string(),
+    searchType: z2.string().optional(),
+    resolvedSearchType: z2.string().optional(),
+    results: z2.array(z2.object({
+      title: z2.string(),
+      url: z2.string(),
+      id: z2.string(),
+      publishedDate: z2.string().nullable().optional(),
+      author: z2.string().nullable().optional(),
+      image: z2.string().nullable().optional(),
+      favicon: z2.string().nullable().optional(),
+      text: z2.string().optional(),
+      highlights: z2.array(z2.string()).optional(),
+      highlightScores: z2.array(z2.number()).optional(),
+      summary: z2.string().optional(),
+      subpages: z2.array(z2.any()).optional(),
+      extras: z2.object({
+        links: z2.array(z2.string()).optional(),
+        imageLinks: z2.array(z2.string()).optional()
+      }).optional()
+    })),
+    costDollars: z2.object({
+      total: z2.number().optional(),
+      search: z2.record(z2.string(), z2.number()).optional()
+    }).optional()
+  }),
+  z2.object({
+    error: z2.enum([
+      "api_error",
+      "rate_limit",
+      "timeout",
+      "invalid_input",
+      "configuration_error",
+      "execution_error",
+      "unknown"
+    ]),
+    statusCode: z2.number().optional(),
+    message: z2.string()
+  })
+])));
+var exaSearchToolFactory = createProviderExecutedToolFactory({
+  id: "gateway.exa_search",
+  inputSchema: exaSearchInputSchema,
+  outputSchema: exaSearchOutputSchema
+});
+var exaSearch = (config2 = {}) => exaSearchToolFactory(config2);
+var parallelSearchInputSchema = lazySchema(() => zodSchema(z2.object({
+  objective: z2.string().describe("Natural-language description of the web research goal, including source or freshness guidance and broader context from the task. Maximum 5000 characters."),
+  search_queries: z2.array(z2.string()).optional().describe("Optional search queries to supplement the objective. Maximum 200 characters per query."),
+  mode: z2.enum(["one-shot", "agentic"]).optional().describe('Mode preset: "one-shot" for comprehensive results with longer excerpts (default), "agentic" for concise, token-efficient results for multi-step workflows.'),
+  max_results: z2.number().optional().describe("Maximum number of results to return (1-20). Defaults to 10 if not specified."),
+  source_policy: z2.object({
+    include_domains: z2.array(z2.string()).optional().describe("Limit results to these domains. Use plain domain names only — e.g. example.com or sub.example.gov, or a bare extension like .edu. Do not include a scheme, path, or port (e.g. not https://example.com/page)."),
+    exclude_domains: z2.array(z2.string()).optional().describe("Exclude results from these domains. Use plain domain names only — e.g. example.com or sub.example.gov, or a bare extension like .edu. Do not include a scheme, path, or port (e.g. not https://example.com/page)."),
+    after_date: z2.string().optional().describe("Only include results published after this date. Use an ISO 8601 calendar date formatted YYYY-MM-DD (e.g. 2025-01-01); do not include a time.")
+  }).optional().describe("Source policy for controlling which domains to include/exclude and freshness."),
+  excerpts: z2.object({
+    max_chars_per_result: z2.number().optional().describe("Maximum characters per result."),
+    max_chars_total: z2.number().optional().describe("Maximum total characters across all results.")
+  }).optional().describe("Excerpt configuration for controlling result length."),
+  fetch_policy: z2.object({
+    max_age_seconds: z2.number().optional().describe("Maximum age in seconds for cached content. Set to 0 to always fetch fresh content.")
+  }).optional().describe("Fetch policy for controlling content freshness.")
+})));
+var parallelSearchOutputSchema = lazySchema(() => zodSchema(z2.union([
+  z2.object({
+    searchId: z2.string(),
+    results: z2.array(z2.object({
+      url: z2.string(),
+      title: z2.string(),
+      excerpt: z2.string(),
+      publishDate: z2.string().nullable().optional(),
+      relevanceScore: z2.number().optional()
+    }))
+  }),
+  z2.object({
+    error: z2.enum([
+      "api_error",
+      "rate_limit",
+      "timeout",
+      "invalid_input",
+      "configuration_error",
+      "unknown"
+    ]),
+    statusCode: z2.number().optional(),
+    message: z2.string()
+  })
+])));
+var parallelSearchToolFactory = createProviderExecutedToolFactory({
+  id: "gateway.parallel_search",
+  inputSchema: parallelSearchInputSchema,
+  outputSchema: parallelSearchOutputSchema
+});
+var parallelSearch = (config2 = {}) => parallelSearchToolFactory(config2);
+var perplexitySearchInputSchema = lazySchema(() => zodSchema(z2.object({
+  query: z2.union([z2.string(), z2.array(z2.string())]).describe("Search query (string) or multiple queries (array of up to 5 strings). Multi-query searches return combined results from all queries."),
+  max_results: z2.number().optional().describe("Maximum number of search results to return (1-20, default: 10)"),
+  max_tokens_per_page: z2.number().optional().describe("Maximum number of tokens to extract per search result page (256-2048, default: 2048)"),
+  max_tokens: z2.number().optional().describe("Maximum total tokens across all search results (default: 25000, max: 1000000)"),
+  country: z2.string().optional().describe("Two-letter ISO 3166-1 alpha-2 country code for regional search results (e.g., 'US', 'GB', 'FR')"),
+  search_domain_filter: z2.array(z2.string()).optional().describe("List of domains to include or exclude from search results (max 20). To include: ['nature.com', 'science.org']. To exclude: ['-example.com', '-spam.net']"),
+  search_language_filter: z2.array(z2.string()).optional().describe("List of ISO 639-1 language codes to filter results (max 10, lowercase). Examples: ['en', 'fr', 'de']"),
+  search_after_date: z2.string().optional().describe("Include only results published after this date. Format: 'MM/DD/YYYY' (e.g., '3/1/2025'). Cannot be used with search_recency_filter."),
+  search_before_date: z2.string().optional().describe("Include only results published before this date. Format: 'MM/DD/YYYY' (e.g., '3/15/2025'). Cannot be used with search_recency_filter."),
+  last_updated_after_filter: z2.string().optional().describe("Include only results last updated after this date. Format: 'MM/DD/YYYY' (e.g., '3/1/2025'). Cannot be used with search_recency_filter."),
+  last_updated_before_filter: z2.string().optional().describe("Include only results last updated before this date. Format: 'MM/DD/YYYY' (e.g., '3/15/2025'). Cannot be used with search_recency_filter."),
+  search_recency_filter: z2.enum(["day", "week", "month", "year"]).optional().describe("Filter results by relative time period. Cannot be used with search_after_date or search_before_date.")
+})));
+var perplexitySearchOutputSchema = lazySchema(() => zodSchema(z2.union([
+  z2.object({
+    results: z2.array(z2.object({
+      title: z2.string(),
+      url: z2.string(),
+      snippet: z2.string(),
+      date: z2.string().optional(),
+      lastUpdated: z2.string().optional()
+    })),
+    id: z2.string()
+  }),
+  z2.object({
+    error: z2.enum([
+      "api_error",
+      "rate_limit",
+      "timeout",
+      "invalid_input",
+      "unknown"
+    ]),
+    statusCode: z2.number().optional(),
+    message: z2.string()
+  })
+])));
+var perplexitySearchToolFactory = createProviderExecutedToolFactory({
+  id: "gateway.perplexity_search",
+  inputSchema: perplexitySearchInputSchema,
+  outputSchema: perplexitySearchOutputSchema
+});
+var perplexitySearch = (config2 = {}) => perplexitySearchToolFactory(config2);
+var gatewayTools = {
+  exaSearch,
+  parallelSearch,
+  perplexitySearch
+};
+async function getVercelRequestId() {
+  var _a122;
+  return (_a122 = import_oidc.getContext().headers) == null ? undefined : _a122["x-vercel-id"];
+}
+var VERSION3 = "4.0.57";
+var AI_GATEWAY_PROTOCOL_VERSION = "0.0.1";
+var gatewayClientSecretResponseSchema = z2.object({
+  token: z2.string(),
+  expiresAt: z2.number().nullish()
+});
+function createGateway(options = {}) {
+  var _a122, _b122;
+  let pendingMetadata = null;
+  let metadataCache = null;
+  const cacheRefreshMillis = (_a122 = options.metadataCacheRefreshMillis) != null ? _a122 : 1000 * 60 * 5;
+  let lastFetchTime = 0;
+  const baseURL = (_b122 = withoutTrailingSlash(options.baseURL)) != null ? _b122 : "https://ai-gateway.vercel.sh/v4/ai";
+  const createAuthHeaders = (auth) => withUserAgentSuffix({
+    Authorization: `Bearer ${auth.token}`,
+    "ai-gateway-protocol-version": AI_GATEWAY_PROTOCOL_VERSION,
+    [GATEWAY_AUTH_METHOD_HEADER]: auth.authMethod,
+    ...options.teamIdOrSlug != null ? { [VERCEL_AI_GATEWAY_TEAM_HEADER]: options.teamIdOrSlug } : {},
+    ...options.headers
+  }, `ai-sdk/gateway/${VERSION3}`);
+  const getHeaders = async () => {
+    try {
+      return createAuthHeaders(await getGatewayAuthToken(options));
+    } catch (error48) {
+      throw GatewayAuthenticationError.createContextualError({
+        apiKeyProvided: false,
+        oidcTokenProvided: false,
+        statusCode: 401,
+        cause: error48
+      });
+    }
+  };
+  const getRealtimeAuthToken = async () => {
+    try {
+      return await getGatewayAuthToken(options);
+    } catch (error48) {
+      throw GatewayAuthenticationError.createContextualError({
+        apiKeyProvided: false,
+        oidcTokenProvided: false,
+        statusCode: 401,
+        cause: error48
+      });
+    }
+  };
+  const mintClientSecret = async (params) => {
+    assertGatewayClientSecretServerEnvironment();
+    const auth = await getRealtimeAuthToken();
+    const headers = createAuthHeaders(auth);
+    const url2 = new URL("/v1/realtime/client-secrets", baseURL).toString();
+    try {
+      const { value: value2 } = await postJsonToApi({
+        url: url2,
+        headers,
+        body: {
+          model: params.modelId,
+          ...params.routeKind != null && { routeKind: params.routeKind },
+          ...params.expiresAfterSeconds != null && {
+            expiresIn: params.expiresAfterSeconds
+          }
+        },
+        successfulResponseHandler: createJsonResponseHandler(gatewayClientSecretResponseSchema),
+        failedResponseHandler: createJsonErrorResponseHandler({
+          errorSchema: z2.any(),
+          errorToMessage: (data) => {
+            var _a132;
+            return (_a132 = getErrorMessage(data)) != null ? _a132 : "unknown error";
+          }
+        }),
+        fetch: options.fetch
+      });
+      return {
+        token: value2.token,
+        ...value2.expiresAt != null && { expiresAt: value2.expiresAt }
+      };
+    } catch (error48) {
+      throw await asGatewayError(error48, await parseAuthMethod(headers));
+    }
+  };
+  const createO11yHeaders = () => {
+    const deploymentId = loadOptionalSetting({
+      settingValue: undefined,
+      environmentVariableName: "VERCEL_DEPLOYMENT_ID"
+    });
+    const environment = loadOptionalSetting({
+      settingValue: undefined,
+      environmentVariableName: "VERCEL_ENV"
+    });
+    const region = loadOptionalSetting({
+      settingValue: undefined,
+      environmentVariableName: "VERCEL_REGION"
+    });
+    const projectId = loadOptionalSetting({
+      settingValue: undefined,
+      environmentVariableName: "VERCEL_PROJECT_ID"
+    });
+    return async () => {
+      const requestId = await getVercelRequestId();
+      return {
+        ...deploymentId && { "ai-o11y-deployment-id": deploymentId },
+        ...environment && { "ai-o11y-environment": environment },
+        ...region && { "ai-o11y-region": region },
+        ...requestId && { "ai-o11y-request-id": requestId },
+        ...projectId && { "ai-o11y-project-id": projectId }
+      };
+    };
+  };
+  const createLanguageModel = (modelId) => {
+    return new GatewayBatchLanguageModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders()
+    });
+  };
+  const getAvailableModels = async () => {
+    var _a132, _b132, _c;
+    const now = (_c = (_b132 = (_a132 = options._internal) == null ? undefined : _a132.currentDate) == null ? undefined : _b132.call(_a132).getTime()) != null ? _c : Date.now();
+    if (!pendingMetadata || now - lastFetchTime > cacheRefreshMillis) {
+      lastFetchTime = now;
+      pendingMetadata = new GatewayFetchMetadata({
+        baseURL,
+        headers: getHeaders,
+        fetch: options.fetch
+      }).getAvailableModels().then((metadata) => {
+        metadataCache = metadata;
+        return metadata;
+      }).catch(async (error48) => {
+        throw await asGatewayError(error48, await parseAuthMethod(await getHeaders()));
+      });
+    }
+    return metadataCache ? Promise.resolve(metadataCache) : pendingMetadata;
+  };
+  const getCredits = async () => {
+    return new GatewayFetchMetadata({
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch
+    }).getCredits().catch(async (error48) => {
+      throw await asGatewayError(error48, await parseAuthMethod(await getHeaders()));
+    });
+  };
+  const getSpendReport = async (params) => {
+    return new GatewaySpendReport({
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch
+    }).getSpendReport(params).catch(async (error48) => {
+      throw await asGatewayError(error48, await parseAuthMethod(await getHeaders()));
+    });
+  };
+  const getGenerationInfo = async (params) => {
+    return new GatewayGenerationInfoFetcher({
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch
+    }).getGenerationInfo(params).catch(async (error48) => {
+      throw await asGatewayError(error48, await parseAuthMethod(await getHeaders()));
+    });
+  };
+  const provider = function(modelId) {
+    if (new.target) {
+      throw new Error("The Gateway Provider model function cannot be called with the new keyword.");
+    }
+    return createLanguageModel(modelId);
+  };
+  provider.specificationVersion = "v4";
+  provider.getAvailableModels = getAvailableModels;
+  provider.getCredits = getCredits;
+  provider.getSpendReport = getSpendReport;
+  provider.getGenerationInfo = getGenerationInfo;
+  provider.imageModel = (modelId) => {
+    return new GatewayImageModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders()
+    });
+  };
+  provider.languageModel = createLanguageModel;
+  const createEmbeddingModel = (modelId) => {
+    return new GatewayEmbeddingModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders()
+    });
+  };
+  provider.embeddingModel = createEmbeddingModel;
+  provider.textEmbeddingModel = createEmbeddingModel;
+  provider.videoModel = (modelId) => {
+    return new GatewayVideoModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders()
+    });
+  };
+  const createRerankingModel = (modelId) => {
+    return new GatewayRerankingModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders()
+    });
+  };
+  provider.rerankingModel = createRerankingModel;
+  provider.reranking = createRerankingModel;
+  const createSpeechModel = (modelId) => {
+    return new GatewaySpeechModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders()
+    });
+  };
+  provider.speechModel = createSpeechModel;
+  provider.speech = createSpeechModel;
+  const createTranscriptionModel = (modelId) => {
+    return new GatewayTranscriptionModel(modelId, {
+      provider: "gateway",
+      baseURL,
+      headers: getHeaders,
+      fetch: options.fetch,
+      o11yHeaders: createO11yHeaders(),
+      webSocket: options.webSocket
+    });
+  };
+  provider.transcriptionModel = createTranscriptionModel;
+  provider.transcription = createTranscriptionModel;
+  provider.experimental_transcription = Object.assign((modelId) => createTranscriptionModel(modelId), {
+    getToken: async (tokenOptions) => {
+      const secret = await mintClientSecret({
+        modelId: tokenOptions.model,
+        routeKind: "transcription",
+        ...tokenOptions.expiresAfterSeconds != null && {
+          expiresAfterSeconds: tokenOptions.expiresAfterSeconds
+        }
+      });
+      return {
+        token: secret.token,
+        url: toGatewayTranscriptionUrl(baseURL, tokenOptions.model),
+        ...secret.expiresAt != null && { expiresAt: secret.expiresAt }
+      };
+    }
+  });
+  const createRealtimeModel = (modelId) => new GatewayRealtimeModel(modelId, {
+    provider: "gateway.realtime",
+    baseURL,
+    teamIdOrSlug: options.teamIdOrSlug,
+    createClientSecret: mintClientSecret
+  });
+  provider.experimental_realtime = Object.assign((modelId) => createRealtimeModel(modelId), {
+    getToken: async (tokenOptions) => {
+      const { model: modelId, ...secretOptions } = tokenOptions;
+      const model = createRealtimeModel(modelId);
+      const secret = await model.doCreateClientSecret(secretOptions);
+      return {
+        token: secret.token,
+        url: secret.url,
+        ...secret.expiresAt != null && { expiresAt: secret.expiresAt }
+      };
+    }
+  });
+  provider.chat = provider.languageModel;
+  provider.embedding = provider.embeddingModel;
+  provider.image = provider.imageModel;
+  provider.video = provider.videoModel;
+  provider.tools = gatewayTools;
+  return provider;
+}
+var gateway = createGateway();
+async function getGatewayAuthToken(options) {
+  const apiKey = loadOptionalSetting({
+    settingValue: options.apiKey,
+    environmentVariableName: "AI_GATEWAY_API_KEY"
+  });
+  if (apiKey) {
+    return {
+      token: apiKey,
+      authMethod: "api-key"
+    };
+  }
+  const oidcToken = await import_oidc2.getVercelOidcToken();
+  return {
+    token: oidcToken,
+    authMethod: "oidc"
+  };
+}
+function assertGatewayClientSecretServerEnvironment() {
+  if (typeof globalThis.window !== "undefined") {
+    throw new Error("AI Gateway client secrets must be minted server-side: minting needs your Gateway credential, which must never reach the browser. Call gateway.experimental_realtime.getToken() or gateway.experimental_transcription.getToken() from your server and pass the returned token to the client.");
+  }
+}
+
+// node_modules/.bun/ai@7.0.71+3c5d820c62823f0b/node_modules/ai/dist/index.js
+var __defProp2 = Object.defineProperty;
+var __export2 = (target, all) => {
+  for (var name232 in all)
+    __defProp2(target, name232, { get: all[name232], enumerable: true });
+};
+var name18 = "AI_InvalidArgumentError";
+var marker19 = `vercel.ai.error.${name18}`;
+var symbol19 = Symbol.for(marker19);
+var _a19;
+var InvalidArgumentError2 = class extends AISDKError {
+  constructor({
+    parameter,
+    value: value2,
+    message
+  }) {
+    super({
+      name: name18,
+      message: `Invalid argument for parameter ${parameter}: ${message}`
+    });
+    this[_a19] = true;
+    this.parameter = parameter;
+    this.value = value2;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker19);
+  }
+};
+_a19 = symbol19;
+var name24 = "AI_InvalidStreamPartError";
+var marker24 = `vercel.ai.error.${name24}`;
+var symbol25 = Symbol.for(marker24);
+var _a25;
+_a25 = symbol25;
+var name33 = "AI_InvalidToolApprovalError";
+var marker33 = `vercel.ai.error.${name33}`;
+var symbol33 = Symbol.for(marker33);
+var _a33;
+var InvalidToolApprovalError = class extends AISDKError {
+  constructor({ approvalId }) {
+    super({
+      name: name33,
+      message: `Tool approval response references unknown approvalId: "${approvalId}". No matching tool-approval-request found in message history.`
+    });
+    this[_a33] = true;
+    this.approvalId = approvalId;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker33);
+  }
+};
+_a33 = symbol33;
+var name43 = "AI_InvalidToolApprovalSignatureError";
+var marker43 = `vercel.ai.error.${name43}`;
+var symbol43 = Symbol.for(marker43);
+var _a43;
+var InvalidToolApprovalSignatureError = class extends AISDKError {
+  constructor({
+    approvalId,
+    toolCallId,
+    reason
+  }) {
+    super({
+      name: name43,
+      message: `Tool approval signature verification failed for approval "${approvalId}" (tool call "${toolCallId}"): ${reason}`
+    });
+    this[_a43] = true;
+    this.approvalId = approvalId;
+    this.toolCallId = toolCallId;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker43);
+  }
+};
+_a43 = symbol43;
+var name53 = "AI_InvalidToolInputError";
+var marker53 = `vercel.ai.error.${name53}`;
+var symbol53 = Symbol.for(marker53);
+var _a53;
+var InvalidToolInputError = class extends AISDKError {
+  constructor({
+    toolInput,
+    toolName,
+    cause,
+    message = `Invalid input for tool ${toolName}: ${getErrorMessage(cause)}`
+  }) {
+    super({ name: name53, message, cause });
+    this[_a53] = true;
+    this.toolInput = toolInput;
+    this.toolName = toolName;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker53);
+  }
+};
+_a53 = symbol53;
+var name63 = "AI_ToolCallNotFoundForApprovalError";
+var marker63 = `vercel.ai.error.${name63}`;
+var symbol63 = Symbol.for(marker63);
+var _a63;
+var ToolCallNotFoundForApprovalError = class extends AISDKError {
+  constructor({
+    toolCallId,
+    approvalId
+  }) {
+    super({
+      name: name63,
+      message: `Tool call "${toolCallId}" not found for approval request "${approvalId}".`
+    });
+    this[_a63] = true;
+    this.toolCallId = toolCallId;
+    this.approvalId = approvalId;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker63);
+  }
+};
+_a63 = symbol63;
+var name73 = "AI_MissingToolResultsError";
+var marker73 = `vercel.ai.error.${name73}`;
+var symbol73 = Symbol.for(marker73);
+var _a73;
+var MissingToolResultsError = class extends AISDKError {
+  constructor({ toolCallIds }) {
+    super({
+      name: name73,
+      message: `Tool result${toolCallIds.length > 1 ? "s are" : " is"} missing for tool call${toolCallIds.length > 1 ? "s" : ""} ${toolCallIds.join(", ")}.`
+    });
+    this[_a73] = true;
+    this.toolCallIds = toolCallIds;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker73);
+  }
+};
+_a73 = symbol73;
+var name83 = "AI_NoImageGeneratedError";
+var marker83 = `vercel.ai.error.${name83}`;
+var symbol83 = Symbol.for(marker83);
+var _a83;
+_a83 = symbol83;
+var name93 = "AI_NoObjectGeneratedError";
+var marker93 = `vercel.ai.error.${name93}`;
+var symbol93 = Symbol.for(marker93);
+var _a93;
+var NoObjectGeneratedError = class extends AISDKError {
+  constructor({
+    message = "No object generated.",
+    cause,
+    text: text22,
+    response,
+    usage,
+    finishReason
+  }) {
+    super({ name: name93, message, cause });
+    this[_a93] = true;
+    this.text = text22;
+    this.response = response;
+    this.usage = usage;
+    this.finishReason = finishReason;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker93);
+  }
+};
+_a93 = symbol93;
+var name103 = "AI_NoOutputGeneratedError";
+var marker103 = `vercel.ai.error.${name103}`;
+var symbol103 = Symbol.for(marker103);
+var _a103;
+var NoOutputGeneratedError = class extends AISDKError {
+  constructor({
+    message = "No output generated.",
+    cause
+  } = {}) {
+    super({ name: name103, message, cause });
+    this[_a103] = true;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker103);
+  }
+};
+_a103 = symbol103;
+var name112 = "AI_NoSpeechGeneratedError";
+var marker113 = `vercel.ai.error.${name112}`;
+var symbol113 = Symbol.for(marker113);
+var _a113;
+_a113 = symbol113;
+var name122 = "AI_NoTranscriptGeneratedError";
+var marker122 = `vercel.ai.error.${name122}`;
+var symbol122 = Symbol.for(marker122);
+var _a122;
+_a122 = symbol122;
+var name132 = "AI_NoTranslationGeneratedError";
+var marker132 = `vercel.ai.error.${name132}`;
+var symbol132 = Symbol.for(marker132);
+var _a132;
+_a132 = symbol132;
+var name142 = "AI_NoVideoGeneratedError";
+var marker142 = `vercel.ai.error.${name142}`;
+var symbol142 = Symbol.for(marker142);
+var _a142;
+_a142 = symbol142;
+var name152 = "AI_NoSuchToolError";
+var marker152 = `vercel.ai.error.${name152}`;
+var symbol152 = Symbol.for(marker152);
+var _a152;
+var NoSuchToolError = class extends AISDKError {
+  constructor({
+    toolName,
+    availableTools = undefined,
+    message = `Model tried to call unavailable tool '${toolName}'. ${availableTools === undefined ? "No tools are available." : `Available tools: ${availableTools.join(", ")}.`}`
+  }) {
+    super({ name: name152, message });
+    this[_a152] = true;
+    this.toolName = toolName;
+    this.availableTools = availableTools;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker152);
+  }
+};
+_a152 = symbol152;
+var name16 = "AI_ToolCallRepairError";
+var marker162 = `vercel.ai.error.${name16}`;
+var symbol162 = Symbol.for(marker162);
+var _a162;
+var ToolCallRepairError = class extends AISDKError {
+  constructor({
+    cause,
+    originalError,
+    message = `Error repairing tool call: ${getErrorMessage(cause)}`
+  }) {
+    super({ name: name16, message, cause });
+    this[_a162] = true;
+    this.originalError = originalError;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker162);
+  }
+};
+_a162 = symbol162;
+var UnsupportedModelVersionError = class extends AISDKError {
+  constructor(options) {
+    super({
+      name: "AI_UnsupportedModelVersionError",
+      message: `Unsupported model version ${options.version} for provider "${options.provider}" and model "${options.modelId}". AI SDK 5 only supports models that implement specification version "v2".`
+    });
+    this.version = options.version;
+    this.provider = options.provider;
+    this.modelId = options.modelId;
+  }
+};
+var name172 = "AI_UIMessageStreamError";
+var marker17 = `vercel.ai.error.${name172}`;
+var symbol17 = Symbol.for(marker17);
+var _a17;
+_a17 = symbol17;
+var name182 = "AI_InvalidDataContentError";
+var marker182 = `vercel.ai.error.${name182}`;
+var symbol182 = Symbol.for(marker182);
+var _a182;
+var InvalidDataContentError = class extends AISDKError {
+  constructor({
+    content,
+    cause,
+    message = `Invalid data content. Expected a base64 string, Uint8Array, ArrayBuffer, or Buffer, but got ${typeof content}.`
+  }) {
+    super({ name: name182, message, cause });
+    this[_a182] = true;
+    this.content = content;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker182);
+  }
+};
+_a182 = symbol182;
+var name19 = "AI_InvalidMessageRoleError";
+var marker192 = `vercel.ai.error.${name19}`;
+var symbol192 = Symbol.for(marker192);
+var _a192;
+var InvalidMessageRoleError = class extends AISDKError {
+  constructor({
+    role,
+    message = `Invalid message role: '${role}'. Must be one of: "system", "user", "assistant", "tool".`
+  }) {
+    super({ name: name19, message });
+    this[_a192] = true;
+    this.role = role;
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker192);
+  }
+};
+_a192 = symbol192;
+var name20 = "AI_MessageConversionError";
+var marker20 = `vercel.ai.error.${name20}`;
+var symbol20 = Symbol.for(marker20);
+var _a20;
+_a20 = symbol20;
+var name21 = "AI_RetryError";
+var marker21 = `vercel.ai.error.${name21}`;
+var symbol21 = Symbol.for(marker21);
+var _a21;
+var RetryError = class extends AISDKError {
+  constructor({
+    message,
+    reason,
+    errors: errors4
+  }) {
+    super({ name: name21, message });
+    this[_a21] = true;
+    this.reason = reason;
+    this.errors = errors4;
+    this.lastError = errors4[errors4.length - 1];
+  }
+  static isInstance(error48) {
+    return AISDKError.hasMarker(error48, marker21);
+  }
+};
+_a21 = symbol21;
+function formatWarning({
+  warning,
+  provider,
+  model
+}) {
+  const scope = provider != null && model != null ? ` (${provider} / ${model})` : "";
+  const prefix = `AI SDK Warning${scope}:`;
+  switch (warning.type) {
+    case "unsupported": {
+      let message = `${prefix} The feature "${warning.feature}" is not supported.`;
+      if (warning.details) {
+        message += ` ${warning.details}`;
+      }
+      return message;
+    }
+    case "compatibility": {
+      let message = `${prefix} The feature "${warning.feature}" is used in a compatibility mode.`;
+      if (warning.details) {
+        message += ` ${warning.details}`;
+      }
+      return message;
+    }
+    case "deprecated": {
+      return `${prefix} Deprecated: "${warning.setting}". ${warning.message}`;
+    }
+    case "other": {
+      return `${prefix} ${warning.message}`;
+    }
+    default: {
+      return `${prefix} ${JSON.stringify(warning, null, 2)}`;
+    }
+  }
+}
+var FIRST_WARNING_INFO_MESSAGE = "AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.";
+var hasLoggedBefore = false;
+function emitWarning({
+  message,
+  type
+}) {
+  if (typeof process !== "undefined" && typeof process.emitWarning === "function") {
+    process.emitWarning(message, { type });
+  } else {
+    console.warn(message);
+  }
+}
+var logWarnings = (options) => {
+  if (options.warnings.length === 0) {
+    return;
+  }
+  const logger = globalThis.AI_SDK_LOG_WARNINGS;
+  if (logger === false) {
+    return;
+  }
+  if (typeof logger === "function") {
+    logger(options);
+    return;
+  }
+  if (!hasLoggedBefore) {
+    hasLoggedBefore = true;
+    emitWarning({
+      message: FIRST_WARNING_INFO_MESSAGE,
+      type: "Warning"
+    });
+  }
+  for (const warning of options.warnings) {
+    const message = formatWarning({
+      warning,
+      provider: options.provider,
+      model: options.model
+    });
+    emitWarning({
+      message,
+      type: warning.type === "deprecated" ? "DeprecationWarning" : "Warning"
+    });
+  }
+};
+function logV2CompatibilityWarning({
+  provider,
+  modelId
+}) {
+  logWarnings({
+    warnings: [
+      {
+        type: "compatibility",
+        feature: "specificationVersion",
+        details: `Using v2 specification compatibility mode. Some features may not be available.`
+      }
+    ],
+    provider,
+    model: modelId
+  });
+}
+function asEmbeddingModelV3(model) {
+  if (model.specificationVersion === "v3") {
+    return model;
+  }
+  logV2CompatibilityWarning({
+    provider: model.provider,
+    modelId: model.modelId
+  });
+  return new Proxy(model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v3";
+      return target[prop];
+    }
+  });
+}
+function asEmbeddingModelV4(model) {
+  if (model.specificationVersion === "v4") {
+    return model;
+  }
+  const v3Model = model.specificationVersion === "v2" ? asEmbeddingModelV3(model) : model;
+  return new Proxy(v3Model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v4";
+      return target[prop];
+    }
+  });
+}
+function asImageModelV3(model) {
+  if (model.specificationVersion === "v3") {
+    return model;
+  }
+  logV2CompatibilityWarning({
+    provider: model.provider,
+    modelId: model.modelId
+  });
+  return new Proxy(model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v3";
+      return target[prop];
+    }
+  });
+}
+function asImageModelV4(model) {
+  if (model.specificationVersion === "v4") {
+    return model;
+  }
+  const v3Model = model.specificationVersion === "v2" ? asImageModelV3(model) : model;
+  return new Proxy(v3Model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v4";
+      return target[prop];
+    }
+  });
+}
+function asLanguageModelV3(model) {
+  if (model.specificationVersion === "v3") {
+    return model;
+  }
+  logV2CompatibilityWarning({
+    provider: model.provider,
+    modelId: model.modelId
+  });
+  return new Proxy(model, {
+    get(target, prop) {
+      switch (prop) {
+        case "specificationVersion":
+          return "v3";
+        case "doGenerate":
+          return async (...args) => {
+            const result = await target.doGenerate(...args);
+            return {
+              ...result,
+              finishReason: convertV2FinishReasonToV3(result.finishReason),
+              usage: convertV2UsageToV3(result.usage)
+            };
+          };
+        case "doStream":
+          return async (...args) => {
+            const result = await target.doStream(...args);
+            return {
+              ...result,
+              stream: convertV2StreamToV3(result.stream)
+            };
+          };
+        default:
+          return target[prop];
+      }
+    }
+  });
+}
+function convertV2StreamToV3(stream) {
+  return stream.pipeThrough(new TransformStream({
+    transform(chunk, controller) {
+      switch (chunk.type) {
+        case "finish":
+          controller.enqueue({
+            ...chunk,
+            finishReason: convertV2FinishReasonToV3(chunk.finishReason),
+            usage: convertV2UsageToV3(chunk.usage)
+          });
+          break;
+        default:
+          controller.enqueue(chunk);
+          break;
+      }
+    }
+  }));
+}
+function convertV2FinishReasonToV3(finishReason) {
+  return {
+    unified: finishReason === "unknown" ? "other" : finishReason,
+    raw: undefined
+  };
+}
+function convertV2UsageToV3(usage) {
+  return {
+    inputTokens: {
+      total: usage.inputTokens,
+      noCache: undefined,
+      cacheRead: usage.cachedInputTokens,
+      cacheWrite: undefined
+    },
+    outputTokens: {
+      total: usage.outputTokens,
+      text: undefined,
+      reasoning: usage.reasoningTokens
+    }
+  };
+}
+function asLanguageModelV4(model) {
+  if (model.specificationVersion === "v4") {
+    return model;
+  }
+  const v3Model = model.specificationVersion === "v2" ? asLanguageModelV3(model) : model;
+  return new Proxy(v3Model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v4";
+      return target[prop];
+    }
+  });
+}
+function asRerankingModelV4(model) {
+  if (model.specificationVersion === "v4") {
+    return model;
+  }
+  return new Proxy(model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v4";
+      return target[prop];
+    }
+  });
+}
+function asSpeechModelV3(model) {
+  if (model.specificationVersion === "v3") {
+    return model;
+  }
+  logV2CompatibilityWarning({
+    provider: model.provider,
+    modelId: model.modelId
+  });
+  return new Proxy(model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v3";
+      return target[prop];
+    }
+  });
+}
+function asSpeechModelV4(model) {
+  if (model.specificationVersion === "v4") {
+    return model;
+  }
+  const v3Model = model.specificationVersion === "v2" ? asSpeechModelV3(model) : model;
+  return new Proxy(v3Model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v4";
+      return target[prop];
+    }
+  });
+}
+function asTranscriptionModelV3(model) {
+  if (model.specificationVersion === "v3") {
+    return model;
+  }
+  logV2CompatibilityWarning({
+    provider: model.provider,
+    modelId: model.modelId
+  });
+  return new Proxy(model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v3";
+      return target[prop];
+    }
+  });
+}
+function asTranscriptionModelV4(model) {
+  if (model.specificationVersion === "v4") {
+    return model;
+  }
+  const v3Model = model.specificationVersion === "v2" ? asTranscriptionModelV3(model) : model;
+  return new Proxy(v3Model, {
+    get(target, prop) {
+      if (prop === "specificationVersion")
+        return "v4";
+      return target[prop];
+    }
+  });
+}
+function asProviderV3(provider) {
+  if ("specificationVersion" in provider && provider.specificationVersion === "v3") {
+    return provider;
+  }
+  const v2Provider = provider;
+  return {
+    specificationVersion: "v3",
+    languageModel: (modelId) => asLanguageModelV3(v2Provider.languageModel(modelId)),
+    embeddingModel: (modelId) => asEmbeddingModelV3(v2Provider.textEmbeddingModel(modelId)),
+    imageModel: (modelId) => asImageModelV3(v2Provider.imageModel(modelId)),
+    transcriptionModel: v2Provider.transcriptionModel ? (modelId) => asTranscriptionModelV3(v2Provider.transcriptionModel(modelId)) : undefined,
+    speechModel: v2Provider.speechModel ? (modelId) => asSpeechModelV3(v2Provider.speechModel(modelId)) : undefined,
+    rerankingModel: undefined
+  };
+}
+function asProviderV4(provider) {
+  if ("specificationVersion" in provider && provider.specificationVersion === "v4") {
+    return provider;
+  }
+  const v3Provider = !("specificationVersion" in provider) || provider.specificationVersion !== "v3" ? asProviderV3(provider) : provider;
+  return {
+    specificationVersion: "v4",
+    languageModel: (modelId) => asLanguageModelV4(v3Provider.languageModel(modelId)),
+    embeddingModel: (modelId) => asEmbeddingModelV4(v3Provider.embeddingModel(modelId)),
+    imageModel: (modelId) => asImageModelV4(v3Provider.imageModel(modelId)),
+    transcriptionModel: v3Provider.transcriptionModel ? (modelId) => asTranscriptionModelV4(v3Provider.transcriptionModel(modelId)) : undefined,
+    speechModel: v3Provider.speechModel ? (modelId) => asSpeechModelV4(v3Provider.speechModel(modelId)) : undefined,
+    rerankingModel: v3Provider.rerankingModel ? (modelId) => asRerankingModelV4(v3Provider.rerankingModel(modelId)) : undefined
+  };
+}
+function resolveLanguageModel(model) {
+  if (typeof model === "string") {
+    return getGlobalProvider().languageModel(model);
+  }
+  if (!["v4", "v3", "v2"].includes(model.specificationVersion)) {
+    const unsupportedModel = model;
+    throw new UnsupportedModelVersionError({
+      version: unsupportedModel.specificationVersion,
+      provider: unsupportedModel.provider,
+      modelId: unsupportedModel.modelId
+    });
+  }
+  return asLanguageModelV4(model);
+}
+function getGlobalProvider() {
+  var _a232;
+  const provider = (_a232 = globalThis.AI_SDK_DEFAULT_PROVIDER) != null ? _a232 : gateway;
+  return asProviderV4(provider);
+}
+function cloneModelMessages(messages2) {
+  return messages2.map((message) => cloneValue(message));
+}
+function cloneValue(value2) {
+  if (value2 instanceof URL) {
+    return new URL(value2.href);
+  }
+  if (Array.isArray(value2)) {
+    return value2.map((item) => cloneValue(item));
+  }
+  if (value2 instanceof Uint8Array) {
+    return new Uint8Array(value2);
+  }
+  if (value2 instanceof ArrayBuffer) {
+    return value2.slice(0);
+  }
+  if (value2 instanceof Date) {
+    return new Date(value2);
+  }
+  if (value2 != null && typeof value2 === "object") {
+    return Object.fromEntries(Object.entries(value2).map(([key, value22]) => [key, cloneValue(value22)]));
+  }
+  return value2;
+}
+var VERSION4 = "7.0.71";
+var download = async ({
+  url: url2,
+  maxBytes,
+  abortSignal
+}) => {
+  var _a232;
+  const urlText = url2.toString();
+  try {
+    const headers = withUserAgentSuffix({}, `ai-sdk/${VERSION4}`, getRuntimeEnvironmentUserAgent());
+    const response = await fetchWithValidatedRedirects({
+      url: urlText,
+      headers,
+      abortSignal
+    });
+    if (!response.ok) {
+      await cancelResponseBody(response);
+      throw new DownloadError({
+        url: urlText,
+        statusCode: response.status,
+        statusText: response.statusText
+      });
+    }
+    const data = await readResponseWithSizeLimit({
+      response,
+      url: urlText,
+      maxBytes: maxBytes != null ? maxBytes : DEFAULT_MAX_DOWNLOAD_SIZE
+    });
+    return {
+      data,
+      mediaType: (_a232 = response.headers.get("content-type")) != null ? _a232 : undefined
+    };
+  } catch (error48) {
+    if (DownloadError.isInstance(error48)) {
+      throw error48;
+    }
+    throw new DownloadError({ url: urlText, cause: error48 });
+  }
+};
+var createDefaultDownloadFunction = (download2 = download) => (requestedDownloads) => Promise.all(requestedDownloads.map(async (requestedDownload) => requestedDownload.isUrlSupportedByModel ? null : await download2(requestedDownload)));
+function mergeObjects(base2, overrides) {
+  if (base2 === undefined && overrides === undefined) {
+    return;
+  }
+  if (base2 === undefined) {
+    return overrides;
+  }
+  if (overrides === undefined) {
+    return base2;
+  }
+  const result = { ...base2 };
+  for (const key in overrides) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+      const overridesValue = overrides[key];
+      if (overridesValue === undefined)
+        continue;
+      const baseValue = key in base2 ? base2[key] : undefined;
+      const isSourceObject = overridesValue !== null && typeof overridesValue === "object" && !Array.isArray(overridesValue) && !(overridesValue instanceof Date) && !(overridesValue instanceof RegExp);
+      const isTargetObject = baseValue !== null && baseValue !== undefined && typeof baseValue === "object" && !Array.isArray(baseValue) && !(baseValue instanceof Date) && !(baseValue instanceof RegExp);
+      if (isSourceObject && isTargetObject) {
+        result[key] = mergeObjects(baseValue, overridesValue);
+      } else {
+        result[key] = overridesValue;
+      }
+    }
+  }
+  return result;
+}
+function splitDataUrl(dataUrl) {
+  try {
+    const [header, base64Content] = dataUrl.split(",");
+    return {
+      mediaType: header.split(";")[0].split(":")[1],
+      base64Content
+    };
+  } catch (e) {
+    return {
+      mediaType: undefined,
+      base64Content: undefined
+    };
+  }
+}
+function isTaggedFileData(value2) {
+  if (typeof value2 !== "object" || value2 === null)
+    return false;
+  const type = value2.type;
+  return type === "data" || type === "url" || type === "reference" || type === "text";
+}
+function convertUrlToFilePartData(url2) {
+  if (url2.protocol === "data:") {
+    const { mediaType, base64Content } = splitDataUrl(url2.toString());
+    if (mediaType == null || base64Content == null) {
+      throw new InvalidDataContentError({
+        content: url2,
+        message: `Invalid data URL format in content ${url2.toString()}`
+      });
+    }
+    return { data: { type: "data", data: base64Content }, mediaType };
+  }
+  return { data: { type: "url", url: url2 }, mediaType: undefined };
+}
+function convertInlineDataToFilePartData(content) {
+  if (content instanceof Uint8Array) {
+    return { data: { type: "data", data: content }, mediaType: undefined };
+  }
+  if (content instanceof ArrayBuffer) {
+    return {
+      data: { type: "data", data: new Uint8Array(content) },
+      mediaType: undefined
+    };
+  }
+  if (isBuffer(content)) {
+    return {
+      data: { type: "data", data: new Uint8Array(content) },
+      mediaType: undefined
+    };
+  }
+  return {
+    data: { type: "data", data: content },
+    mediaType: undefined
+  };
+}
+function convertToLanguageModelV4FilePart(content) {
+  if (isTaggedFileData(content)) {
+    switch (content.type) {
+      case "data":
+        if (typeof content.data === "string" && content.data.startsWith("data:")) {
+          throw new InvalidDataContentError({
+            content: content.data,
+            message: 'Data URLs are not valid inline data. Pass them as { type: "url", url } instead.'
+          });
+        }
+        return convertInlineDataToFilePartData(content.data);
+      case "url":
+        return convertUrlToFilePartData(content.url);
+      case "reference":
+        return {
+          data: { type: "reference", reference: content.reference },
+          mediaType: undefined
+        };
+      case "text":
+        return {
+          data: { type: "text", text: content.text },
+          mediaType: undefined
+        };
+    }
+  }
+  if (content instanceof URL) {
+    return convertUrlToFilePartData(content);
+  }
+  if (typeof content === "string") {
+    try {
+      return convertUrlToFilePartData(new URL(content));
+    } catch (e) {
+      return convertInlineDataToFilePartData(content);
+    }
+  }
+  if (isProviderReference(content)) {
+    return {
+      data: { type: "reference", reference: content },
+      mediaType: undefined
+    };
+  }
+  return convertInlineDataToFilePartData(content);
+}
+async function convertToLanguageModelPrompt({
+  prompt,
+  supportedUrls,
+  download: download2 = createDefaultDownloadFunction(),
+  provider
+}) {
+  const downloadedAssets = await downloadAssets(prompt.messages, download2, supportedUrls);
+  const approvalIdToToolCallId = /* @__PURE__ */ new Map;
+  for (const message of prompt.messages) {
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      for (const part of message.content) {
+        if (part.type === "tool-approval-request" && "approvalId" in part && "toolCallId" in part) {
+          approvalIdToToolCallId.set(part.approvalId, part.toolCallId);
+        }
+      }
+    }
+  }
+  const approvedToolCallIds = /* @__PURE__ */ new Set;
+  for (const message of prompt.messages) {
+    if (message.role === "tool") {
+      for (const part of message.content) {
+        if (part.type === "tool-approval-response") {
+          const toolCallId = approvalIdToToolCallId.get(part.approvalId);
+          if (toolCallId) {
+            approvedToolCallIds.add(toolCallId);
+          }
+        }
+      }
+    }
+  }
+  const messages2 = [
+    ...prompt.instructions != null ? typeof prompt.instructions === "string" ? [{ role: "system", content: prompt.instructions }] : asArray(prompt.instructions).map((message) => ({
+      role: "system",
+      content: message.content,
+      providerOptions: message.providerOptions
+    })) : [],
+    ...prompt.messages.map((message) => convertToLanguageModelMessage({ message, downloadedAssets, provider }))
+  ];
+  const combinedMessages = [];
+  for (const message of messages2) {
+    if (message.role !== "tool") {
+      combinedMessages.push(message);
+      continue;
+    }
+    const lastCombinedMessage = combinedMessages.at(-1);
+    if ((lastCombinedMessage == null ? undefined : lastCombinedMessage.role) === "tool") {
+      const lastContentPart = lastCombinedMessage.content.at(-1);
+      if (lastContentPart != null && lastCombinedMessage.providerOptions != null) {
+        lastContentPart.providerOptions = mergeObjects(lastCombinedMessage.providerOptions, lastContentPart.providerOptions);
+      }
+      lastCombinedMessage.content.push(...message.content);
+      lastCombinedMessage.providerOptions = message.providerOptions;
+    } else {
+      combinedMessages.push(message);
+    }
+  }
+  const toolCallIds = /* @__PURE__ */ new Set;
+  for (const message of combinedMessages) {
+    switch (message.role) {
+      case "assistant": {
+        for (const content of message.content) {
+          if (content.type === "tool-call" && !content.providerExecuted) {
+            toolCallIds.add(content.toolCallId);
+          }
+        }
+        break;
+      }
+      case "tool": {
+        for (const content of message.content) {
+          if (content.type === "tool-result") {
+            toolCallIds.delete(content.toolCallId);
+          }
+        }
+        break;
+      }
+      case "user":
+      case "system":
+        for (const id of approvedToolCallIds) {
+          toolCallIds.delete(id);
+        }
+        if (toolCallIds.size > 0) {
+          throw new MissingToolResultsError({
+            toolCallIds: Array.from(toolCallIds)
+          });
+        }
+        break;
+    }
+  }
+  for (const id of approvedToolCallIds) {
+    toolCallIds.delete(id);
+  }
+  if (toolCallIds.size > 0) {
+    throw new MissingToolResultsError({ toolCallIds: Array.from(toolCallIds) });
+  }
+  return combinedMessages.filter((message) => message.role !== "tool" || message.content.length > 0);
+}
+function convertToLanguageModelMessage({
+  message,
+  downloadedAssets,
+  provider
+}) {
+  const warnings = [];
+  const role = message.role;
+  switch (role) {
+    case "system": {
+      return {
+        role: "system",
+        content: message.content,
+        providerOptions: message.providerOptions
+      };
+    }
+    case "user": {
+      if (typeof message.content === "string") {
+        return {
+          role: "user",
+          content: [{ type: "text", text: message.content }],
+          providerOptions: message.providerOptions
+        };
+      }
+      const converted = {
+        role: "user",
+        content: message.content.map((part) => {
+          if (part.type === "image") {
+            warnings.push({
+              type: "deprecated",
+              setting: '"image" content part',
+              message: `The "image" content part type is deprecated. Use a "file" part with mediaType: 'image' (or a more specific image/* subtype) instead.`
+            });
+          }
+          return convertImagePartToFilePart(part);
+        }).map((part) => convertPartToLanguageModelPart(part, downloadedAssets)).filter((part) => part.type !== "text" || part.text !== ""),
+        providerOptions: message.providerOptions
+      };
+      if (warnings.length > 0) {
+        logWarnings({ warnings });
+      }
+      return converted;
+    }
+    case "assistant": {
+      if (typeof message.content === "string") {
+        return {
+          role: "assistant",
+          content: [{ type: "text", text: message.content }],
+          providerOptions: message.providerOptions
+        };
+      }
+      const converted = {
+        role: "assistant",
+        content: message.content.filter((part) => part.type !== "text" || part.text !== "" || part.providerOptions != null).filter((part) => part.type !== "tool-approval-request").map((part) => {
+          const providerOptions = part.providerOptions;
+          switch (part.type) {
+            case "custom": {
+              return {
+                type: "custom",
+                kind: part.kind,
+                providerOptions
+              };
+            }
+            case "file": {
+              const { data, mediaType } = convertToLanguageModelV4FilePart(part.data);
+              return {
+                type: "file",
+                data,
+                filename: part.filename,
+                mediaType: mediaType != null ? mediaType : part.mediaType,
+                providerOptions
+              };
+            }
+            case "reasoning": {
+              return {
+                type: "reasoning",
+                text: part.text,
+                providerOptions
+              };
+            }
+            case "reasoning-file": {
+              const { data, mediaType } = convertToLanguageModelV4FilePart(part.data);
+              if (data.type !== "data" && data.type !== "url") {
+                throw new Error(`Unsupported reasoning-file data type: ${data.type}`);
+              }
+              return {
+                type: "reasoning-file",
+                data,
+                mediaType: mediaType != null ? mediaType : part.mediaType,
+                providerOptions
+              };
+            }
+            case "text": {
+              return {
+                type: "text",
+                text: part.text,
+                providerOptions
+              };
+            }
+            case "tool-call": {
+              return {
+                type: "tool-call",
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                input: part.input,
+                providerExecuted: part.providerExecuted,
+                providerOptions
+              };
+            }
+            case "tool-result": {
+              return {
+                type: "tool-result",
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                output: mapToolResultOutput({
+                  output: part.output,
+                  provider,
+                  warnings,
+                  downloadedAssets
+                }),
+                providerOptions
+              };
+            }
+          }
+        }),
+        providerOptions: message.providerOptions
+      };
+      if (warnings.length > 0) {
+        logWarnings({ warnings });
+      }
+      return converted;
+    }
+    case "tool": {
+      const converted = {
+        role: "tool",
+        content: message.content.filter((part) => part.type !== "tool-approval-response" || part.providerExecuted).map((part) => {
+          switch (part.type) {
+            case "tool-result": {
+              return {
+                type: "tool-result",
+                toolCallId: part.toolCallId,
+                toolName: part.toolName,
+                output: mapToolResultOutput({
+                  output: part.output,
+                  provider,
+                  warnings,
+                  downloadedAssets
+                }),
+                providerOptions: part.providerOptions
+              };
+            }
+            case "tool-approval-response": {
+              return {
+                type: "tool-approval-response",
+                approvalId: part.approvalId,
+                approved: part.approved,
+                reason: part.reason
+              };
+            }
+          }
+        }),
+        providerOptions: message.providerOptions
+      };
+      if (warnings.length > 0) {
+        logWarnings({ warnings });
+      }
+      return converted;
+    }
+    default: {
+      const _exhaustiveCheck = role;
+      throw new InvalidMessageRoleError({ role: _exhaustiveCheck });
+    }
+  }
+}
+function convertImagePartToFilePart(part) {
+  var _a232;
+  if (part.type !== "image") {
+    return part;
+  }
+  return {
+    type: "file",
+    data: part.image,
+    mediaType: (_a232 = part.mediaType) != null ? _a232 : "image",
+    providerOptions: part.providerOptions
+  };
+}
+async function downloadAssets(messages2, download2, supportedUrls) {
+  const downloadableFiles = [];
+  for (const message of messages2) {
+    if (message.role === "user" && Array.isArray(message.content)) {
+      for (const part of message.content) {
+        const filePart = convertImagePartToFilePart(part);
+        if (filePart.type === "file") {
+          downloadableFiles.push(filePart);
+        }
+      }
+    }
+    if (message.role === "tool") {
+      for (const part of message.content) {
+        if (part.type !== "tool-result") {
+          continue;
+        }
+        if (part.output.type !== "content") {
+          continue;
+        }
+        for (const contentPart of part.output.value) {
+          if (contentPart.type === "file") {
+            downloadableFiles.push(contentPart);
+          }
+        }
+      }
+    }
+    if (message.role === "assistant" && Array.isArray(message.content)) {
+      for (const part of message.content) {
+        if (part.type !== "tool-result") {
+          continue;
+        }
+        if (part.output.type !== "content") {
+          continue;
+        }
+        for (const contentPart of part.output.value) {
+          if (contentPart.type === "file") {
+            downloadableFiles.push(contentPart);
+          }
+        }
+      }
+    }
+  }
+  const plannedDownloads = downloadableFiles.map((part) => {
+    const mediaType = part.mediaType;
+    const { data } = convertToLanguageModelV4FilePart(part.data);
+    return { mediaType, data };
+  }).filter((part) => part.data.type === "url").map((part) => ({
+    url: part.data.url,
+    isUrlSupportedByModel: part.mediaType != null && isUrlSupported({
+      url: part.data.url.toString(),
+      mediaType: part.mediaType,
+      supportedUrls
+    })
+  }));
+  const downloadedFiles = await download2(plannedDownloads);
+  return Object.fromEntries(downloadedFiles.map((file2, index2) => file2 == null ? null : [
+    plannedDownloads[index2].url.toString(),
+    { data: file2.data, mediaType: file2.mediaType }
+  ]).filter((file2) => file2 != null));
+}
+function convertPartToLanguageModelPart(part, downloadedAssets) {
+  if (part.type === "text") {
+    return {
+      type: "text",
+      text: part.text,
+      providerOptions: part.providerOptions
+    };
+  }
+  const { data: normalizedData, mediaType: dataUrlMediaType } = convertToLanguageModelV4FilePart(part.data);
+  let mediaType = dataUrlMediaType != null ? dataUrlMediaType : part.mediaType;
+  let data = normalizedData;
+  if (data.type === "url") {
+    const downloadedFile = downloadedAssets[data.url.toString()];
+    if (downloadedFile) {
+      data = { type: "data", data: downloadedFile.data };
+      if (downloadedFile.mediaType != null && (mediaType == null || !isFullMediaType(mediaType))) {
+        mediaType = downloadedFile.mediaType;
+      }
+    }
+  }
+  if (data.type === "data" && (data.data instanceof Uint8Array || typeof data.data === "string")) {
+    const imageMediaType = detectMediaType({
+      data: data.data,
+      topLevelType: "image"
+    });
+    if (imageMediaType != null) {
+      mediaType = imageMediaType;
+    }
+  }
+  if (mediaType == null) {
+    throw new Error(`Media type is missing for file part`);
+  }
+  return {
+    type: "file",
+    mediaType,
+    filename: part.filename,
+    data,
+    providerOptions: part.providerOptions
+  };
+}
+function mapToolResultOutput({
+  output,
+  provider,
+  warnings = [],
+  downloadedAssets
+}) {
+  if (output.type !== "content") {
+    return output;
+  }
+  return {
+    type: "content",
+    value: output.value.map((item) => {
+      var _a232;
+      switch (item.type) {
+        case "file": {
+          const convertedPart = convertPartToLanguageModelPart(item, downloadedAssets);
+          if (convertedPart.type !== "file") {
+            throw new Error("Expected tool result file content to convert to file.");
+          }
+          return convertedPart;
+        }
+        case "file-data": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "file-data"',
+            message: `The "file-data" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'data', data } instead.`
+          });
+          return {
+            type: "file",
+            data: { type: "data", data: item.data },
+            filename: item.filename,
+            mediaType: item.mediaType,
+            providerOptions: item.providerOptions
+          };
+        }
+        case "file-url": {
+          const mediaType = (_a232 = item.mediaType) != null ? _a232 : getMediaTypeFromUrl(item.url);
+          let message = `The "file-url" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'url', url } instead.`;
+          if (!item.mediaType) {
+            const inferenceSuffix = mediaType === "application/octet-stream" ? `Unable to infer media type from URL. Defaulting to 'application/octet-stream'.` : `Inferred media type '${mediaType}' from URL.`;
+            message = `The "file-url" tool result content part with URL "${item.url}" is missing a "mediaType". ${inferenceSuffix} ${message}`;
+          }
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "file-url"',
+            message
+          });
+          return {
+            type: "file",
+            data: { type: "url", url: new URL(item.url) },
+            mediaType,
+            providerOptions: item.providerOptions
+          };
+        }
+        case "file-id": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "file-id"',
+            message: `The "file-id" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'reference', reference } instead.`
+          });
+          return {
+            type: "file",
+            data: {
+              type: "reference",
+              reference: convertFileIdToProviderReference({
+                fileId: item.fileId,
+                provider
+              })
+            },
+            mediaType: "application",
+            providerOptions: item.providerOptions
+          };
+        }
+        case "file-reference": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "file-reference"',
+            message: `The "file-reference" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'reference', reference } instead.`
+          });
+          return {
+            type: "file",
+            data: {
+              type: "reference",
+              reference: item.providerReference
+            },
+            mediaType: "application",
+            providerOptions: item.providerOptions
+          };
+        }
+        case "image-data": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "image-data"',
+            message: `The "image-data" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'data', data } instead.`
+          });
+          return {
+            type: "file",
+            data: { type: "data", data: item.data },
+            mediaType: item.mediaType,
+            providerOptions: item.providerOptions
+          };
+        }
+        case "image-url": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "image-url"',
+            message: `The "image-url" type for tool result content is deprecated. Use the "file" type with mediaType 'image' (or a specific image/* subtype) and { type: 'url', url } instead.`
+          });
+          return {
+            type: "file",
+            data: { type: "url", url: new URL(item.url) },
+            mediaType: "image",
+            providerOptions: item.providerOptions
+          };
+        }
+        case "image-file-id": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "image-file-id"',
+            message: `The "image-file-id" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'reference', reference } instead.`
+          });
+          return {
+            type: "file",
+            data: {
+              type: "reference",
+              reference: convertFileIdToProviderReference({
+                fileId: item.fileId,
+                provider
+              })
+            },
+            mediaType: "image",
+            providerOptions: item.providerOptions
+          };
+        }
+        case "image-file-reference": {
+          warnings.push({
+            type: "deprecated",
+            setting: '"tool-result" content of type "image-file-reference"',
+            message: `The "image-file-reference" type for tool result content is deprecated. Use the "file" type with mediaType and { type: 'reference', reference } instead.`
+          });
+          return {
+            type: "file",
+            data: {
+              type: "reference",
+              reference: item.providerReference
+            },
+            mediaType: "image",
+            providerOptions: item.providerOptions
+          };
+        }
+        default:
+          return item;
+      }
+    })
+  };
+}
+function convertFileIdToProviderReference({
+  fileId,
+  provider
+}) {
+  if (typeof fileId === "object") {
+    return fileId;
+  }
+  if (provider == null) {
+    throw new Error("Cannot convert string fileId to provider reference without a provider ID. Use a Record<string, string> fileId or switch to the file-reference type.");
+  }
+  return { [provider]: fileId };
+}
+var URL_EXTENSION_TO_MEDIA_TYPE = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  avif: "image/avif",
+  heic: "image/heic",
+  bmp: "image/bmp",
+  tiff: "image/tiff",
+  tif: "image/tiff",
+  pdf: "application/pdf",
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg"
+};
+function getMediaTypeFromUrl(url2, fallbackMediaType = "application/octet-stream") {
+  var _a232;
+  try {
+    const pathname = new URL(url2).pathname;
+    const fileExtension = (_a232 = pathname.split(".").pop()) == null ? undefined : _a232.toLowerCase();
+    if (fileExtension && Object.hasOwn(URL_EXTENSION_TO_MEDIA_TYPE, fileExtension)) {
+      return URL_EXTENSION_TO_MEDIA_TYPE[fileExtension];
+    }
+  } catch (e) {}
+  return fallbackMediaType;
+}
+async function createToolModelOutput({
+  toolCallId,
+  input,
+  output,
+  tool: tool2,
+  errorMode
+}) {
+  if (errorMode === "text") {
+    return { type: "error-text", value: getErrorMessage(output) };
+  } else if (errorMode === "json") {
+    return { type: "error-json", value: toJSONValue(output) };
+  }
+  if (tool2 == null ? undefined : tool2.toModelOutput) {
+    return await tool2.toModelOutput({ toolCallId, input, output });
+  }
+  return typeof output === "string" ? { type: "text", value: output } : { type: "json", value: toJSONValue(output) };
+}
+function toJSONValue(value2) {
+  return value2 === undefined ? null : value2;
+}
+function prepareLanguageModelCallOptions({
+  maxOutputTokens,
+  temperature,
+  topP,
+  topK,
+  presencePenalty,
+  frequencyPenalty,
+  seed,
+  stopSequences,
+  reasoning
+}) {
+  if (maxOutputTokens != null) {
+    if (!Number.isInteger(maxOutputTokens)) {
+      throw new InvalidArgumentError2({
+        parameter: "maxOutputTokens",
+        value: maxOutputTokens,
+        message: "maxOutputTokens must be an integer"
+      });
+    }
+    if (maxOutputTokens < 1) {
+      throw new InvalidArgumentError2({
+        parameter: "maxOutputTokens",
+        value: maxOutputTokens,
+        message: "maxOutputTokens must be >= 1"
+      });
+    }
+  }
+  if (temperature != null) {
+    if (typeof temperature !== "number") {
+      throw new InvalidArgumentError2({
+        parameter: "temperature",
+        value: temperature,
+        message: "temperature must be a number"
+      });
+    }
+  }
+  if (topP != null) {
+    if (typeof topP !== "number") {
+      throw new InvalidArgumentError2({
+        parameter: "topP",
+        value: topP,
+        message: "topP must be a number"
+      });
+    }
+  }
+  if (topK != null) {
+    if (typeof topK !== "number") {
+      throw new InvalidArgumentError2({
+        parameter: "topK",
+        value: topK,
+        message: "topK must be a number"
+      });
+    }
+  }
+  if (presencePenalty != null) {
+    if (typeof presencePenalty !== "number") {
+      throw new InvalidArgumentError2({
+        parameter: "presencePenalty",
+        value: presencePenalty,
+        message: "presencePenalty must be a number"
+      });
+    }
+  }
+  if (frequencyPenalty != null) {
+    if (typeof frequencyPenalty !== "number") {
+      throw new InvalidArgumentError2({
+        parameter: "frequencyPenalty",
+        value: frequencyPenalty,
+        message: "frequencyPenalty must be a number"
+      });
+    }
+  }
+  if (seed != null) {
+    if (!Number.isInteger(seed)) {
+      throw new InvalidArgumentError2({
+        parameter: "seed",
+        value: seed,
+        message: "seed must be an integer"
+      });
+    }
+  }
+  return {
+    maxOutputTokens,
+    temperature,
+    topP,
+    topK,
+    presencePenalty,
+    frequencyPenalty,
+    stopSequences,
+    seed,
+    reasoning
+  };
+}
+function prepareToolChoice({
+  toolChoice
+}) {
+  return toolChoice == null ? { type: "auto" } : typeof toolChoice === "string" ? { type: toolChoice } : { type: "tool", toolName: toolChoice.toolName };
+}
+function isNonEmptyObject(object3) {
+  return object3 != null && Object.keys(object3).length > 0;
+}
+async function prepareTools({
+  tools,
+  toolOrder,
+  toolsContext = {},
+  experimental_sandbox: sandbox
+}) {
+  if (!isNonEmptyObject(tools)) {
+    return;
+  }
+  const languageModelTools = [];
+  for (const [name232, tool2] of orderToolEntries({ tools, toolOrder })) {
+    const toolType = tool2.type;
+    switch (toolType) {
+      case undefined:
+      case "dynamic":
+      case "function": {
+        const description = resolveToolDescription({
+          tool: tool2,
+          toolName: name232,
+          toolsContext,
+          experimental_sandbox: sandbox
+        });
+        const providerOptions = tool2.providerOptions;
+        const inputExamples = tool2.inputExamples;
+        const strict = tool2.strict;
+        languageModelTools.push({
+          type: "function",
+          name: name232,
+          inputSchema: await asSchema(tool2.inputSchema).jsonSchema,
+          ...description != null ? { description } : {},
+          ...inputExamples != null ? { inputExamples } : {},
+          ...providerOptions != null ? { providerOptions } : {},
+          ...strict != null ? { strict } : {}
+        });
+        break;
+      }
+      case "provider": {
+        languageModelTools.push({
+          type: "provider",
+          name: name232,
+          id: tool2.id,
+          args: tool2.args
+        });
+        break;
+      }
+      default: {
+        const exhaustiveCheck = toolType;
+        throw new Error(`Unsupported tool type: ${exhaustiveCheck}`);
+      }
+    }
+  }
+  return languageModelTools;
+}
+function orderToolEntries({
+  tools,
+  toolOrder
+}) {
+  if (toolOrder == null) {
+    return Object.entries(tools);
+  }
+  const toolEntries = Object.entries(tools);
+  const orderedTools = toolEntries.filter(([name232]) => toolOrder.includes(name232)).sort(([nameA], [nameB]) => toolOrder.indexOf(nameA) - toolOrder.indexOf(nameB));
+  const unorderedTools = toolEntries.filter(([name232]) => !toolOrder.includes(name232)).sort(([nameA], [nameB]) => nameA < nameB ? -1 : nameA > nameB ? 1 : 0);
+  return [...orderedTools, ...unorderedTools];
+}
+function resolveToolDescription({
+  tool: tool2,
+  toolName,
+  toolsContext,
+  experimental_sandbox: sandbox
+}) {
+  return tool2.description === undefined ? undefined : typeof tool2.description === "string" ? tool2.description : tool2.description({
+    context: toolsContext[toolName],
+    experimental_sandbox: sandbox
+  });
+}
+function getTotalTimeoutMs(timeout) {
+  if (timeout == null) {
+    return;
+  }
+  if (typeof timeout === "number") {
+    return timeout;
+  }
+  return timeout.totalMs;
+}
+function getStepTimeoutMs(timeout) {
+  if (timeout == null || typeof timeout === "number") {
+    return;
+  }
+  return timeout.stepMs;
+}
+function getFirstChunkTimeoutMs(timeout) {
+  if (timeout == null || typeof timeout === "number") {
+    return;
+  }
+  return timeout.firstChunkMs;
+}
+function getChunkTimeoutMs(timeout) {
+  if (timeout == null || typeof timeout === "number") {
+    return;
+  }
+  return timeout.chunkMs;
+}
+function getToolTimeoutMs(timeout, toolName) {
+  var _a232, _b17;
+  if (timeout == null || typeof timeout === "number") {
+    return;
+  }
+  return (_b17 = (_a232 = timeout.tools) == null ? undefined : _a232[`${toolName}Ms`]) != null ? _b17 : timeout.toolMs;
+}
+var z3 = {
+  array,
+  boolean: boolean2,
+  custom,
+  discriminatedUnion,
+  enum: _enum2,
+  instanceof: _instanceof,
+  lazy: lazy2,
+  literal,
+  looseObject,
+  never,
+  null: _null3,
+  number: number2,
+  object,
+  record,
+  string: string2,
+  union,
+  unknown
+};
+var jsonValueSchema = z3.lazy(() => z3.union([
+  z3.null(),
+  z3.string(),
+  z3.number(),
+  z3.boolean(),
+  z3.record(z3.string(), jsonValueSchema.optional()),
+  z3.array(jsonValueSchema)
+]));
+var providerMetadataSchema = z3.record(z3.string(), z3.record(z3.string(), jsonValueSchema.optional()));
+var fileInlineDataSchema = z3.union([
+  z3.string(),
+  z3.instanceof(Uint8Array),
+  z3.instanceof(ArrayBuffer),
+  z3.custom(isBuffer, { message: "Must be a Buffer" })
+]);
+var providerReferenceSchema = z3.record(z3.string(), z3.string());
+var textPartSchema = z3.object({
+  type: z3.literal("text"),
+  text: z3.string(),
+  providerOptions: providerMetadataSchema.optional()
+});
+var imagePartSchema = z3.object({
+  type: z3.literal("image"),
+  image: z3.union([
+    fileInlineDataSchema,
+    z3.instanceof(URL),
+    providerReferenceSchema
+  ]),
+  mediaType: z3.string().optional(),
+  providerOptions: providerMetadataSchema.optional()
+});
+var taggedFileDataSchema = z3.discriminatedUnion("type", [
+  z3.object({ type: z3.literal("data"), data: fileInlineDataSchema }),
+  z3.object({ type: z3.literal("url"), url: z3.instanceof(URL) }),
+  z3.object({
+    type: z3.literal("reference"),
+    reference: providerReferenceSchema
+  }),
+  z3.object({ type: z3.literal("text"), text: z3.string() })
+]);
+var taggedReasoningFileDataSchema = z3.discriminatedUnion("type", [
+  z3.object({ type: z3.literal("data"), data: fileInlineDataSchema }),
+  z3.object({ type: z3.literal("url"), url: z3.instanceof(URL) })
+]);
+var filePartSchema = z3.object({
+  type: z3.literal("file"),
+  data: z3.union([
+    taggedFileDataSchema,
+    fileInlineDataSchema,
+    z3.instanceof(URL),
+    providerReferenceSchema
+  ]),
+  filename: z3.string().optional(),
+  mediaType: z3.string(),
+  providerOptions: providerMetadataSchema.optional()
+});
+var reasoningPartSchema = z3.object({
+  type: z3.literal("reasoning"),
+  text: z3.string(),
+  providerOptions: providerMetadataSchema.optional()
+});
+var customPartSchema = z3.object({
+  type: z3.literal("custom"),
+  kind: z3.string().transform((value2) => value2),
+  providerOptions: providerMetadataSchema.optional()
+});
+var reasoningFilePartSchema = z3.object({
+  type: z3.literal("reasoning-file"),
+  data: z3.union([
+    taggedReasoningFileDataSchema,
+    fileInlineDataSchema,
+    z3.instanceof(URL)
+  ]),
+  mediaType: z3.string(),
+  providerOptions: providerMetadataSchema.optional()
+});
+var toolCallPartSchema = z3.object({
+  type: z3.literal("tool-call"),
+  toolCallId: z3.string(),
+  toolName: z3.string(),
+  input: z3.unknown(),
+  providerOptions: providerMetadataSchema.optional(),
+  providerExecuted: z3.boolean().optional()
+});
+var outputSchema = z3.discriminatedUnion("type", [
+  z3.object({
+    type: z3.literal("text"),
+    value: z3.string(),
+    providerOptions: providerMetadataSchema.optional()
+  }),
+  z3.object({
+    type: z3.literal("json"),
+    value: jsonValueSchema,
+    providerOptions: providerMetadataSchema.optional()
+  }),
+  z3.object({
+    type: z3.literal("execution-denied"),
+    reason: z3.string().optional(),
+    providerOptions: providerMetadataSchema.optional()
+  }),
+  z3.object({
+    type: z3.literal("error-text"),
+    value: z3.string(),
+    providerOptions: providerMetadataSchema.optional()
+  }),
+  z3.object({
+    type: z3.literal("error-json"),
+    value: jsonValueSchema,
+    providerOptions: providerMetadataSchema.optional()
+  }),
+  z3.object({
+    type: z3.literal("content"),
+    value: z3.array(z3.union([
+      z3.object({
+        type: z3.literal("text"),
+        text: z3.string(),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("file"),
+        data: taggedFileDataSchema,
+        mediaType: z3.string(),
+        filename: z3.string().optional(),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("file-data"),
+        data: z3.string(),
+        mediaType: z3.string(),
+        filename: z3.string().optional(),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("file-url"),
+        url: z3.string(),
+        mediaType: z3.string().optional(),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("file-id"),
+        fileId: z3.union([z3.string(), z3.record(z3.string(), z3.string())]),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("file-reference"),
+        providerReference: z3.record(z3.string(), z3.string()),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("image-data"),
+        data: z3.string(),
+        mediaType: z3.string(),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("image-url"),
+        url: z3.string(),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("image-file-id"),
+        fileId: z3.union([z3.string(), z3.record(z3.string(), z3.string())]),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("image-file-reference"),
+        providerReference: z3.record(z3.string(), z3.string()),
+        providerOptions: providerMetadataSchema.optional()
+      }),
+      z3.object({
+        type: z3.literal("custom"),
+        providerOptions: providerMetadataSchema.optional()
+      })
+    ]))
+  })
+]);
+var toolResultPartSchema = z3.object({
+  type: z3.literal("tool-result"),
+  toolCallId: z3.string(),
+  toolName: z3.string(),
+  output: outputSchema,
+  providerOptions: providerMetadataSchema.optional()
+});
+var toolApprovalRequestSchema = z3.object({
+  type: z3.literal("tool-approval-request"),
+  approvalId: z3.string(),
+  toolCallId: z3.string()
+});
+var toolApprovalResponseSchema = z3.object({
+  type: z3.literal("tool-approval-response"),
+  approvalId: z3.string(),
+  approved: z3.boolean(),
+  reason: z3.string().optional()
+});
+var systemModelMessageSchema = z3.object({
+  role: z3.literal("system"),
+  content: z3.string(),
+  providerOptions: providerMetadataSchema.optional()
+});
+var userModelMessageSchema = z3.object({
+  role: z3.literal("user"),
+  content: z3.union([
+    z3.string(),
+    z3.array(z3.union([textPartSchema, imagePartSchema, filePartSchema]))
+  ]),
+  providerOptions: providerMetadataSchema.optional()
+});
+var assistantModelMessageSchema = z3.object({
+  role: z3.literal("assistant"),
+  content: z3.union([
+    z3.string(),
+    z3.array(z3.union([
+      textPartSchema,
+      customPartSchema,
+      filePartSchema,
+      reasoningPartSchema,
+      reasoningFilePartSchema,
+      toolCallPartSchema,
+      toolResultPartSchema,
+      toolApprovalRequestSchema
+    ]))
+  ]),
+  providerOptions: providerMetadataSchema.optional()
+});
+var toolModelMessageSchema = z3.object({
+  role: z3.literal("tool"),
+  content: z3.array(z3.union([toolResultPartSchema, toolApprovalResponseSchema])),
+  providerOptions: providerMetadataSchema.optional()
+});
+var modelMessageSchema = z3.union([
+  systemModelMessageSchema,
+  userModelMessageSchema,
+  assistantModelMessageSchema,
+  toolModelMessageSchema
+]);
+async function standardizePrompt({
+  allowSystemInMessages = false,
+  system,
+  instructions = system,
+  prompt,
+  messages: messages2
+}) {
+  if (prompt == null && messages2 == null) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "prompt or messages must be defined"
+    });
+  }
+  if (prompt != null && messages2 != null) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "prompt and messages cannot be defined at the same time"
+    });
+  }
+  if (typeof instructions !== "string" && !asArray(instructions).every((message) => message.role === "system")) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "instructions must be a string, SystemModelMessage, or array of SystemModelMessage"
+    });
+  }
+  if (prompt != null && typeof prompt === "string") {
+    messages2 = [{ role: "user", content: prompt }];
+  } else if (prompt != null && Array.isArray(prompt)) {
+    messages2 = prompt;
+  } else if (messages2 == null) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "prompt or messages must be defined"
+    });
+  }
+  if (messages2.length === 0) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "messages must not be empty"
+    });
+  }
+  if (!allowSystemInMessages && messages2.some((message) => message.role === "system")) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "System messages are not allowed in the prompt or messages fields. Use the instructions option instead."
+    });
+  }
+  const validationResult = await safeValidateTypes({
+    value: messages2,
+    schema: z3.array(modelMessageSchema)
+  });
+  if (!validationResult.success) {
+    throw new InvalidPromptError({
+      prompt,
+      message: "The messages do not match the ModelMessage[] schema.",
+      cause: validationResult.error
+    });
+  }
+  return { messages: messages2, instructions };
+}
+function wrapGatewayError(error48) {
+  if (!GatewayAuthenticationError.isInstance(error48))
+    return error48;
+  const isProductionEnv = (process == null ? undefined : "development") === "production";
+  const moreInfoURL = "https://ai-sdk.dev/unauthenticated-ai-gateway";
+  if (isProductionEnv) {
+    return new AISDKError({
+      name: "GatewayError",
+      message: `Unauthenticated. Configure AI_GATEWAY_API_KEY or use a provider module. Learn more: ${moreInfoURL}`
+    });
+  }
+  return Object.assign(new Error(`\x1B[1m\x1B[31mUnauthenticated request to AI Gateway.\x1B[0m
+
+To authenticate, set the \x1B[33mAI_GATEWAY_API_KEY\x1B[0m environment variable with your API key.
+
+Alternatively, you can use a provider module instead of the AI Gateway.
+
+Learn more: \x1B[34m${moreInfoURL}\x1B[0m
+
+`), { name: "GatewayAuthenticationError" });
+}
+function asLanguageModelUsage(usage) {
+  return {
+    inputTokens: usage.inputTokens.total,
+    inputTokenDetails: {
+      noCacheTokens: usage.inputTokens.noCache,
+      cacheReadTokens: usage.inputTokens.cacheRead,
+      cacheWriteTokens: usage.inputTokens.cacheWrite
+    },
+    outputTokens: usage.outputTokens.total,
+    outputTokenDetails: {
+      textTokens: usage.outputTokens.text,
+      reasoningTokens: usage.outputTokens.reasoning
+    },
+    totalTokens: addTokenCounts(usage.inputTokens.total, usage.outputTokens.total),
+    raw: usage.raw
+  };
+}
+function addLanguageModelUsage(usage1, usage2) {
+  var _a232, _b17, _c, _d, _e, _f, _g, _h, _i, _j;
+  return {
+    inputTokens: addTokenCounts(usage1.inputTokens, usage2.inputTokens),
+    inputTokenDetails: {
+      noCacheTokens: addTokenCounts((_a232 = usage1.inputTokenDetails) == null ? undefined : _a232.noCacheTokens, (_b17 = usage2.inputTokenDetails) == null ? undefined : _b17.noCacheTokens),
+      cacheReadTokens: addTokenCounts((_c = usage1.inputTokenDetails) == null ? undefined : _c.cacheReadTokens, (_d = usage2.inputTokenDetails) == null ? undefined : _d.cacheReadTokens),
+      cacheWriteTokens: addTokenCounts((_e = usage1.inputTokenDetails) == null ? undefined : _e.cacheWriteTokens, (_f = usage2.inputTokenDetails) == null ? undefined : _f.cacheWriteTokens)
+    },
+    outputTokens: addTokenCounts(usage1.outputTokens, usage2.outputTokens),
+    outputTokenDetails: {
+      textTokens: addTokenCounts((_g = usage1.outputTokenDetails) == null ? undefined : _g.textTokens, (_h = usage2.outputTokenDetails) == null ? undefined : _h.textTokens),
+      reasoningTokens: addTokenCounts((_i = usage1.outputTokenDetails) == null ? undefined : _i.reasoningTokens, (_j = usage2.outputTokenDetails) == null ? undefined : _j.reasoningTokens)
+    },
+    totalTokens: addTokenCounts(usage1.totalTokens, usage2.totalTokens)
+  };
+}
+function addTokenCounts(tokenCount1, tokenCount2) {
+  return tokenCount1 == null && tokenCount2 == null ? undefined : (tokenCount1 != null ? tokenCount1 : 0) + (tokenCount2 != null ? tokenCount2 : 0);
+}
+function getOwn(obj, key) {
+  return obj != null && Object.hasOwn(obj, key) ? obj[key] : undefined;
+}
+function mergeAbortSignals(...signals) {
+  const validSignals = filterNullable(...signals).map((signal) => signal instanceof AbortSignal ? signal : AbortSignal.timeout(signal));
+  return validSignals.length === 0 ? undefined : validSignals.length === 1 ? validSignals[0] : AbortSignal.any(validSignals);
+}
+function now() {
+  var _a232, _b17;
+  return (_b17 = (_a232 = globalThis == null ? undefined : globalThis.performance) == null ? undefined : _a232.now()) != null ? _b17 : Date.now();
+}
+async function notify(options) {
+  await Promise.all(asArray(options.callbacks).map(async (callback) => {
+    try {
+      await (callback == null ? undefined : callback(options.event));
+    } catch (e) {}
+  }));
+}
+function getRetryDelayInMs({
+  error: error48,
+  exponentialBackoffDelay
+}) {
+  const headers = APICallError.isInstance(error48) ? error48.responseHeaders : APICallError.isInstance(error48.cause) ? error48.cause.responseHeaders : undefined;
+  if (!headers)
+    return exponentialBackoffDelay;
+  let ms;
+  const retryAfterMs = headers["retry-after-ms"];
+  if (retryAfterMs) {
+    const timeoutMs = parseFloat(retryAfterMs);
+    if (!Number.isNaN(timeoutMs)) {
+      ms = timeoutMs;
+    }
+  }
+  const retryAfter = headers["retry-after"];
+  if (retryAfter && ms === undefined) {
+    const timeoutSeconds = parseFloat(retryAfter);
+    if (!Number.isNaN(timeoutSeconds)) {
+      ms = timeoutSeconds * 1000;
+    } else {
+      ms = Date.parse(retryAfter) - Date.now();
+    }
+  }
+  if (ms != null && !Number.isNaN(ms) && 0 <= ms && (ms < 60 * 1000 || ms < exponentialBackoffDelay)) {
+    return ms;
+  }
+  return exponentialBackoffDelay;
+}
+var retryWithExponentialBackoffRespectingRetryHeaders = ({
+  maxRetries = 2,
+  initialDelayInMs = 2000,
+  backoffFactor = 2,
+  abortSignal
+} = {}) => retryWithExponentialBackoff({
+  maxRetries,
+  initialDelayInMs,
+  backoffFactor,
+  abortSignal,
+  shouldRetry: (error48) => error48 instanceof Error && (APICallError.isInstance(error48) && error48.isRetryable === true || GatewayError.isInstance(error48) && error48.isRetryable === true),
+  getDelayInMs: ({ error: error48, exponentialBackoffDelay }) => getRetryDelayInMs({
+    error: error48,
+    exponentialBackoffDelay
+  }),
+  createRetryError: ({ message, reason, errors: errors4 }) => new RetryError({ message, reason, errors: errors4 })
+});
+function prepareRetries({
+  maxRetries,
+  abortSignal
+}) {
+  if (maxRetries != null) {
+    if (!Number.isInteger(maxRetries)) {
+      throw new InvalidArgumentError2({
+        parameter: "maxRetries",
+        value: maxRetries,
+        message: "maxRetries must be an integer"
+      });
+    }
+    if (maxRetries < 0) {
+      throw new InvalidArgumentError2({
+        parameter: "maxRetries",
+        value: maxRetries,
+        message: "maxRetries must be >= 0"
+      });
+    }
+  }
+  const maxRetriesResult = maxRetries != null ? maxRetries : 2;
+  return {
+    maxRetries: maxRetriesResult,
+    retry: retryWithExponentialBackoffRespectingRetryHeaders({
+      maxRetries: maxRetriesResult,
+      abortSignal
+    })
+  };
+}
+function setAbortTimeout({
+  abortController,
+  label,
+  timeoutMs
+}) {
+  if (abortController == null || timeoutMs == null) {
+    return;
+  }
+  return setTimeout(() => abortController.abort(new DOMException(`${label} timeout of ${timeoutMs}ms exceeded`, "TimeoutError")), timeoutMs);
+}
+function calculateTokensPerSecond({
+  tokens,
+  durationMs
+}) {
+  const tokenRate = 1000 * (tokens != null ? tokens : 0) / (durationMs != null ? durationMs : 0);
+  return Number.isFinite(tokenRate) ? tokenRate : 0;
+}
+function collectToolApprovals({
+  messages: messages2
+}) {
+  const lastMessage = messages2.at(-1);
+  if ((lastMessage == null ? undefined : lastMessage.role) != "tool") {
+    return {
+      approvedToolApprovals: [],
+      deniedToolApprovals: []
+    };
+  }
+  const toolCallsByToolCallId = /* @__PURE__ */ Object.create(null);
+  for (const message of messages2) {
+    if (message.role === "assistant" && typeof message.content !== "string") {
+      const content = message.content;
+      for (const part of content) {
+        if (part.type === "tool-call") {
+          toolCallsByToolCallId[part.toolCallId] = part;
+        }
+      }
+    }
+  }
+  const toolApprovalRequestsByApprovalId = /* @__PURE__ */ Object.create(null);
+  for (const message of messages2) {
+    if (message.role === "assistant" && typeof message.content !== "string") {
+      const content = message.content;
+      for (const part of content) {
+        if (part.type === "tool-approval-request") {
+          toolApprovalRequestsByApprovalId[part.approvalId] = part;
+        }
+      }
+    }
+  }
+  const toolResults = /* @__PURE__ */ Object.create(null);
+  for (const part of lastMessage.content) {
+    if (part.type === "tool-result") {
+      toolResults[part.toolCallId] = part;
+    }
+  }
+  const approvedToolApprovals = [];
+  const deniedToolApprovals = [];
+  const approvalResponses = lastMessage.content.filter((part) => part.type === "tool-approval-response");
+  for (const approvalResponse of approvalResponses) {
+    const approvalRequest = toolApprovalRequestsByApprovalId[approvalResponse.approvalId];
+    if (approvalRequest == null) {
+      throw new InvalidToolApprovalError({
+        approvalId: approvalResponse.approvalId
+      });
+    }
+    const existingToolResult = toolResults[approvalRequest.toolCallId];
+    if (existingToolResult != null && (approvalResponse.approved || existingToolResult.output.type !== "execution-denied")) {
+      continue;
+    }
+    const toolCall = toolCallsByToolCallId[approvalRequest.toolCallId];
+    if (toolCall == null) {
+      throw new ToolCallNotFoundForApprovalError({
+        toolCallId: approvalRequest.toolCallId,
+        approvalId: approvalRequest.approvalId
+      });
+    }
+    const approval = {
+      approvalRequest,
+      approvalResponse,
+      toolCall,
+      ...existingToolResult != null ? { existingToolResult } : {}
+    };
+    if (approvalResponse.approved) {
+      approvedToolApprovals.push(approval);
+    } else {
+      deniedToolApprovals.push(approval);
+    }
+  }
+  return { approvedToolApprovals, deniedToolApprovals };
+}
+async function validateToolContext({
+  toolName,
+  context,
+  contextSchema
+}) {
+  if (contextSchema == null) {
+    return context;
+  }
+  return await validateTypes({
+    value: context,
+    schema: contextSchema,
+    context: {
+      field: "tool context",
+      entityName: toolName
+    }
+  });
+}
+async function executeToolCall({
+  toolCall,
+  tools,
+  toolsContext,
+  callId,
+  messages: messages2,
+  abortSignal,
+  timeout,
+  experimental_sandbox: sandbox,
+  onPreliminaryToolResult,
+  onToolExecutionStart,
+  onToolExecutionEnd,
+  executeToolInTelemetryContext = async ({ execute }) => await execute(),
+  runInTracingChannelSpan = async ({ execute }) => await execute()
+}) {
+  const { toolName, toolCallId, input } = toolCall;
+  const tool2 = getOwn(tools, toolName);
+  if (!isExecutableTool(tool2)) {
+    return;
+  }
+  const context = await validateToolContext({
+    toolName,
+    context: getOwn(toolsContext, toolName),
+    contextSchema: tool2.contextSchema
+  });
+  const toolExecutionContext = {
+    toolCall,
+    messages: messages2,
+    toolContext: context
+  };
+  const baseCallbackEvent = {
+    callId,
+    ...toolExecutionContext
+  };
+  return await runInTracingChannelSpan({
+    type: "executeTool",
+    event: baseCallbackEvent,
+    execute: async () => {
+      let output;
+      await notify({
+        event: baseCallbackEvent,
+        callbacks: onToolExecutionStart
+      });
+      const toolTimeoutMs = getToolTimeoutMs(timeout, toolName);
+      const toolAbortSignal = mergeAbortSignals(abortSignal, toolTimeoutMs);
+      let toolExecutionMs = 0;
+      try {
+        await executeToolInTelemetryContext({
+          callId,
+          toolCallId,
+          ...toolExecutionContext,
+          execute: async () => {
+            const startTime = now();
+            try {
+              const stream = executeTool({
+                tool: tool2,
+                input,
+                options: {
+                  toolCallId,
+                  messages: messages2,
+                  abortSignal: toolAbortSignal,
+                  context,
+                  experimental_sandbox: sandbox
+                }
+              });
+              for await (const part of stream) {
+                if (part.type === "preliminary") {
+                  onPreliminaryToolResult == null || onPreliminaryToolResult({
+                    ...toolCall,
+                    type: "tool-result",
+                    output: part.output,
+                    preliminary: true
+                  });
+                } else {
+                  output = part.output;
+                }
+              }
+            } finally {
+              toolExecutionMs = now() - startTime;
+            }
+          }
+        });
+      } catch (error48) {
+        const toolError = {
+          type: "tool-error",
+          toolCallId,
+          toolName,
+          input,
+          error: error48,
+          dynamic: tool2.type === "dynamic",
+          ...toolCall.providerMetadata != null ? { providerMetadata: toolCall.providerMetadata } : {},
+          ...toolCall.toolMetadata != null ? { toolMetadata: toolCall.toolMetadata } : {}
+        };
+        await notify({
+          event: {
+            ...baseCallbackEvent,
+            toolOutput: toolError,
+            toolExecutionMs
+          },
+          callbacks: onToolExecutionEnd
+        });
+        return {
+          output: toolError,
+          toolExecutionMs
+        };
+      }
+      const toolResult = {
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        input,
+        output,
+        dynamic: tool2.type === "dynamic",
+        ...toolCall.providerMetadata != null ? { providerMetadata: toolCall.providerMetadata } : {},
+        ...toolCall.toolMetadata != null ? { toolMetadata: toolCall.toolMetadata } : {}
+      };
+      await notify({
+        event: {
+          ...baseCallbackEvent,
+          toolOutput: toolResult,
+          toolExecutionMs
+        },
+        callbacks: onToolExecutionEnd
+      });
+      return {
+        output: toolResult,
+        toolExecutionMs
+      };
+    }
+  });
+}
+function filterActiveTools({
+  tools,
+  activeTools
+}) {
+  if (tools == null || activeTools == null) {
+    return tools;
+  }
+  return Object.fromEntries(Object.entries(tools).filter(([name232]) => activeTools.includes(name232)));
+}
+var DefaultGeneratedFile = class {
+  constructor({
+    data,
+    mediaType
+  }) {
+    const isUint8Array = data instanceof Uint8Array;
+    this.base64Data = isUint8Array ? undefined : data;
+    this.uint8ArrayData = isUint8Array ? data : undefined;
+    this.mediaType = mediaType;
+  }
+  get base64() {
+    if (this.base64Data == null) {
+      this.base64Data = convertUint8ArrayToBase64(this.uint8ArrayData);
+    }
+    return this.base64Data;
+  }
+  get uint8Array() {
+    if (this.uint8ArrayData == null) {
+      this.uint8ArrayData = convertBase64ToUint8Array(this.base64Data);
+    }
+    return this.uint8ArrayData;
+  }
+};
+function isToolExecutionAllowedFinishReason(finishReason) {
+  return finishReason === "stop" || finishReason === "tool-calls";
+}
+var output_exports = {};
+__export2(output_exports, {
+  array: () => array22,
+  choice: () => choice,
+  json: () => json2,
+  object: () => object22,
+  text: () => text3
+});
+function fixJson(input) {
+  const stack = ["ROOT"];
+  let lastValidIndex = -1;
+  let literalStart = null;
+  let unicodeEscapeDigits = 0;
+  function isHexDigit(char) {
+    return char >= "0" && char <= "9" || char >= "A" && char <= "F" || char >= "a" && char <= "f";
+  }
+  function processValueStart(char, i, swapState) {
+    {
+      switch (char) {
+        case '"': {
+          lastValidIndex = i;
+          stack.pop();
+          stack.push(swapState);
+          stack.push("INSIDE_STRING");
+          break;
+        }
+        case "f":
+        case "t":
+        case "n": {
+          lastValidIndex = i;
+          literalStart = i;
+          stack.pop();
+          stack.push(swapState);
+          stack.push("INSIDE_LITERAL");
+          break;
+        }
+        case "-": {
+          stack.pop();
+          stack.push(swapState);
+          stack.push("INSIDE_NUMBER");
+          break;
+        }
+        case "0":
+        case "1":
+        case "2":
+        case "3":
+        case "4":
+        case "5":
+        case "6":
+        case "7":
+        case "8":
+        case "9": {
+          lastValidIndex = i;
+          stack.pop();
+          stack.push(swapState);
+          stack.push("INSIDE_NUMBER");
+          break;
+        }
+        case "{": {
+          lastValidIndex = i;
+          stack.pop();
+          stack.push(swapState);
+          stack.push("INSIDE_OBJECT_START");
+          break;
+        }
+        case "[": {
+          lastValidIndex = i;
+          stack.pop();
+          stack.push(swapState);
+          stack.push("INSIDE_ARRAY_START");
+          break;
+        }
+      }
+    }
+  }
+  function processAfterObjectValue(char, i) {
+    switch (char) {
+      case ",": {
+        stack.pop();
+        stack.push("INSIDE_OBJECT_AFTER_COMMA");
+        break;
+      }
+      case "}": {
+        lastValidIndex = i;
+        stack.pop();
+        break;
+      }
+    }
+  }
+  function processAfterArrayValue(char, i) {
+    switch (char) {
+      case ",": {
+        stack.pop();
+        stack.push("INSIDE_ARRAY_AFTER_COMMA");
+        break;
+      }
+      case "]": {
+        lastValidIndex = i;
+        stack.pop();
+        break;
+      }
+    }
+  }
+  for (let i = 0;i < input.length; i++) {
+    const char = input[i];
+    const currentState = stack[stack.length - 1];
+    switch (currentState) {
+      case "ROOT":
+        processValueStart(char, i, "FINISH");
+        break;
+      case "INSIDE_OBJECT_START": {
+        switch (char) {
+          case '"': {
+            stack.pop();
+            stack.push("INSIDE_OBJECT_KEY");
+            break;
+          }
+          case "}": {
+            lastValidIndex = i;
+            stack.pop();
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_OBJECT_AFTER_COMMA": {
+        switch (char) {
+          case '"': {
+            stack.pop();
+            stack.push("INSIDE_OBJECT_KEY");
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_OBJECT_KEY": {
+        switch (char) {
+          case '"': {
+            stack.pop();
+            stack.push("INSIDE_OBJECT_AFTER_KEY");
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_OBJECT_AFTER_KEY": {
+        switch (char) {
+          case ":": {
+            stack.pop();
+            stack.push("INSIDE_OBJECT_BEFORE_VALUE");
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_OBJECT_BEFORE_VALUE": {
+        processValueStart(char, i, "INSIDE_OBJECT_AFTER_VALUE");
+        break;
+      }
+      case "INSIDE_OBJECT_AFTER_VALUE": {
+        processAfterObjectValue(char, i);
+        break;
+      }
+      case "INSIDE_STRING": {
+        switch (char) {
+          case '"': {
+            stack.pop();
+            lastValidIndex = i;
+            break;
+          }
+          case "\\": {
+            stack.push("INSIDE_STRING_ESCAPE");
+            break;
+          }
+          default: {
+            lastValidIndex = i;
+          }
+        }
+        break;
+      }
+      case "INSIDE_ARRAY_START": {
+        switch (char) {
+          case "]": {
+            lastValidIndex = i;
+            stack.pop();
+            break;
+          }
+          default: {
+            lastValidIndex = i;
+            processValueStart(char, i, "INSIDE_ARRAY_AFTER_VALUE");
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_ARRAY_AFTER_VALUE": {
+        switch (char) {
+          case ",": {
+            stack.pop();
+            stack.push("INSIDE_ARRAY_AFTER_COMMA");
+            break;
+          }
+          case "]": {
+            lastValidIndex = i;
+            stack.pop();
+            break;
+          }
+          default: {
+            lastValidIndex = i;
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_ARRAY_AFTER_COMMA": {
+        processValueStart(char, i, "INSIDE_ARRAY_AFTER_VALUE");
+        break;
+      }
+      case "INSIDE_STRING_ESCAPE": {
+        stack.pop();
+        if (char === "u") {
+          unicodeEscapeDigits = 0;
+          stack.push("INSIDE_STRING_UNICODE_ESCAPE");
+        } else {
+          lastValidIndex = i;
+        }
+        break;
+      }
+      case "INSIDE_STRING_UNICODE_ESCAPE": {
+        if (isHexDigit(char)) {
+          unicodeEscapeDigits++;
+          if (unicodeEscapeDigits === 4) {
+            stack.pop();
+            lastValidIndex = i;
+          }
+        }
+        break;
+      }
+      case "INSIDE_NUMBER": {
+        switch (char) {
+          case "0":
+          case "1":
+          case "2":
+          case "3":
+          case "4":
+          case "5":
+          case "6":
+          case "7":
+          case "8":
+          case "9": {
+            lastValidIndex = i;
+            break;
+          }
+          case "e":
+          case "E":
+          case "-":
+          case ".": {
+            break;
+          }
+          case ",": {
+            stack.pop();
+            if (stack[stack.length - 1] === "INSIDE_ARRAY_AFTER_VALUE") {
+              processAfterArrayValue(char, i);
+            }
+            if (stack[stack.length - 1] === "INSIDE_OBJECT_AFTER_VALUE") {
+              processAfterObjectValue(char, i);
+            }
+            break;
+          }
+          case "}": {
+            stack.pop();
+            if (stack[stack.length - 1] === "INSIDE_OBJECT_AFTER_VALUE") {
+              processAfterObjectValue(char, i);
+            }
+            break;
+          }
+          case "]": {
+            stack.pop();
+            if (stack[stack.length - 1] === "INSIDE_ARRAY_AFTER_VALUE") {
+              processAfterArrayValue(char, i);
+            }
+            break;
+          }
+          default: {
+            stack.pop();
+            break;
+          }
+        }
+        break;
+      }
+      case "INSIDE_LITERAL": {
+        const partialLiteral = input.substring(literalStart, i + 1);
+        if (!"false".startsWith(partialLiteral) && !"true".startsWith(partialLiteral) && !"null".startsWith(partialLiteral)) {
+          stack.pop();
+          if (stack[stack.length - 1] === "INSIDE_OBJECT_AFTER_VALUE") {
+            processAfterObjectValue(char, i);
+          } else if (stack[stack.length - 1] === "INSIDE_ARRAY_AFTER_VALUE") {
+            processAfterArrayValue(char, i);
+          }
+        } else {
+          lastValidIndex = i;
+        }
+        break;
+      }
+    }
+  }
+  let result = input.slice(0, lastValidIndex + 1);
+  for (let i = stack.length - 1;i >= 0; i--) {
+    const state = stack[i];
+    switch (state) {
+      case "INSIDE_STRING": {
+        result += '"';
+        break;
+      }
+      case "INSIDE_OBJECT_KEY":
+      case "INSIDE_OBJECT_AFTER_KEY":
+      case "INSIDE_OBJECT_AFTER_COMMA":
+      case "INSIDE_OBJECT_START":
+      case "INSIDE_OBJECT_BEFORE_VALUE":
+      case "INSIDE_OBJECT_AFTER_VALUE": {
+        result += "}";
+        break;
+      }
+      case "INSIDE_ARRAY_START":
+      case "INSIDE_ARRAY_AFTER_COMMA":
+      case "INSIDE_ARRAY_AFTER_VALUE": {
+        result += "]";
+        break;
+      }
+      case "INSIDE_LITERAL": {
+        const partialLiteral = input.substring(literalStart, input.length);
+        if ("true".startsWith(partialLiteral)) {
+          result += "true".slice(partialLiteral.length);
+        } else if ("false".startsWith(partialLiteral)) {
+          result += "false".slice(partialLiteral.length);
+        } else if ("null".startsWith(partialLiteral)) {
+          result += "null".slice(partialLiteral.length);
+        }
+      }
+    }
+  }
+  return result;
+}
+async function parsePartialJson(jsonText) {
+  if (jsonText === undefined) {
+    return { value: undefined, state: "undefined-input" };
+  }
+  let result = await safeParseJSON({ text: jsonText });
+  if (result.success) {
+    return { value: result.value, state: "successful-parse" };
+  }
+  result = await safeParseJSON({ text: fixJson(jsonText) });
+  if (result.success) {
+    return { value: result.value, state: "repaired-parse" };
+  }
+  return { value: undefined, state: "failed-parse" };
+}
+var text3 = () => ({
+  name: "text",
+  responseFormat: Promise.resolve({ type: "text" }),
+  async parseCompleteOutput({ text: text22 }) {
+    return text22;
+  },
+  async parsePartialOutput({ text: text22 }) {
+    return { partial: text22 };
+  },
+  createElementStreamTransform() {
+    return;
+  }
+});
+var object22 = ({
+  schema: inputSchema,
+  name: name232,
+  description
+}) => {
+  const schema = asSchema(inputSchema);
+  return {
+    name: "object",
+    responseFormat: resolve(schema.jsonSchema).then((jsonSchema2) => ({
+      type: "json",
+      schema: jsonSchema2,
+      ...name232 != null && { name: name232 },
+      ...description != null && { description }
+    })),
+    async parseCompleteOutput({ text: text22 }, context) {
+      const parseResult = await safeParseJSON({ text: text22 });
+      if (!parseResult.success) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: could not parse the response.",
+          cause: parseResult.error,
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      const validationResult = await safeValidateTypes({
+        value: parseResult.value,
+        schema
+      });
+      if (!validationResult.success) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: response did not match schema.",
+          cause: validationResult.error,
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      return validationResult.value;
+    },
+    async parsePartialOutput({ text: text22 }) {
+      const result = await parsePartialJson(text22);
+      switch (result.state) {
+        case "failed-parse":
+        case "undefined-input": {
+          return;
+        }
+        case "repaired-parse":
+        case "successful-parse": {
+          return {
+            partial: result.value
+          };
+        }
+      }
+    },
+    createElementStreamTransform() {
+      return;
+    }
+  };
+};
+var array22 = ({
+  element: inputElementSchema,
+  name: name232,
+  description
+}) => {
+  const elementSchema = asSchema(inputElementSchema);
+  return {
+    name: "array",
+    responseFormat: resolve(elementSchema.jsonSchema).then((jsonSchema2) => {
+      const {
+        $schema: _$schema,
+        definitions,
+        $defs,
+        ...itemSchema
+      } = jsonSchema2;
+      return {
+        type: "json",
+        schema: {
+          $schema: "http://json-schema.org/draft-07/schema#",
+          ...definitions != null && { definitions },
+          ...$defs != null && { $defs },
+          type: "object",
+          properties: {
+            elements: { type: "array", items: itemSchema }
+          },
+          required: ["elements"],
+          additionalProperties: false
+        },
+        ...name232 != null && { name: name232 },
+        ...description != null && { description }
+      };
+    }),
+    async parseCompleteOutput({ text: text22 }, context) {
+      const parseResult = await safeParseJSON({ text: text22 });
+      if (!parseResult.success) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: could not parse the response.",
+          cause: parseResult.error,
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      const outerValue = parseResult.value;
+      if (outerValue == null || typeof outerValue !== "object" || !("elements" in outerValue) || !Array.isArray(outerValue.elements)) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: response did not match schema.",
+          cause: new TypeValidationError({
+            value: outerValue,
+            cause: "response must be an object with an elements array"
+          }),
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      const validatedElements = [];
+      for (const element of outerValue.elements) {
+        const validationResult = await safeValidateTypes({
+          value: element,
+          schema: elementSchema
+        });
+        if (!validationResult.success) {
+          throw new NoObjectGeneratedError({
+            message: "No object generated: response did not match schema.",
+            cause: validationResult.error,
+            text: text22,
+            response: context.response,
+            usage: context.usage,
+            finishReason: context.finishReason
+          });
+        }
+        validatedElements.push(validationResult.value);
+      }
+      return validatedElements;
+    },
+    async parsePartialOutput({ text: text22 }) {
+      const result = await parsePartialJson(text22);
+      switch (result.state) {
+        case "failed-parse":
+        case "undefined-input": {
+          return;
+        }
+        case "repaired-parse":
+        case "successful-parse": {
+          const outerValue = result.value;
+          if (outerValue == null || typeof outerValue !== "object" || !("elements" in outerValue) || !Array.isArray(outerValue.elements)) {
+            return;
+          }
+          const rawElements = result.state === "repaired-parse" && outerValue.elements.length > 0 ? outerValue.elements.slice(0, -1) : outerValue.elements;
+          const parsedElements = [];
+          for (const rawElement of rawElements) {
+            const validationResult = await safeValidateTypes({
+              value: rawElement,
+              schema: elementSchema
+            });
+            if (validationResult.success) {
+              parsedElements.push(validationResult.value);
+            }
+          }
+          return { partial: parsedElements };
+        }
+      }
+    },
+    createElementStreamTransform() {
+      let publishedElements = 0;
+      return new TransformStream({
+        transform({ partialOutput }, controller) {
+          if (partialOutput != null) {
+            for (;publishedElements < partialOutput.length; publishedElements++) {
+              controller.enqueue(partialOutput[publishedElements]);
+            }
+          }
+        }
+      });
+    }
+  };
+};
+var choice = ({
+  options: choiceOptions,
+  name: name232,
+  description
+}) => {
+  return {
+    name: "choice",
+    responseFormat: Promise.resolve({
+      type: "json",
+      schema: {
+        $schema: "http://json-schema.org/draft-07/schema#",
+        type: "object",
+        properties: {
+          result: { type: "string", enum: choiceOptions }
+        },
+        required: ["result"],
+        additionalProperties: false
+      },
+      ...name232 != null && { name: name232 },
+      ...description != null && { description }
+    }),
+    async parseCompleteOutput({ text: text22 }, context) {
+      const parseResult = await safeParseJSON({ text: text22 });
+      if (!parseResult.success) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: could not parse the response.",
+          cause: parseResult.error,
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      const outerValue = parseResult.value;
+      if (outerValue == null || typeof outerValue !== "object" || !("result" in outerValue) || typeof outerValue.result !== "string" || !choiceOptions.includes(outerValue.result)) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: response did not match schema.",
+          cause: new TypeValidationError({
+            value: outerValue,
+            cause: "response must be an object that contains a choice value."
+          }),
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      return outerValue.result;
+    },
+    async parsePartialOutput({ text: text22 }) {
+      const result = await parsePartialJson(text22);
+      switch (result.state) {
+        case "failed-parse":
+        case "undefined-input": {
+          return;
+        }
+        case "repaired-parse":
+        case "successful-parse": {
+          const outerValue = result.value;
+          if (outerValue == null || typeof outerValue !== "object" || !("result" in outerValue) || typeof outerValue.result !== "string") {
+            return;
+          }
+          const potentialMatches = choiceOptions.filter((choiceOption) => choiceOption.startsWith(outerValue.result));
+          if (result.state === "successful-parse") {
+            return potentialMatches.includes(outerValue.result) ? { partial: outerValue.result } : undefined;
+          } else {
+            return potentialMatches.length === 1 ? { partial: potentialMatches[0] } : undefined;
+          }
+        }
+      }
+    },
+    createElementStreamTransform() {
+      return;
+    }
+  };
+};
+var json2 = ({
+  name: name232,
+  description
+} = {}) => {
+  return {
+    name: "json",
+    responseFormat: Promise.resolve({
+      type: "json",
+      ...name232 != null && { name: name232 },
+      ...description != null && { description }
+    }),
+    async parseCompleteOutput({ text: text22 }, context) {
+      const parseResult = await safeParseJSON({ text: text22 });
+      if (!parseResult.success) {
+        throw new NoObjectGeneratedError({
+          message: "No object generated: could not parse the response.",
+          cause: parseResult.error,
+          text: text22,
+          response: context.response,
+          usage: context.usage,
+          finishReason: context.finishReason
+        });
+      }
+      return parseResult.value;
+    },
+    async parsePartialOutput({ text: text22 }) {
+      const result = await parsePartialJson(text22);
+      switch (result.state) {
+        case "failed-parse":
+        case "undefined-input": {
+          return;
+        }
+        case "repaired-parse":
+        case "successful-parse": {
+          return result.value === undefined ? undefined : { partial: result.value };
+        }
+      }
+    },
+    createElementStreamTransform() {
+      return;
+    }
+  };
+};
+async function parseToolCall({
+  toolCall,
+  tools,
+  repairToolCall,
+  refineToolInput,
+  messages: messages2,
+  instructions
+}) {
+  try {
+    if (tools == null) {
+      if (toolCall.providerExecuted && toolCall.dynamic) {
+        return await refineParsedToolCallInput({
+          toolCall: await parseProviderExecutedDynamicToolCall(toolCall),
+          refineToolInput
+        });
+      }
+      throw new NoSuchToolError({ toolName: toolCall.toolName });
+    }
+    try {
+      return await refineParsedToolCallInput({
+        toolCall: await doParseToolCall({ toolCall, tools }),
+        refineToolInput
+      });
+    } catch (error48) {
+      if (repairToolCall == null || !(NoSuchToolError.isInstance(error48) || InvalidToolInputError.isInstance(error48))) {
+        throw error48;
+      }
+      let repairedToolCall = null;
+      try {
+        repairedToolCall = await repairToolCall({
+          toolCall,
+          tools,
+          inputSchema: async ({ toolName }) => {
+            var _a232;
+            const inputSchema = (_a232 = getOwn(tools, toolName)) == null ? undefined : _a232.inputSchema;
+            return await asSchema(inputSchema).jsonSchema;
+          },
+          instructions,
+          system: instructions,
+          messages: messages2,
+          error: error48
+        });
+      } catch (repairError) {
+        throw new ToolCallRepairError({
+          cause: repairError,
+          originalError: error48
+        });
+      }
+      if (repairedToolCall == null) {
+        throw error48;
+      }
+      return await refineParsedToolCallInput({
+        toolCall: await doParseToolCall({ toolCall: repairedToolCall, tools }),
+        refineToolInput
+      });
+    }
+  } catch (error48) {
+    const parsedInput = await safeParseJSON({ text: toolCall.input });
+    const input = parsedInput.success ? parsedInput.value : toolCall.input;
+    const tool2 = getOwn(tools, toolCall.toolName);
+    return {
+      type: "tool-call",
+      toolCallId: toolCall.toolCallId,
+      toolName: toolCall.toolName,
+      input,
+      dynamic: true,
+      invalid: true,
+      error: error48,
+      title: tool2 == null ? undefined : tool2.title,
+      providerExecuted: toolCall.providerExecuted,
+      providerMetadata: toolCall.providerMetadata,
+      ...(tool2 == null ? undefined : tool2.metadata) != null ? { toolMetadata: tool2.metadata } : {}
+    };
+  }
+}
+async function refineParsedToolCallInput({
+  toolCall,
+  refineToolInput
+}) {
+  const refine2 = getOwn(refineToolInput, toolCall.toolName);
+  if (refine2 == null) {
+    return toolCall;
+  }
+  return {
+    ...toolCall,
+    input: await refine2(toolCall.input)
+  };
+}
+async function parseProviderExecutedDynamicToolCall(toolCall) {
+  const parseResult = toolCall.input.trim() === "" ? { success: true, value: {} } : await safeParseJSON({ text: toolCall.input });
+  if (parseResult.success === false) {
+    throw new InvalidToolInputError({
+      toolName: toolCall.toolName,
+      toolInput: toolCall.input,
+      cause: parseResult.error
+    });
+  }
+  return {
+    type: "tool-call",
+    toolCallId: toolCall.toolCallId,
+    toolName: toolCall.toolName,
+    input: parseResult.value,
+    providerExecuted: true,
+    dynamic: true,
+    providerMetadata: toolCall.providerMetadata
+  };
+}
+async function doParseToolCall({
+  toolCall,
+  tools
+}) {
+  const toolName = toolCall.toolName;
+  const tool2 = getOwn(tools, toolName);
+  if (tool2 == null) {
+    if (toolCall.providerExecuted && toolCall.dynamic) {
+      return await parseProviderExecutedDynamicToolCall(toolCall);
+    }
+    throw new NoSuchToolError({
+      toolName: toolCall.toolName,
+      availableTools: Object.keys(tools)
+    });
+  }
+  const schema = asSchema(tool2.inputSchema);
+  const parseResult = toolCall.input.trim() === "" ? await safeValidateTypes({ value: {}, schema }) : await safeParseJSON({ text: toolCall.input, schema });
+  if (parseResult.success === false) {
+    throw new InvalidToolInputError({
+      toolName,
+      toolInput: toolCall.input,
+      cause: parseResult.error
+    });
+  }
+  return tool2.type === "dynamic" ? {
+    type: "tool-call",
+    toolCallId: toolCall.toolCallId,
+    toolName: toolCall.toolName,
+    input: parseResult.value,
+    providerExecuted: toolCall.providerExecuted,
+    providerMetadata: toolCall.providerMetadata,
+    ...tool2.metadata != null ? { toolMetadata: tool2.metadata } : {},
+    dynamic: true,
+    title: tool2.title
+  } : {
+    type: "tool-call",
+    toolCallId: toolCall.toolCallId,
+    toolName,
+    input: parseResult.value,
+    providerExecuted: toolCall.providerExecuted,
+    providerMetadata: toolCall.providerMetadata,
+    ...tool2.metadata != null ? { toolMetadata: tool2.metadata } : {},
+    title: tool2.title
+  };
+}
+function prepareStepCallSettings({
+  callSettings,
+  stepSettings
+}) {
+  var _a232, _b17, _c, _d, _e, _f, _g, _h, _i;
+  return prepareLanguageModelCallOptions({
+    maxOutputTokens: (_a232 = stepSettings == null ? undefined : stepSettings.maxOutputTokens) != null ? _a232 : callSettings.maxOutputTokens,
+    temperature: (_b17 = stepSettings == null ? undefined : stepSettings.temperature) != null ? _b17 : callSettings.temperature,
+    topP: (_c = stepSettings == null ? undefined : stepSettings.topP) != null ? _c : callSettings.topP,
+    topK: (_d = stepSettings == null ? undefined : stepSettings.topK) != null ? _d : callSettings.topK,
+    presencePenalty: (_e = stepSettings == null ? undefined : stepSettings.presencePenalty) != null ? _e : callSettings.presencePenalty,
+    frequencyPenalty: (_f = stepSettings == null ? undefined : stepSettings.frequencyPenalty) != null ? _f : callSettings.frequencyPenalty,
+    stopSequences: (_g = stepSettings == null ? undefined : stepSettings.stopSequences) != null ? _g : callSettings.stopSequences,
+    seed: (_h = stepSettings == null ? undefined : stepSettings.seed) != null ? _h : callSettings.seed,
+    reasoning: (_i = stepSettings == null ? undefined : stepSettings.reasoning) != null ? _i : callSettings.reasoning
+  });
+}
+function unwrapReasoningFileData(data) {
+  if (typeof data === "object" && data !== null && "type" in data) {
+    return data.type === "data" ? data.data : data.url;
+  }
+  return data;
+}
+function convertFromReasoningOutputs(parts) {
+  return parts.map((part) => {
+    if (part.type === "reasoning") {
+      return {
+        type: "reasoning",
+        text: part.text,
+        ...part.providerMetadata != null ? { providerOptions: part.providerMetadata } : {}
+      };
+    }
+    return {
+      type: "reasoning-file",
+      data: part.file.base64,
+      mediaType: part.file.mediaType,
+      ...part.providerMetadata != null ? { providerOptions: part.providerMetadata } : {}
+    };
+  });
+}
+function convertToReasoningOutputs(parts) {
+  return parts.map((part) => {
+    if (part.type === "reasoning") {
+      return {
+        type: "reasoning",
+        text: part.text,
+        ...part.providerOptions != null ? { providerMetadata: part.providerOptions } : {}
+      };
+    }
+    const rawData = unwrapReasoningFileData(part.data);
+    const fileData = rawData instanceof ArrayBuffer ? new Uint8Array(rawData) : rawData instanceof URL ? rawData.toString() : rawData;
+    return {
+      type: "reasoning-file",
+      file: new DefaultGeneratedFile({
+        data: fileData,
+        mediaType: part.mediaType
+      }),
+      ...part.providerOptions != null ? { providerMetadata: part.providerOptions } : {}
+    };
+  });
+}
+async function resolveToolApproval({
+  tools,
+  toolCall,
+  toolApproval,
+  messages: messages2,
+  toolsContext,
+  runtimeContext
+}) {
+  if (toolApproval != null && typeof toolApproval === "function") {
+    return normalizeToolApprovalStatus(await toolApproval({
+      toolCall,
+      tools,
+      toolsContext,
+      messages: messages2,
+      runtimeContext
+    }));
+  }
+  const toolName = toolCall.toolName;
+  const tool2 = getOwn(tools, toolName);
+  const input = toolCall.input;
+  const userDefinedToolApprovalStatus = getOwn(toolApproval, toolName);
+  if (userDefinedToolApprovalStatus != null) {
+    const approvalStatus = typeof userDefinedToolApprovalStatus === "function" ? await userDefinedToolApprovalStatus(input, {
+      toolCallId: toolCall.toolCallId,
+      messages: messages2,
+      toolContext: await validateToolContext({
+        toolName,
+        context: getOwn(toolsContext, toolName),
+        contextSchema: tool2 == null ? undefined : tool2.contextSchema
+      }),
+      runtimeContext
+    }) : userDefinedToolApprovalStatus;
+    return normalizeToolApprovalStatus(approvalStatus);
+  }
+  if ((tool2 == null ? undefined : tool2.needsApproval) == null) {
+    return { type: "not-applicable" };
+  }
+  const needsApproval = typeof tool2.needsApproval === "function" ? await tool2.needsApproval(input, {
+    toolCallId: toolCall.toolCallId,
+    messages: messages2,
+    context: await validateToolContext({
+      toolName,
+      context: getOwn(toolsContext, toolName),
+      contextSchema: tool2 == null ? undefined : tool2.contextSchema
+    })
+  }) : tool2.needsApproval;
+  return needsApproval ? { type: "user-approval" } : { type: "not-applicable" };
+}
+function normalizeToolApprovalStatus(status) {
+  return status === undefined ? { type: "not-applicable" } : typeof status === "string" ? { type: status } : status;
+}
+function mergeCallbacks(...callbacks) {
+  return async (event) => {
+    await Promise.allSettled(callbacks.map(async (callback) => {
+      await (callback == null ? undefined : callback(event));
+    }));
+  };
+}
+var AI_SDK_TELEMETRY_TRACING_CHANNEL = "ai:telemetry";
+function isNodeRuntime2() {
+  var _a232;
+  return typeof process !== "undefined" && ((_a232 = process.release) == null ? undefined : _a232.name) === "node";
+}
+var diagnosticsChannelPromise;
+async function loadDiagnosticsChannel() {
+  if (!isNodeRuntime2()) {
+    return;
+  }
+  if (diagnosticsChannelPromise == null) {
+    diagnosticsChannelPromise = Promise.resolve(loadBuiltinModule2("node:diagnostics_channel"));
+  }
+  return diagnosticsChannelPromise;
+}
+function loadBuiltinModule2(id) {
+  var _a232;
+  const processWithBuiltins = globalThis.process;
+  try {
+    return (_a232 = processWithBuiltins == null ? undefined : processWithBuiltins.getBuiltinModule) == null ? undefined : _a232.call(processWithBuiltins, id);
+  } catch (e) {
+    return;
+  }
+}
+async function runWithTracingChannelSpan(message, execute) {
+  var _a232;
+  const diagnosticsChannel = await loadDiagnosticsChannel();
+  const tracingChannel = (_a232 = diagnosticsChannel == null ? undefined : diagnosticsChannel.tracingChannel) == null ? undefined : _a232.call(diagnosticsChannel, AI_SDK_TELEMETRY_TRACING_CHANNEL);
+  if (tracingChannel == null || tracingChannel.hasSubscribers === false) {
+    return await execute();
+  }
+  let executePromise;
+  let executionResult;
+  let executionError;
+  let hasExecutionResult = false;
+  let hasExecutionError = false;
+  const tracedExecute = () => {
+    try {
+      executePromise = Promise.resolve(execute());
+    } catch (error48) {
+      executePromise = Promise.reject(error48);
+    }
+    executePromise = executePromise.then((result) => {
+      executionResult = result;
+      hasExecutionResult = true;
+      return result;
+    }, (error48) => {
+      executionError = error48;
+      hasExecutionError = true;
+      throw error48;
+    });
+    return executePromise;
+  };
+  try {
+    return await tracingChannel.tracePromise(tracedExecute, message);
+  } catch (e) {
+    if (hasExecutionError) {
+      throw executionError;
+    }
+    if (hasExecutionResult) {
+      return executionResult;
+    }
+    if (executePromise != null) {
+      return await executePromise;
+    }
+    return await execute();
+  }
+}
+function openTelemetryChannelSpanContext({
+  message,
+  completion
+}) {
+  var _a232;
+  if (!isNodeRuntime2()) {
+    return;
+  }
+  const diagnosticsChannel = loadBuiltinModule2("node:diagnostics_channel");
+  const asyncHooks = loadBuiltinModule2("node:async_hooks");
+  const tracingChannel = (_a232 = diagnosticsChannel == null ? undefined : diagnosticsChannel.tracingChannel) == null ? undefined : _a232.call(diagnosticsChannel, AI_SDK_TELEMETRY_TRACING_CHANNEL);
+  if (tracingChannel == null || tracingChannel.hasSubscribers === false || asyncHooks == null) {
+    Promise.resolve(completion).catch(() => {});
+    return;
+  }
+  const context = message;
+  let asyncResource;
+  let asyncEndPublished = false;
+  const safePublish = (publish) => {
+    try {
+      publish();
+    } catch (e) {}
+  };
+  const publishAsyncEnd = ({
+    result,
+    error: error48
+  }) => {
+    if (asyncEndPublished) {
+      return;
+    }
+    asyncEndPublished = true;
+    if (error48 !== undefined) {
+      context.error = error48;
+      safePublish(() => tracingChannel.error.publish(context));
+    }
+    if (result !== undefined) {
+      context.result = result;
+    }
+    safePublish(() => tracingChannel.asyncEnd.publish(context));
+  };
+  safePublish(() => {
+    tracingChannel.start.runStores(context, () => {
+      asyncResource = new asyncHooks.AsyncResource("ai.telemetry");
+    });
+  });
+  safePublish(() => tracingChannel.end.publish(context));
+  Promise.resolve(completion).then((result) => publishAsyncEnd({ result }), (error48) => publishAsyncEnd({ error: error48 }));
+  return {
+    run: (execute) => asyncResource == null ? execute() : asyncResource.runInAsyncScope(execute)
+  };
+}
+function getGlobalTelemetryIntegrations() {
+  var _a232;
+  return (_a232 = globalThis.AI_SDK_TELEMETRY_INTEGRATIONS) != null ? _a232 : [];
+}
+function augmentEvent(event, telemetry) {
+  return Object.assign(Object.create(Object.getPrototypeOf(event)), event, telemetry);
+}
+function createTelemetryDispatcher({
+  telemetry
+}) {
+  if ((telemetry == null ? undefined : telemetry.isEnabled) === false) {
+    return {};
+  }
+  const localIntegrations = telemetry == null ? undefined : telemetry.integrations;
+  const integrations2 = localIntegrations != null ? asArray(localIntegrations) : getGlobalTelemetryIntegrations();
+  const telemetryMetadata = {
+    recordInputs: telemetry == null ? undefined : telemetry.recordInputs,
+    recordOutputs: telemetry == null ? undefined : telemetry.recordOutputs,
+    functionId: telemetry == null ? undefined : telemetry.functionId
+  };
+  const mergeTelemetryCallback = (key) => {
+    const integrationCallbacks = integrations2.map((integration) => {
+      var _a232;
+      return (_a232 = integration[key]) == null ? undefined : _a232.bind(integration);
+    }).filter(Boolean).map((callback) => (event) => callback(augmentEvent(event, telemetryMetadata)));
+    const mergedIntegrationCallback = mergeCallbacks(...integrationCallbacks);
+    return async (event) => {
+      await mergedIntegrationCallback(event);
+    };
+  };
+  const executeLanguageModelCallWrappers = integrations2.map((integration) => {
+    var _a232;
+    return (_a232 = integration.executeLanguageModelCall) == null ? undefined : _a232.bind(integration);
+  }).filter(Boolean);
+  const executeToolWrappers = integrations2.map((integration) => {
+    var _a232;
+    return (_a232 = integration.executeTool) == null ? undefined : _a232.bind(integration);
+  }).filter(Boolean);
+  return {
+    runInTracingChannelSpan: async ({ type, event, execute }) => await runWithTracingChannelSpan({
+      type,
+      event: augmentEvent(event, telemetryMetadata)
+    }, execute),
+    startTracingChannelContext: ({ type, event, completion }) => openTelemetryChannelSpanContext({
+      message: {
+        type,
+        event: augmentEvent(event, telemetryMetadata)
+      },
+      completion
+    }),
+    onStart: mergeTelemetryCallback("onStart"),
+    onStepStart: mergeTelemetryCallback("onStepStart"),
+    onLanguageModelCallStart: mergeTelemetryCallback("onLanguageModelCallStart"),
+    onLanguageModelCallEnd: mergeTelemetryCallback("onLanguageModelCallEnd"),
+    onToolExecutionStart: mergeTelemetryCallback("onToolExecutionStart"),
+    onToolExecutionEnd: mergeTelemetryCallback("onToolExecutionEnd"),
+    onStepEnd: mergeCallbacks(mergeTelemetryCallback("onStepEnd"), mergeTelemetryCallback("onStepFinish")),
+    onObjectStepStart: mergeTelemetryCallback("onObjectStepStart"),
+    onObjectStepEnd: mergeTelemetryCallback("onObjectStepEnd"),
+    onEmbedStart: mergeTelemetryCallback("onEmbedStart"),
+    onEmbedEnd: mergeTelemetryCallback("onEmbedEnd"),
+    onRerankStart: mergeTelemetryCallback("onRerankStart"),
+    onRerankEnd: mergeTelemetryCallback("onRerankEnd"),
+    onEnd: mergeTelemetryCallback("onEnd"),
+    onAbort: mergeTelemetryCallback("onAbort"),
+    onError: mergeTelemetryCallback("onError"),
+    executeLanguageModelCall: async ({ execute, ...event }) => {
+      const augmentedEvent = augmentEvent(event, telemetryMetadata);
+      let wrappedExecute = execute;
+      for (const executeWrapper of executeLanguageModelCallWrappers) {
+        const innerExecute = wrappedExecute;
+        wrappedExecute = () => executeWrapper({ ...augmentedEvent, execute: innerExecute });
+      }
+      return await runWithTracingChannelSpan({ type: "languageModelCall", event: augmentedEvent }, wrappedExecute);
+    },
+    executeTool: async ({ execute, ...event }) => {
+      const augmentedEvent = augmentEvent(event, telemetryMetadata);
+      let wrappedExecute = execute;
+      for (const executeWrapper of executeToolWrappers) {
+        const innerExecute = wrappedExecute;
+        wrappedExecute = () => executeWrapper({ ...augmentedEvent, execute: innerExecute });
+      }
+      return await wrappedExecute();
+    }
+  };
+}
+function asReasoningText(reasoningParts) {
+  const reasoningText = reasoningParts.map((part) => ("text" in part) ? part.text : "").join("");
+  return reasoningText.length > 0 ? reasoningText : undefined;
+}
+var DefaultStepResult = class {
+  constructor({
+    callId,
+    stepNumber,
+    provider,
+    modelId,
+    runtimeContext,
+    toolsContext,
+    content,
+    finishReason,
+    rawFinishReason,
+    usage,
+    performance,
+    warnings,
+    request,
+    response,
+    providerMetadata
+  }) {
+    this.callId = callId;
+    this.stepNumber = stepNumber;
+    this.model = { provider, modelId };
+    this.runtimeContext = runtimeContext;
+    this.toolsContext = toolsContext;
+    this.content = content;
+    this.finishReason = finishReason;
+    this.rawFinishReason = rawFinishReason;
+    this.usage = usage;
+    this.performance = performance;
+    this.warnings = warnings;
+    this.request = request;
+    this.response = response;
+    this.providerMetadata = providerMetadata;
+  }
+  get text() {
+    return this.content.filter((part) => part.type === "text").map((part) => part.text).join("");
+  }
+  get reasoning() {
+    return convertFromReasoningOutputs(this.content.filter((part) => part.type === "reasoning" || part.type === "reasoning-file"));
+  }
+  get reasoningText() {
+    return asReasoningText(this.reasoning);
+  }
+  get files() {
+    return this.content.filter((part) => part.type === "file").map((part) => part.file);
+  }
+  get sources() {
+    return this.content.filter((part) => part.type === "source");
+  }
+  get toolCalls() {
+    return this.content.filter((part) => part.type === "tool-call");
+  }
+  get staticToolCalls() {
+    return this.toolCalls.filter((toolCall) => toolCall.dynamic !== true);
+  }
+  get dynamicToolCalls() {
+    return this.toolCalls.filter((toolCall) => toolCall.dynamic === true);
+  }
+  get toolResults() {
+    return this.content.filter((part) => part.type === "tool-result");
+  }
+  get staticToolResults() {
+    return this.toolResults.filter((toolResult) => toolResult.dynamic !== true);
+  }
+  get dynamicToolResults() {
+    return this.toolResults.filter((toolResult) => toolResult.dynamic === true);
+  }
+};
+function filterIncludedContext({
+  context,
+  includeContext
+}) {
+  if (context == null) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(context).filter(([key]) => (includeContext == null ? undefined : includeContext[key]) === true));
+}
+function restrictStepResult({
+  step,
+  includeRuntimeContext,
+  includeToolsContext
+}) {
+  return new DefaultStepResult({
+    callId: step.callId,
+    stepNumber: step.stepNumber,
+    provider: step.model.provider,
+    modelId: step.model.modelId,
+    runtimeContext: filterIncludedContext({
+      context: step.runtimeContext,
+      includeContext: includeRuntimeContext
+    }),
+    toolsContext: filterToolsContext({
+      toolsContext: step.toolsContext,
+      includeToolsContext
+    }),
+    content: step.content,
+    finishReason: step.finishReason,
+    rawFinishReason: step.rawFinishReason,
+    usage: step.usage,
+    performance: step.performance,
+    warnings: step.warnings,
+    request: step.request,
+    response: step.response,
+    providerMetadata: step.providerMetadata
+  });
+}
+function filterToolsContext({
+  toolsContext,
+  includeToolsContext
+}) {
+  if (includeToolsContext == null) {
+    return {};
+  }
+  return Object.fromEntries(Object.entries(toolsContext).map(([toolName, toolContext]) => [
+    toolName,
+    filterToolContext({
+      toolName,
+      toolContext,
+      includeToolsContext
+    })
+  ]));
+}
+function filterToolContext({
+  toolName,
+  toolContext,
+  includeToolsContext
+}) {
+  const includeToolContext = includeToolsContext == null ? undefined : includeToolsContext[toolName];
+  return filterIncludedContext({
+    context: toolContext,
+    includeContext: includeToolContext
+  });
+}
+function createRestrictedTelemetryDispatcher({
+  telemetry,
+  includeRuntimeContext,
+  includeToolsContext
+}) {
+  const telemetryDispatcher = createTelemetryDispatcher({ telemetry });
+  return {
+    ...telemetryDispatcher,
+    onStart: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onStart) == null ? undefined : _a232.call(telemetryDispatcher, {
+        ...event,
+        runtimeContext: filterIncludedContext({
+          context: event.runtimeContext,
+          includeContext: includeRuntimeContext
+        }),
+        toolsContext: filterToolsContext({
+          toolsContext: event.toolsContext,
+          includeToolsContext
+        })
+      });
+    },
+    onStepStart: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onStepStart) == null ? undefined : _a232.call(telemetryDispatcher, {
+        ...event,
+        runtimeContext: filterIncludedContext({
+          context: event.runtimeContext,
+          includeContext: includeRuntimeContext
+        }),
+        steps: event.steps.map((step) => restrictStepResult({
+          step,
+          includeRuntimeContext,
+          includeToolsContext
+        })),
+        toolsContext: filterToolsContext({
+          toolsContext: event.toolsContext,
+          includeToolsContext
+        })
+      });
+    },
+    onStepEnd: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onStepEnd) == null ? undefined : _a232.call(telemetryDispatcher, restrictStepResult({
+        step: event,
+        includeRuntimeContext,
+        includeToolsContext
+      }));
+    },
+    onStepFinish: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onStepEnd) == null ? undefined : _a232.call(telemetryDispatcher, restrictStepResult({
+        step: event,
+        includeRuntimeContext,
+        includeToolsContext
+      }));
+    },
+    onEnd: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onEnd) == null ? undefined : _a232.call(telemetryDispatcher, ((restrictedSteps) => {
+        return {
+          ...event,
+          runtimeContext: filterIncludedContext({
+            context: event.runtimeContext,
+            includeContext: includeRuntimeContext
+          }),
+          steps: restrictedSteps,
+          finalStep: restrictedSteps.at(-1),
+          toolsContext: filterToolsContext({
+            toolsContext: event.toolsContext,
+            includeToolsContext
+          })
+        };
+      })(event.steps.map((step) => restrictStepResult({
+        step,
+        includeRuntimeContext,
+        includeToolsContext
+      }))));
+    },
+    onAbort: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onAbort) == null ? undefined : _a232.call(telemetryDispatcher, {
+        ...event,
+        steps: event.steps.map((step) => restrictStepResult({
+          step,
+          includeRuntimeContext,
+          includeToolsContext
+        }))
+      });
+    },
+    onToolExecutionStart: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onToolExecutionStart) == null ? undefined : _a232.call(telemetryDispatcher, {
+        ...event,
+        toolContext: filterToolContext({
+          toolName: event.toolCall.toolName,
+          toolContext: event.toolContext,
+          includeToolsContext
+        })
+      });
+    },
+    onToolExecutionEnd: (event) => {
+      var _a232;
+      return (_a232 = telemetryDispatcher.onToolExecutionEnd) == null ? undefined : _a232.call(telemetryDispatcher, {
+        ...event,
+        toolContext: filterToolContext({
+          toolName: event.toolCall.toolName,
+          toolContext: event.toolContext,
+          includeToolsContext
+        })
+      });
+    }
+  };
+}
+function isStepCount(stepCount) {
+  return ({ steps }) => steps.length === stepCount;
+}
+async function isStopConditionMet({
+  stopConditions,
+  steps
+}) {
+  return (await Promise.all(stopConditions.map((condition) => condition({ steps })))).some((result) => result);
+}
+function sumTokenCounts(tokenCount1, tokenCount2) {
+  return tokenCount1 == null && tokenCount2 == null ? undefined : (tokenCount1 != null ? tokenCount1 : 0) + (tokenCount2 != null ? tokenCount2 : 0);
+}
+async function toResponseMessages({
+  content: inputContent,
+  tools
+}) {
+  const responseMessages = [];
+  const toolCallOrder = /* @__PURE__ */ new Map;
+  const content = [];
+  for (const part of inputContent) {
+    if (part.type === "source") {
+      continue;
+    }
+    if ((part.type === "tool-result" || part.type === "tool-error") && !part.providerExecuted) {
+      continue;
+    }
+    if (part.type === "text" && part.text.length === 0) {
+      continue;
+    }
+    switch (part.type) {
+      case "text":
+        content.push({
+          type: "text",
+          text: part.text,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      case "custom":
+        content.push({
+          type: "custom",
+          kind: part.kind,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      case "reasoning":
+        content.push({
+          type: "reasoning",
+          text: part.text,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      case "file":
+        content.push({
+          type: "file",
+          data: part.file.base64,
+          mediaType: part.file.mediaType,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      case "reasoning-file":
+        content.push({
+          type: "reasoning-file",
+          data: part.file.base64,
+          mediaType: part.file.mediaType,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      case "tool-call":
+        if (!toolCallOrder.has(part.toolCallId)) {
+          toolCallOrder.set(part.toolCallId, toolCallOrder.size);
+        }
+        content.push({
+          type: "tool-call",
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          input: part.invalid && typeof part.input !== "object" ? {} : part.input,
+          providerExecuted: part.providerExecuted,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      case "tool-result": {
+        const output = await createToolModelOutput({
+          toolCallId: part.toolCallId,
+          input: part.input,
+          tool: getOwn(tools, part.toolName),
+          output: part.output,
+          errorMode: "none"
+        });
+        content.push({
+          type: "tool-result",
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          output,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      }
+      case "tool-error": {
+        const output = await createToolModelOutput({
+          toolCallId: part.toolCallId,
+          input: part.input,
+          tool: getOwn(tools, part.toolName),
+          output: part.error,
+          errorMode: "json"
+        });
+        content.push({
+          type: "tool-result",
+          toolCallId: part.toolCallId,
+          toolName: part.toolName,
+          output,
+          providerOptions: part.providerMetadata
+        });
+        break;
+      }
+      case "tool-approval-request":
+        content.push({
+          type: "tool-approval-request",
+          approvalId: part.approvalId,
+          toolCallId: part.toolCall.toolCallId,
+          isAutomatic: part.isAutomatic,
+          ...part.signature != null ? { signature: part.signature } : {}
+        });
+        break;
+    }
+  }
+  if (content.length > 0) {
+    responseMessages.push({
+      role: "assistant",
+      content
+    });
+  }
+  const toolResultContent = [];
+  for (const part of inputContent) {
+    if (part.type !== "tool-approval-response" && part.type !== "tool-result" && part.type !== "tool-error") {
+      continue;
+    }
+    if (part.type === "tool-approval-response") {
+      toolResultContent.push({
+        type: "tool-approval-response",
+        approvalId: part.approvalId,
+        approved: part.approved,
+        reason: part.reason,
+        providerExecuted: part.providerExecuted
+      });
+      if (part.approved === false) {
+        toolResultContent.push({
+          type: "tool-result",
+          toolCallId: part.toolCall.toolCallId,
+          toolName: part.toolCall.toolName,
+          output: {
+            type: "execution-denied",
+            reason: part.reason
+          }
+        });
+      }
+      continue;
+    }
+    if (part.providerExecuted) {
+      continue;
+    }
+    const output = await createToolModelOutput({
+      toolCallId: part.toolCallId,
+      input: part.input,
+      tool: getOwn(tools, part.toolName),
+      output: part.type === "tool-result" ? part.output : part.error,
+      errorMode: part.type === "tool-error" ? "text" : "none"
+    });
+    toolResultContent.push({
+      type: "tool-result",
+      toolCallId: part.toolCallId,
+      toolName: part.toolName,
+      output,
+      ...part.providerMetadata != null ? { providerOptions: part.providerMetadata } : {}
+    });
+  }
+  if (toolResultContent.length > 0) {
+    responseMessages.push({
+      role: "tool",
+      content: sortToolResultContentByToolCallOrder({
+        toolResultContent,
+        toolCallOrder
+      })
+    });
+  }
+  return responseMessages;
+}
+function sortToolResultContentByToolCallOrder({
+  toolResultContent,
+  toolCallOrder
+}) {
+  const sortedToolResults = toolResultContent.filter((part) => part.type === "tool-result").map((part, index2) => ({ part, index: index2 })).sort((a, b) => {
+    const aOrder = toolCallOrder.get(a.part.toolCallId);
+    const bOrder = toolCallOrder.get(b.part.toolCallId);
+    if (aOrder == null && bOrder == null) {
+      return a.index - b.index;
+    }
+    if (aOrder == null) {
+      return 1;
+    }
+    if (bOrder == null) {
+      return -1;
+    }
+    return aOrder - bOrder || a.index - b.index;
+  }).map(({ part }) => part);
+  let toolResultIndex = 0;
+  return toolResultContent.map((part) => part.type === "tool-result" ? sortedToolResults[toolResultIndex++] : part);
+}
+var DIRECT_TOOL_CALL = "AI_SDK_DIRECT_TOOL_CALL";
+function resolveToolCallerConfiguration({
+  tools,
+  toolCallers
+}) {
+  if (tools == null || toolCallers == null) {
+    return;
+  }
+  const resolved = {};
+  for (const [toolName, callers] of Object.entries(toolCallers)) {
+    if (!Object.prototype.hasOwnProperty.call(tools, toolName)) {
+      throw new InvalidArgumentError2({
+        parameter: "experimental_toolCallers",
+        value: toolCallers,
+        message: `unknown tool "${toolName}".`
+      });
+    }
+    if (!Array.isArray(callers)) {
+      throw new InvalidArgumentError2({
+        parameter: "experimental_toolCallers",
+        value: toolCallers,
+        message: `callers for tool "${toolName}" must be an array.`
+      });
+    }
+    resolved[toolName] = callers.map((caller) => {
+      if (caller === DIRECT_TOOL_CALL) {
+        return caller;
+      }
+      if (typeof caller !== "string" || !Object.prototype.hasOwnProperty.call(tools, caller) || getToolCaller(tools[caller]) == null) {
+        throw new InvalidArgumentError2({
+          parameter: "experimental_toolCallers",
+          value: toolCallers,
+          message: `tool "${toolName}" contains an invalid caller.`
+        });
+      }
+      return caller;
+    });
+  }
+  return resolved;
+}
+function prepareToolsForToolCallers({
+  tools,
+  toolCallers
+}) {
+  var _a232, _b17;
+  if (tools == null || toolCallers == null) {
+    return { executionTools: tools, modelTools: tools };
+  }
+  const executionTools = { ...tools };
+  const modelTools = { ...tools };
+  const localToolsByCaller = /* @__PURE__ */ new Map;
+  for (const [toolName, callerNames] of Object.entries(toolCallers)) {
+    const tool2 = executionTools[toolName];
+    if (tool2 == null) {
+      continue;
+    }
+    let availableDirectly = false;
+    let availableToProvider = false;
+    let preparedTool = tool2;
+    for (const callerName of callerNames) {
+      if (callerName === DIRECT_TOOL_CALL) {
+        availableDirectly = true;
+        continue;
+      }
+      const caller = getToolCaller(executionTools[callerName]);
+      if (caller == null) {
+        continue;
+      }
+      if (caller.type === "provider") {
+        availableToProvider = true;
+        preparedTool = {
+          ...preparedTool,
+          providerOptions: caller.prepareProviderOptions(preparedTool.providerOptions)
+        };
+      } else {
+        const localTools = (_a232 = localToolsByCaller.get(callerName)) != null ? _a232 : {};
+        localTools[toolName] = preparedTool;
+        localToolsByCaller.set(callerName, localTools);
+      }
+    }
+    executionTools[toolName] = preparedTool;
+    if (availableDirectly || availableToProvider) {
+      modelTools[toolName] = preparedTool;
+    } else {
+      delete modelTools[toolName];
+    }
+  }
+  for (const [callerName, callerTool] of Object.entries(executionTools)) {
+    const caller = getToolCaller(callerTool);
+    if ((caller == null ? undefined : caller.type) !== "local") {
+      continue;
+    }
+    const boundCaller = caller.bind((_b17 = localToolsByCaller.get(callerName)) != null ? _b17 : {});
+    executionTools[callerName] = boundCaller;
+    if (Object.prototype.hasOwnProperty.call(modelTools, callerName)) {
+      modelTools[callerName] = boundCaller;
+    }
+  }
+  return { executionTools, modelTools };
+}
+var encoder = new TextEncoder;
+function canonicalJSON(value2) {
+  if (value2 === null || value2 === undefined) {
+    return JSON.stringify(value2);
+  }
+  if (typeof value2 !== "object") {
+    return JSON.stringify(value2);
+  }
+  if (Array.isArray(value2)) {
+    return `[${value2.map(canonicalJSON).join(",")}]`;
+  }
+  const keys = Object.keys(value2).sort();
+  const entries = keys.map((k) => `${JSON.stringify(k)}:${canonicalJSON(value2[k])}`);
+  return `{${entries.join(",")}}`;
+}
+function toBase64url(bytes) {
+  return convertUint8ArrayToBase64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+async function hashCanonical(value2) {
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(canonicalJSON(value2)));
+  return toBase64url(new Uint8Array(digest));
+}
+var encoder2 = new TextEncoder;
+function fromBase64url(str) {
+  return convertBase64ToUint8Array(str);
+}
+async function importKey(secret) {
+  const keyData = typeof secret === "string" ? encoder2.encode(secret) : secret;
+  return crypto.subtle.importKey("raw", keyData, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
+}
+function buildPayload(approvalId, toolCallId, toolName, inputDigest) {
+  return encoder2.encode(JSON.stringify([
+    "ai-sdk-tool-approval-v1",
+    approvalId,
+    toolCallId,
+    toolName,
+    inputDigest
+  ]));
+}
+function buildLegacyPayload(approvalId, toolCallId, toolName, inputDigest) {
+  return encoder2.encode(`${approvalId}
+${toolCallId}
+${toolName}
+${inputDigest}`);
+}
+async function signToolApproval({
+  secret,
+  approvalId,
+  toolCallId,
+  toolName,
+  input
+}) {
+  const key = await importKey(secret);
+  const inputDigest = await hashCanonical(input);
+  const payload = buildPayload(approvalId, toolCallId, toolName, inputDigest);
+  const sig = await crypto.subtle.sign("HMAC", key, payload);
+  return toBase64url(new Uint8Array(sig));
+}
+async function verifyToolApprovalSignature({
+  secret,
+  signature,
+  approvalId,
+  toolCallId,
+  toolName,
+  input
+}) {
+  const key = await importKey(secret);
+  const inputDigest = await hashCanonical(input);
+  const sigBytes = fromBase64url(signature);
+  const payload = buildPayload(approvalId, toolCallId, toolName, inputDigest);
+  if (await crypto.subtle.verify("HMAC", key, sigBytes, payload)) {
+    return true;
+  }
+  if (!approvalId.includes(`
+`) && !toolCallId.includes(`
+`) && !toolName.includes(`
+`)) {
+    const legacyPayload = buildLegacyPayload(approvalId, toolCallId, toolName, inputDigest);
+    return crypto.subtle.verify("HMAC", key, sigBytes, legacyPayload);
+  }
+  return false;
+}
+async function maybeSignApproval({
+  secret,
+  approvalId,
+  toolCallId,
+  toolName,
+  input
+}) {
+  if (secret == null)
+    return;
+  return signToolApproval({ secret, approvalId, toolCallId, toolName, input });
+}
+async function validateApprovedToolApprovals({
+  approvedToolApprovals,
+  tools,
+  toolApproval,
+  messages: messages2,
+  toolsContext,
+  runtimeContext,
+  toolApprovalSecret
+}) {
+  var _a232;
+  const approved = [];
+  const denied = [];
+  for (const approval of approvedToolApprovals) {
+    const { toolCall, approvalRequest } = approval;
+    const tool2 = getOwn(tools, toolCall.toolName);
+    if (toolApprovalSecret != null) {
+      if (approvalRequest.signature == null) {
+        throw new InvalidToolApprovalSignatureError({
+          approvalId: approvalRequest.approvalId,
+          toolCallId: toolCall.toolCallId,
+          reason: "missing signature"
+        });
+      }
+      const valid = await verifyToolApprovalSignature({
+        secret: toolApprovalSecret,
+        signature: approvalRequest.signature,
+        approvalId: approvalRequest.approvalId,
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName,
+        input: toolCall.input
+      });
+      if (!valid) {
+        throw new InvalidToolApprovalSignatureError({
+          approvalId: approvalRequest.approvalId,
+          toolCallId: toolCall.toolCallId,
+          reason: "invalid signature"
+        });
+      }
+    }
+    if (isExecutableTool(tool2) && tool2.inputSchema != null) {
+      const validation = await safeValidateTypes({
+        value: toolCall.input,
+        schema: asSchema(tool2.inputSchema)
+      });
+      if (!validation.success) {
+        throw new InvalidToolInputError({
+          toolName: toolCall.toolName,
+          toolInput: JSON.stringify(toolCall.input),
+          cause: validation.error
+        });
+      }
+    }
+    const approvalStatus = await resolveToolApproval({
+      tools,
+      toolApproval,
+      toolCall,
+      messages: messages2,
+      toolsContext,
+      runtimeContext
+    });
+    if (approvalStatus.type === "denied") {
+      denied.push({
+        ...approval,
+        approvalResponse: {
+          ...approval.approvalResponse,
+          approved: false,
+          reason: (_a232 = approvalStatus.reason) != null ? _a232 : approval.approvalResponse.reason
+        }
+      });
+    } else {
+      approved.push(approval);
+    }
+  }
+  return { approvedToolApprovals: approved, deniedToolApprovals: denied };
+}
+var originalGenerateId = createIdGenerator({
+  prefix: "aitxt",
+  size: 24
+});
+var originalGenerateCallId = createIdGenerator({
+  prefix: "call",
+  size: 24
+});
+async function generateText({
+  model: modelArg,
+  tools,
+  toolChoice,
+  instructions,
+  system,
+  prompt,
+  messages: messages2,
+  allowSystemInMessages,
+  maxRetries: maxRetriesArg,
+  abortSignal,
+  timeout,
+  headers,
+  stopWhen = isStepCount(1),
+  experimental_sandbox: sandbox,
+  output,
+  toolApproval,
+  experimental_toolCallers,
+  experimental_toolApprovalSecret,
+  experimental_telemetry,
+  telemetry = experimental_telemetry,
+  providerOptions,
+  activeTools,
+  toolOrder,
+  prepareStep,
+  experimental_repairToolCall,
+  repairToolCall = experimental_repairToolCall,
+  experimental_refineToolInput: refineToolInput,
+  experimental_download: download2,
+  runtimeContext = {},
+  toolsContext = {},
+  experimental_include,
+  include = experimental_include,
+  _internal: {
+    generateId: generateId3 = originalGenerateId,
+    generateCallId = originalGenerateCallId,
+    now: now2 = now
+  } = {},
+  onStart,
+  experimental_onStart,
+  onStepStart,
+  experimental_onStepStart,
+  onLanguageModelCallStart,
+  experimental_onLanguageModelCallStart,
+  onLanguageModelCallEnd,
+  experimental_onLanguageModelCallEnd,
+  onToolExecutionStart,
+  onToolExecutionEnd,
+  experimental_onToolCallStart,
+  experimental_onToolCallFinish,
+  onStepEnd,
+  onStepFinish,
+  onFinish,
+  onEnd = onFinish,
+  ...settings2
+}) {
+  var _a232, _b17, _c, _d;
+  include = {
+    requestBody: (_a232 = include == null ? undefined : include.requestBody) != null ? _a232 : false,
+    requestMessages: (_b17 = include == null ? undefined : include.requestMessages) != null ? _b17 : false,
+    responseBody: (_c = include == null ? undefined : include.responseBody) != null ? _c : false
+  };
+  const model = resolveLanguageModel(modelArg);
+  const resolvedToolCallers = resolveToolCallerConfiguration({
+    tools,
+    toolCallers: experimental_toolCallers
+  });
+  const stopConditions = asArray(stopWhen);
+  const resolvedOnStart = onStart != null ? onStart : experimental_onStart;
+  const resolvedOnStepStart = onStepStart != null ? onStepStart : experimental_onStepStart;
+  const resolvedOnLanguageModelCallStart = onLanguageModelCallStart != null ? onLanguageModelCallStart : experimental_onLanguageModelCallStart;
+  const resolvedOnLanguageModelCallEnd = onLanguageModelCallEnd != null ? onLanguageModelCallEnd : experimental_onLanguageModelCallEnd;
+  const resolvedOnToolExecutionStart = onToolExecutionStart != null ? onToolExecutionStart : experimental_onToolCallStart;
+  const resolvedOnToolExecutionEnd = onToolExecutionEnd != null ? onToolExecutionEnd : experimental_onToolCallFinish;
+  const resolvedOnStepEnd = onStepEnd != null ? onStepEnd : onStepFinish;
+  const unsupportedTimeoutWarnings = [];
+  if (getFirstChunkTimeoutMs(timeout) != null) {
+    unsupportedTimeoutWarnings.push({
+      type: "unsupported",
+      feature: "timeout.firstChunkMs",
+      details: "The firstChunkMs timeout is only supported by streaming functions."
+    });
+  }
+  if (getChunkTimeoutMs(timeout) != null) {
+    unsupportedTimeoutWarnings.push({
+      type: "unsupported",
+      feature: "timeout.chunkMs",
+      details: "The chunkMs timeout is only supported by streaming functions."
+    });
+  }
+  if (unsupportedTimeoutWarnings.length > 0) {
+    logWarnings({
+      warnings: unsupportedTimeoutWarnings,
+      provider: model.provider,
+      model: model.modelId
+    });
+  }
+  const totalTimeoutMs = getTotalTimeoutMs(timeout);
+  const stepTimeoutMs = getStepTimeoutMs(timeout);
+  const stepAbortController = stepTimeoutMs != null ? new AbortController : undefined;
+  const mergedAbortSignal = mergeAbortSignals(abortSignal, totalTimeoutMs, stepAbortController == null ? undefined : stepAbortController.signal);
+  const { maxRetries, retry } = prepareRetries({
+    maxRetries: maxRetriesArg,
+    abortSignal: mergedAbortSignal
+  });
+  const callSettings = prepareLanguageModelCallOptions(settings2);
+  const headersWithUserAgent = withUserAgentSuffix(headers != null ? headers : {}, `ai/${VERSION4}`);
+  const initialPrompt = await standardizePrompt({
+    instructions,
+    system,
+    prompt,
+    messages: messages2,
+    allowSystemInMessages
+  });
+  const callId = generateCallId();
+  const telemetryDispatcher = createRestrictedTelemetryDispatcher({
+    telemetry,
+    includeRuntimeContext: telemetry == null ? undefined : telemetry.includeRuntimeContext,
+    includeToolsContext: telemetry == null ? undefined : telemetry.includeToolsContext
+  });
+  const runInTracingChannelSpan = (_d = telemetryDispatcher.runInTracingChannelSpan) != null ? _d : async ({ execute }) => await execute();
+  const generateTextStartEvent = {
+    callId,
+    operationId: "ai.generateText",
+    provider: model.provider,
+    modelId: model.modelId,
+    instructions: initialPrompt.instructions,
+    messages: initialPrompt.messages,
+    tools,
+    toolChoice,
+    activeTools,
+    toolOrder,
+    maxOutputTokens: callSettings.maxOutputTokens,
+    temperature: callSettings.temperature,
+    topP: callSettings.topP,
+    topK: callSettings.topK,
+    presencePenalty: callSettings.presencePenalty,
+    frequencyPenalty: callSettings.frequencyPenalty,
+    stopSequences: callSettings.stopSequences,
+    seed: callSettings.seed,
+    reasoning: callSettings.reasoning,
+    maxRetries,
+    timeout,
+    headers: headersWithUserAgent,
+    providerOptions,
+    output,
+    runtimeContext,
+    toolsContext
+  };
+  const executeGenerateText = async () => {
+    var _a242;
+    await notify({
+      event: generateTextStartEvent,
+      callbacks: [resolvedOnStart, telemetryDispatcher.onStart]
+    });
+    try {
+      const initialMessages = initialPrompt.messages;
+      const initialResponseMessages = [];
+      const {
+        approvedToolApprovals,
+        deniedToolApprovals: collectedDeniedToolApprovals
+      } = collectToolApprovals({ messages: initialMessages });
+      const {
+        approvedToolApprovals: localApprovedToolApprovals,
+        deniedToolApprovals: revalidationDeniedToolApprovals
+      } = await validateApprovedToolApprovals({
+        approvedToolApprovals: approvedToolApprovals.filter((toolApproval2) => !toolApproval2.toolCall.providerExecuted),
+        tools,
+        toolApproval,
+        messages: initialMessages,
+        toolsContext,
+        runtimeContext,
+        toolApprovalSecret: experimental_toolApprovalSecret
+      });
+      const deniedToolApprovals = [
+        ...collectedDeniedToolApprovals,
+        ...revalidationDeniedToolApprovals
+      ];
+      const deniedToolApprovalsWithoutResults = deniedToolApprovals.filter((toolApproval2) => toolApproval2.existingToolResult == null);
+      if (deniedToolApprovalsWithoutResults.length > 0 || localApprovedToolApprovals.length > 0) {
+        const toolResults2 = await executeTools({
+          toolCalls: localApprovedToolApprovals.map((toolApproval2) => toolApproval2.toolCall),
+          tools,
+          callId,
+          messages: initialMessages,
+          abortSignal: mergedAbortSignal,
+          timeout,
+          experimental_sandbox: sandbox,
+          toolsContext,
+          onToolExecutionStart: (event) => notify({
+            event,
+            callbacks: [
+              resolvedOnToolExecutionStart,
+              telemetryDispatcher.onToolExecutionStart
+            ]
+          }),
+          onToolExecutionEnd: (event) => notify({
+            event,
+            callbacks: [
+              resolvedOnToolExecutionEnd,
+              telemetryDispatcher.onToolExecutionEnd
+            ]
+          }),
+          executeToolInTelemetryContext: telemetryDispatcher.executeTool,
+          runInTracingChannelSpan
+        });
+        const toolContent = [];
+        for (const result of toolResults2) {
+          const output2 = result.output;
+          const modelOutput = await createToolModelOutput({
+            toolCallId: output2.toolCallId,
+            input: output2.input,
+            tool: getOwn(tools, output2.toolName),
+            output: output2.type === "tool-result" ? output2.output : output2.error,
+            errorMode: output2.type === "tool-error" ? "text" : "none"
+          });
+          toolContent.push({
+            type: "tool-result",
+            toolCallId: output2.toolCallId,
+            toolName: output2.toolName,
+            output: modelOutput
+          });
+        }
+        for (const toolApproval2 of deniedToolApprovalsWithoutResults) {
+          toolContent.push({
+            type: "tool-result",
+            toolCallId: toolApproval2.toolCall.toolCallId,
+            toolName: toolApproval2.toolCall.toolName,
+            output: {
+              type: "execution-denied",
+              reason: toolApproval2.approvalResponse.reason,
+              ...toolApproval2.toolCall.providerExecuted && {
+                providerOptions: {
+                  openai: {
+                    approvalId: toolApproval2.approvalResponse.approvalId
+                  }
+                }
+              }
+            }
+          });
+        }
+        initialResponseMessages.push({
+          role: "tool",
+          content: toolContent
+        });
+      }
+      const callSettings2 = prepareLanguageModelCallOptions(settings2);
+      let currentModelResponse;
+      let clientToolCalls = [];
+      let clientToolOutputs = [];
+      let toolApprovalResponses = [];
+      let deniedToolApprovalResponses = [];
+      const steps = [];
+      let instructionsForNextStep = initialPrompt.instructions;
+      let messagesForNextStep = [
+        ...initialMessages,
+        ...initialResponseMessages
+      ];
+      const pendingDeferredToolCalls = /* @__PURE__ */ new Map;
+      do {
+        if (steps.length > 0) {
+          mergedAbortSignal == null || mergedAbortSignal.throwIfAborted();
+        }
+        const stepTimeoutId = setAbortTimeout({
+          abortController: stepAbortController,
+          label: "Step",
+          timeoutMs: stepTimeoutMs
+        });
+        const stepNumber = steps.length;
+        try {
+          await runInTracingChannelSpan({
+            type: "step",
+            event: { callId, stepNumber },
+            execute: async () => {
+              var _a252, _b24, _c2, _d2, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q;
+              const accumulatedResponseMessages = [
+                ...initialResponseMessages,
+                ...steps.flatMap((step) => step.response.messages)
+              ];
+              const stepInputMessages = messagesForNextStep;
+              const prepareStepResult = await (prepareStep == null ? undefined : prepareStep({
+                model,
+                steps,
+                stepNumber: steps.length,
+                instructions: instructionsForNextStep,
+                initialInstructions: initialPrompt.instructions,
+                messages: stepInputMessages,
+                initialMessages,
+                responseMessages: accumulatedResponseMessages,
+                runtimeContext,
+                toolsContext,
+                experimental_sandbox: sandbox
+              }));
+              const stepSandbox = (_a252 = prepareStepResult == null ? undefined : prepareStepResult.experimental_sandbox) != null ? _a252 : sandbox;
+              const stepModel = resolveLanguageModel((_b24 = prepareStepResult == null ? undefined : prepareStepResult.model) != null ? _b24 : model);
+              const stepInstructions = (_d2 = (_c2 = prepareStepResult == null ? undefined : prepareStepResult.instructions) != null ? _c2 : prepareStepResult == null ? undefined : prepareStepResult.system) != null ? _d2 : instructionsForNextStep;
+              const promptMessages = await convertToLanguageModelPrompt({
+                prompt: {
+                  instructions: stepInstructions,
+                  messages: (_e = prepareStepResult == null ? undefined : prepareStepResult.messages) != null ? _e : stepInputMessages
+                },
+                supportedUrls: await stepModel.supportedUrls,
+                download: download2,
+                provider: stepModel.provider.split(".")[0]
+              });
+              runtimeContext = (_f = prepareStepResult == null ? undefined : prepareStepResult.runtimeContext) != null ? _f : runtimeContext;
+              toolsContext = (_g = prepareStepResult == null ? undefined : prepareStepResult.toolsContext) != null ? _g : toolsContext;
+              const stepActiveTools = filterActiveTools({
+                tools,
+                activeTools: (_h = prepareStepResult == null ? undefined : prepareStepResult.activeTools) != null ? _h : activeTools
+              });
+              const {
+                executionTools: stepExecutionTools,
+                modelTools: stepModelTools
+              } = prepareToolsForToolCallers({
+                tools: stepActiveTools,
+                toolCallers: resolvedToolCallers
+              });
+              const stepToolOrder = (_i = prepareStepResult == null ? undefined : prepareStepResult.toolOrder) != null ? _i : toolOrder;
+              const stepTools = await prepareTools({
+                tools: stepModelTools,
+                toolOrder: stepToolOrder,
+                toolsContext,
+                experimental_sandbox: stepSandbox
+              });
+              const stepToolChoice = prepareToolChoice({
+                toolChoice: (_j = prepareStepResult == null ? undefined : prepareStepResult.toolChoice) != null ? _j : toolChoice
+              });
+              const stepMessages = (_k = prepareStepResult == null ? undefined : prepareStepResult.messages) != null ? _k : stepInputMessages;
+              const stepProviderOptions = mergeObjects(providerOptions, prepareStepResult == null ? undefined : prepareStepResult.providerOptions);
+              const stepCallSettings = prepareStepCallSettings({
+                callSettings: callSettings2,
+                stepSettings: prepareStepResult
+              });
+              await notify({
+                event: {
+                  callId,
+                  provider: stepModel.provider,
+                  modelId: stepModel.modelId,
+                  stepNumber,
+                  instructions: stepInstructions,
+                  messages: stepMessages,
+                  tools,
+                  toolChoice: (_l = prepareStepResult == null ? undefined : prepareStepResult.toolChoice) != null ? _l : toolChoice,
+                  activeTools: (_m = prepareStepResult == null ? undefined : prepareStepResult.activeTools) != null ? _m : activeTools,
+                  toolOrder: stepToolOrder,
+                  steps: [...steps],
+                  providerOptions: stepProviderOptions,
+                  output,
+                  runtimeContext,
+                  promptMessages,
+                  stepTools,
+                  stepToolChoice,
+                  toolsContext
+                },
+                callbacks: [
+                  resolvedOnStepStart,
+                  telemetryDispatcher.onStepStart
+                ]
+              });
+              const languageModelCallContext = {
+                provider: stepModel.provider,
+                modelId: stepModel.modelId,
+                instructions: stepInstructions,
+                messages: stepMessages,
+                tools: stepTools,
+                ...stepCallSettings
+              };
+              const languageModelCallStartEvent = {
+                callId,
+                ...languageModelCallContext
+              };
+              const stepStartTimestampMs = now2();
+              await notify({
+                event: languageModelCallStartEvent,
+                callbacks: [
+                  resolvedOnLanguageModelCallStart,
+                  telemetryDispatcher.onLanguageModelCallStart
+                ]
+              });
+              const executeLanguageModelCallInTelemetryContext = (_n = telemetryDispatcher.executeLanguageModelCall) != null ? _n : async ({ execute }) => await execute();
+              currentModelResponse = await retry(async () => {
+                var _a26, _b33, _c3, _d3, _e2, _f2, _g2, _h2;
+                const result = await executeLanguageModelCallInTelemetryContext({
+                  ...languageModelCallStartEvent,
+                  execute: async () => await stepModel.doGenerate({
+                    ...stepCallSettings,
+                    tools: stepTools,
+                    toolChoice: stepToolChoice,
+                    responseFormat: await (output == null ? undefined : output.responseFormat),
+                    prompt: promptMessages,
+                    providerOptions: stepProviderOptions,
+                    abortSignal: mergedAbortSignal,
+                    headers: headersWithUserAgent
+                  })
+                });
+                const responseData = {
+                  id: (_b33 = (_a26 = result.response) == null ? undefined : _a26.id) != null ? _b33 : generateId3(),
+                  timestamp: (_d3 = (_c3 = result.response) == null ? undefined : _c3.timestamp) != null ? _d3 : /* @__PURE__ */ new Date,
+                  modelId: (_f2 = (_e2 = result.response) == null ? undefined : _e2.modelId) != null ? _f2 : stepModel.modelId,
+                  headers: (_g2 = result.response) == null ? undefined : _g2.headers,
+                  body: (_h2 = result.response) == null ? undefined : _h2.body
+                };
+                return { ...result, response: responseData };
+              });
+              const responseTimeMs = now2() - stepStartTimestampMs;
+              const stepUsage = asLanguageModelUsage(currentModelResponse.usage);
+              const stepToolCalls = await Promise.all(currentModelResponse.content.filter((part) => part.type === "tool-call").map((toolCall) => parseToolCall({
+                toolCall,
+                tools: stepExecutionTools,
+                repairToolCall,
+                refineToolInput,
+                instructions: stepInstructions,
+                messages: stepMessages
+              })));
+              const toolApprovalRequests = {};
+              const stepToolApprovalResponses = {};
+              const blockedToolCallIds = /* @__PURE__ */ new Set;
+              const modelCallContent = asContent({
+                content: currentModelResponse.content,
+                toolCalls: stepToolCalls,
+                toolOutputs: [],
+                toolApprovalRequests: [],
+                toolApprovalResponses: [],
+                tools
+              });
+              await notify({
+                event: {
+                  callId,
+                  provider: stepModel.provider,
+                  modelId: currentModelResponse.response.modelId,
+                  finishReason: currentModelResponse.finishReason.unified,
+                  usage: stepUsage,
+                  content: modelCallContent,
+                  responseId: currentModelResponse.response.id,
+                  ...currentModelResponse.providerMetadata != null ? {
+                    providerMetadata: currentModelResponse.providerMetadata
+                  } : {},
+                  performance: {
+                    responseTimeMs,
+                    effectiveOutputTokensPerSecond: calculateTokensPerSecond({
+                      tokens: stepUsage.outputTokens,
+                      durationMs: responseTimeMs
+                    }),
+                    outputTokensPerSecond: undefined,
+                    inputTokensPerSecond: undefined,
+                    effectiveTotalTokensPerSecond: calculateTokensPerSecond({
+                      tokens: sumTokenCounts(stepUsage.inputTokens, stepUsage.outputTokens),
+                      durationMs: responseTimeMs
+                    }),
+                    timeToFirstOutputMs: undefined
+                  }
+                },
+                callbacks: [
+                  resolvedOnLanguageModelCallEnd,
+                  telemetryDispatcher.onLanguageModelCallEnd
+                ]
+              });
+              for (const toolCall of stepToolCalls) {
+                if (toolCall.invalid) {
+                  continue;
+                }
+                const tool2 = getOwn(stepExecutionTools, toolCall.toolName);
+                if (tool2 == null) {
+                  continue;
+                }
+                if (tool2.onInputStart != null) {
+                  await tool2.onInputStart({
+                    toolCallId: toolCall.toolCallId,
+                    messages: stepMessages,
+                    abortSignal: mergedAbortSignal,
+                    context: runtimeContext
+                  });
+                }
+                if ((tool2 == null ? undefined : tool2.onInputAvailable) != null) {
+                  await tool2.onInputAvailable({
+                    input: toolCall.input,
+                    toolCallId: toolCall.toolCallId,
+                    messages: stepMessages,
+                    abortSignal: mergedAbortSignal,
+                    context: runtimeContext
+                  });
+                }
+                const toolApprovalStatus = await resolveToolApproval({
+                  tools: stepExecutionTools,
+                  toolApproval,
+                  toolCall,
+                  messages: stepMessages,
+                  toolsContext,
+                  runtimeContext
+                });
+                if (toolApprovalStatus.type === "not-applicable") {
+                  continue;
+                }
+                const approvalId = generateId3();
+                const signature = await maybeSignApproval({
+                  secret: experimental_toolApprovalSecret,
+                  approvalId,
+                  toolCallId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  input: toolCall.input
+                });
+                switch (toolApprovalStatus.type) {
+                  case "user-approval": {
+                    toolApprovalRequests[toolCall.toolCallId] = {
+                      type: "tool-approval-request",
+                      approvalId,
+                      toolCall,
+                      ...signature != null ? { signature } : {}
+                    };
+                    blockedToolCallIds.add(toolCall.toolCallId);
+                    break;
+                  }
+                  case "approved": {
+                    toolApprovalRequests[toolCall.toolCallId] = {
+                      type: "tool-approval-request",
+                      approvalId,
+                      toolCall,
+                      isAutomatic: true,
+                      ...signature != null ? { signature } : {}
+                    };
+                    stepToolApprovalResponses[toolCall.toolCallId] = {
+                      type: "tool-approval-response",
+                      approvalId,
+                      toolCall,
+                      approved: true,
+                      reason: toolApprovalStatus.reason,
+                      providerExecuted: toolCall.providerExecuted
+                    };
+                    break;
+                  }
+                  case "denied": {
+                    toolApprovalRequests[toolCall.toolCallId] = {
+                      type: "tool-approval-request",
+                      approvalId,
+                      toolCall,
+                      isAutomatic: true,
+                      ...signature != null ? { signature } : {}
+                    };
+                    stepToolApprovalResponses[toolCall.toolCallId] = {
+                      type: "tool-approval-response",
+                      approvalId,
+                      toolCall,
+                      approved: false,
+                      reason: toolApprovalStatus.reason,
+                      providerExecuted: toolCall.providerExecuted
+                    };
+                    blockedToolCallIds.add(toolCall.toolCallId);
+                    break;
+                  }
+                }
+              }
+              const invalidToolCalls = stepToolCalls.filter((toolCall) => toolCall.invalid && toolCall.dynamic && !toolCall.providerExecuted);
+              clientToolOutputs = [];
+              for (const toolCall of invalidToolCalls) {
+                clientToolOutputs.push({
+                  type: "tool-error",
+                  toolCallId: toolCall.toolCallId,
+                  toolName: toolCall.toolName,
+                  input: toolCall.input,
+                  error: getErrorMessage(toolCall.error),
+                  dynamic: true
+                });
+              }
+              clientToolCalls = stepToolCalls.filter((toolCall) => !toolCall.providerExecuted);
+              toolApprovalResponses = Object.values(stepToolApprovalResponses);
+              deniedToolApprovalResponses = toolApprovalResponses.filter((toolApprovalResponse) => toolApprovalResponse.approved === false);
+              const toolExecutionMs = {};
+              if (stepExecutionTools != null && isToolExecutionAllowedFinishReason(currentModelResponse.finishReason.unified)) {
+                const toolExecutionResults = await executeTools({
+                  toolCalls: clientToolCalls.filter((toolCall) => !toolCall.invalid && !blockedToolCallIds.has(toolCall.toolCallId)),
+                  tools: stepExecutionTools,
+                  callId,
+                  messages: stepMessages,
+                  abortSignal: mergedAbortSignal,
+                  timeout,
+                  experimental_sandbox: stepSandbox,
+                  toolsContext,
+                  onToolExecutionStart: (event) => notify({
+                    event,
+                    callbacks: [
+                      resolvedOnToolExecutionStart,
+                      telemetryDispatcher.onToolExecutionStart
+                    ]
+                  }),
+                  onToolExecutionEnd: (event) => notify({
+                    event,
+                    callbacks: [
+                      resolvedOnToolExecutionEnd,
+                      telemetryDispatcher.onToolExecutionEnd
+                    ]
+                  }),
+                  executeToolInTelemetryContext: telemetryDispatcher.executeTool,
+                  runInTracingChannelSpan
+                });
+                for (const result of toolExecutionResults) {
+                  toolExecutionMs[result.output.toolCallId] = result.toolExecutionMs;
+                  clientToolOutputs.push(result.output);
+                }
+              }
+              const stepTimeMs = now2() - stepStartTimestampMs;
+              const stepPerformance = {
+                effectiveOutputTokensPerSecond: calculateTokensPerSecond({
+                  tokens: stepUsage.outputTokens,
+                  durationMs: responseTimeMs
+                }),
+                outputTokensPerSecond: undefined,
+                inputTokensPerSecond: undefined,
+                effectiveTotalTokensPerSecond: calculateTokensPerSecond({
+                  tokens: sumTokenCounts(stepUsage.inputTokens, stepUsage.outputTokens),
+                  durationMs: responseTimeMs
+                }),
+                stepTimeMs,
+                responseTimeMs,
+                toolExecutionMs,
+                timeToFirstOutputMs: undefined
+              };
+              for (const toolCall of stepToolCalls) {
+                if (!toolCall.providerExecuted)
+                  continue;
+                const tool2 = getOwn(stepExecutionTools, toolCall.toolName);
+                if ((tool2 == null ? undefined : tool2.type) === "provider" && tool2.supportsDeferredResults) {
+                  const hasResultInResponse = currentModelResponse.content.some((part) => part.type === "tool-result" && part.toolCallId === toolCall.toolCallId);
+                  if (!hasResultInResponse) {
+                    pendingDeferredToolCalls.set(toolCall.toolCallId, {
+                      toolName: toolCall.toolName
+                    });
+                  }
+                }
+              }
+              for (const part of currentModelResponse.content) {
+                if (part.type === "tool-result") {
+                  pendingDeferredToolCalls.delete(part.toolCallId);
+                }
+              }
+              const stepContent = asContent({
+                content: currentModelResponse.content,
+                toolCalls: stepToolCalls,
+                toolOutputs: clientToolOutputs,
+                toolApprovalRequests: Object.values(toolApprovalRequests),
+                toolApprovalResponses,
+                tools
+              });
+              const stepResponseMessages = await toResponseMessages({
+                content: stepContent,
+                tools
+              });
+              const stepRequest = {
+                ...currentModelResponse.request,
+                body: include.requestBody ? (_o = currentModelResponse.request) == null ? undefined : _o.body : undefined,
+                messages: include.requestMessages ? cloneModelMessages(stepMessages) : undefined
+              };
+              const stepResponse = {
+                ...currentModelResponse.response,
+                messages: cloneModelMessages(stepResponseMessages),
+                body: include.responseBody ? (_p = currentModelResponse.response) == null ? undefined : _p.body : undefined
+              };
+              const currentStepResult = new DefaultStepResult({
+                callId,
+                stepNumber,
+                provider: stepModel.provider,
+                modelId: stepModel.modelId,
+                runtimeContext,
+                content: stepContent,
+                finishReason: currentModelResponse.finishReason.unified,
+                rawFinishReason: currentModelResponse.finishReason.raw,
+                usage: stepUsage,
+                performance: stepPerformance,
+                warnings: currentModelResponse.warnings,
+                providerMetadata: currentModelResponse.providerMetadata,
+                request: stepRequest,
+                response: stepResponse,
+                toolsContext
+              });
+              logWarnings({
+                warnings: (_q = currentModelResponse.warnings) != null ? _q : [],
+                provider: stepModel.provider,
+                model: stepModel.modelId
+              });
+              steps.push(currentStepResult);
+              instructionsForNextStep = stepInstructions;
+              messagesForNextStep = [...stepMessages, ...stepResponseMessages];
+              await notify({
+                event: currentStepResult,
+                callbacks: [resolvedOnStepEnd, telemetryDispatcher.onStepEnd]
+              });
+              return currentStepResult;
+            }
+          });
+        } finally {
+          if (stepTimeoutId != null) {
+            clearTimeout(stepTimeoutId);
+          }
+        }
+      } while (clientToolOutputs.length + deniedToolApprovalResponses.length === clientToolCalls.length && (clientToolCalls.length > 0 || pendingDeferredToolCalls.size > 0) && !await isStopConditionMet({ stopConditions, steps }));
+      const lastStep = steps[steps.length - 1];
+      const totalUsage = steps.reduce((totalUsage2, step) => {
+        return addLanguageModelUsage(totalUsage2, step.usage);
+      }, {
+        inputTokens: undefined,
+        inputTokenDetails: {
+          noCacheTokens: undefined,
+          cacheReadTokens: undefined,
+          cacheWriteTokens: undefined
+        },
+        outputTokens: undefined,
+        outputTokenDetails: {
+          textTokens: undefined,
+          reasoningTokens: undefined
+        },
+        totalTokens: undefined
+      });
+      const files = steps.flatMap((step) => step.files);
+      const sources = steps.flatMap((step) => step.sources);
+      const toolCalls = steps.flatMap((step) => step.toolCalls);
+      const staticToolCalls = steps.flatMap((step) => step.staticToolCalls);
+      const dynamicToolCalls = steps.flatMap((step) => step.dynamicToolCalls);
+      const toolResults = steps.flatMap((step) => step.toolResults);
+      const staticToolResults = steps.flatMap((step) => step.staticToolResults);
+      const dynamicToolResults = steps.flatMap((step) => step.dynamicToolResults);
+      const warnings = steps.flatMap((step) => {
+        var _a252;
+        return (_a252 = step.warnings) != null ? _a252 : [];
+      });
+      const onEndEvent = {
+        callId,
+        stepNumber: lastStep.stepNumber,
+        model: lastStep.model,
+        runtimeContext: lastStep.runtimeContext,
+        finishReason: lastStep.finishReason,
+        rawFinishReason: lastStep.rawFinishReason,
+        usage: totalUsage,
+        totalUsage,
+        content: steps.flatMap((step) => step.content),
+        text: lastStep.text,
+        reasoning: lastStep.reasoning,
+        reasoningText: lastStep.reasoningText,
+        files,
+        sources,
+        toolCalls,
+        staticToolCalls,
+        dynamicToolCalls,
+        toolResults,
+        staticToolResults,
+        dynamicToolResults,
+        responseMessages: [
+          ...initialResponseMessages,
+          ...steps.flatMap((step) => step.response.messages)
+        ],
+        warnings,
+        request: lastStep.request,
+        response: lastStep.response,
+        providerMetadata: lastStep.providerMetadata,
+        steps,
+        finalStep: lastStep,
+        toolsContext
+      };
+      await notify({
+        event: onEndEvent,
+        callbacks: [onEnd, telemetryDispatcher.onEnd]
+      });
+      let resolvedOutput;
+      if (lastStep.finishReason === "stop") {
+        const outputSpecification = output != null ? output : text3();
+        resolvedOutput = await outputSpecification.parseCompleteOutput({ text: lastStep.text }, {
+          response: lastStep.response,
+          usage: lastStep.usage,
+          finishReason: lastStep.finishReason
+        });
+      }
+      return new DefaultGenerateTextResult({
+        initialResponseMessages,
+        steps,
+        totalUsage,
+        output: resolvedOutput
+      });
+    } catch (error48) {
+      await ((_a242 = telemetryDispatcher.onError) == null ? undefined : _a242.call(telemetryDispatcher, { callId, error: error48 }));
+      throw wrapGatewayError(error48);
+    }
+  };
+  return await runInTracingChannelSpan({
+    type: "generateText",
+    event: generateTextStartEvent,
+    execute: executeGenerateText
+  });
+}
+async function executeTools({
+  toolCalls,
+  tools,
+  callId,
+  messages: messages2,
+  abortSignal,
+  timeout,
+  experimental_sandbox: sandbox,
+  toolsContext,
+  onToolExecutionStart,
+  onToolExecutionEnd,
+  executeToolInTelemetryContext,
+  runInTracingChannelSpan
+}) {
+  const toolResults = await Promise.all(toolCalls.map(async (toolCall) => await executeToolCall({
+    toolCall,
+    tools,
+    callId,
+    messages: messages2,
+    abortSignal,
+    timeout,
+    experimental_sandbox: sandbox,
+    toolsContext,
+    onToolExecutionStart,
+    onToolExecutionEnd,
+    executeToolInTelemetryContext,
+    runInTracingChannelSpan
+  })));
+  return toolResults.filter((result) => result != null);
+}
+var DefaultGenerateTextResult = class {
+  constructor(options) {
+    this.initialResponseMessages = options.initialResponseMessages;
+    this.steps = options.steps;
+    this._output = options.output;
+    this.totalUsage = options.totalUsage;
+  }
+  get finalStep() {
+    return this.steps.at(-1);
+  }
+  get content() {
+    return this.steps.flatMap((step) => step.content);
+  }
+  get text() {
+    return this.finalStep.text;
+  }
+  get files() {
+    return this.steps.flatMap((step) => step.files);
+  }
+  get reasoningText() {
+    return this.finalStep.reasoningText;
+  }
+  get reasoning() {
+    return convertToReasoningOutputs(this.finalStep.reasoning);
+  }
+  get toolCalls() {
+    return this.steps.flatMap((step) => step.toolCalls);
+  }
+  get staticToolCalls() {
+    return this.steps.flatMap((step) => step.staticToolCalls);
+  }
+  get dynamicToolCalls() {
+    return this.steps.flatMap((step) => step.dynamicToolCalls);
+  }
+  get toolResults() {
+    return this.steps.flatMap((step) => step.toolResults);
+  }
+  get staticToolResults() {
+    return this.steps.flatMap((step) => step.staticToolResults);
+  }
+  get dynamicToolResults() {
+    return this.steps.flatMap((step) => step.dynamicToolResults);
+  }
+  get sources() {
+    return this.steps.flatMap((step) => step.sources);
+  }
+  get finishReason() {
+    return this.finalStep.finishReason;
+  }
+  get rawFinishReason() {
+    return this.finalStep.rawFinishReason;
+  }
+  get warnings() {
+    return this.steps.flatMap((step) => {
+      var _a232;
+      return (_a232 = step.warnings) != null ? _a232 : [];
+    });
+  }
+  get providerMetadata() {
+    return this.finalStep.providerMetadata;
+  }
+  get response() {
+    return this.finalStep.response;
+  }
+  get responseMessages() {
+    return [
+      ...this.initialResponseMessages,
+      ...this.steps.flatMap((step) => step.response.messages)
+    ];
+  }
+  get request() {
+    return this.finalStep.request;
+  }
+  get usage() {
+    return this.totalUsage;
+  }
+  get output() {
+    if (this._output == null) {
+      throw new NoOutputGeneratedError;
+    }
+    return this._output;
+  }
+};
+function asContent({
+  content,
+  toolCalls,
+  toolOutputs,
+  toolApprovalRequests,
+  toolApprovalResponses,
+  tools
+}) {
+  const contentParts = [];
+  const toolOutputsWithApprovalResponses = [];
+  const toolOutputsWithoutApprovalResponses = [];
+  const toolCallIdsWithApprovalResponses = new Set(toolApprovalResponses.map((toolApprovalResponse) => toolApprovalResponse.toolCall.toolCallId));
+  for (const part of content) {
+    switch (part.type) {
+      case "text":
+      case "reasoning":
+      case "custom":
+      case "source":
+        contentParts.push(part);
+        break;
+      case "file":
+      case "reasoning-file": {
+        contentParts.push({
+          type: part.type,
+          file: new DefaultGeneratedFile({
+            data: part.data.type === "data" ? part.data.data : part.data.url.toString(),
+            mediaType: part.mediaType
+          }),
+          ...part.providerMetadata != null ? { providerMetadata: part.providerMetadata } : {}
+        });
+        break;
+      }
+      case "tool-call": {
+        contentParts.push(toolCalls.find((toolCall) => toolCall.toolCallId === part.toolCallId));
+        break;
+      }
+      case "tool-result": {
+        const toolCall = toolCalls.find((toolCall2) => toolCall2.toolCallId === part.toolCallId);
+        if (toolCall == null) {
+          const tool2 = getOwn(tools, part.toolName);
+          const supportsDeferredResults = (tool2 == null ? undefined : tool2.type) === "provider" && tool2.supportsDeferredResults;
+          if (!supportsDeferredResults) {
+            throw new Error(`Tool call ${part.toolCallId} not found.`);
+          }
+          if (part.isError) {
+            contentParts.push({
+              type: "tool-error",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              input: undefined,
+              error: part.result,
+              providerExecuted: true,
+              dynamic: part.dynamic,
+              ...part.providerMetadata != null ? { providerMetadata: part.providerMetadata } : {},
+              ...(tool2 == null ? undefined : tool2.metadata) != null ? { toolMetadata: tool2.metadata } : {}
+            });
+          } else {
+            contentParts.push({
+              type: "tool-result",
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              input: undefined,
+              output: part.result,
+              providerExecuted: true,
+              dynamic: part.dynamic,
+              ...part.providerMetadata != null ? { providerMetadata: part.providerMetadata } : {},
+              ...(tool2 == null ? undefined : tool2.metadata) != null ? { toolMetadata: tool2.metadata } : {}
+            });
+          }
+          break;
+        }
+        if (part.isError) {
+          contentParts.push({
+            type: "tool-error",
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            input: toolCall.input,
+            error: part.result,
+            providerExecuted: true,
+            dynamic: toolCall.dynamic,
+            ...part.providerMetadata != null ? { providerMetadata: part.providerMetadata } : {},
+            ...toolCall.toolMetadata != null ? { toolMetadata: toolCall.toolMetadata } : {}
+          });
+        } else {
+          contentParts.push({
+            type: "tool-result",
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            input: toolCall.input,
+            output: part.result,
+            providerExecuted: true,
+            dynamic: toolCall.dynamic,
+            ...part.providerMetadata != null ? { providerMetadata: part.providerMetadata } : {},
+            ...toolCall.toolMetadata != null ? { toolMetadata: toolCall.toolMetadata } : {}
+          });
+        }
+        break;
+      }
+      case "tool-approval-request": {
+        const toolCall = toolCalls.find((toolCall2) => toolCall2.toolCallId === part.toolCallId);
+        if (toolCall == null) {
+          throw new ToolCallNotFoundForApprovalError({
+            toolCallId: part.toolCallId,
+            approvalId: part.approvalId
+          });
+        }
+        contentParts.push({
+          type: "tool-approval-request",
+          approvalId: part.approvalId,
+          toolCall
+        });
+        break;
+      }
+    }
+  }
+  for (const toolOutput of toolOutputs) {
+    if (toolCallIdsWithApprovalResponses.has(toolOutput.toolCallId)) {
+      toolOutputsWithApprovalResponses.push(toolOutput);
+    } else {
+      toolOutputsWithoutApprovalResponses.push(toolOutput);
+    }
+  }
+  return [
+    ...contentParts,
+    ...toolOutputsWithoutApprovalResponses,
+    ...toolApprovalRequests,
+    ...toolApprovalResponses,
+    ...toolOutputsWithApprovalResponses
+  ];
+}
+var JsonToSseTransformStream = class extends TransformStream {
+  constructor() {
+    super({
+      transform(part, controller) {
+        controller.enqueue(`data: ${JSON.stringify(part)}
+
+`);
+      },
+      flush(controller) {
+        controller.enqueue(`data: [DONE]
+
+`);
+      }
+    });
+  }
+};
+var toolMetadataSchema = z3.record(z3.string(), jsonValueSchema.optional());
+var uiMessageChunkSchema = lazySchema(() => zodSchema(z3.union([
+  z3.looseObject({
+    type: z3.literal("text-start"),
+    id: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("text-delta"),
+    id: z3.string(),
+    delta: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("text-end"),
+    id: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("error"),
+    errorText: z3.string()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-input-start"),
+    toolCallId: z3.string(),
+    toolName: z3.string(),
+    providerExecuted: z3.boolean().optional(),
+    providerMetadata: providerMetadataSchema.optional(),
+    toolMetadata: toolMetadataSchema.optional(),
+    dynamic: z3.boolean().optional(),
+    title: z3.string().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-input-delta"),
+    toolCallId: z3.string(),
+    inputTextDelta: z3.string()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-input-available"),
+    toolCallId: z3.string(),
+    toolName: z3.string(),
+    input: z3.unknown(),
+    providerExecuted: z3.boolean().optional(),
+    providerMetadata: providerMetadataSchema.optional(),
+    toolMetadata: toolMetadataSchema.optional(),
+    dynamic: z3.boolean().optional(),
+    title: z3.string().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-input-error"),
+    toolCallId: z3.string(),
+    toolName: z3.string(),
+    input: z3.unknown(),
+    providerExecuted: z3.boolean().optional(),
+    providerMetadata: providerMetadataSchema.optional(),
+    toolMetadata: toolMetadataSchema.optional(),
+    dynamic: z3.boolean().optional(),
+    errorText: z3.string(),
+    title: z3.string().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-approval-request"),
+    approvalId: z3.string(),
+    toolCallId: z3.string(),
+    isAutomatic: z3.boolean().optional(),
+    signature: z3.string().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-approval-response"),
+    approvalId: z3.string(),
+    approved: z3.boolean(),
+    reason: z3.string().optional(),
+    providerExecuted: z3.boolean().optional(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-output-available"),
+    toolCallId: z3.string(),
+    output: z3.unknown(),
+    providerExecuted: z3.boolean().optional(),
+    providerMetadata: providerMetadataSchema.optional(),
+    toolMetadata: toolMetadataSchema.optional(),
+    dynamic: z3.boolean().optional(),
+    preliminary: z3.boolean().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-output-error"),
+    toolCallId: z3.string(),
+    errorText: z3.string(),
+    providerExecuted: z3.boolean().optional(),
+    providerMetadata: providerMetadataSchema.optional(),
+    toolMetadata: toolMetadataSchema.optional(),
+    dynamic: z3.boolean().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("tool-output-denied"),
+    toolCallId: z3.string()
+  }),
+  z3.looseObject({
+    type: z3.literal("reasoning-start"),
+    id: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("reasoning-delta"),
+    id: z3.string(),
+    delta: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("reasoning-end"),
+    id: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("custom"),
+    kind: z3.string().transform((value2) => value2),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("source-url"),
+    sourceId: z3.string(),
+    url: z3.string(),
+    title: z3.string().optional(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("source-document"),
+    sourceId: z3.string(),
+    mediaType: z3.string(),
+    title: z3.string(),
+    filename: z3.string().optional(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("file"),
+    url: z3.string(),
+    mediaType: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("reasoning-file"),
+    url: z3.string(),
+    mediaType: z3.string(),
+    providerMetadata: providerMetadataSchema.optional()
+  }),
+  z3.looseObject({
+    type: z3.custom((value2) => typeof value2 === "string" && value2.startsWith("data-"), { message: 'Type must start with "data-"' }),
+    id: z3.string().optional(),
+    data: z3.unknown(),
+    transient: z3.boolean().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("start-step")
+  }),
+  z3.looseObject({
+    type: z3.literal("finish-step")
+  }),
+  z3.looseObject({
+    type: z3.literal("reset-step")
+  }),
+  z3.looseObject({
+    type: z3.literal("start"),
+    messageId: z3.string().optional(),
+    messageMetadata: z3.unknown().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("finish"),
+    finishReason: z3.enum([
+      "stop",
+      "length",
+      "content-filter",
+      "tool-calls",
+      "error",
+      "other"
+    ]).optional(),
+    messageMetadata: z3.unknown().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("abort"),
+    reason: z3.string().optional()
+  }),
+  z3.looseObject({
+    type: z3.literal("message-metadata"),
+    messageMetadata: z3.unknown()
+  })
+])));
+var originalGenerateId2 = createIdGenerator({
+  prefix: "aitxt",
+  size: 24
+});
+var originalGenerateCallId2 = createIdGenerator({
+  prefix: "call",
+  size: 24
+});
+var originalGenerateId3 = createIdGenerator({
+  prefix: "aitxt",
+  size: 24
+});
+var originalGenerateCallId3 = createIdGenerator({
+  prefix: "call",
+  size: 24
+});
+var toolMetadataSchema2 = z3.record(z3.string(), jsonValueSchema.optional());
+var providerReferenceSchema2 = z3.record(z3.string(), z3.string());
+var uiMessagesSchema = lazySchema(() => zodSchema(z3.array(z3.object({
+  id: z3.string(),
+  role: z3.enum(["system", "user", "assistant"]),
+  metadata: z3.unknown().optional(),
+  parts: z3.array(z3.union([
+    z3.object({
+      type: z3.literal("text"),
+      text: z3.string(),
+      state: z3.enum(["streaming", "done"]).optional(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("reasoning"),
+      id: z3.string().optional(),
+      text: z3.string(),
+      state: z3.enum(["streaming", "done"]).optional(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("custom"),
+      kind: z3.string(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("source-url"),
+      sourceId: z3.string(),
+      url: z3.string(),
+      title: z3.string().optional(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("source-document"),
+      sourceId: z3.string(),
+      mediaType: z3.string(),
+      title: z3.string(),
+      filename: z3.string().optional(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("file"),
+      mediaType: z3.string(),
+      filename: z3.string().optional(),
+      url: z3.string(),
+      providerReference: providerReferenceSchema2.optional(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("reasoning-file"),
+      mediaType: z3.string(),
+      url: z3.string(),
+      providerMetadata: providerMetadataSchema.optional()
+    }),
+    z3.object({
+      type: z3.literal("step-start")
+    }),
+    z3.object({
+      type: z3.string().startsWith("data-"),
+      id: z3.string().optional(),
+      data: z3.unknown()
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("input-streaming"),
+      input: z3.unknown().optional(),
+      providerExecuted: z3.boolean().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      approval: z3.never().optional()
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("input-available"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.never().optional()
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("approval-requested"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.never().optional(),
+        reason: z3.never().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      })
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("approval-responded"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.boolean(),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      })
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("output-available"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.unknown(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      resultProviderMetadata: providerMetadataSchema.optional(),
+      preliminary: z3.boolean().optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.literal(true),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      }).optional()
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("output-error"),
+      input: z3.unknown().optional(),
+      rawInput: z3.unknown().optional(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.string(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      resultProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.literal(true),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      }).optional()
+    }),
+    z3.object({
+      type: z3.literal("dynamic-tool"),
+      toolName: z3.string(),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("output-denied"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.literal(false),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      })
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("input-streaming"),
+      providerExecuted: z3.boolean().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      input: z3.unknown().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      approval: z3.never().optional()
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("input-available"),
+      providerExecuted: z3.boolean().optional(),
+      input: z3.unknown(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.never().optional()
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("approval-requested"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.never().optional(),
+        reason: z3.never().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      })
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("approval-responded"),
+      input: z3.unknown(),
+      providerExecuted: z3.boolean().optional(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.boolean(),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      })
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("output-available"),
+      providerExecuted: z3.boolean().optional(),
+      input: z3.unknown(),
+      output: z3.unknown(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      resultProviderMetadata: providerMetadataSchema.optional(),
+      preliminary: z3.boolean().optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.literal(true),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      }).optional()
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("output-error"),
+      providerExecuted: z3.boolean().optional(),
+      input: z3.unknown().optional(),
+      rawInput: z3.unknown().optional(),
+      output: z3.never().optional(),
+      errorText: z3.string(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      resultProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.literal(true),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      }).optional()
+    }),
+    z3.object({
+      type: z3.string().startsWith("tool-"),
+      toolCallId: z3.string(),
+      toolMetadata: toolMetadataSchema2.optional(),
+      state: z3.literal("output-denied"),
+      providerExecuted: z3.boolean().optional(),
+      input: z3.unknown(),
+      output: z3.never().optional(),
+      errorText: z3.never().optional(),
+      callProviderMetadata: providerMetadataSchema.optional(),
+      approval: z3.object({
+        id: z3.string(),
+        approved: z3.literal(false),
+        reason: z3.string().optional(),
+        isAutomatic: z3.boolean().optional(),
+        signature: z3.string().optional()
+      })
+    })
+  ]))
+}).superRefine((message, context) => {
+  if (message.role !== "assistant" && message.parts.length === 0) {
+    context.addIssue({
+      origin: "array",
+      code: "too_small",
+      minimum: 1,
+      inclusive: true,
+      input: message.parts,
+      path: ["parts"],
+      message: "Message must contain at least one part"
+    });
+  }
+})).nonempty("Messages array must not be empty")));
+var originalGenerateCallId4 = createIdGenerator({
+  prefix: "call",
+  size: 24
+});
+var originalGenerateCallId5 = createIdGenerator({
+  prefix: "call",
+  size: 24
+});
+var originalGenerateId4 = createIdGenerator({ prefix: "aiobj", size: 24 });
+function createDownload(options) {
+  return ({ url: url2, abortSignal }) => download({ url: url2, maxBytes: options == null ? undefined : options.maxBytes, abortSignal });
+}
+var originalGenerateId5 = createIdGenerator({ prefix: "aiobj", size: 24 });
+var defaultDownload = createDownload();
+var name222 = "AI_NoSuchProviderError";
+var marker222 = `vercel.ai.error.${name222}`;
+var symbol222 = Symbol.for(marker222);
+var _a222;
+_a222 = symbol222;
+var originalGenerateCallId6 = createIdGenerator({
+  prefix: "call",
+  size: 24
+});
+var defaultDownload2 = createDownload();
+
+// packages/web/src/api/agent/gateway.ts
+var gateway2 = createGateway({
+  baseURL: process.env.AI_GATEWAY_BASE_URL,
+  apiKey: process.env.AI_GATEWAY_API_KEY
+});
+var DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
+function gatewayConfigured() {
+  return Boolean(process.env.AI_GATEWAY_BASE_URL && process.env.AI_GATEWAY_API_KEY);
+}
+
+// packages/web/src/api/lib/feed.ts
+init_schema();
+var FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"];
+function parseFeatures2(raw2) {
+  if (!raw2)
+    return [];
+  try {
+    const parsed = JSON.parse(raw2);
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+async function feedProperties(db3, channel) {
+  const rows = await db3.select().from(properties).where(eq(properties.published, 1));
+  const authorizations = await db3.select().from(propertyChannels).where(eq(propertyChannels.channel, channel));
+  const allowed = new Set(authorizations.filter((row) => row.authorized === 1).map((row) => row.propertyId));
+  const eligible = rows.filter((row) => allowed.has(row.id) && (row.status === "disponivel" || row.status === "reservado"));
+  if (eligible.length === 0)
+    return [];
+  const images = await db3.select().from(propertyImages).where(inArray(propertyImages.propertyId, eligible.map((row) => row.id))).orderBy(asc(propertyImages.sortOrder), asc(propertyImages.id));
+  return eligible.map((row) => ({
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    purpose: row.purpose,
+    type: row.type,
+    price: row.price,
+    condoFee: row.condoFee,
+    iptu: row.iptu,
+    district: row.district,
+    city: row.city,
+    address: row.address,
+    bedrooms: row.bedrooms,
+    suites: row.suites,
+    bathrooms: row.bathrooms,
+    parking: row.parking,
+    areaUtil: row.areaUtil,
+    areaTotal: row.areaTotal,
+    description: row.description ?? "",
+    features: parseFeatures2(row.features),
+    status: row.status,
+    slug: row.slug ?? propertySlug(row),
+    updatedAt: row.updatedAt ?? null,
+    images: images.filter((image) => image.propertyId === row.id).map((image) => ({
+      url: image.url,
+      originalUrl: image.originalUrl,
+      isPrimary: image.isPrimary === 1
+    }))
+  }));
+}
+function esc2(value2) {
+  return value2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function tag(name25, value2) {
+  if (value2 === null || value2 === undefined || value2 === "")
+    return "";
+  return `      <${name25}>${esc2(String(value2))}</${name25}>
+`;
+}
+var purposeLabel = {
+  venda: "For Sale",
+  locacao: "For Rent",
+  venda_locacao: "For Sale/Rent"
+};
+var typeLabel = {
+  apartamento: "Apartamento",
+  casa: "Casa",
+  cobertura: "Cobertura",
+  terreno: "Terreno",
+  sala_comercial: "Sala Comercial",
+  sobrado: "Sobrado",
+  chacara: "Chácara",
+  outro: "Imóvel"
+};
+function feedXml(properties3, options) {
+  const now2 = new Date().toISOString();
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    "<Carga>",
+    "  <Cabecalho>",
+    `    <Gerado>${now2}</Gerado>`,
+    `    <Canal>${esc2(options.channel)}</Canal>`,
+    `    <Quantidade>${properties3.length}</Quantidade>`,
+    "  </Cabecalho>",
+    "  <Imoveis>"
+  ];
+  for (const property of properties3) {
+    const link = `${options.baseUrl}/imovel/${property.slug}`;
+    lines.push("    <Imovel>");
+    let body = "";
+    body += tag("CodigoImovel", property.code);
+    body += tag("TipoImovel", typeLabel[property.type] ?? "Imóvel");
+    body += tag("SubTipoImovel", property.type);
+    body += tag("Finalidade", purposeLabel[property.purpose] ?? property.purpose);
+    body += tag("Titulo", property.title);
+    body += tag("Observacao", property.description);
+    body += tag("PrecoVenda", property.purpose === "locacao" ? "" : property.price || "");
+    body += tag("PrecoLocacao", property.purpose === "venda" ? "" : property.price || "");
+    body += tag("PrecoCondominio", property.condoFee ?? "");
+    body += tag("PrecoIptu", property.iptu ?? "");
+    body += tag("Bairro", property.district);
+    body += tag("Cidade", property.city);
+    body += tag("UF", "SP");
+    body += tag("Pais", "Brasil");
+    body += tag("Endereco", property.address ?? "");
+    body += tag("QtdDormitorios", property.bedrooms);
+    body += tag("QtdSuites", property.suites);
+    body += tag("QtdBanheiros", property.bathrooms);
+    body += tag("QtdVagas", property.parking);
+    body += tag("AreaUtil", property.areaUtil || "");
+    body += tag("AreaTotal", property.areaTotal ?? "");
+    body += tag("UnidadeMetrica", "M2");
+    body += tag("Situacao", property.status);
+    body += tag("UrlImovel", link);
+    body += tag("DataAtualizacao", (property.updatedAt ?? new Date).toISOString());
+    lines.push(body.replace(/\n$/, ""));
+    if (property.features.length) {
+      lines.push("      <Caracteristicas>");
+      for (const feature of property.features) {
+        lines.push(`        <Caracteristica>${esc2(feature)}</Caracteristica>`);
+      }
+      lines.push("      </Caracteristicas>");
+    }
+    if (property.images.length) {
+      lines.push("      <Fotos>");
+      let order = 1;
+      for (const image of property.images) {
+        const chosen = options.imageVariant === "original" ? image.originalUrl ?? image.url : image.url;
+        const url2 = chosen.startsWith("http") ? chosen : `${options.baseUrl}${chosen}`;
+        lines.push("        <Foto>");
+        lines.push(`          <Ordem>${order}</Ordem>`);
+        lines.push(`          <Principal>${image.isPrimary ? "1" : "0"}</Principal>`);
+        lines.push(`          <URLArquivo>${esc2(url2)}</URLArquivo>`);
+        lines.push("        </Foto>");
+        order += 1;
+      }
+      lines.push("      </Fotos>");
+    }
+    lines.push("    </Imovel>");
+  }
+  lines.push("  </Imoveis>", "</Carga>");
+  return lines.filter((line) => line !== "").join(`
+`);
+}
+async function sitemapXml(db3, baseUrl) {
+  const rows = await db3.select({
+    code: properties.code,
+    title: properties.title,
+    slug: properties.slug,
+    district: properties.district,
+    city: properties.city,
+    type: properties.type,
+    updatedAt: properties.updatedAt
+  }).from(properties).where(and(eq(properties.published, 1)));
+  const urls = [
+    `  <url>
+    <loc>${baseUrl}/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>`
+  ];
+  for (const row of rows) {
+    const slug = row.slug ?? propertySlug(row);
+    const lastmod = (row.updatedAt ?? new Date).toISOString().slice(0, 10);
+    urls.push(`  <url>
+    <loc>${baseUrl}/imovel/${slug}</loc>
+    <lastmod>${lastmod}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.join(`
+`)}
+</urlset>`;
+}
+function robotsTxt(baseUrl, indexable) {
+  if (!indexable) {
+    return `User-agent: *
+Disallow: /
+`;
+  }
+  return [
+    "User-agent: *",
+    "Allow: /",
+    "Disallow: /admin",
+    "Disallow: /api",
+    "",
+    `Sitemap: ${baseUrl}/sitemap.xml`,
+    ""
+  ].join(`
+`);
+}
+
+// packages/web/src/api/lib/integration-tests.ts
+var GRAPH2 = "https://graph.facebook.com/v21.0";
+async function graph(path, token) {
+  const response = await fetch(`${GRAPH2}/${path}`, {
+    headers: { authorization: `Bearer ${token}` }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(body.error?.message ?? `HTTP ${response.status}`);
+  }
+  return body;
+}
+async function runTest(db3, key, config2, baseUrl) {
+  switch (key) {
+    case "whatsapp_cloud": {
+      const token = config2.accessToken ?? "";
+      const phoneNumberId = config2.phoneNumberId ?? "";
+      if (!token || !phoneNumberId) {
+        return {
+          ok: false,
+          status: "aguardando_credencial",
+          message: "Informe o Phone Number ID e o access token permanente da Cloud API."
+        };
+      }
+      try {
+        const body = await graph(`${phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`, token);
+        return {
+          ok: true,
+          status: "conectado",
+          message: `Número ${body.display_phone_number ?? "?"} (${body.verified_name ?? "sem nome verificado"}) respondeu na Cloud API.`
+        };
+      } catch (error48) {
+        return {
+          ok: false,
+          status: "erro",
+          message: `Meta recusou: ${error48.message}`
+        };
+      }
+    }
+    case "meta_lead_ads":
+    case "facebook_messenger":
+    case "instagram_dm": {
+      const token = config2.pageToken ?? "";
+      if (!token) {
+        return {
+          ok: false,
+          status: "aguardando_credencial",
+          message: "Informe o token da página gerado no app da Meta."
+        };
+      }
+      try {
+        const body = await graph("me?fields=id,name", token);
+        return {
+          ok: true,
+          status: "conectado",
+          message: `Token válido para ${body.name ?? body.id ?? "a página"}.`
+        };
+      } catch (error48) {
+        return { ok: false, status: "erro", message: `Meta recusou: ${error48.message}` };
+      }
+    }
+    case "zap_vivareal":
+    case "olx":
+    case "imovelweb": {
+      const channel = key === "zap_vivareal" ? "zap" : key;
+      const properties3 = await feedProperties(db3, channel);
+      const xml = feedXml(properties3, { baseUrl, channel, imageVariant: "marcada" });
+      const valid = xml.startsWith("<?xml") && xml.includes("</Carga>");
+      const url2 = `${baseUrl}/feed/${channel}.xml`;
+      if (!valid) {
+        return { ok: false, status: "erro", message: "Falha ao gerar o XML do canal." };
+      }
+      return {
+        ok: true,
+        status: config2.accountId ? "configurando" : "aguardando_credencial",
+        message: `Feed pronto e válido em ${url2} com ${properties3.length} imóvel(is) autorizado(s). O portal lê o arquivo por conta dele — marque "Confirmar leitura do portal" só depois que ele importar.`
+      };
+    }
+    case "feed_imoveis": {
+      const properties3 = await feedProperties(db3, "feed");
+      const xml = feedXml(properties3, { baseUrl, channel: "feed" });
+      return {
+        ok: true,
+        status: "conectado",
+        message: `XML gerado com ${properties3.length} imóvel(is) e ${xml.length} bytes.`
+      };
+    }
+    case "sitemap": {
+      return {
+        ok: true,
+        status: "conectado",
+        message: `Sitemap em ${baseUrl}/sitemap.xml e robots em ${baseUrl}/robots.txt.`
+      };
+    }
+    case "lead_webhook": {
+      const token = config2.token ?? "";
+      if (!token) {
+        return {
+          ok: false,
+          status: "nao_configurado",
+          message: "Clique em Salvar para gerar o token do webhook."
+        };
+      }
+      return {
+        ok: true,
+        status: "conectado",
+        message: `Endpoint ativo: ${baseUrl}/api/webhooks/leads/${token.slice(0, 4)}… (URL completa no campo abaixo).`
+      };
+    }
+    case "site_leads": {
+      return {
+        ok: true,
+        status: "conectado",
+        message: "Formulários do site gravando no CRM com deduplicação ativa."
+      };
+    }
+    case "google_analytics": {
+      const id = (config2.measurementId ?? "").trim();
+      if (!/^G-[A-Z0-9]{6,}$/i.test(id)) {
+        return {
+          ok: false,
+          status: id ? "erro" : "nao_configurado",
+          message: "ID de medição inválido — use o formato G-XXXXXXXXXX."
+        };
+      }
+      return { ok: true, status: "conectado", message: `Tag ${id} publicada no site.` };
+    }
+    case "google_ads": {
+      const id = (config2.conversionId ?? "").trim();
+      if (!/^AW-[0-9]{6,}$/i.test(id)) {
+        return {
+          ok: false,
+          status: id ? "erro" : "nao_configurado",
+          message: "ID de conversão inválido — use o formato AW-000000000."
+        };
+      }
+      if (!(config2.conversionLabel ?? "").trim()) {
+        return {
+          ok: false,
+          status: "aguardando_credencial",
+          message: "Falta o rótulo da conversão (aparece junto do ID no Google Ads)."
+        };
+      }
+      return { ok: true, status: "conectado", message: `Conversão ${id} configurada.` };
+    }
+    case "google_search_console": {
+      const code = (config2.verification ?? "").trim();
+      if (!code) {
+        return {
+          ok: false,
+          status: "nao_configurado",
+          message: "Cole o código de verificação do Search Console."
+        };
+      }
+      try {
+        const response = await fetch(`${baseUrl}/`, { headers: { accept: "text/html" } });
+        const html = await response.text();
+        const published = html.includes(code);
+        return {
+          ok: published,
+          status: published ? "conectado" : "configurando",
+          message: published ? "Meta tag de verificação encontrada no HTML do site." : "Código salvo. A meta tag entra no ar no próximo carregamento do site — verifique no Search Console em seguida."
+        };
+      } catch {
+        return {
+          ok: true,
+          status: "configurando",
+          message: "Código salvo. Não foi possível ler o HTML daqui; verifique direto no Search Console."
+        };
+      }
+    }
+    case "google_business": {
+      return {
+        ok: false,
+        status: "aguardando_credencial",
+        message: "Não há teste automático: a Business Profile API exige acesso aprovado pelo Google. A ficha continua sendo gerenciada no painel do Google."
+      };
+    }
+    case "ai_gateway": {
+      if (!process.env.AI_GATEWAY_BASE_URL || !process.env.AI_GATEWAY_API_KEY) {
+        return {
+          ok: false,
+          status: "erro",
+          message: "As variáveis AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY não estão disponíveis neste ambiente."
+        };
+      }
+      try {
+        const model = config2.defaultModel || "openai/gpt-5.4-mini";
+        const { text: text4 } = await generateText({
+          model: gateway2(model),
+          prompt: 'Responda apenas com a palavra "ok".'
+        });
+        return {
+          ok: true,
+          status: "conectado",
+          message: `Modelo ${model} respondeu: ${text4.trim().slice(0, 40)}`
+        };
+      } catch (error48) {
+        return {
+          ok: false,
+          status: "erro",
+          message: `Gateway de IA falhou: ${error48.message}`
+        };
+      }
+    }
+    default:
+      return {
+        ok: false,
+        status: "nao_disponivel",
+        message: "Esta integração não tem caminho oficial de conexão hoje."
+      };
+  }
+}
+
+// packages/web/src/api/routes/admin-integrations.ts
+init_schema();
+var keyInput = exports_external.object({ key: exports_external.string().min(2).max(60) });
+function randomToken(bytes = 24) {
+  const array3 = new Uint8Array(bytes);
+  crypto.getRandomValues(array3);
+  return Array.from(array3, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+function isMasked(value2) {
+  return value2.startsWith("••••");
+}
+function mergeConfig(existing, incoming, secretKeys) {
+  const out = { ...existing };
+  for (const [field, value2] of Object.entries(incoming)) {
+    if (secretKeys.has(field)) {
+      if (!value2 || isMasked(value2))
+        continue;
+      out[field] = value2.trim();
+      continue;
+    }
+    out[field] = value2;
+  }
+  return out;
+}
+function publicUrls(key, baseUrl, config2) {
+  switch (key) {
+    case "feed_imoveis":
+      return [{ label: "Feed geral", url: `${baseUrl}/feed/imoveis.xml` }];
+    case "zap_vivareal":
+      return [{ label: "XML para o Canal Pro", url: `${baseUrl}/feed/zap.xml` }];
+    case "olx":
+      return [{ label: "XML para a OLX", url: `${baseUrl}/feed/olx.xml` }];
+    case "imovelweb":
+      return [
+        { label: "XML para o Imovelweb", url: `${baseUrl}/feed/imovelweb.xml` },
+        { label: "Webhook de leads", url: `${baseUrl}/api/webhooks/leads/imovelweb` }
+      ];
+    case "sitemap":
+      return [
+        { label: "Sitemap", url: `${baseUrl}/sitemap.xml` },
+        { label: "Robots", url: `${baseUrl}/robots.txt` }
+      ];
+    case "lead_webhook":
+      return config2.token ? [{ label: "Webhook de leads", url: `${baseUrl}/api/webhooks/leads/${config2.token}` }] : [{ label: "Webhook de leads", url: "Salve para gerar o token" }];
+    case "whatsapp_cloud":
+      return [{ label: "Webhook (Meta)", url: `${baseUrl}/api/webhooks/whatsapp` }];
+    case "meta_lead_ads":
+    case "instagram_dm":
+    case "facebook_messenger":
+      return [{ label: "Webhook (Meta)", url: `${baseUrl}/api/webhooks/meta` }];
+    default:
+      return [];
+  }
+}
+var adminIntegrations = {
+  list: adminBase.handler(async ({ context }) => {
+    const rows = await context.db.select().from(integrations);
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    const baseUrl = siteBaseUrl(context.headers);
+    const items = INTEGRATIONS.map((def) => {
+      const row = byKey.get(def.key);
+      const config2 = parseConfig(row?.config);
+      const masked = maskConfig(def, config2);
+      return {
+        key: def.key,
+        category: def.category,
+        name: def.name,
+        mark: def.mark,
+        purpose: def.purpose,
+        method: def.method,
+        pending: def.pending,
+        docsUrl: def.docsUrl ?? null,
+        available: def.available,
+        selfServed: Boolean(def.selfServed),
+        canTest: def.canTest,
+        canSync: def.canSync,
+        fields: def.fields,
+        config: masked.config,
+        filled: masked.filled,
+        status: def.available ? row?.status ?? "nao_configurado" : "nao_disponivel",
+        enabled: row?.enabled === 1,
+        lastError: row?.lastError ?? null,
+        lastTestAt: row?.lastTestAt ?? null,
+        lastSyncAt: row?.lastSyncAt ?? null,
+        urls: publicUrls(def.key, baseUrl, config2)
+      };
+    });
+    const counts = {
+      total: items.length,
+      conectado: items.filter((item) => item.status === "conectado").length,
+      pendente: items.filter((item) => item.status === "aguardando_credencial" || item.status === "configurando").length,
+      erro: items.filter((item) => item.status === "erro").length,
+      indisponivel: items.filter((item) => item.status === "nao_disponivel").length
+    };
+    return { categories: [...CATEGORIES], items, counts, baseUrl };
+  }),
+  get: adminBase.input(keyInput).handler(async ({ input, context }) => {
+    const def = findIntegration(input.key);
+    if (!def)
+      throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+    const row = await getIntegrationRow(context.db, input.key);
+    const config2 = parseConfig(row?.config);
+    return {
+      key: def.key,
+      config: maskConfig(def, config2).config,
+      status: def.available ? row?.status ?? "nao_configurado" : "nao_disponivel",
+      enabled: row?.enabled === 1,
+      lastError: row?.lastError ?? null,
+      urls: publicUrls(def.key, siteBaseUrl(context.headers), config2),
+      events: await listEvents(context.db, input.key, 25)
+    };
+  }),
+  save: adminBase.input(keyInput.extend({ config: exports_external.record(exports_external.string(), exports_external.string()) })).handler(async ({ input, context }) => {
+    const def = findIntegration(input.key);
+    if (!def)
+      throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+    if (!def.available) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Esta integração não tem caminho oficial disponível hoje."
+      });
+    }
+    const allowed = new Set(def.fields.map((field) => field.key));
+    const secretKeys = new Set(def.fields.filter((field) => field.secret).map((f) => f.key));
+    const incoming = {};
+    for (const [field, value2] of Object.entries(input.config)) {
+      if (allowed.has(field))
+        incoming[field] = String(value2).slice(0, 4000);
+    }
+    const { config: existing } = await readConfig(context.db, input.key);
+    const merged = mergeConfig(existing, incoming, secretKeys);
+    if (input.key === "lead_webhook" && !merged.token)
+      merged.token = randomToken();
+    const previousStatus = (await getIntegrationRow(context.db, input.key))?.status ?? "";
+    const status = previousStatus === "conectado" && !def.selfServed ? "conectado" : statusFromConfig(def, merged);
+    await saveIntegration(context.db, input.key, { config: merged, status, lastError: null });
+    await logEvent(context.db, input.key, "config", true, `Configuração salva (campos: ${Object.keys(incoming).join(", ") || "nenhum"})`);
+    await audit(context.db, context.user, "integracao.salvar", {
+      entity: "integration",
+      entityId: input.key,
+      detail: `campos alterados: ${Object.keys(incoming).join(", ") || "nenhum"}`,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, status };
+  }),
+  toggle: adminBase.input(keyInput.extend({ enabled: exports_external.boolean() })).handler(async ({ input, context }) => {
+    const def = findIntegration(input.key);
+    if (!def)
+      throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+    if (!def.available && input.enabled) {
+      throw new ORPCError("BAD_REQUEST", { message: "Integração não disponível" });
+    }
+    await saveIntegration(context.db, input.key, { enabled: input.enabled });
+    await audit(context.db, context.user, input.enabled ? "integracao.ativar" : "integracao.desativar", {
+      entity: "integration",
+      entityId: input.key,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  test: adminBase.input(keyInput).handler(async ({ input, context }) => {
+    const def = findIntegration(input.key);
+    if (!def)
+      throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+    if (!def.canTest) {
+      return { ok: false, status: "nao_disponivel", message: "Sem teste automático disponível." };
+    }
+    const { config: config2 } = await readConfig(context.db, input.key);
+    const baseUrl = siteBaseUrl(context.headers);
+    let result;
+    try {
+      result = await runTest(context.db, input.key, config2, baseUrl);
+    } catch (error48) {
+      result = {
+        ok: false,
+        status: "erro",
+        message: error48 instanceof Error ? error48.message : "Falha no teste"
+      };
+    }
+    const row = await getIntegrationRow(context.db, input.key);
+    const keepConnected = row?.status === "conectado" && !result.ok && !def.selfServed;
+    await saveIntegration(context.db, input.key, {
+      status: keepConnected ? "conectado" : result.status,
+      lastError: result.ok ? null : result.message
+    });
+    await context.db.update(integrations).set({ lastTestAt: new Date }).where(eq(integrations.key, input.key));
+    await logEvent(context.db, input.key, "test", result.ok, result.message);
+    await audit(context.db, context.user, "integracao.testar", {
+      entity: "integration",
+      entityId: input.key,
+      detail: `${result.ok ? "ok" : "falha"}: ${result.message}`,
+      ip: clientIp(context.headers)
+    });
+    return result;
+  }),
+  confirmPortal: adminBase.input(keyInput.extend({ confirmed: exports_external.boolean(), note: exports_external.string().max(300).optional() })).handler(async ({ input, context }) => {
+    const def = findIntegration(input.key);
+    if (!def)
+      throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+    if (def.category !== "Portais de Imóveis" || !def.available) {
+      throw new ORPCError("BAD_REQUEST", { message: "Confirmação manual só vale para portais." });
+    }
+    const { config: config2 } = await readConfig(context.db, input.key);
+    const stamp = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+    if (input.confirmed) {
+      config2.confirmedAt = stamp;
+      if (input.note)
+        config2.confirmNote = input.note;
+    } else {
+      delete config2.confirmedAt;
+      delete config2.confirmNote;
+    }
+    await saveIntegration(context.db, input.key, {
+      config: config2,
+      status: input.confirmed ? "conectado" : statusFromConfig(def, config2),
+      lastError: null
+    });
+    const message = input.confirmed ? `Leitura do XML confirmada manualmente em ${stamp}${input.note ? ` — ${input.note}` : ""}` : "Confirmação manual removida";
+    await logEvent(context.db, input.key, "config", true, message);
+    await audit(context.db, context.user, "integracao.confirmar_portal", {
+      entity: "integration",
+      entityId: input.key,
+      detail: message,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, message };
+  }),
+  rotateToken: adminBase.input(keyInput).handler(async ({ input, context }) => {
+    if (input.key !== "lead_webhook") {
+      throw new ORPCError("BAD_REQUEST", { message: "Só o webhook de leads tem token." });
+    }
+    const { config: config2 } = await readConfig(context.db, input.key);
+    config2.token = randomToken();
+    await saveIntegration(context.db, input.key, { config: config2, status: "conectado" });
+    await logEvent(context.db, input.key, "config", true, "Token do webhook regenerado");
+    await audit(context.db, context.user, "integracao.rotate_token", {
+      entity: "integration",
+      entityId: input.key,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, url: `${siteBaseUrl(context.headers)}/api/webhooks/leads/${config2.token}` };
+  }),
+  sync: adminBase.input(keyInput).handler(async ({ input, context }) => {
+    const def = findIntegration(input.key);
+    if (!def?.canSync)
+      throw new ORPCError("BAD_REQUEST", { message: "Sem sincronização manual." });
+    await context.db.update(integrations).set({ lastSyncAt: new Date }).where(eq(integrations.key, input.key));
+    await logEvent(context.db, input.key, "sync", true, "Arquivo regerado sob demanda");
+    return { ok: true };
+  }),
+  events: adminBase.input(keyInput.extend({ limit: exports_external.number().int().min(1).max(100).optional() })).handler(({ input, context }) => listEvents(context.db, input.key, input.limit ?? 25))
+};
+
+// packages/web/src/api/routes/admin-channels.ts
+init_schema();
+var channelEnum = exports_external.enum(["feed", "zap", "olx", "imovelweb"]);
+var adminChannels = {
+  forProperty: adminBase.input(exports_external.object({ propertyId: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const rows = await context.db.select().from(propertyChannels).where(eq(propertyChannels.propertyId, input.propertyId));
+    return FEED_CHANNELS.map((channel) => {
+      const row = rows.find((item) => item.channel === channel);
+      return {
+        channel,
+        authorized: row?.authorized === 1,
+        status: row?.status ?? "nao_enviado",
+        message: row?.message ?? null,
+        lastSyncAt: row?.lastSyncAt ?? null
+      };
+    });
+  }),
+  setAuthorized: adminBase.input(exports_external.object({
+    propertyId: exports_external.number().int(),
+    channel: channelEnum,
+    authorized: exports_external.boolean()
+  })).handler(async ({ input, context }) => {
+    const [row] = await context.db.select().from(propertyChannels).where(and(eq(propertyChannels.propertyId, input.propertyId), eq(propertyChannels.channel, input.channel))).limit(1);
+    const status = input.authorized ? "aguardando" : "nao_enviado";
+    const message = input.authorized ? "No próximo XML lido pelo portal" : "Fora do XML deste canal";
+    if (row) {
+      await context.db.update(propertyChannels).set({ authorized: input.authorized ? 1 : 0, status, message, updatedAt: new Date }).where(eq(propertyChannels.id, row.id));
+    } else {
+      await context.db.insert(propertyChannels).values({
+        propertyId: input.propertyId,
+        channel: input.channel,
+        authorized: input.authorized ? 1 : 0,
+        status,
+        message
+      });
+    }
+    await audit(context.db, context.user, "canal.autorizacao", {
+      entity: "property",
+      entityId: input.propertyId,
+      detail: `${input.channel}: ${input.authorized ? "autorizado" : "removido"}`,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  bulkAuthorize: adminBase.input(exports_external.object({
+    propertyIds: exports_external.array(exports_external.number().int()).min(1).max(400),
+    channel: channelEnum,
+    authorized: exports_external.boolean()
+  })).handler(async ({ input, context }) => {
+    const existing = await context.db.select().from(propertyChannels).where(and(eq(propertyChannels.channel, input.channel), inArray(propertyChannels.propertyId, input.propertyIds)));
+    const known = new Map(existing.map((row) => [row.propertyId, row]));
+    const status = input.authorized ? "aguardando" : "nao_enviado";
+    for (const propertyId of input.propertyIds) {
+      const row = known.get(propertyId);
+      if (row) {
+        await context.db.update(propertyChannels).set({ authorized: input.authorized ? 1 : 0, status, updatedAt: new Date }).where(eq(propertyChannels.id, row.id));
+      } else {
+        await context.db.insert(propertyChannels).values({
+          propertyId,
+          channel: input.channel,
+          authorized: input.authorized ? 1 : 0,
+          status
+        });
+      }
+    }
+    await audit(context.db, context.user, "canal.autorizacao_lote", {
+      entity: "channel",
+      entityId: input.channel,
+      detail: `${input.propertyIds.length} imóveis: ${input.authorized ? "autorizados" : "removidos"}`,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, count: input.propertyIds.length };
+  }),
+  overview: adminBase.handler(async ({ context }) => {
+    const baseUrl = siteBaseUrl(context.headers);
+    const channels = [];
+    for (const channel of FEED_CHANNELS) {
+      const items = await feedProperties(context.db, channel);
+      channels.push({
+        channel,
+        count: items.length,
+        url: `${baseUrl}/feed/${channel === "feed" ? "imoveis" : channel}.xml`
+      });
+    }
+    const published = await context.db.select({ id: properties.id }).from(properties).where(eq(properties.published, 1));
+    return { channels, publishedCount: published.length };
+  }),
+  matrix: adminBase.handler(async ({ context }) => {
+    const properties3 = await context.db.select({
+      id: properties.id,
+      code: properties.code,
+      title: properties.title,
+      status: properties.status,
+      published: properties.published
+    }).from(properties).orderBy(asc(properties.code)).limit(400);
+    const rows = await context.db.select().from(propertyChannels);
+    return properties3.map((property) => ({
+      ...property,
+      published: property.published === 1,
+      channels: Object.fromEntries(FEED_CHANNELS.map((channel) => [
+        channel,
+        rows.some((row) => row.propertyId === property.id && row.channel === channel && row.authorized === 1)
+      ]))
+    }));
+  })
+};
+
+// packages/web/src/api/lib/inbox.ts
+init_schema();
+
+// packages/web/src/api/agent/broker.ts
+init_schema();
+var money = (value2) => value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+function propertyTools(db3, baseUrl, seen) {
+  return {
+    buscarImoveis: tool({
+      description: "Busca imóveis REAIS no banco da Edy Premi. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
+      inputSchema: exports_external.object({
+        bairro: exports_external.string().optional().describe("bairro ou região"),
+        cidade: exports_external.string().optional(),
+        tipo: exports_external.enum([
+          "apartamento",
+          "casa",
+          "cobertura",
+          "sobrado",
+          "terreno",
+          "sala_comercial",
+          "chacara",
+          "outro"
+        ]).optional(),
+        finalidade: exports_external.enum(["venda", "locacao"]).optional(),
+        dormitoriosMin: exports_external.number().int().min(0).max(10).optional(),
+        vagasMin: exports_external.number().int().min(0).max(10).optional(),
+        precoMax: exports_external.number().min(0).optional(),
+        precoMin: exports_external.number().min(0).optional(),
+        termo: exports_external.string().max(60).optional().describe("palavra-chave livre, ex: 'frente mar', 'varanda gourmet', 'piscina'")
+      }),
+      async execute(input) {
+        const filters = [
+          eq(properties.published, 1),
+          or(eq(properties.status, "disponivel"), eq(properties.status, "reservado"))
+        ];
+        if (input.bairro) {
+          filters.push(sql`lower(${properties.district}) like ${`%${input.bairro.toLowerCase()}%`}`);
+        }
+        if (input.cidade) {
+          filters.push(sql`lower(${properties.city}) like ${`%${input.cidade.toLowerCase()}%`}`);
+        }
+        if (input.tipo)
+          filters.push(eq(properties.type, input.tipo));
+        if (input.finalidade) {
+          filters.push(or(eq(properties.purpose, input.finalidade), eq(properties.purpose, "venda_locacao")));
+        }
+        if (input.dormitoriosMin !== undefined) {
+          filters.push(gte(properties.bedrooms, input.dormitoriosMin));
+        }
+        if (input.vagasMin !== undefined) {
+          filters.push(gte(properties.parking, input.vagasMin));
+        }
+        if (input.termo) {
+          const term = `%${input.termo.toLowerCase()}%`;
+          filters.push(or(sql`lower(${properties.title}) like ${term}`, sql`lower(coalesce(${properties.highlight}, '')) like ${term}`, sql`lower(coalesce(${properties.description}, '')) like ${term}`, sql`lower(coalesce(${properties.features}, '')) like ${term}`));
+        }
+        if (input.precoMax !== undefined)
+          filters.push(lte(properties.price, input.precoMax));
+        if (input.precoMin !== undefined)
+          filters.push(gte(properties.price, input.precoMin));
+        const rows = await db3.select().from(properties).where(and(...filters)).orderBy(asc(properties.price)).limit(6);
+        for (const row of rows)
+          seen.add(row.code);
+        return {
+          total: rows.length,
+          imoveis: rows.map((row) => ({
+            codigo: row.code,
+            titulo: row.title,
+            tipo: row.type,
+            finalidade: row.purpose,
+            preco: money(row.price),
+            condominio: row.condoFee ? money(row.condoFee) : null,
+            iptu: row.iptu ? money(row.iptu) : null,
+            bairro: row.district,
+            cidade: row.city,
+            dormitorios: row.bedrooms,
+            suites: row.suites,
+            banheiros: row.bathrooms,
+            vagas: row.parking,
+            areaUtil: row.areaUtil,
+            link: `${baseUrl}/imovel/${row.slug ?? propertySlug(row)}`
+          }))
+        };
+      }
+    }),
+    detalharImovel: tool({
+      description: "Detalhes completos de um imóvel pelo código. Use para responder dúvidas específicas.",
+      inputSchema: exports_external.object({ codigo: exports_external.string().min(1).max(40) }),
+      async execute({ codigo }) {
+        const [row] = await db3.select().from(properties).where(eq(properties.code, codigo.trim().toUpperCase())).limit(1);
+        if (!row || row.published !== 1) {
+          return { encontrado: false, aviso: "Imóvel não encontrado no cadastro. Não invente dados." };
+        }
+        seen.add(row.code);
+        let features = [];
+        try {
+          const parsed = JSON.parse(row.features ?? "[]");
+          if (Array.isArray(parsed))
+            features = parsed.map(String);
+        } catch {
+          features = [];
+        }
+        return {
+          encontrado: true,
+          codigo: row.code,
+          titulo: row.title,
+          descricao: row.description ?? "",
+          preco: money(row.price),
+          condominio: row.condoFee ? money(row.condoFee) : null,
+          iptu: row.iptu ? money(row.iptu) : null,
+          bairro: row.district,
+          cidade: row.city,
+          endereco: row.address ?? null,
+          dormitorios: row.bedrooms,
+          suites: row.suites,
+          banheiros: row.bathrooms,
+          vagas: row.parking,
+          areaUtil: row.areaUtil,
+          areaTotal: row.areaTotal,
+          caracteristicas: features,
+          situacao: row.status,
+          link: `${baseUrl}/imovel/${row.slug ?? propertySlug(row)}`
+        };
+      }
+    }),
+    pedirAtendimentoHumano: tool({
+      description: "Chame quando o cliente pedir uma pessoa, quiser negociar valor/condições, tratar de contrato, documentação, agendar visita ou quando a resposta exigir decisão comercial.",
+      inputSchema: exports_external.object({ motivo: exports_external.string().min(3).max(200) }),
+      async execute({ motivo }) {
+        return { ok: true, motivo, orientacao: "Avise o cliente que um corretor vai continuar." };
+      }
+    })
+  };
+}
+function systemPrompt(agent) {
+  return [
+    `Você é ${agent.name}, atendente virtual da Edy Premi Imóveis (imóveis de médio e alto padrão em Praia Grande/SP).`,
+    agent.tone ? `Tom de voz: ${agent.tone}` : "Tom sofisticado, direto e humano.",
+    agent.instructions ? `Instruções do corretor: ${agent.instructions}` : "",
+    agent.qualification ? `Qualifique o cliente coletando: ${agent.qualification}` : "",
+    agent.transferRules ? `Transfira para humano quando: ${agent.transferRules}` : "",
+    agent.humanConditions ? `Nunca prossiga sozinho quando: ${agent.humanConditions}` : "",
+    "",
+    "REGRAS INVIOLÁVEIS:",
+    "1. Só fale de imóveis retornados pelas ferramentas. Nunca invente imóvel, preço, endereço, metragem ou disponibilidade.",
+    "2. Antes de dizer que não há imóvel, refaça a busca com menos filtros (ex.: só o termo, ou só o bairro, ou sem nenhum filtro). Só afirme que não há imóvel depois de uma busca ampla vazia.",
+    "3. Quando a busca ampla também vier vazia, diga que no momento não há imóvel com esse perfil e ofereça alternativas reais do cadastro.",
+    "4. Nunca fecha negócio, nunca aceita proposta, nunca dá desconto, nunca confirma reserva, nunca trata de contrato ou documentação: nesses casos chame a ferramenta pedirAtendimentoHumano.",
+    "5. Nunca peça dados de pagamento, CPF completo, senha ou documento.",
+    "6. Respostas curtas (até 3 parágrafos), em português do Brasil, sem inventar prazo ou promessa.",
+    "7. Sempre que citar um imóvel, informe o código e o link.",
+    `8. Horário de atendimento humano: ${agent.hoursStart} às ${agent.hoursEnd}. Fora disso, avise que um corretor responde no próximo horário.`
+  ].filter(Boolean).join(`
+`);
+}
+async function agentReply(db3, agent, turns, baseUrl) {
+  if (!gatewayConfigured()) {
+    throw new Error("Provedor de IA não configurado no servidor (AI_GATEWAY_BASE_URL / API_KEY).");
+  }
+  const seen = new Set;
+  const result = await generateText({
+    model: gateway2(agent.model || DEFAULT_MODEL),
+    system: systemPrompt(agent),
+    messages: turns.slice(-16).map((turn) => ({ role: turn.role, content: turn.content })),
+    tools: propertyTools(db3, baseUrl, seen),
+    stopWhen: [isStepCount(6)]
+  });
+  let handoffReason = null;
+  const toolCalls = [];
+  for (const step of result.steps) {
+    for (const call of step.toolCalls) {
+      toolCalls.push({ tool: call.toolName, input: JSON.stringify(call.input ?? {}) });
+      if (call.toolName === "pedirAtendimentoHumano") {
+        const input = call.input;
+        handoffReason = input?.motivo ?? "solicitação de atendimento humano";
+      }
+    }
+  }
+  const text4 = result.text.trim() || (handoffReason ? agent.transferMessage || "Vou chamar um corretor para continuar seu atendimento." : "Pode me contar um pouco mais sobre o que você procura?");
+  return {
+    text: text4,
+    handoff: Boolean(handoffReason),
+    handoffReason,
+    usedProperties: [...seen],
+    toolCalls
+  };
+}
+
+// packages/web/src/api/lib/inbox.ts
+async function ensureConversation(db3, params) {
+  const [existing] = await db3.select().from(conversations).where(and(eq(conversations.channel, params.channel), eq(conversations.externalId, params.externalId))).limit(1);
+  if (existing)
+    return existing;
+  const [created] = await db3.insert(conversations).values({
+    channel: params.channel,
+    externalId: params.externalId,
+    contactName: params.contactName ?? null,
+    contactPhone: params.contactPhone ?? null,
+    leadId: params.leadId ?? null,
+    propertyId: params.propertyId ?? null,
+    mode: "ia",
+    status: "aberta"
+  }).returning();
+  return created;
+}
+async function addMessage(db3, conversationId, message) {
+  await db3.insert(messages).values({
+    conversationId,
+    direction: message.direction,
+    author: message.author,
+    authorName: message.authorName ?? null,
+    body: message.body.slice(0, 4000),
+    externalId: message.externalId ?? null
+  });
+  const [conversation] = await db3.select({ unread: conversations.unread }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  await db3.update(conversations).set({
+    lastMessage: message.body.slice(0, 240),
+    lastMessageAt: new Date,
+    unread: message.direction === "in" ? (conversation?.unread ?? 0) + 1 : conversation?.unread ?? 0
+  }).where(eq(conversations.id, conversationId));
+}
+async function conversationTurns(db3, conversationId) {
+  const rows = await db3.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(asc(messages.id)).limit(60);
+  return rows.filter((row) => row.author !== "sistema").map((row) => ({
+    role: row.direction === "in" ? "user" : "assistant",
+    content: row.body
+  }));
+}
+async function activeAgentFor(db3, channel) {
+  const rows = await db3.select().from(aiAgents).where(eq(aiAgents.active, 1)).orderBy(desc(aiAgents.updatedAt));
+  const match2 = channel === "teste" ? rows[0] : rows.find((row) => {
+    try {
+      const list = JSON.parse(row.channels);
+      return Array.isArray(list) && list.map(String).includes(channel);
+    } catch {
+      return false;
+    }
+  });
+  if (!match2)
+    return null;
+  return {
+    id: match2.id,
+    name: match2.name,
+    model: match2.model,
+    greeting: match2.greeting,
+    instructions: match2.instructions,
+    tone: match2.tone,
+    qualification: match2.qualification,
+    transferRules: match2.transferRules,
+    transferMessage: match2.transferMessage,
+    humanConditions: match2.humanConditions,
+    hoursStart: match2.hoursStart,
+    hoursEnd: match2.hoursEnd
+  };
+}
+async function transferToHuman(db3, conversationId, reason) {
+  await db3.update(conversations).set({
+    mode: "humano",
+    transferReason: reason.slice(0, 300),
+    transferredAt: new Date
+  }).where(eq(conversations.id, conversationId));
+  await addMessage(db3, conversationId, {
+    direction: "out",
+    author: "sistema",
+    body: `Transferido para atendimento humano: ${reason}`
+  });
+  const [conversation] = await db3.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  await fireTrigger(db3, "conversa_transferida", {
+    conversationId,
+    leadId: conversation?.leadId ?? null,
+    propertyId: conversation?.propertyId ?? null,
+    phone: conversation?.contactPhone ?? null,
+    name: conversation?.contactName ?? null,
+    source: conversation?.channel ?? null
+  });
+}
+async function aiTurn(db3, conversationId, baseUrl) {
+  const [conversation] = await db3.select().from(conversations).where(eq(conversations.id, conversationId)).limit(1);
+  if (!conversation)
+    return { replied: false, skipped: "conversa inexistente" };
+  if (conversation.mode !== "ia")
+    return { replied: false, skipped: "humano no controle" };
+  if (conversation.status !== "aberta")
+    return { replied: false, skipped: "conversa fechada" };
+  if (!gatewayConfigured())
+    return { replied: false, skipped: "provedor de IA não configurado" };
+  const agent = await activeAgentFor(db3, conversation.channel);
+  if (!agent)
+    return { replied: false, skipped: "nenhum agente ativo neste canal" };
+  const turns = await conversationTurns(db3, conversationId);
+  if (turns.length === 0)
+    return { replied: false, skipped: "sem mensagens" };
+  try {
+    const reply = await agentReply(db3, agent, turns, baseUrl);
+    await addMessage(db3, conversationId, {
+      direction: "out",
+      author: "ia",
+      authorName: agent.name,
+      body: reply.text
+    });
+    await db3.update(conversations).set({ agentId: agent.id }).where(eq(conversations.id, conversationId));
+    if (reply.handoff) {
+      await transferToHuman(db3, conversationId, reply.handoffReason ?? "regra do agente");
+    }
+    return {
+      replied: true,
+      text: reply.text,
+      handoff: reply.handoff,
+      reason: reply.handoffReason ?? undefined
+    };
+  } catch (error48) {
+    const message = error48 instanceof Error ? error48.message : "falha na IA";
+    await transferToHuman(db3, conversationId, `falha da IA: ${message}`);
+    return { replied: false, skipped: message };
+  }
+}
+
+// packages/web/src/api/routes/admin-inbox.ts
+init_schema();
+var idInput = exports_external.object({ id: exports_external.number().int() });
+var adminInbox = {
+  list: adminBase.input(exports_external.object({
+    status: exports_external.enum(["aberta", "fechada"]).optional(),
+    mode: exports_external.enum(["ia", "humano"]).optional(),
+    channel: exports_external.enum(["whatsapp", "instagram", "facebook", "site", "teste"]).optional()
+  }).optional()).handler(async ({ input, context }) => {
+    const filters = [];
+    if (input?.status)
+      filters.push(eq(conversations.status, input.status));
+    if (input?.mode)
+      filters.push(eq(conversations.mode, input.mode));
+    if (input?.channel)
+      filters.push(eq(conversations.channel, input.channel));
+    const rows = await context.db.select().from(conversations).where(filters.length ? and(...filters) : undefined).orderBy(desc(conversations.lastMessageAt), desc(conversations.id)).limit(200);
+    return {
+      conversations: rows,
+      counts: {
+        total: rows.length,
+        ia: rows.filter((row) => row.mode === "ia").length,
+        humano: rows.filter((row) => row.mode === "humano").length,
+        naoLidas: rows.filter((row) => row.unread > 0).length
+      }
+    };
+  }),
+  get: adminBase.input(idInput).handler(async ({ input, context }) => {
+    const [conversation] = await context.db.select().from(conversations).where(eq(conversations.id, input.id)).limit(1);
+    if (!conversation)
+      throw new ORPCError("NOT_FOUND", { message: "Conversa não encontrada" });
+    const messages2 = await context.db.select().from(messages).where(eq(messages.conversationId, input.id)).orderBy(asc(messages.id)).limit(300);
+    await context.db.update(conversations).set({ unread: 0 }).where(eq(conversations.id, input.id));
+    return { conversation, messages: messages2 };
+  }),
+  takeOver: adminBase.input(idInput.extend({ reason: exports_external.string().max(200).optional() })).handler(async ({ input, context }) => {
+    const [conversation] = await context.db.select().from(conversations).where(eq(conversations.id, input.id)).limit(1);
+    if (!conversation)
+      throw new ORPCError("NOT_FOUND", { message: "Conversa não encontrada" });
+    if (conversation.mode === "humano")
+      return { ok: true, already: true };
+    await transferToHuman(context.db, input.id, input.reason || `assumido por ${context.user.name ?? "corretor"}`);
+    await context.db.update(conversations).set({ assignedTo: context.user.id, assignedName: context.user.name ?? null }).where(eq(conversations.id, input.id));
+    await audit(context.db, context.user, "conversa.assumida", {
+      entity: "conversation",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, already: false };
+  }),
+  returnToAi: adminBase.input(idInput).handler(async ({ input, context }) => {
+    await context.db.update(conversations).set({ mode: "ia", assignedTo: null, assignedName: null, transferReason: null }).where(eq(conversations.id, input.id));
+    await addMessage(context.db, input.id, {
+      direction: "out",
+      author: "sistema",
+      body: "Atendimento devolvido para a IA."
+    });
+    await audit(context.db, context.user, "conversa.devolvida_ia", {
+      entity: "conversation",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  send: adminBase.input(idInput.extend({ body: exports_external.string().min(1).max(3000) })).handler(async ({ input, context }) => {
+    const [conversation] = await context.db.select().from(conversations).where(eq(conversations.id, input.id)).limit(1);
+    if (!conversation)
+      throw new ORPCError("NOT_FOUND", { message: "Conversa não encontrada" });
+    if (conversation.mode !== "humano") {
+      await transferToHuman(context.db, input.id, `resposta manual de ${context.user.name ?? "corretor"}`);
+      await context.db.update(conversations).set({ assignedTo: context.user.id, assignedName: context.user.name ?? null }).where(eq(conversations.id, input.id));
+    }
+    let delivery = {
+      sent: false,
+      detail: "Registrado no painel (canal sem envio automático)."
+    };
+    if (conversation.channel === "whatsapp" && conversation.contactPhone) {
+      const { config: config2 } = await readConfig(context.db, "whatsapp_cloud");
+      if (config2.accessToken && config2.phoneNumberId) {
+        try {
+          await sendWhatsappText(config2, conversation.contactPhone, input.body);
+          delivery = { sent: true, detail: "Enviado pelo WhatsApp Cloud API." };
+        } catch (error48) {
+          delivery = {
+            sent: false,
+            detail: `Falha no envio: ${error48 instanceof Error ? error48.message : "erro"}`
+          };
+        }
+      } else {
+        delivery = { sent: false, detail: "WhatsApp Cloud API ainda sem credencial." };
+      }
+    }
+    await addMessage(context.db, input.id, {
+      direction: "out",
+      author: "humano",
+      authorName: context.user.name ?? null,
+      body: input.body
+    });
+    return { ok: true, delivery };
+  }),
+  close: adminBase.input(idInput).handler(async ({ input, context }) => {
+    await context.db.update(conversations).set({ status: "fechada" }).where(eq(conversations.id, input.id));
+    await audit(context.db, context.user, "conversa.fechada", {
+      entity: "conversation",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  reopen: adminBase.input(idInput).handler(async ({ input, context }) => {
+    await context.db.update(conversations).set({ status: "aberta" }).where(eq(conversations.id, input.id));
+    return { ok: true };
+  }),
+  simulate: adminBase.input(exports_external.object({ body: exports_external.string().min(1).max(2000), conversationId: exports_external.number().int().optional() })).handler(async ({ input, context }) => {
+    const conversation = input.conversationId ? (await context.db.select().from(conversations).where(eq(conversations.id, input.conversationId)).limit(1))[0] : await ensureConversation(context.db, {
+      channel: "teste",
+      externalId: `teste-${Date.now()}`,
+      contactName: "Conversa de teste"
+    });
+    if (!conversation)
+      throw new ORPCError("NOT_FOUND", { message: "Conversa não encontrada" });
+    await addMessage(context.db, conversation.id, {
+      direction: "in",
+      author: "cliente",
+      body: input.body
+    });
+    const result = await aiTurn(context.db, conversation.id, siteBaseUrl(context.headers));
+    return { conversationId: conversation.id, ...result };
+  }),
+  remove: adminBase.input(idInput).handler(async ({ input, context }) => {
+    await context.db.delete(messages).where(eq(messages.conversationId, input.id));
+    await context.db.delete(conversations).where(eq(conversations.id, input.id));
+    await audit(context.db, context.user, "conversa.removida", {
+      entity: "conversation",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/routes/admin-agents.ts
+init_schema();
+var agentInput = exports_external.object({
+  name: exports_external.string().min(2).max(80),
+  active: exports_external.boolean().default(false),
+  model: exports_external.string().min(3).max(80).default("openai/gpt-5.4-mini"),
+  greeting: exports_external.string().max(600).default(""),
+  instructions: exports_external.string().max(6000).default(""),
+  tone: exports_external.string().max(400).default(""),
+  hoursStart: exports_external.string().max(5).default("08:00"),
+  hoursEnd: exports_external.string().max(5).default("20:00"),
+  channels: exports_external.array(exports_external.enum(["site", "whatsapp", "instagram", "facebook"])).default(["site"]),
+  qualification: exports_external.string().max(2000).default(""),
+  transferRules: exports_external.string().max(2000).default(""),
+  transferMessage: exports_external.string().max(600).default(""),
+  idleMinutes: exports_external.number().int().min(1).max(1440).default(30),
+  humanConditions: exports_external.string().max(2000).default("")
+});
+function toRow6(input) {
+  return {
+    name: input.name.trim(),
+    active: input.active ? 1 : 0,
+    model: input.model,
+    greeting: input.greeting.trim(),
+    instructions: input.instructions.trim(),
+    tone: input.tone.trim(),
+    hoursStart: input.hoursStart,
+    hoursEnd: input.hoursEnd,
+    channels: JSON.stringify(input.channels),
+    qualification: input.qualification.trim(),
+    transferRules: input.transferRules.trim(),
+    transferMessage: input.transferMessage.trim(),
+    idleMinutes: input.idleMinutes,
+    humanConditions: input.humanConditions.trim(),
+    updatedAt: new Date
+  };
+}
+function asAgentRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    model: row.model,
+    greeting: row.greeting,
+    instructions: row.instructions,
+    tone: row.tone,
+    qualification: row.qualification,
+    transferRules: row.transferRules,
+    transferMessage: row.transferMessage,
+    humanConditions: row.humanConditions,
+    hoursStart: row.hoursStart,
+    hoursEnd: row.hoursEnd
+  };
+}
+var adminAgents = {
+  list: adminBase.handler(async ({ context }) => {
+    const rows = await context.db.select().from(aiAgents).orderBy(desc(aiAgents.updatedAt));
+    return {
+      gatewayReady: gatewayConfigured(),
+      agents: rows.map((row) => ({
+        ...row,
+        active: row.active === 1,
+        channels: (() => {
+          try {
+            const parsed = JSON.parse(row.channels);
+            return Array.isArray(parsed) ? parsed.map(String) : [];
+          } catch {
+            return [];
+          }
+        })()
+      }))
+    };
+  }),
+  create: adminBase.input(agentInput).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(aiAgents).values(toRow6(input)).returning();
+    await audit(context.db, context.user, "ia.agente_criado", {
+      entity: "ai_agent",
+      entityId: created?.id,
+      detail: input.name,
+      ip: clientIp(context.headers)
+    });
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(agentInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const { id, ...rest } = input;
+    await context.db.update(aiAgents).set(toRow6(rest)).where(eq(aiAgents.id, id));
+    await audit(context.db, context.user, "ia.agente_atualizado", {
+      entity: "ai_agent",
+      entityId: id,
+      detail: input.name,
+      ip: clientIp(context.headers)
+    });
+    return { id };
+  }),
+  setActive: adminBase.input(exports_external.object({ id: exports_external.number().int(), active: exports_external.boolean() })).handler(async ({ input, context }) => {
+    await context.db.update(aiAgents).set({ active: input.active ? 1 : 0, updatedAt: new Date }).where(eq(aiAgents.id, input.id));
+    await audit(context.db, context.user, input.active ? "ia.agente_ativado" : "ia.agente_pausado", {
+      entity: "ai_agent",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.delete(aiAgents).where(eq(aiAgents.id, input.id));
+    await audit(context.db, context.user, "ia.agente_removido", {
+      entity: "ai_agent",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  test: adminBase.input(exports_external.object({
+    id: exports_external.number().int(),
+    turns: exports_external.array(exports_external.object({ role: exports_external.enum(["user", "assistant"]), content: exports_external.string().max(2000) })).min(1).max(20)
+  })).handler(async ({ input, context }) => {
+    const [row] = await context.db.select().from(aiAgents).where(eq(aiAgents.id, input.id)).limit(1);
+    if (!row)
+      throw new ORPCError("NOT_FOUND", { message: "Agente não encontrado" });
+    if (!gatewayConfigured()) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Provedor de IA não configurado no servidor."
+      });
+    }
+    try {
+      const reply = await agentReply(context.db, asAgentRow(row), input.turns, siteBaseUrl(context.headers));
+      return { ok: true, ...reply };
+    } catch (error48) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", {
+        message: error48 instanceof Error ? error48.message : "Falha ao consultar a IA"
+      });
+    }
+  })
+};
+
+// packages/web/src/api/routes/admin-automations.ts
+init_schema();
+var actionInput = exports_external.object({
+  type: exports_external.enum(["criar_tarefa", "nota_lead", "mudar_etapa", "whatsapp_texto"]),
+  text: exports_external.string().max(1000).optional(),
+  stage: exports_external.string().max(60).optional(),
+  hours: exports_external.number().int().min(1).max(720).optional()
+});
+var automationInput = exports_external.object({
+  name: exports_external.string().min(2).max(120),
+  trigger: exports_external.enum([
+    "lead_novo",
+    "lead_sem_resposta",
+    "conversa_transferida",
+    "imovel_publicado",
+    "proposta_enviada"
+  ]),
+  conditions: exports_external.object({ source: exports_external.string().max(60).optional(), hours: exports_external.number().int().min(1).max(720).optional() }).default({}),
+  actions: exports_external.array(actionInput).min(1).max(6),
+  active: exports_external.boolean().default(false)
+});
+var adminAutomations = {
+  list: adminBase.handler(async ({ context }) => {
+    const rows = await context.db.select().from(automations).orderBy(desc(automations.createdAt));
+    const runs = rows.length ? await context.db.select().from(automationRuns).where(inArray(automationRuns.automationId, rows.map((row) => row.id))).orderBy(desc(automationRuns.createdAt)).limit(120) : [];
+    return {
+      triggers: TRIGGERS.map((item) => ({ ...item })),
+      actionTypes: ACTIONS.map((item) => ({ ...item })),
+      automations: rows.map((row) => ({
+        ...row,
+        active: row.active === 1,
+        conditions: row.conditions,
+        actions: row.actions
+      })),
+      runs
+    };
+  }),
+  create: adminBase.input(automationInput).handler(async ({ input, context }) => {
+    const [created] = await context.db.insert(automations).values({
+      name: input.name.trim(),
+      trigger: input.trigger,
+      conditions: JSON.stringify(input.conditions),
+      actions: JSON.stringify(input.actions),
+      active: input.active ? 1 : 0
+    }).returning();
+    await audit(context.db, context.user, "automacao.criada", {
+      entity: "automation",
+      entityId: created?.id,
+      detail: input.name,
+      ip: clientIp(context.headers)
+    });
+    return { id: created?.id ?? 0 };
+  }),
+  update: adminBase.input(automationInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.update(automations).set({
+      name: input.name.trim(),
+      trigger: input.trigger,
+      conditions: JSON.stringify(input.conditions),
+      actions: JSON.stringify(input.actions),
+      active: input.active ? 1 : 0
+    }).where(eq(automations.id, input.id));
+    await audit(context.db, context.user, "automacao.atualizada", {
+      entity: "automation",
+      entityId: input.id,
+      detail: input.name,
+      ip: clientIp(context.headers)
+    });
+    return { id: input.id };
+  }),
+  setActive: adminBase.input(exports_external.object({ id: exports_external.number().int(), active: exports_external.boolean() })).handler(async ({ input, context }) => {
+    await context.db.update(automations).set({ active: input.active ? 1 : 0 }).where(eq(automations.id, input.id));
+    await audit(context.db, context.user, input.active ? "automacao.ativada" : "automacao.pausada", { entity: "automation", entityId: input.id, ip: clientIp(context.headers) });
+    return { ok: true };
+  }),
+  remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
+    await context.db.delete(automationRuns).where(eq(automationRuns.automationId, input.id));
+    await context.db.delete(automations).where(eq(automations.id, input.id));
+    await audit(context.db, context.user, "automacao.removida", {
+      entity: "automation",
+      entityId: input.id,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  sweep: adminBase.handler(async ({ context }) => {
+    const result = await sweepTimeRules(context.db);
+    await audit(context.db, context.user, "automacao.varredura", {
+      detail: `${result.fired} disparo(s) em ${result.checked} lead(s)`,
+      ip: clientIp(context.headers)
+    });
+    return result;
+  }),
+  runs: adminBase.input(exports_external.object({ id: exports_external.number().int(), limit: exports_external.number().int().min(1).max(100).optional() })).handler(({ input, context }) => context.db.select().from(automationRuns).where(eq(automationRuns.automationId, input.id)).orderBy(desc(automationRuns.createdAt)).limit(input.limit ?? 30))
+};
+
+// packages/web/src/api/routes/admin-watermark.ts
+init_schema();
+var settingsInput2 = exports_external.object({
+  enabled: exports_external.boolean(),
+  logoUrl: exports_external.string().max(2000).nullable(),
+  size: exports_external.number().int().min(5).max(60),
+  opacity: exports_external.number().int().min(10).max(100),
+  margin: exports_external.number().int().min(0).max(20),
+  position: exports_external.enum([
+    "top-left",
+    "top-center",
+    "top-right",
+    "center",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right"
+  ]),
+  applyToNewUploads: exports_external.boolean()
+});
+async function loadSettings(db3) {
+  const [row] = await db3.select().from(watermarkSettings).limit(1);
+  return row ?? null;
+}
+var adminWatermark = {
+  get: adminBase.handler(async ({ context }) => {
+    const row = await loadSettings(context.db);
+    const marked = await context.db.select({ id: propertyImages.id }).from(propertyImages).where(or(isNull(propertyImages.originalUrl), eq(propertyImages.originalUrl, "")));
+    const total = await context.db.select({ id: propertyImages.id }).from(propertyImages);
+    return {
+      settings: row ? { ...row, enabled: row.enabled === 1, applyToNewUploads: row.applyToNewUploads === 1 } : {
+        id: 0,
+        enabled: false,
+        logoUrl: null,
+        size: 22,
+        opacity: 70,
+        margin: 4,
+        position: "bottom-right",
+        applyToNewUploads: true,
+        updatedAt: new Date
+      },
+      stats: {
+        totalImages: total.length,
+        withoutWatermark: marked.length,
+        withWatermark: total.length - marked.length
+      }
+    };
+  }),
+  save: adminBase.input(settingsInput2).handler(async ({ input, context }) => {
+    const payload = {
+      enabled: input.enabled ? 1 : 0,
+      logoUrl: input.logoUrl?.trim() || null,
+      size: input.size,
+      opacity: input.opacity,
+      margin: input.margin,
+      position: input.position,
+      applyToNewUploads: input.applyToNewUploads ? 1 : 0,
+      updatedAt: new Date
+    };
+    if (input.enabled && !payload.logoUrl) {
+      throw new ORPCError("BAD_REQUEST", { message: "Envie o logo antes de ativar a marca d'água." });
+    }
+    const row = await loadSettings(context.db);
+    if (row) {
+      await context.db.update(watermarkSettings).set(payload).where(eq(watermarkSettings.id, row.id));
+    } else {
+      await context.db.insert(watermarkSettings).values(payload);
+    }
+    await audit(context.db, context.user, "marca_dagua.config", {
+      detail: `ativa=${input.enabled} posicao=${input.position} tamanho=${input.size}%`,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true };
+  }),
+  queue: adminBase.input(exports_external.object({
+    mode: exports_external.enum(["faltantes", "todas"]).default("faltantes"),
+    limit: exports_external.number().int().min(1).max(60).default(20)
+  })).handler(async ({ input, context }) => {
+    const properties3 = await context.db.select({ id: properties.id, watermarkOff: properties.watermarkOff }).from(properties);
+    const skip = new Set(properties3.filter((row) => row.watermarkOff === 1).map((row) => row.id));
+    const images = await context.db.select().from(propertyImages).orderBy(asc(propertyImages.propertyId), asc(propertyImages.sortOrder)).limit(1000);
+    const pending = images.filter((image) => !skip.has(image.propertyId)).filter((image) => input.mode === "todas" ? true : !image.originalUrl || image.originalUrl === "").slice(0, input.limit).map((image) => ({
+      imageId: image.id,
+      propertyId: image.propertyId,
+      sourceUrl: image.originalUrl || image.url,
+      currentUrl: image.url,
+      alreadyWatermarked: Boolean(image.originalUrl)
+    }));
+    return { pending, skipped: [...skip] };
+  }),
+  applyResult: adminBase.input(exports_external.object({
+    imageId: exports_external.number().int(),
+    watermarkedUrl: exports_external.string().min(1).max(2000),
+    originalUrl: exports_external.string().min(1).max(2000)
+  })).handler(async ({ input, context }) => {
+    const [image] = await context.db.select().from(propertyImages).where(eq(propertyImages.id, input.imageId)).limit(1);
+    if (!image)
+      throw new ORPCError("NOT_FOUND", { message: "Foto não encontrada" });
+    const original = image.originalUrl || input.originalUrl;
+    await context.db.update(propertyImages).set({ url: input.watermarkedUrl, originalUrl: original }).where(eq(propertyImages.id, input.imageId));
+    const derivedId = input.watermarkedUrl.split("/").pop() ?? "";
+    const originalId = original.split("/").pop() ?? "";
+    if (derivedId) {
+      await context.db.update(media).set({ variant: "watermarked", originalId: originalId || null }).where(eq(media.id, derivedId));
+    }
+    if (originalId) {
+      await context.db.update(media).set({ variant: "original" }).where(eq(media.id, originalId));
+    }
+    return { ok: true };
+  }),
+  restore: adminBase.input(exports_external.object({ imageId: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const [image] = await context.db.select().from(propertyImages).where(eq(propertyImages.id, input.imageId)).limit(1);
+    if (!image)
+      throw new ORPCError("NOT_FOUND", { message: "Foto não encontrada" });
+    if (!image.originalUrl)
+      return { ok: true, message: "Esta foto já é a original." };
+    await context.db.update(propertyImages).set({ url: image.originalUrl, originalUrl: null }).where(eq(propertyImages.id, input.imageId));
+    await audit(context.db, context.user, "marca_dagua.restaurar", {
+      entity: "property_image",
+      entityId: input.imageId,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, message: "Foto original restaurada." };
+  }),
+  restoreProperty: adminBase.input(exports_external.object({ propertyId: exports_external.number().int() })).handler(async ({ input, context }) => {
+    const images = await context.db.select().from(propertyImages).where(and(eq(propertyImages.propertyId, input.propertyId), inArray(propertyImages.propertyId, [input.propertyId])));
+    let count = 0;
+    for (const image of images) {
+      if (!image.originalUrl)
+        continue;
+      await context.db.update(propertyImages).set({ url: image.originalUrl, originalUrl: null }).where(eq(propertyImages.id, image.id));
+      count += 1;
+    }
+    await audit(context.db, context.user, "marca_dagua.restaurar_imovel", {
+      entity: "property",
+      entityId: input.propertyId,
+      detail: `${count} foto(s)`,
+      ip: clientIp(context.headers)
+    });
+    return { ok: true, count };
+  }),
+  setPropertyOff: adminBase.input(exports_external.object({ propertyId: exports_external.number().int(), off: exports_external.boolean() })).handler(async ({ input, context }) => {
+    await context.db.update(properties).set({ watermarkOff: input.off ? 1 : 0, updatedAt: new Date }).where(eq(properties.id, input.propertyId));
+    return { ok: true };
+  })
+};
+
+// packages/web/src/api/routes/admin-audit.ts
+init_schema();
+var adminAudit = {
+  list: adminBase.input(exports_external.object({ limit: exports_external.number().int().min(10).max(300).optional() }).optional()).handler(({ input, context }) => recentAudit(context.db, input?.limit ?? 120)),
+  aiDashboard: adminBase.handler(async ({ context }) => {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const conversations2 = await context.db.select().from(conversations).orderBy(desc(conversations.id)).limit(500);
+    const messages2 = await context.db.select().from(messages).where(gte(messages.createdAt, since)).limit(4000);
+    const runs = await context.db.select().from(automationRuns).where(gte(automationRuns.createdAt, since)).orderBy(desc(automationRuns.createdAt)).limit(500);
+    const automations2 = await context.db.select().from(automations);
+    const agents = await context.db.select().from(aiAgents);
+    const events = await context.db.select().from(integrationEvents).orderBy(desc(integrationEvents.createdAt)).limit(40);
+    const transferred = conversations2.filter((row) => row.transferredAt !== null);
+    const byChannel = new Map;
+    for (const row of conversations2) {
+      byChannel.set(row.channel, (byChannel.get(row.channel) ?? 0) + 1);
+    }
+    return {
+      conversations: {
+        total: conversations2.length,
+        abertas: conversations2.filter((row) => row.status === "aberta").length,
+        emIa: conversations2.filter((row) => row.mode === "ia").length,
+        comHumano: conversations2.filter((row) => row.mode === "humano").length,
+        transferidas: transferred.length,
+        taxaTransferencia: conversations2.length > 0 ? Math.round(transferred.length / conversations2.length * 100) : 0,
+        porCanal: [...byChannel.entries()].map(([channel, count]) => ({ channel, count }))
+      },
+      messages: {
+        total: messages2.length,
+        daIa: messages2.filter((row) => row.author === "ia").length,
+        deHumano: messages2.filter((row) => row.author === "humano").length,
+        deClientes: messages2.filter((row) => row.author === "cliente").length
+      },
+      agents: {
+        total: agents.length,
+        ativos: agents.filter((row) => row.active === 1).length
+      },
+      automations: {
+        total: automations2.length,
+        ativas: automations2.filter((row) => row.active === 1).length,
+        execucoes: runs.length,
+        falhas: runs.filter((row) => row.ok === 0).length
+      },
+      motivosTransferencia: transferred.filter((row) => row.transferReason).slice(0, 20).map((row) => ({ id: row.id, reason: row.transferReason, at: row.transferredAt })),
+      integrationEvents: events
+    };
+  })
+};
+
+// packages/web/src/api/http/feed-routes.ts
+init_schema();
+var FILE_TO_CHANNEL = {
+  "imoveis.xml": "feed",
+  "zap.xml": "zap",
+  "vivareal.xml": "zap",
+  "olx.xml": "olx",
+  "imovelweb.xml": "imovelweb"
+};
+var INTEGRATION_BY_CHANNEL = {
+  feed: "feed_imoveis",
+  zap: "zap_vivareal",
+  olx: "olx",
+  imovelweb: "imovelweb"
+};
+function escapeHtml(value2) {
+  return value2.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function registerFeedRoutes(app) {
+  app.get("/api/feed/:file", async (c) => {
+    const file2 = c.req.param("file");
+    const channel = FILE_TO_CHANNEL[file2];
+    if (!channel)
+      return c.text("not found", 404);
+    const db3 = await getDb();
+    const baseUrl = siteBaseUrl(c.req.raw.headers);
+    const [row] = await db3.select().from(integrations).where(eq(integrations.key, INTEGRATION_BY_CHANNEL[channel] ?? "feed_imoveis")).limit(1);
+    const config2 = parseConfig(row?.config);
+    const imageVariant = config2.imageVariant === "original" ? "original" : "marcada";
+    const items = await feedProperties(db3, channel);
+    const xml = feedXml(items, { baseUrl, channel, imageVariant });
+    return new Response(xml, {
+      status: 200,
+      headers: {
+        "content-type": "application/xml; charset=utf-8",
+        "cache-control": "public, max-age=600"
+      }
+    });
+  });
+  app.get("/api/sitemap.xml", async (c) => {
+    const db3 = await getDb();
+    const xml = await sitemapXml(db3, siteBaseUrl(c.req.raw.headers));
+    return new Response(xml, {
+      status: 200,
+      headers: {
+        "content-type": "application/xml; charset=utf-8",
+        "cache-control": "public, max-age=3600"
+      }
+    });
+  });
+  app.get("/api/robots.txt", async (c) => {
+    const db3 = await getDb();
+    const [row] = await db3.select().from(integrations).where(eq(integrations.key, "sitemap")).limit(1);
+    const config2 = parseConfig(row?.config);
+    const indexable = config2.noindex !== "true";
+    return new Response(robotsTxt(siteBaseUrl(c.req.raw.headers), indexable), {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" }
+    });
+  });
+  app.get("/api/prerender/imovel/:slug", async (c) => {
+    const slug = c.req.param("slug");
+    const baseUrl = siteBaseUrl(c.req.raw.headers);
+    let html = "";
+    try {
+      const response = await fetch(`${baseUrl}/index.html`, {
+        headers: { "user-agent": "edy-premi-prerender" }
+      });
+      html = await response.text();
+    } catch {
+      return c.redirect(`/?imovel=${encodeURIComponent(slug)}`, 302);
+    }
+    if (!html.includes("</head>")) {
+      return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+    try {
+      const db3 = await getDb();
+      const rows = await db3.select().from(properties).where(eq(properties.published, 1)).limit(500);
+      const wanted = slug.toLowerCase();
+      const property = rows.find((row) => (row.slug ?? propertySlug(row)).toLowerCase() === wanted) ?? rows.find((row) => row.code.toLowerCase() === wanted);
+      if (!property) {
+        return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+      }
+      const images = await db3.select().from(propertyImages).where(eq(propertyImages.propertyId, property.id)).limit(20);
+      const cover = images.find((image2) => image2.isPrimary === 1) ?? images[0];
+      const image = cover ? cover.url.startsWith("http") ? cover.url : `${baseUrl}${cover.url}` : "";
+      const price = property.price.toLocaleString("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+        maximumFractionDigits: 0
+      });
+      const title = `${property.title} — ${property.district}, ${property.city} | Edy Premi Imóveis`;
+      const description = `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.areaUtil} m² em ${property.district}. ${price}. Código ${property.code}.`;
+      const url2 = `${baseUrl}/imovel/${property.slug ?? propertySlug(property)}`;
+      const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "RealEstateListing",
+        name: property.title,
+        description: (property.description ?? description).slice(0, 500),
+        url: url2,
+        image: image || undefined,
+        offers: {
+          "@type": "Offer",
+          price: property.price,
+          priceCurrency: "BRL",
+          availability: property.status === "disponivel" ? "https://schema.org/InStock" : "https://schema.org/OutOfStock"
+        },
+        address: {
+          "@type": "PostalAddress",
+          addressLocality: property.city,
+          addressRegion: "SP",
+          addressCountry: "BR",
+          streetAddress: property.district
+        },
+        numberOfRooms: property.bedrooms,
+        floorSize: { "@type": "QuantitativeValue", value: property.areaUtil, unitCode: "MTK" }
+      };
+      const head = [
+        `<title>${escapeHtml(title)}</title>`,
+        `<meta name="description" content="${escapeHtml(description)}" />`,
+        `<link rel="canonical" href="${escapeHtml(url2)}" />`,
+        `<meta property="og:type" content="website" />`,
+        `<meta property="og:title" content="${escapeHtml(title)}" />`,
+        `<meta property="og:description" content="${escapeHtml(description)}" />`,
+        `<meta property="og:url" content="${escapeHtml(url2)}" />`,
+        image ? `<meta property="og:image" content="${escapeHtml(image)}" />` : "",
+        `<meta name="twitter:card" content="summary_large_image" />`,
+        `<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`
+      ].filter(Boolean).join(`
+`);
+      const patched = html.replace(/<title>[\s\S]*?<\/title>/i, "").replace(/<meta\s+name="description"[^>]*>/gi, "").replace(/<meta\s+property="og:(?:type|title|description|url|image)"[^>]*>/gi, "").replace(/<meta\s+name="twitter:[^"]*"[^>]*>/gi, "").replace(/<link\s+rel="canonical"[^>]*>/gi, "").replace("</head>", `${head}
+</head>`);
+      return new Response(patched, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" }
+      });
+    } catch {
+      return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+  });
+}
+
+// packages/web/src/api/http/webhook-routes.ts
+init_schema();
+var hits = new Map;
+var LIMIT = 60;
+var WINDOW = 60 * 1000;
+function rateLimited(ip) {
+  const entry = hits.get(ip);
+  const now2 = Date.now();
+  if (!entry || now2 > entry.until) {
+    hits.set(ip, { count: 1, until: now2 + WINDOW });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > LIMIT;
+}
+async function config2(db3, key) {
+  const [row] = await db3.select().from(integrations).where(eq(integrations.key, key)).limit(1);
+  return { config: parseConfig(row?.config), enabled: row?.enabled === 1 };
+}
+async function propertyIdFromCode(db3, code) {
+  if (!code)
+    return null;
+  const [row] = await db3.select({ id: properties.id }).from(properties).where(eq(properties.code, code.trim().toUpperCase())).limit(1);
+  return row?.id ?? null;
+}
+function registerWebhookRoutes(app) {
+  app.post("/api/webhooks/leads/:token", async (c) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+    if (rateLimited(ip))
+      return c.json({ error: "rate limit" }, 429);
+    const token = c.req.param("token");
+    const db3 = await getDb();
+    const { config: hook } = await config2(db3, "lead_webhook");
+    const known = new Set(["imovelweb", "zap", "olx"]);
+    const valid = hook.token && token === hook.token || known.has(token);
+    if (!valid) {
+      await logEvent(db3, "lead_webhook", "webhook", false, `Token inválido (${ip})`);
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    let payload = {};
+    try {
+      payload = await c.req.json();
+    } catch {
+      return c.json({ error: "json inválido" }, 400);
+    }
+    const normalized = normalizeWebhookLead(payload, known.has(token) ? token : "webhook");
+    if (!normalized.phone && !normalized.email) {
+      await logEvent(db3, "lead_webhook", "webhook", false, "Payload sem telefone e sem e-mail");
+      return c.json({ error: "informe telefone ou e-mail" }, 400);
+    }
+    const result = await intakeLead(db3, {
+      ...normalized,
+      propertyId: await propertyIdFromCode(db3, normalized.propertyCode)
+    });
+    await logEvent(db3, "lead_webhook", "webhook", true, `${normalized.portal}: ${result.detail} (lead #${result.id})`);
+    return c.json({ ok: true, leadId: result.id, duplicated: result.duplicated }, 200);
+  });
+  app.get("/api/webhooks/whatsapp", async (c) => {
+    const db3 = await getDb();
+    const { config: wa } = await config2(db3, "whatsapp_cloud");
+    const mode = c.req.query("hub.mode");
+    const token = c.req.query("hub.verify_token");
+    const challenge = c.req.query("hub.challenge") ?? "";
+    if (!wa.verifyToken)
+      return c.text("verify token não configurado", 503);
+    if (mode === "subscribe" && token === wa.verifyToken) {
+      await logEvent(db3, "whatsapp_cloud", "webhook", true, "Webhook verificado pela Meta");
+      return c.text(challenge, 200);
+    }
+    await logEvent(db3, "whatsapp_cloud", "webhook", false, "Falha na verificação do webhook");
+    return c.text("forbidden", 403);
+  });
+  app.post("/api/webhooks/whatsapp", async (c) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+    if (rateLimited(ip))
+      return c.json({ error: "rate limit" }, 429);
+    const db3 = await getDb();
+    const { config: wa, enabled } = await config2(db3, "whatsapp_cloud");
+    const raw2 = await c.req.text();
+    const signature = await verifyMetaSignature(wa.appSecret ?? "", raw2, c.req.header("x-hub-signature-256") ?? null);
+    if (!signature.ok) {
+      await logEvent(db3, "whatsapp_cloud", "webhook", false, `Assinatura recusada: ${signature.reason}`);
+      return c.json({ error: signature.reason }, 401);
+    }
+    if (!enabled) {
+      await logEvent(db3, "whatsapp_cloud", "webhook", false, "Integração desativada no painel");
+      return c.json({ ok: true, ignored: true }, 200);
+    }
+    let payload = {};
+    try {
+      payload = JSON.parse(raw2);
+    } catch {
+      return c.json({ error: "json inválido" }, 400);
+    }
+    const baseUrl = siteBaseUrl(c.req.raw.headers);
+    for (const message of parseWhatsappWebhook(payload)) {
+      const conversation = await ensureConversation(db3, {
+        channel: "whatsapp",
+        externalId: message.from,
+        contactName: message.name,
+        contactPhone: message.from
+      });
+      await addMessage(db3, conversation.id, {
+        direction: "in",
+        author: "cliente",
+        authorName: message.name,
+        body: message.text,
+        externalId: message.messageId
+      });
+      const lead = await intakeLead(db3, {
+        name: message.name ?? "Contato WhatsApp",
+        phone: message.from,
+        interest: "Contato por WhatsApp",
+        message: message.text,
+        source: "whatsapp",
+        channel: "whatsapp"
+      });
+      await db3.update(conversations).set({ leadId: conversation.leadId ?? lead.id }).where(eq(conversations.id, conversation.id));
+      const turn = await aiTurn(db3, conversation.id, baseUrl);
+      if (turn.replied && turn.text) {
+        try {
+          await sendWhatsappText(wa, message.from, turn.text);
+        } catch (error48) {
+          await logEvent(db3, "whatsapp_cloud", "error", false, `Falha ao responder: ${error48 instanceof Error ? error48.message : "erro"}`);
+        }
+      }
+    }
+    return c.json({ ok: true }, 200);
+  });
+  app.get("/api/webhooks/meta", async (c) => {
+    const db3 = await getDb();
+    const mode = c.req.query("hub.mode");
+    const token = c.req.query("hub.verify_token");
+    const challenge = c.req.query("hub.challenge") ?? "";
+    const candidates = await Promise.all(["meta_lead_ads", "instagram_dm", "facebook_messenger"].map(async (key) => {
+      const { config: item } = await config2(db3, key);
+      return { key, verifyToken: item.verifyToken ?? "" };
+    }));
+    const match2 = candidates.find((item) => item.verifyToken && item.verifyToken === token);
+    if (mode === "subscribe" && match2) {
+      await logEvent(db3, match2.key, "webhook", true, "Webhook verificado pela Meta");
+      return c.text(challenge, 200);
+    }
+    return c.text("forbidden", 403);
+  });
+  app.post("/api/webhooks/meta", async (c) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+    if (rateLimited(ip))
+      return c.json({ error: "rate limit" }, 429);
+    const db3 = await getDb();
+    const raw2 = await c.req.text();
+    const header = c.req.header("x-hub-signature-256") ?? null;
+    const secrets = await Promise.all(["meta_lead_ads", "instagram_dm", "facebook_messenger"].map(async (key) => {
+      const { config: item, enabled } = await config2(db3, key);
+      return { key, item, enabled };
+    }));
+    const withSecret = secrets.find((entry) => entry.item.appSecret);
+    const signature = await verifyMetaSignature(withSecret?.item.appSecret ?? "", raw2, header);
+    if (!signature.ok) {
+      await logEvent(db3, "meta_lead_ads", "webhook", false, `Assinatura recusada: ${signature.reason}`);
+      return c.json({ error: signature.reason }, 401);
+    }
+    let payload = {};
+    try {
+      payload = JSON.parse(raw2);
+    } catch {
+      return c.json({ error: "json inválido" }, 400);
+    }
+    const leadgens = parseLeadgenWebhook(payload);
+    if (leadgens.length) {
+      const entry = secrets.find((item) => item.key === "meta_lead_ads");
+      const pageToken = entry?.item.pageToken ?? "";
+      for (const leadgen of leadgens) {
+        if (!pageToken) {
+          await logEvent(db3, "meta_lead_ads", "webhook", false, `Lead ${leadgen.leadgenId} recebido, mas falta o token da página para buscar os dados.`);
+          continue;
+        }
+        try {
+          const data = await fetchLeadgen(leadgen.leadgenId, pageToken);
+          const result = await intakeLead(db3, {
+            name: data.fields.full_name ?? data.fields.first_name ?? "Lead Meta",
+            phone: data.fields.phone_number ?? "",
+            email: data.fields.email ?? null,
+            interest: data.fields.interesse ?? "Formulário Meta Lead Ads",
+            message: Object.entries(data.fields).map(([key, value2]) => `${key}: ${value2}`).join(`
+`),
+            source: "meta_lead_ads",
+            portal: "meta",
+            channel: "lead_ads",
+            campaign: data.campaign,
+            externalId: leadgen.leadgenId
+          });
+          await logEvent(db3, "meta_lead_ads", "webhook", true, `${result.detail} (lead #${result.id})`);
+        } catch (error48) {
+          await logEvent(db3, "meta_lead_ads", "error", false, `Falha ao buscar lead ${leadgen.leadgenId}: ${error48 instanceof Error ? error48.message : "erro"}`);
+        }
+      }
+    }
+    const baseUrl = siteBaseUrl(c.req.raw.headers);
+    for (const message of parseMetaMessaging(payload)) {
+      const key = message.platform === "instagram" ? "instagram_dm" : "facebook_messenger";
+      const entry = secrets.find((item) => item.key === key);
+      if (!entry?.enabled) {
+        await logEvent(db3, key, "webhook", false, "Integração desativada no painel");
+        continue;
+      }
+      const conversation = await ensureConversation(db3, {
+        channel: message.platform,
+        externalId: message.senderId,
+        contactName: null
+      });
+      await addMessage(db3, conversation.id, {
+        direction: "in",
+        author: "cliente",
+        body: message.text,
+        externalId: message.messageId
+      });
+      const turn = await aiTurn(db3, conversation.id, baseUrl);
+      let delivered = false;
+      if (turn.replied && turn.text) {
+        try {
+          await sendMetaMessage(entry.item, message.senderId, turn.text, message.platform);
+          delivered = true;
+        } catch (error48) {
+          await logEvent(db3, key, "error", false, `Falha ao responder: ${error48 instanceof Error ? error48.message : "erro"}`);
+        }
+      }
+      await logEvent(db3, key, "webhook", true, turn.replied ? delivered ? "Mensagem recebida e respondida pela IA" : "Resposta da IA gravada no painel, mas não entregue pela Meta" : `Mensagem recebida (${turn.skipped})`);
+    }
+    return c.json({ ok: true }, 200);
+  });
+}
+
 // packages/web/src/api/index.ts
 init_schema();
 var router = {
@@ -33896,9 +49872,18 @@ var router = {
   adminDashboard,
   adminSettings,
   adminSite,
-  adminMedia
+  adminMedia,
+  adminIntegrations,
+  adminChannels,
+  adminInbox,
+  adminAgents,
+  adminAutomations,
+  adminWatermark,
+  adminAudit
 };
 var app = createApp(router);
+registerFeedRoutes(app);
+registerWebhookRoutes(app);
 var attempts = new Map;
 var MAX_ATTEMPTS = 8;
 var WINDOW_MS = 10 * 60 * 1000;
@@ -33978,12 +49963,17 @@ app.post("/api/admin/upload", async (c) => {
   const id = randomHex(12);
   const db3 = await getDb();
   const safeName = (file2.name || "imagem").replace(/[^\w.\-() ]+/g, "").slice(0, 120);
+  const rawVariant = String(form.get("variant") ?? "original");
+  const variant = rawVariant === "watermarked" ? "watermarked" : "original";
+  const originalId = String(form.get("originalId") ?? "").trim() || null;
   await db3.insert(media).values({
     id,
     mime: file2.type,
     size: buffer.byteLength,
     data: btoa(binary),
-    name: safeName
+    name: safeName,
+    variant,
+    originalId: variant === "watermarked" ? originalId : null
   });
   return c.json({ url: `/api/media/${id}`, id }, 200);
 });

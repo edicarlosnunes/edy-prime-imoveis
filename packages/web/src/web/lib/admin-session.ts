@@ -89,6 +89,28 @@ export async function uploadImage(file: File): Promise<string> {
   return body.url;
 }
 
+/** Envia um blob já pronto (usado pela marca d'água) marcando a variante. */
+export async function uploadBlob(
+  blob: Blob,
+  name: string,
+  options?: { variant?: "original" | "watermarked"; originalId?: string },
+): Promise<string> {
+  if (blob.size > MAX_BYTES) throw new Error("Imagem muito grande depois da marca d'água");
+  const form = new FormData();
+  form.append("file", new File([blob], name, { type: blob.type || "image/jpeg" }));
+  if (options?.variant) form.append("variant", options.variant);
+  if (options?.originalId) form.append("originalId", options.originalId);
+
+  const response = await fetch("/api/admin/upload", {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!response.ok) throw new Error(await readError(response, "Falha ao enviar a imagem"));
+  const body = (await response.json()) as { url: string };
+  return body.url;
+}
+
 export function errorMessage(error: unknown, fallback = "Algo deu errado") {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error) return error;

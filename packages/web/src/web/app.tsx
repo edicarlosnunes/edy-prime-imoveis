@@ -10,6 +10,14 @@ import AdminAgenda from "./pages/admin/agenda";
 import AdminDeals from "./pages/admin/deals";
 import AdminSettings from "./pages/admin/settings";
 import AdminSiteEditor from "./pages/admin/site-editor";
+import AdminIntegrations from "./pages/admin/integrations";
+import AdminPortals from "./pages/admin/portals";
+import AdminConversations from "./pages/admin/conversations";
+import AdminAi from "./pages/admin/ai";
+import AdminAutomations from "./pages/admin/automations";
+import AdminWatermark from "./pages/admin/watermark";
+import AdminAudit from "./pages/admin/audit";
+import PropertyPage from "./pages/imovel";
 import { Provider } from "./components/provider";
 import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
 
@@ -28,6 +36,14 @@ function App() {
         <Route path="/admin/propostas" component={AdminDeals} />
         <Route path="/admin/configuracoes" component={AdminSettings} />
         <Route path="/admin/editor" component={AdminSiteEditor} />
+        <Route path="/admin/integracoes" component={AdminIntegrations} />
+        <Route path="/admin/portais" component={AdminPortals} />
+        <Route path="/admin/conversas" component={AdminConversations} />
+        <Route path="/admin/ia" component={AdminAi} />
+        <Route path="/admin/automacoes" component={AdminAutomations} />
+        <Route path="/admin/marca-dagua" component={AdminWatermark} />
+        <Route path="/admin/auditoria" component={AdminAudit} />
+        <Route path="/imovel/:slug" component={PropertyPage} />
       </Switch>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
       {import.meta.env.DEV && <AgentFeedback />}
