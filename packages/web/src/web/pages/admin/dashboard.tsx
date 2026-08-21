@@ -1,4 +1,17 @@
 import { Link } from "wouter";
+import {
+  BarChart3,
+  Building2,
+  CalendarCheck,
+  CheckCircle2,
+  FileSignature,
+  Handshake,
+  KeyRound,
+  Percent,
+  TrendingUp,
+  Users,
+  XCircle,
+} from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import {
@@ -42,27 +55,85 @@ function Content() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Imóveis" value={data.properties.total} hint={`${data.properties.published} publicados`} />
+        <Stat
+          label="Imóveis"
+          value={data.properties.total}
+          hint={`${data.properties.published} publicados`}
+          tone="green"
+          icon={<Building2 className="h-4 w-4" />}
+        />
         <Stat
           label="Vendidos / reservados"
           value={data.properties.sold + data.properties.reserved}
           hint={`${data.properties.sold} vendidos · ${data.properties.reserved} reservados`}
+          tone="brass"
+          icon={<KeyRound className="h-4 w-4" />}
         />
-        <Stat label="Leads" value={data.leads.total} hint={`${data.leads.new} novos`} />
-        <Stat label="Visitas agendadas" value={data.leads.scheduledVisits} hint="no funil" />
-        <Stat label="Propostas" value={data.deals.total} hint={`${data.deals.open} em aberto`} />
-        <Stat label="Em negociação" value={data.leads.negotiating} hint="leads na etapa" />
-        <Stat label="Vendas fechadas" value={data.deals.closed} hint={shortMoney(data.money.vgvClosed)} />
-        <Stat label="Leads perdidos" value={data.leads.lost} hint={`${data.leads.open} em aberto`} />
+        <Stat
+          label="Leads"
+          value={data.leads.total}
+          hint={`${data.leads.new} novos`}
+          tone="blue"
+          icon={<Users className="h-4 w-4" />}
+        />
+        <Stat
+          label="Visitas agendadas"
+          value={data.leads.scheduledVisits}
+          hint="no funil"
+          tone="teal"
+          icon={<CalendarCheck className="h-4 w-4" />}
+        />
+        <Stat
+          label="Propostas"
+          value={data.deals.total}
+          hint={`${data.deals.open} em aberto`}
+          tone="bronze"
+          icon={<FileSignature className="h-4 w-4" />}
+        />
+        <Stat
+          label="Em negociação"
+          value={data.leads.negotiating}
+          hint="leads na etapa"
+          tone="brass"
+          icon={<Handshake className="h-4 w-4" />}
+        />
+        <Stat
+          label="Vendas fechadas"
+          value={data.deals.closed}
+          hint={shortMoney(data.money.vgvClosed)}
+          tone="green"
+          icon={<CheckCircle2 className="h-4 w-4" />}
+        />
+        <Stat
+          label="Leads perdidos"
+          value={data.leads.lost}
+          hint={`${data.leads.open} em aberto`}
+          tone="rose"
+          icon={<XCircle className="h-4 w-4" />}
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <Stat label="VGV dos imóveis" value={shortMoney(data.money.vgvPortfolio)} hint="imóveis disponíveis" />
-        <Stat label="VGV em propostas" value={shortMoney(data.money.vgvProposals)} hint="propostas em aberto" />
+        <Stat
+          label="VGV dos imóveis"
+          value={shortMoney(data.money.vgvPortfolio)}
+          hint="imóveis disponíveis"
+          tone="blue"
+          icon={<BarChart3 className="h-4 w-4" />}
+        />
+        <Stat
+          label="VGV em propostas"
+          value={shortMoney(data.money.vgvProposals)}
+          hint="propostas em aberto"
+          tone="teal"
+          icon={<TrendingUp className="h-4 w-4" />}
+        />
         <Stat
           label="Comissão prevista"
           value={shortMoney(data.money.expectedCommission)}
           hint={`${money(data.money.closedCommission)} já fechada`}
+          tone="brass"
+          icon={<Percent className="h-4 w-4" />}
         />
       </div>
 

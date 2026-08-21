@@ -92,18 +92,32 @@ export function Card({
   );
 }
 
+export type StatTone = "green" | "brass" | "blue" | "bronze" | "teal" | "rose";
+
 export function Stat({
   label,
   value,
   hint,
+  icon,
+  tone,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  icon?: ReactNode;
+  tone?: StatTone;
 }) {
   return (
-    <div className="admin-card rounded-[4px] border border-line bg-white px-4 py-5">
-      <p className="label-xs text-muted">{label}</p>
+    <div
+      className={cn(
+        "admin-card rounded-[4px] border border-line bg-white px-4 py-5",
+        tone && `admin-stat-${tone}`,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="label-xs text-muted">{label}</p>
+        {icon && <span className="admin-stat-icon">{icon}</span>}
+      </div>
       <p className="admin-stat display mt-2 text-4xl text-deep">{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
     </div>

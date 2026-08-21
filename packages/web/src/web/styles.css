@@ -471,3 +471,111 @@
   background-color: rgba(3, 7, 14, 0.74);
   backdrop-filter: blur(4px);
 }
+
+/* ------------------------------------------- KPI: tons vivos + ícone       *
+ * Tons explícitos por card (mais saturados que a rotação automática) e um   *
+ * bloco de ícone com contraste. Só nos cards de indicador.                  */
+
+.admin-shell .admin-card:has(.admin-stat) {
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--tone), 0.28) 0%,
+    rgba(var(--tone), 0.1) 48%,
+    rgba(255, 255, 255, 0) 78%
+  );
+  border-color: rgba(var(--tone), 0.38);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 14px 30px -22px rgba(0, 0, 0, 0.95);
+}
+
+.admin-shell .admin-card:has(.admin-stat)::after {
+  background: rgba(var(--tone), 0.18);
+}
+
+.admin-shell .admin-card:has(.admin-stat):hover {
+  border-color: rgba(var(--tone), 0.62);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 18px 34px -20px rgba(0, 0, 0, 0.95);
+}
+
+.admin-shell .admin-stat-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 999px;
+  background-color: rgba(var(--tone), 0.28);
+  border: 1px solid rgba(var(--tone), 0.5);
+  color: rgb(var(--tone-ink, 255 255 255));
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.9);
+}
+
+/* Tons explícitos (vencem a rotação por nth-child) */
+.admin-shell .admin-card:has(.admin-stat).admin-stat-green:nth-child(n) {
+  --tone: 34, 148, 111;
+  --tone-ink: 134 231 190;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-brass:nth-child(n) {
+  --tone: 214, 163, 74;
+  --tone-ink: 245 214 152;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-blue:nth-child(n) {
+  --tone: 56, 141, 196;
+  --tone-ink: 158 213 250;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-teal:nth-child(n) {
+  --tone: 32, 156, 160;
+  --tone-ink: 141 231 232;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-bronze:nth-child(n) {
+  --tone: 190, 118, 66;
+  --tone-ink: 245 195 156;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-rose:nth-child(n) {
+  --tone: 196, 76, 88;
+  --tone-ink: 250 172 180;
+}
+
+/* Brilho de canto sem borda dura (substitui o círculo sólido) */
+.admin-shell .admin-card:has(.admin-stat)::after {
+  right: -60px;
+  bottom: -70px;
+  width: 190px;
+  height: 190px;
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--tone), 0.3) 0%,
+    rgba(var(--tone), 0.12) 45%,
+    rgba(var(--tone), 0) 72%
+  );
+}
+
+/* Cards de indicador sem tom explícito (outras telas): saturação discreta */
+.admin-shell .admin-card:has(.admin-stat):not([class*="admin-stat-"]) {
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--tone), 0.14) 0%,
+    rgba(var(--tone), 0.04) 45%,
+    rgba(255, 255, 255, 0) 75%
+  );
+  border-color: rgba(var(--tone), 0.24);
+}
+
+.admin-shell .admin-card:has(.admin-stat):not([class*="admin-stat-"])::after {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--tone), 0.14) 0%,
+    rgba(var(--tone), 0) 70%
+  );
+}
