@@ -3,11 +3,11 @@ import { useEffect } from "react";
 /**
  * Revela elementos com a classe `.reveal` quando entram na viewport.
  * Aplica `.is-visible` com stagger baseado no atributo data-reveal-delay.
+ * Também observa o DOM: cards que chegam depois (dados da API) entram na conta.
  */
 export function useReveal() {
   useEffect(() => {
-    const nodes = Array.from(document.querySelectorAll<HTMLElement>(".reveal"));
-    if (nodes.length === 0) return;
+    const tracked = new WeakSet<Element>();
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -22,7 +22,21 @@ export function useReveal() {
       { threshold: 0.12, rootMargin: "0px 0px -8% 0px" },
     );
 
-    for (const node of nodes) observer.observe(node);
-    return () => observer.disconnect();
-  });
+    const scan = () => {
+      for (const node of document.querySelectorAll<HTMLElement>(".reveal")) {
+        if (tracked.has(node) || node.classList.contains("is-visible")) continue;
+        tracked.add(node);
+        observer.observe(node);
+      }
+    };
+
+    scan();
+    const mutations = new MutationObserver(() => scan());
+    mutations.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      mutations.disconnect();
+      observer.disconnect();
+    };
+  }, []);
 }
