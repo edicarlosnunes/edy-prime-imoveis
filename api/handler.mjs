@@ -47665,6 +47665,166 @@ init_schema();
 
 // packages/web/src/api/agent/broker.ts
 init_schema();
+
+// packages/web/src/api/lib/property-search.ts
+init_schema();
+var SYNONYMS = {
+  quarto: "dormitorio",
+  quartos: "dormitorio",
+  dormitorios: "dormitorio",
+  dorm: "dormitorio",
+  dorms: "dormitorio",
+  garagem: "vaga",
+  garagens: "vaga",
+  vagas: "vaga",
+  suites: "suite",
+  banheiros: "banheiro",
+  apto: "apartamento",
+  aptos: "apartamento",
+  ap: "apartamento",
+  apartamentos: "apartamento",
+  casas: "casa",
+  coberturas: "cobertura",
+  predio: "edificio",
+  bairro: "",
+  no: "",
+  na: "",
+  do: "",
+  da: "",
+  de: "",
+  em: ""
+};
+function normalizeText(value2) {
+  if (!value2)
+    return "";
+  return value2.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+function tokenize(value2) {
+  const normalized = normalizeText(value2);
+  if (!normalized)
+    return [];
+  return normalized.split(" ").map((token) => (token in SYNONYMS) ? SYNONYMS[token] : token).filter((token) => token.length > 0);
+}
+function levenshtein(a, b) {
+  if (a === b)
+    return 0;
+  if (!a.length)
+    return b.length;
+  if (!b.length)
+    return a.length;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1;i <= a.length; i += 1) {
+    const current = [i];
+    for (let j = 1;j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + cost);
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+function tolerance(length) {
+  if (length <= 4)
+    return 0;
+  if (length <= 6)
+    return 1;
+  if (length <= 10)
+    return 2;
+  return 3;
+}
+function tokenMatches(needle, haystackToken) {
+  if (needle === haystackToken)
+    return true;
+  if (needle.length >= 4 && haystackToken.startsWith(needle))
+    return true;
+  if (haystackToken.length >= 4 && needle.startsWith(haystackToken))
+    return true;
+  const limit = tolerance(Math.max(needle.length, haystackToken.length));
+  if (limit === 0)
+    return false;
+  if (Math.abs(needle.length - haystackToken.length) > limit)
+    return false;
+  return levenshtein(needle, haystackToken) <= limit;
+}
+function textMatches(needle, fields) {
+  const wanted = tokenize(needle);
+  if (wanted.length === 0)
+    return true;
+  const candidates = fields.flatMap((field) => tokenize(field));
+  if (candidates.length === 0)
+    return false;
+  const joined = candidates.join(" ");
+  return wanted.every((token) => token.length >= 4 && joined.includes(token) || candidates.some((candidate) => tokenMatches(token, candidate)));
+}
+function placeMatches(row, place) {
+  return textMatches(place, [row.district, row.city, row.title, row.address]);
+}
+function termMatches(row, term) {
+  return textMatches(term, [
+    row.code,
+    row.title,
+    row.highlight,
+    row.description,
+    row.features,
+    row.district,
+    row.city
+  ]);
+}
+function filterProperties(rows, input) {
+  return rows.filter((row) => {
+    if (row.published !== 1)
+      return false;
+    if (row.status !== "disponivel" && row.status !== "reservado")
+      return false;
+    if (input.tipo && row.type !== input.tipo)
+      return false;
+    if (input.finalidade && row.purpose !== input.finalidade && row.purpose !== "venda_locacao") {
+      return false;
+    }
+    if (input.dormitoriosMin !== undefined && row.bedrooms < input.dormitoriosMin)
+      return false;
+    if (input.vagasMin !== undefined && row.parking < input.vagasMin)
+      return false;
+    if (input.precoMax !== undefined && row.price > input.precoMax)
+      return false;
+    if (input.precoMin !== undefined && row.price < input.precoMin)
+      return false;
+    if (input.bairro && !placeMatches(row, input.bairro))
+      return false;
+    if (input.cidade && !textMatches(input.cidade, [row.city, row.district]))
+      return false;
+    if (input.termo && !termMatches(row, input.termo))
+      return false;
+    return true;
+  });
+}
+async function searchProperties(db3, input, limit = 6, candidateLimit = 200) {
+  const filters = [
+    eq(properties.published, 1),
+    or(eq(properties.status, "disponivel"), eq(properties.status, "reservado"))
+  ];
+  if (input.tipo)
+    filters.push(eq(properties.type, input.tipo));
+  if (input.finalidade) {
+    filters.push(or(eq(properties.purpose, input.finalidade), eq(properties.purpose, "venda_locacao")));
+  }
+  if (input.dormitoriosMin !== undefined) {
+    filters.push(gte(properties.bedrooms, input.dormitoriosMin));
+  }
+  if (input.vagasMin !== undefined)
+    filters.push(gte(properties.parking, input.vagasMin));
+  if (input.precoMax !== undefined)
+    filters.push(lte(properties.price, input.precoMax));
+  if (input.precoMin !== undefined)
+    filters.push(gte(properties.price, input.precoMin));
+  const rows = await db3.select().from(properties).where(and(...filters)).orderBy(asc(properties.price)).limit(candidateLimit);
+  return filterProperties(rows, {
+    bairro: input.bairro,
+    cidade: input.cidade,
+    termo: input.termo
+  }).slice(0, limit);
+}
+// packages/web/src/api/agent/broker.ts
 var money = (value2) => value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 function propertyTools(db3, baseUrl, seen) {
   return {
@@ -47684,43 +47844,14 @@ function propertyTools(db3, baseUrl, seen) {
           "outro"
         ]).optional(),
         finalidade: exports_external.enum(["venda", "locacao"]).optional(),
-        dormitoriosMin: exports_external.number().int().min(0).max(10).optional(),
+        dormitoriosMin: exports_external.number().int().min(0).max(10).optional().describe("mínimo de dormitórios (quartos = dormitórios)"),
         vagasMin: exports_external.number().int().min(0).max(10).optional(),
         precoMax: exports_external.number().min(0).optional(),
         precoMin: exports_external.number().min(0).optional(),
         termo: exports_external.string().max(60).optional().describe("palavra-chave livre, ex: 'frente mar', 'varanda gourmet', 'piscina'")
       }),
       async execute(input) {
-        const filters = [
-          eq(properties.published, 1),
-          or(eq(properties.status, "disponivel"), eq(properties.status, "reservado"))
-        ];
-        if (input.bairro) {
-          filters.push(sql`lower(${properties.district}) like ${`%${input.bairro.toLowerCase()}%`}`);
-        }
-        if (input.cidade) {
-          filters.push(sql`lower(${properties.city}) like ${`%${input.cidade.toLowerCase()}%`}`);
-        }
-        if (input.tipo)
-          filters.push(eq(properties.type, input.tipo));
-        if (input.finalidade) {
-          filters.push(or(eq(properties.purpose, input.finalidade), eq(properties.purpose, "venda_locacao")));
-        }
-        if (input.dormitoriosMin !== undefined) {
-          filters.push(gte(properties.bedrooms, input.dormitoriosMin));
-        }
-        if (input.vagasMin !== undefined) {
-          filters.push(gte(properties.parking, input.vagasMin));
-        }
-        if (input.termo) {
-          const term = `%${input.termo.toLowerCase()}%`;
-          filters.push(or(sql`lower(${properties.title}) like ${term}`, sql`lower(coalesce(${properties.highlight}, '')) like ${term}`, sql`lower(coalesce(${properties.description}, '')) like ${term}`, sql`lower(coalesce(${properties.features}, '')) like ${term}`));
-        }
-        if (input.precoMax !== undefined)
-          filters.push(lte(properties.price, input.precoMax));
-        if (input.precoMin !== undefined)
-          filters.push(gte(properties.price, input.precoMin));
-        const rows = await db3.select().from(properties).where(and(...filters)).orderBy(asc(properties.price)).limit(6);
+        const rows = await searchProperties(db3, input);
         for (const row of rows)
           seen.add(row.code);
         return {

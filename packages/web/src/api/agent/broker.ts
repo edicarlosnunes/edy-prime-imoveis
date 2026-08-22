@@ -10,12 +10,13 @@
  * - se um humano já assumiu a conversa, a IA não responde (checado antes de
  *   chamar o modelo).
  */
-import { and, asc, eq, gte, lte, or, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
 import * as schema from "../database/schema";
 import type { AdminDb } from "../lib/admin-base";
 import { propertySlug } from "../lib/slug";
+import { searchProperties } from "../lib/property-search";
 import { gateway, gatewayConfigured } from "./gateway";
 import { pickModel } from "./model";
 import { readConfig } from "../lib/integrations";
@@ -73,7 +74,13 @@ function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
           ])
           .optional(),
         finalidade: z.enum(["venda", "locacao"]).optional(),
-        dormitoriosMin: z.number().int().min(0).max(10).optional(),
+        dormitoriosMin: z
+          .number()
+          .int()
+          .min(0)
+          .max(10)
+          .optional()
+          .describe("mínimo de dormitórios (quartos = dormitórios)"),
         vagasMin: z.number().int().min(0).max(10).optional(),
         precoMax: z.number().min(0).optional(),
         precoMin: z.number().min(0).optional(),
@@ -84,51 +91,7 @@ function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
           .describe("palavra-chave livre, ex: 'frente mar', 'varanda gourmet', 'piscina'"),
       }),
       async execute(input) {
-        const filters = [
-          eq(schema.properties.published, 1),
-          or(eq(schema.properties.status, "disponivel"), eq(schema.properties.status, "reservado"))!,
-        ];
-        if (input.bairro) {
-          filters.push(sql`lower(${schema.properties.district}) like ${`%${input.bairro.toLowerCase()}%`}`);
-        }
-        if (input.cidade) {
-          filters.push(sql`lower(${schema.properties.city}) like ${`%${input.cidade.toLowerCase()}%`}`);
-        }
-        if (input.tipo) filters.push(eq(schema.properties.type, input.tipo));
-        if (input.finalidade) {
-          filters.push(
-            or(
-              eq(schema.properties.purpose, input.finalidade),
-              eq(schema.properties.purpose, "venda_locacao"),
-            )!,
-          );
-        }
-        if (input.dormitoriosMin !== undefined) {
-          filters.push(gte(schema.properties.bedrooms, input.dormitoriosMin));
-        }
-        if (input.vagasMin !== undefined) {
-          filters.push(gte(schema.properties.parking, input.vagasMin));
-        }
-        if (input.termo) {
-          const term = `%${input.termo.toLowerCase()}%`;
-          filters.push(
-            or(
-              sql`lower(${schema.properties.title}) like ${term}`,
-              sql`lower(coalesce(${schema.properties.highlight}, '')) like ${term}`,
-              sql`lower(coalesce(${schema.properties.description}, '')) like ${term}`,
-              sql`lower(coalesce(${schema.properties.features}, '')) like ${term}`,
-            )!,
-          );
-        }
-        if (input.precoMax !== undefined) filters.push(lte(schema.properties.price, input.precoMax));
-        if (input.precoMin !== undefined) filters.push(gte(schema.properties.price, input.precoMin));
-
-        const rows = await db
-          .select()
-          .from(schema.properties)
-          .where(and(...filters))
-          .orderBy(asc(schema.properties.price))
-          .limit(6);
+        const rows = await searchProperties(db, input);
 
         for (const row of rows) seen.add(row.code);
 
