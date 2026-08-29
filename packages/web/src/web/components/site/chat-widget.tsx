@@ -46,6 +46,8 @@ function plainText(body: string) {
     .trim();
 }
 
+const phoneDigits = (value: string) => value.replace(/\D/g, "");
+
 const brl = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
@@ -74,6 +76,13 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [state, setState] = useState<ChatState | null>(null);
   const [identity, setIdentity] = useState({ name: "", phone: "" });
+  /* Resultado do último envio do formulário de contato. Sem isso o visitante
+     não sabia se o WhatsApp foi aceito: o formulário simplesmente desaparecia. */
+  const [identityFeedback, setIdentityFeedback] = useState<string | null>(null);
+  const [identityError, setIdentityError] = useState<string | null>(null);
+  /* Confirmado pelo servidor: o polling do histórico não pode ressuscitar o
+     formulário depois que o contato já foi salvo. */
+  const [identityDone, setIdentityDone] = useState(false);
   const scroller = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -147,18 +156,48 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
   function submitIdentity(event: React.FormEvent) {
     event.preventDefault();
     if (!state?.token || identify.isPending) return;
-    const payload = {
-      token: state.token,
-      name: identity.name.trim() || undefined,
-      phone: identity.phone.trim() || undefined,
-    };
-    if (!payload.name && !payload.phone) return;
-    identify.mutate(payload, {
-      onSuccess: (data) => {
-        if (data.state) setState(data.state as ChatState);
-        setIdentity({ name: "", phone: "" });
+    const name = identity.name.trim();
+    const phone = identity.phone.trim();
+    if (!name && !phone) return;
+
+    /* Valida antes de enviar: DDD + 8 ou 9 dígitos. */
+    if (state.askPhone && phoneDigits(phone).length < 10) {
+      setIdentityError("Digite o número com DDD, ex: (13) 99999-9999.");
+      setIdentityFeedback(null);
+      return;
+    }
+    setIdentityError(null);
+
+    identify.mutate(
+      { token: state.token, name: name || undefined, phone: phone || undefined },
+      {
+        onSuccess: (data) => {
+          if (data.state) setState(data.state as ChatState);
+          if (!data.ok || !data.saved) {
+            setIdentityError(
+              data.reason === "telefone_invalido"
+                ? "Não reconheci esse número. Confira o DDD e os dígitos."
+                : "Não consegui salvar agora. Tente novamente.",
+            );
+            return;
+          }
+          /* Só limpa o campo quando o dado foi realmente aceito. */
+          setIdentity({ name: "", phone: "" });
+          setIdentityError(null);
+          if (phone) {
+            setIdentityDone(true);
+            setIdentityFeedback(
+              "WhatsApp registrado. Um corretor da Edy Premi vai te chamar por ele.",
+            );
+          } else {
+            setIdentityFeedback("Obrigado! Anotei seu nome.");
+          }
+        },
+        onError: () => {
+          setIdentityError("Falha de conexão ao enviar. Tente novamente.");
+        },
       },
-    });
+    );
   }
 
   function callHuman() {
@@ -174,7 +213,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
     );
   }
 
-  const askIdentity = Boolean(state && (state.askName || state.askPhone));
+  const askIdentity = Boolean(state && (state.askName || state.askPhone)) && !identityDone;
 
   return (
     <>
@@ -228,7 +267,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
 
           <div ref={scroller} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {start.isLoading && (
-              <p className="flex items-center gap-2 text-sm text-muted">
+              <p className="flex items-center gap-2 border border-line bg-white px-4 py-3 text-sm text-ink">
                 <Loader2 className="h-4 w-4 animate-spin" /> Abrindo atendimento…
               </p>
             )}
@@ -256,7 +295,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
             ))}
 
             {send.isPending && (
-              <p className="flex items-center gap-2 text-sm text-muted">
+              <p className="mr-auto flex items-center gap-2 border border-line bg-white px-4 py-3 text-sm text-ink">
                 <Loader2 className="h-4 w-4 animate-spin" /> escrevendo…
               </p>
             )}
@@ -283,7 +322,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
             )}
 
             {notice && (
-              <p className="border border-brass/40 bg-brass/10 px-4 py-3 text-sm text-ink">
+              <p className="border border-brass/40 bg-white px-4 py-3 text-sm text-ink">
                 {notice}
                 {unavailable && (
                   <>
@@ -301,12 +340,18 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
               </p>
             )}
 
+            {identityFeedback && (
+              <p className="border border-brass/40 bg-white px-4 py-3 text-sm text-ink" role="status">
+                {identityFeedback}
+              </p>
+            )}
+
             {askIdentity && (
               <form
                 onSubmit={submitIdentity}
                 className="space-y-2 border border-line bg-white px-4 py-3"
               >
-                <p className="text-sm text-muted">
+                <p className="text-sm text-ink">
                   {state?.askName
                     ? "Como posso te chamar?"
                     : "Qual seu WhatsApp? Assim o corretor te envia as opções."}
@@ -337,6 +382,11 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
                   {identify.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                   Enviar
                 </button>
+                {identityError && (
+                  <p className="text-sm text-[#b3261e]" role="alert">
+                    {identityError}
+                  </p>
+                )}
               </form>
             )}
           </div>

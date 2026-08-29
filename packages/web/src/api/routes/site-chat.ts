@@ -22,12 +22,14 @@ import {
 } from "../lib/chat-guard";
 import { codeFromSlug, propertySlug as buildSlug } from "../lib/slug";
 import {
+  CHAT_FALLBACK_NAME,
   MAX_MESSAGE_CHARS,
   SITE_CHAT_CHANNEL,
   conversationRateLimited,
   externalIdFor,
   ipRateLimited,
   newVisitorToken,
+  normalizePhone,
   normalizeVisitorToken,
   publicCards,
   registerIpHit,
@@ -344,48 +346,84 @@ export const siteChat = {
     .handler(async ({ input }) => {
       const db = await getDb();
       const token = normalizeVisitorToken(input.token);
-      if (!token) return { ok: false, state: null };
+      if (!token) {
+        return { ok: false, saved: false, crm: false, reason: "sessao_invalida" as const, state: null };
+      }
       const conversation = await findConversation(db, token);
-      if (!conversation) return { ok: false, state: null };
+      if (!conversation) {
+        return { ok: false, saved: false, crm: false, reason: "sessao_invalida" as const, state: null };
+      }
 
       const name = input.name ? sanitizeShort(input.name, 120) : "";
-      const phoneDigits = (input.phone ?? "").replace(/\D/g, "").slice(0, 20);
+      const phoneSent = Boolean(input.phone?.trim());
+      const phone = normalizePhone(input.phone);
+
+      /* Telefone digitado errado agora volta com motivo: antes o servidor
+         respondia ok e descartava o número em silêncio, então o visitante via
+         o campo esvaziar sem nenhuma explicação. */
+      if (phoneSent && !phone) {
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          ok: false,
+          saved: false,
+          crm: false,
+          reason: "telefone_invalido" as const,
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+        };
+      }
 
       const nextName = name.length >= 2 ? name : conversation.contactName;
-      const nextPhone = phoneDigits.length >= 8 ? phoneDigits : conversation.contactPhone;
+      const nextPhone = phone ?? conversation.contactPhone;
 
       await db
         .update(schema.conversations)
         .set({ contactName: nextName ?? null, contactPhone: nextPhone ?? null })
         .where(eq(schema.conversations.id, conversation.id));
 
+      /* O telefone é o que o corretor precisa: basta ele para o lead entrar no
+         CRM. Sem nome, entra com nome provisório — antes o lead só era criado
+         quando nome E telefone existiam, então quem digitava só o WhatsApp
+         ficava fora do CRM. Nada aqui depende da Meta/WhatsApp Cloud API. */
       let leadId = conversation.leadId;
-      if (nextName && nextPhone && !leadId) {
+      let crm = Boolean(leadId);
+      if (nextPhone && !leadId) {
         const interest = input.interest ? sanitizeShort(input.interest, 160) : "";
-        const result = await intakeLead(db, {
-          name: nextName,
-          phone: nextPhone,
-          interest: interest || "Contato pelo chat do site",
-          message: conversation.lastMessage ?? null,
-          source: "site_chat",
-          channel: "site",
-          propertyId: conversation.propertyId ?? null,
-        });
-        leadId = result.id;
-        await db
-          .update(schema.conversations)
-          .set({ leadId })
-          .where(eq(schema.conversations.id, conversation.id));
-        await addMessage(db, conversation.id, {
-          direction: "out",
-          author: "sistema",
-          body: `Contato informado no chat do site: ${nextName} · ${nextPhone}`,
-        });
+        try {
+          const result = await intakeLead(db, {
+            name: nextName || CHAT_FALLBACK_NAME,
+            phone: nextPhone,
+            interest: interest || "Contato pelo chat do site",
+            message: conversation.lastMessage ?? null,
+            source: "site_chat",
+            channel: "site",
+            propertyId: conversation.propertyId ?? null,
+          });
+          leadId = result.id;
+          crm = true;
+        } catch {
+          /* Automação/integração externa falhando não pode apagar o contato:
+             o telefone já está salvo na conversa e o corretor vê o aviso. */
+          crm = false;
+        }
+        if (leadId) {
+          await db
+            .update(schema.conversations)
+            .set({ leadId })
+            .where(eq(schema.conversations.id, conversation.id));
+          await addMessage(db, conversation.id, {
+            direction: "out",
+            author: "sistema",
+            body: `Contato informado no chat do site: ${nextName || CHAT_FALLBACK_NAME} · ${nextPhone}`,
+          });
+        }
       }
 
       const messages = await loadMessages(db, conversation.id);
       return {
         ok: true,
+        saved: phoneSent ? Boolean(nextPhone) : Boolean(nextName),
+        crm,
+        reason: null,
         state: toPublicState(
           token,
           { ...conversation, contactName: nextName ?? null, contactPhone: nextPhone ?? null },

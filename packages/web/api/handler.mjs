@@ -48237,6 +48237,16 @@ function externalIdFor(token) {
 function sanitizeMessage(raw2) {
   return raw2.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").replace(/[ \t]+/g, " ").trim().slice(0, MAX_MESSAGE_CHARS);
 }
+function normalizePhone(raw2) {
+  const digits2 = (raw2 ?? "").replace(/\D/g, "");
+  const local = digits2.startsWith("55") && digits2.length > 11 ? digits2.slice(2) : digits2;
+  if (local.length < 10 || local.length > 11)
+    return null;
+  if (Number.parseInt(local.slice(0, 2), 10) < 11)
+    return null;
+  return local;
+}
+var CHAT_FALLBACK_NAME = "Contato do chat do site";
 function sanitizeShort(raw2, max = 120) {
   return raw2.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
@@ -48497,39 +48507,63 @@ var siteChat = {
   })).handler(async ({ input }) => {
     const db3 = await getDb();
     const token = normalizeVisitorToken(input.token);
-    if (!token)
-      return { ok: false, state: null };
+    if (!token) {
+      return { ok: false, saved: false, crm: false, reason: "sessao_invalida", state: null };
+    }
     const conversation = await findConversation(db3, token);
-    if (!conversation)
-      return { ok: false, state: null };
+    if (!conversation) {
+      return { ok: false, saved: false, crm: false, reason: "sessao_invalida", state: null };
+    }
     const name25 = input.name ? sanitizeShort(input.name, 120) : "";
-    const phoneDigits = (input.phone ?? "").replace(/\D/g, "").slice(0, 20);
+    const phoneSent = Boolean(input.phone?.trim());
+    const phone = normalizePhone(input.phone);
+    if (phoneSent && !phone) {
+      const messages3 = await loadMessages(db3, conversation.id);
+      return {
+        ok: false,
+        saved: false,
+        crm: false,
+        reason: "telefone_invalido",
+        state: toPublicState(token, conversation, countClientMessages(messages3))
+      };
+    }
     const nextName = name25.length >= 2 ? name25 : conversation.contactName;
-    const nextPhone = phoneDigits.length >= 8 ? phoneDigits : conversation.contactPhone;
+    const nextPhone = phone ?? conversation.contactPhone;
     await db3.update(conversations).set({ contactName: nextName ?? null, contactPhone: nextPhone ?? null }).where(eq(conversations.id, conversation.id));
     let leadId = conversation.leadId;
-    if (nextName && nextPhone && !leadId) {
+    let crm = Boolean(leadId);
+    if (nextPhone && !leadId) {
       const interest = input.interest ? sanitizeShort(input.interest, 160) : "";
-      const result = await intakeLead(db3, {
-        name: nextName,
-        phone: nextPhone,
-        interest: interest || "Contato pelo chat do site",
-        message: conversation.lastMessage ?? null,
-        source: "site_chat",
-        channel: "site",
-        propertyId: conversation.propertyId ?? null
-      });
-      leadId = result.id;
-      await db3.update(conversations).set({ leadId }).where(eq(conversations.id, conversation.id));
-      await addMessage(db3, conversation.id, {
-        direction: "out",
-        author: "sistema",
-        body: `Contato informado no chat do site: ${nextName} · ${nextPhone}`
-      });
+      try {
+        const result = await intakeLead(db3, {
+          name: nextName || CHAT_FALLBACK_NAME,
+          phone: nextPhone,
+          interest: interest || "Contato pelo chat do site",
+          message: conversation.lastMessage ?? null,
+          source: "site_chat",
+          channel: "site",
+          propertyId: conversation.propertyId ?? null
+        });
+        leadId = result.id;
+        crm = true;
+      } catch {
+        crm = false;
+      }
+      if (leadId) {
+        await db3.update(conversations).set({ leadId }).where(eq(conversations.id, conversation.id));
+        await addMessage(db3, conversation.id, {
+          direction: "out",
+          author: "sistema",
+          body: `Contato informado no chat do site: ${nextName || CHAT_FALLBACK_NAME} · ${nextPhone}`
+        });
+      }
     }
     const messages2 = await loadMessages(db3, conversation.id);
     return {
       ok: true,
+      saved: phoneSent ? Boolean(nextPhone) : Boolean(nextName),
+      crm,
+      reason: null,
       state: toPublicState(token, { ...conversation, contactName: nextName ?? null, contactPhone: nextPhone ?? null }, countClientMessages(messages2))
     };
   }),

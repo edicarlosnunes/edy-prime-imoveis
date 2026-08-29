@@ -58,6 +58,25 @@ export function sanitizeMessage(raw: string) {
     .slice(0, MAX_MESSAGE_CHARS);
 }
 
+/**
+ * Telefone informado no chat. Devolve só dígitos quando parece um número
+ * brasileiro utilizável (DDD + 8 ou 9 dígitos, com ou sem o 55 na frente) e
+ * null quando não dá para ligar/mandar WhatsApp. Antes o corte era
+ * `length >= 8`, então "99999999" entrava como telefone válido sem DDD e o
+ * visitante não recebia aviso nenhum.
+ */
+export function normalizePhone(raw: string | null | undefined): string | null {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  const local = digits.startsWith("55") && digits.length > 11 ? digits.slice(2) : digits;
+  if (local.length < 10 || local.length > 11) return null;
+  /* DDD brasileiro válido começa em 11. */
+  if (Number.parseInt(local.slice(0, 2), 10) < 11) return null;
+  return local;
+}
+
+/** Nome usado quando o visitante deu só o WhatsApp — o lead não pode ficar de fora do CRM. */
+export const CHAT_FALLBACK_NAME = "Contato do chat do site";
+
 export function sanitizeShort(raw: string, max = 120) {
   return raw
     .replace(/[\u0000-\u001f\u007f]/g, " ")
