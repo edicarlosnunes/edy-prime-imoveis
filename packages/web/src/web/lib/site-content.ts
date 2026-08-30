@@ -294,7 +294,7 @@ export const defaultSiteContent: SiteContent = {
         {
           id: "p1",
           title: "Corretor registrado",
-          text: "Atendimento conduzido por profissional com registro ativo — CRECI 248229.",
+          text: "Atendimento conduzido por profissional com registro ativo — CRECI 134718-F.",
         },
         {
           id: "p2",
@@ -367,7 +367,7 @@ export const defaultSiteContent: SiteContent = {
       text: "",
       imageUrl: "/images/corretor.jpg",
       badgeName: "Edy Prime",
-      badgeCaption: "CRECI 248229",
+      badgeCaption: "CRECI 134718-F",
       ctaLabel: "Conversar direto comigo",
       paragraphs: [
         {
@@ -455,7 +455,7 @@ export const defaultSiteContent: SiteContent = {
     brandSuffix: "Imóveis",
     broker: "Edy Prime",
     role: "Consultor de imóveis · Praia Grande/SP",
-    creci: "CRECI 248229",
+    creci: "CRECI 134718-F",
     whatsapp: "5513997141174",
     phone: "(13) 99714-1174",
     email: "edyprimeimoveis@gmail.com",

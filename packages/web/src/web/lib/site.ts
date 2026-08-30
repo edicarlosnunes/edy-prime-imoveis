@@ -6,7 +6,7 @@ export const site = {
   brandSuffix: "Imóveis",
   broker: "Edy Prime",
   role: "Consultor de imóveis · Praia Grande/SP",
-  creci: "CRECI 248229",
+  creci: "CRECI 134718-F",
   city: "Praia Grande",
   state: "SP",
   /** Somente números, com DDI e DDD. Ex: 5513991234567 */
