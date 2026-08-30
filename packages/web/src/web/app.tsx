@@ -18,6 +18,8 @@ import AdminAutomations from "./pages/admin/automations";
 import AdminWatermark from "./pages/admin/watermark";
 import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
+import Privacidade from "./pages/privacidade";
+import Termos from "./pages/termos";
 import { Provider } from "./components/provider";
 import { AgentFeedback } from "@runablehq/website-runtime";
 
@@ -43,6 +45,8 @@ function App() {
         <Route path="/admin/automacoes" component={AdminAutomations} />
         <Route path="/admin/marca-dagua" component={AdminWatermark} />
         <Route path="/admin/auditoria" component={AdminAudit} />
+        <Route path="/privacidade" component={Privacidade} />
+        <Route path="/termos" component={Termos} />
         <Route path="/imovel/:slug" component={PropertyPage} />
       </Switch>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}

@@ -1,5 +1,6 @@
 import { ShieldCheck, MapPin, Clock, ArrowUpRight } from "lucide-react";
 import { LeadForm } from "./lead-form";
+import { PropertySearch } from "./property-search";
 import { useSiteContent } from "./content";
 
 const icons = [ShieldCheck, MapPin, Clock];
@@ -168,6 +169,13 @@ export function Hero() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Busca integrada: filtra a vitrine já carregada, sem nova chamada de API. */}
+      <div className="relative mx-auto -mt-6 max-w-[1240px] px-6 pb-24 lg:px-8 lg:pb-28">
+        <div className="reveal" data-reveal-delay="360">
+          <PropertySearch />
+        </div>
       </div>
     </section>
   );

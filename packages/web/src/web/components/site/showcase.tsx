@@ -1,9 +1,11 @@
-import { BedDouble, Car, Maximize, ArrowUpRight } from "lucide-react";
+import { BedDouble, Car, Maximize, ArrowUpRight, SearchX } from "lucide-react";
 import { Link } from "wouter";
 import { useProperties } from "../../queries/properties";
 import { formatBRL, site } from "../../lib/site";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
+import { site as brand, whatsappLink } from "../../lib/site";
+import { filterProperties, hasAnyFilter, useSearch } from "./search-store";
 
 const statusLabel: Record<string, string> = {
   disponivel: "Disponível",
@@ -28,7 +30,13 @@ export function Showcase() {
   const { sections } = useSiteContent();
   const data = sections.imoveis;
   const limit = data.limit > 0 ? data.limit : 12;
-  const list = (properties.data ?? []).slice(0, limit);
+  const { filters, applied, reset } = useSearch();
+  const all = properties.data ?? [];
+  /* Filtro só entra em cena depois que a busca do hero é aplicada. */
+  const filtering = applied && hasAnyFilter(filters);
+  const matched = filtering ? filterProperties(all, filters) : all;
+  const list = matched.slice(0, limit);
+  const empty = !properties.isLoading && !properties.isError && list.length === 0;
 
   return (
     <section id="imoveis" data-sec="imoveis" className="mx-auto max-w-[1240px] px-6 py-24 lg:px-8 lg:py-32">
@@ -58,6 +66,24 @@ export function Showcase() {
         )}
       </div>
 
+      {filtering && !properties.isLoading && (
+        <p data-t="caption" className="label-xs mt-10 flex flex-wrap items-center gap-3 text-muted">
+          <span>
+            {matched.length === 0
+              ? "Nenhum imóvel publicado com esses filtros"
+              : `${matched.length} ${matched.length === 1 ? "imóvel encontrado" : "imóveis encontrados"}`}
+          </span>
+          <button
+            type="button"
+            onClick={reset}
+            data-t="button"
+            className="border-b border-brass/50 pb-0.5 text-brass transition-colors hover:border-brass hover:text-deep"
+          >
+            Ver todos os imóveis
+          </button>
+        </p>
+      )}
+
       <div className="mt-16 grid gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
         {properties.isLoading && [0, 1, 2, 3, 4, 5].map((n) => <CardSkeleton key={n} />)}
 
@@ -77,6 +103,8 @@ export function Showcase() {
               <img
                 src={property.image}
                 alt={property.title}
+                loading="lazy"
+                decoding="async"
                 className="aspect-[4/3] w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
               />
               <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
@@ -117,13 +145,58 @@ export function Showcase() {
                 data-t="button"
                 className="label-xs flex items-center gap-1.5 border-b border-brass/50 pb-1 text-brass transition-colors hover:border-brass hover:text-deep"
               >
-                Ver o imóvel
+                Ver detalhes
                 <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.6} />
               </Link>
             </div>
           </article>
         ))}
       </div>
+
+      {empty && (
+        <div className="border border-line bg-white/50 px-8 py-16 text-center">
+          <SearchX className="mx-auto h-6 w-6 text-brass" strokeWidth={1.3} />
+          <h3 data-t="card" className="display mt-5 text-2xl text-deep">
+            Ainda não tenho um imóvel publicado com esse perfil
+          </h3>
+          <p data-t="body" className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted">
+            Boa parte da minha carteira circula fora dos portais. Me diga o que você procura e eu
+            busco pessoalmente — inclusive em Mongaguá, Itanhaém e Peruíbe.
+          </p>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <a
+              href={whatsappLink(
+                `Olá, ${brand.broker}. Não encontrei no site o imóvel que procuro. Pode me ajudar?`,
+              )}
+              target="_blank"
+              rel="noreferrer"
+              data-t="button"
+              className="site-btn"
+            >
+              Falar com um corretor
+              <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.6} />
+            </a>
+            {filtering && (
+              <button
+                type="button"
+                onClick={reset}
+                data-t="button"
+                className="label-xs border-b border-brass/50 pb-1 text-brass transition-colors hover:border-brass hover:text-deep"
+              >
+                Ver todos os imóveis
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!empty && !filtering && matched.length > limit && (
+        <div className="mt-16 text-center">
+          <p data-t="caption" className="label-xs text-muted">
+            Mostrando {list.length} de {matched.length} imóveis publicados
+          </p>
+        </div>
+      )}
     </section>
   );
 }

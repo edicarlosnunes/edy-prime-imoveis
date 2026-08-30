@@ -5,10 +5,23 @@ import { useSiteContent } from "./content";
 
 export function Header() {
   const { menu, theme } = useSiteContent();
-  const links = useMemo(
-    () => menu.items.filter((item) => item.visible && item.label.trim() && item.href.trim()),
-    [menu.items],
-  );
+  /* Links do editor + as seções novas (Regiões / Vender), sem duplicar. */
+  const links = useMemo(() => {
+    const base = menu.items
+      .filter((item) => item.visible && item.label.trim() && item.href.trim())
+      .map((item) => ({ id: String(item.id), label: item.label, href: item.href }));
+    const extras = [
+      { id: "regioes", label: "Regiões", href: "#regioes" },
+      { id: "vender", label: "Vender meu imóvel", href: "#vender" },
+    ];
+    const seen = new Set(base.map((item) => item.href.trim().toLowerCase()));
+    for (const extra of extras) {
+      if (seen.has(extra.href)) continue;
+      seen.add(extra.href);
+      base.push(extra);
+    }
+    return base;
+  }, [menu.items]);
 
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);

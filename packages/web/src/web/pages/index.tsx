@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from "react";
+import { Fragment, lazy, Suspense, type ReactNode } from "react";
 import { useReveal } from "../hooks/use-reveal";
 import { Header } from "../components/site/header";
 import { Hero } from "../components/site/hero";
@@ -11,6 +11,9 @@ import { Faq } from "../components/site/faq";
 import { FinalCta } from "../components/site/final-cta";
 import { Footer } from "../components/site/footer";
 import { WhatsappFab } from "../components/site/whatsapp-fab";
+import { Regions } from "../components/site/regions";
+import { Sellers } from "../components/site/sellers";
+import { SearchProvider } from "../components/site/search-store";
 
 /* Chat com IA: carregado sob demanda para não pesar o carregamento do site. */
 const ChatWidget = lazy(() => import("../components/site/chat-widget"));
@@ -56,24 +59,33 @@ function Index() {
   };
 
   return (
-    <div className="site-shell min-h-screen bg-paper">
-      <SiteChrome />
-      <JsonLd id="agente" data={agentSchema} />
-      <Header />
-      <main>
-        <Hero />
-        {order.map((key) => {
-          const Section = sectionComponents[key];
-          return <Section key={key} />;
-        })}
-      </main>
-      <Footer />
-      <WhatsappFab />
-      <Suspense fallback={null}>
-        <ChatWidget />
-      </Suspense>
-      <PreviewBanner />
-    </div>
+    <SearchProvider>
+      <div className="site-shell min-h-screen bg-paper">
+        <SiteChrome />
+        <JsonLd id="agente" data={agentSchema} />
+        <Header />
+        <main>
+          <Hero />
+          {order.map((key) => {
+            const Section = sectionComponents[key];
+            return (
+              <Fragment key={key}>
+                <Section />
+                {/* Seções fora do editor: entram ancoradas às do CMS. */}
+                {key === "imoveis" && <Regions />}
+                {key === "sobre" && <Sellers />}
+              </Fragment>
+            );
+          })}
+        </main>
+        <Footer />
+        <WhatsappFab />
+        <Suspense fallback={null}>
+          <ChatWidget />
+        </Suspense>
+        <PreviewBanner />
+      </div>
+    </SearchProvider>
   );
 }
 

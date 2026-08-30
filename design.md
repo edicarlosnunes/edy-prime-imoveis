@@ -95,3 +95,40 @@ sem nada de texto/cor fixo no código de apresentação.
   imóvel ou no conteúdo do site.
 - **Ordem das seções:** `pages/index.tsx` renderiza via `orderedSections()`; a faixa
   "Não encontrou o que procurava?" virou a seção própria `cta-final.tsx`.
+
+## Experiência premium do site público (rodada de refinamento)
+
+Direção: imobiliária de alto padrão do litoral sul — sóbria, silenciosa, com muito respiro.
+Nada de gradiente colorido, nada de card arredondado genérico, nada de número inventado.
+
+- **Paleta:** verde-marinho `deep #17231F` como cor dominante nos blocos escuros (hero, seção
+  de proprietários, footer), champagne `brass #A9834B` / `brass-soft #C9A46A` como único acento,
+  off-white `paper #F4F1EA` como respiro. Acento em fios, labels e preços — nunca em área grande.
+- **Tipografia:** Cormorant Garamond (display) + Jost (corpo/UI), já carregadas. Micro-labels em
+  caixa alta com `tracking-[0.22em]`; corpo com `leading-relaxed`/`leading-[1.85]` nas páginas legais.
+- **Ritmo vertical:** seções `py-24 lg:py-32`, container `max-w-[1240px]`, páginas legais em
+  coluna estreita `max-w-[820px]` para leitura confortável.
+- **Motion:** só o reveal por scroll já existente (stagger de 80ms) e zoom 1.05 nas imagens em
+  hover. Sem biblioteca de animação — CSS + IntersectionObserver.
+- **Busca do hero** (`components/site/property-search.tsx` + `search-store.tsx`): faixa de vidro
+  escuro ao pé do hero, 6 campos (finalidade, cidade, bairro, tipo, dormitórios, faixa de preço)
+  em 1 coluna no mobile → 6 no desktop. Filtragem **em memória** sobre `properties.list`, sem rota
+  nova de API. As opções são derivadas dos imóveis publicados (`optionsFrom`) — nunca hardcoded.
+  Imóvel com `price <= 0` ("Sob consulta") nunca é escondido pela faixa de preço.
+- **Vitrine:** cards com `loading="lazy"`, CTA "Ver detalhes", contador de resultados e atalho
+  "Ver todos os imóveis" quando há filtro; estado vazio elegante com CTA de WhatsApp em vez de
+  mostrar "0 imóveis".
+- **Seções novas, fora do CMS** (renderizadas direto em `pages/index.tsx`, porque incluir chaves
+  novas no editor exigiria alterar o painel admin):
+  - `regions.tsx` — "Encontre seu lugar no litoral": Praia Grande, Mongaguá, Itanhaém e Peruíbe em
+    cards 3/4 com overlay escuro. Cada card aplica o filtro de cidade e rola até a vitrine.
+    **Sem contagem de imóveis por cidade.**
+  - `sellers.tsx` — "Pensando em vender seu imóvel?": bloco escuro 2 colunas, 3 etapas
+    (avaliação, apresentação, comprador certo) e CTA "Quero vender meu imóvel" no WhatsApp.
+    Sem prazo, percentual ou estatística.
+- **Páginas legais:** `/privacidade` e `/termos`, layout compartilhado em `components/site/legal.tsx`,
+  H1 único, sem dado inventado (só CRECI, endereço e e-mail já cadastrados).
+- **Header:** os itens do editor continuam mandando; "Regiões" e "Vender meu imóvel" são
+  acrescentados por união apenas se ainda não existirem, sem duplicar.
+- **Camadas fixas:** WhatsApp FAB `bottom-5` e botão do chat `bottom-24` na mesma coluna direita;
+  seções com CTA no rodapé reservam espaço para não ficarem cobertas no mobile.

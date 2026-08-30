@@ -1,4 +1,5 @@
 import { Facebook, Instagram, Mail, MessageCircle } from "lucide-react";
+import { Link } from "wouter";
 import { site, whatsappLink } from "../../lib/site";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
@@ -101,11 +102,23 @@ export function Footer() {
         </div>
 
         <div data-t="caption" className="mt-14 flex flex-col gap-3 border-t border-white/10 pt-8 text-xs md:flex-row md:items-center md:justify-between">
-          <p>
+          <ul data-t="footer" className="order-2 flex flex-wrap items-center gap-x-6 gap-y-2 md:order-3">
+            <li>
+              <Link href="/privacidade" className="transition-colors hover:text-brass-soft">
+                Política de Privacidade
+              </Link>
+            </li>
+            <li>
+              <Link href="/termos" className="transition-colors hover:text-brass-soft">
+                Termos de Uso
+              </Link>
+            </li>
+          </ul>
+          <p className="order-1">
             © {new Date().getFullYear()} {menu.logoText || site.brand}{" "}
-            {menu.logoSuffix || site.brandSuffix}. {footer.copyright}
+            {menu.logoSuffix || site.brandSuffix}. {site.creci}. {footer.copyright}
           </p>
-          {footer.note.trim() && <p>{footer.note}</p>}
+          {footer.note.trim() && <p className="order-4">{footer.note}</p>}
         </div>
       </div>
     </footer>
