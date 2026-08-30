@@ -35325,6 +35325,117 @@ var leads2 = {
   })
 };
 
+// packages/web/src/api/lib/owner-intake.ts
+init_schema();
+var onlyDigits = (value2) => value2.replace(/\D/g, "");
+var ownerTaskMarker = (ownerId) => `[owner:${ownerId}]`;
+function buildHistoryLine(input, when) {
+  const stamp = when.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const parts = [
+    `— ${stamp} · contato via ${input.source || "site"}`,
+    input.propertyType ? `Tipo: ${input.propertyType}` : "",
+    input.neighborhood ? `Bairro/região: ${input.neighborhood}` : "",
+    input.email ? `E-mail: ${input.email}` : "",
+    input.message ? `Mensagem: ${input.message}` : ""
+  ].filter(Boolean);
+  return parts.join(`
+`);
+}
+async function ensureFollowUpTask(db3, ownerId, input) {
+  const marker = ownerTaskMarker(ownerId);
+  const pending = await db3.select({ id: tasks.id, notes: tasks.notes }).from(tasks).where(and(eq(tasks.status, "pendente"), eq(tasks.type, "retorno"))).limit(200);
+  if (pending.some((task) => (task.notes ?? "").includes(marker)))
+    return false;
+  const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const notes = [
+    marker,
+    `Proprietário quer avaliação de imóvel.`,
+    `WhatsApp: ${input.phone}`,
+    input.propertyType ? `Tipo: ${input.propertyType}` : "",
+    input.neighborhood ? `Bairro/região: ${input.neighborhood}` : "",
+    input.email ? `E-mail: ${input.email}` : "",
+    input.message ? `Mensagem: ${input.message}` : ""
+  ].filter(Boolean).join(`
+`);
+  await db3.insert(tasks).values({
+    title: `Avaliação: ${input.name.trim().slice(0, 80)}`,
+    type: "retorno",
+    dueAt,
+    status: "pendente",
+    notes
+  });
+  return true;
+}
+async function intakeOwner(db3, input) {
+  const phoneDigits = onlyDigits(input.phone).slice(0, 20);
+  const email3 = input.email?.trim().toLowerCase() || null;
+  const now = new Date;
+  const candidates = await db3.select().from(owners).limit(500);
+  const existing = candidates.find((owner) => {
+    const ownerPhone = onlyDigits(owner.phone ?? "");
+    if (phoneDigits && ownerPhone && ownerPhone === phoneDigits)
+      return true;
+    const ownerEmail = owner.email?.trim().toLowerCase() || null;
+    return Boolean(email3 && ownerEmail && ownerEmail === email3);
+  });
+  if (existing) {
+    const history = [existing.notes?.trim(), buildHistoryLine(input, now)].filter(Boolean).join(`
+
+`).slice(0, 4000);
+    await db3.update(owners).set({
+      email: existing.email ?? email3,
+      phone: existing.phone ?? (phoneDigits || null),
+      notes: history
+    }).where(eq(owners.id, existing.id));
+    const taskCreated = await ensureFollowUpTask(db3, existing.id, input);
+    return {
+      id: existing.id,
+      duplicated: true,
+      detail: taskCreated ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.` : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`
+    };
+  }
+  const [created] = await db3.insert(owners).values({
+    name: input.name.trim().slice(0, 120) || "Proprietário sem nome",
+    phone: phoneDigits || null,
+    email: email3,
+    notes: buildHistoryLine(input, now).slice(0, 4000),
+    captureStatus: "prospeccao"
+  }).returning();
+  if (created)
+    await ensureFollowUpTask(db3, created.id, input);
+  return {
+    id: created?.id ?? 0,
+    duplicated: false,
+    detail: "Proprietário criado no CRM com tarefa de retorno."
+  };
+}
+
+// packages/web/src/api/routes/owners.ts
+var createInput2 = exports_external.object({
+  name: exports_external.string().min(2).max(120),
+  phone: exports_external.string().min(8).max(30),
+  email: exports_external.string().max(160).optional(),
+  propertyType: exports_external.string().max(60).optional(),
+  neighborhood: exports_external.string().max(120).optional(),
+  message: exports_external.string().max(1000).optional(),
+  source: exports_external.string().max(60).optional()
+});
+var owners2 = {
+  create: base.input(createInput2).handler(async ({ input }) => {
+    const db3 = await getDb();
+    const result = await intakeOwner(db3, {
+      name: input.name,
+      phone: input.phone,
+      email: input.email ?? null,
+      propertyType: input.propertyType ?? null,
+      neighborhood: input.neighborhood ?? null,
+      message: input.message ?? null,
+      source: input.source ?? "site_vender"
+    });
+    return { ok: true, duplicated: result.duplicated };
+  })
+};
+
 // packages/web/src/api/routes/properties.ts
 init_schema();
 
@@ -49512,14 +49623,14 @@ function toRow3(input) {
 }
 var adminOwners = {
   list: adminBase.handler(async ({ context }) => {
-    const owners2 = await context.db.select().from(owners).orderBy(asc(owners.name)).limit(500);
+    const owners3 = await context.db.select().from(owners).orderBy(asc(owners.name)).limit(500);
     const properties3 = await context.db.select({
       id: properties.id,
       code: properties.code,
       title: properties.title,
       ownerId: properties.ownerId
     }).from(properties).limit(1000);
-    return owners2.map((owner) => ({
+    return owners3.map((owner) => ({
       ...owner,
       properties: properties3.filter((property) => property.ownerId === owner.id)
     }));
@@ -51757,6 +51868,7 @@ init_schema();
 var router = {
   ping,
   leads: leads2,
+  owners: owners2,
   properties: properties2,
   siteConfig,
   siteContent: siteContent2,

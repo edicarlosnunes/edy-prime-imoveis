@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { createApp } from "./__core/app";
 import { ping } from "./routes/ping";
 import { leads } from "./routes/leads";
+import { owners } from "./routes/owners";
 import { properties } from "./routes/properties";
 import { siteConfig } from "./routes/site-config";
 import { siteContent } from "./routes/site-content";
@@ -50,6 +51,7 @@ import {
 export const router = {
   ping,
   leads,
+  owners,
   properties,
   siteConfig,
   siteContent,

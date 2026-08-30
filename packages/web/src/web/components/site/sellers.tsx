@@ -1,5 +1,6 @@
 import { ArrowUpRight, ClipboardCheck, Camera, Handshake } from "lucide-react";
 import { site, whatsappLink } from "../../lib/site";
+import { OwnerForm } from "./owner-form";
 
 const steps = [
   {
@@ -69,23 +70,20 @@ export function Sellers() {
             ))}
           </ul>
 
-          <div className="mt-10 flex flex-wrap items-center gap-4">
+          <div className="mt-10 border-t border-white/15 pt-8">
+            <p data-t="caption" className="label-xs mb-5 text-brass-soft">
+              Avaliação gratuita do seu imóvel
+            </p>
+            <OwnerForm />
             <a
               href={waHref}
               target="_blank"
               rel="noreferrer"
               data-t="button"
-              className="site-btn site-btn-dark"
+              className="label-xs mt-6 inline-flex items-center gap-2 border-b border-brass-soft/50 pb-1 text-brass-soft transition-colors hover:border-brass-soft hover:text-white"
             >
-              Quero vender meu imóvel
+              Prefiro falar direto no WhatsApp
               <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.6} />
-            </a>
-            <a
-              href="#contato"
-              data-t="button"
-              className="label-xs border-b border-brass-soft/50 pb-1 text-brass-soft transition-colors hover:border-brass-soft hover:text-white"
-            >
-              Prefiro deixar meu contato
             </a>
           </div>
         </div>
