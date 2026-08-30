@@ -48308,6 +48308,144 @@ async function publicCards(db3, codes) {
     };
   });
 }
+var NAME_PREFIX = /^(?:oi|ola|olá|opa|bom dia|boa tarde|boa noite)?[\s,!.-]*(?:o\s+)?(?:meu\s+nome\s+(?:é|e)|meu\s+nome|me\s+chamo|pode\s+me\s+chamar\s+de|aqui\s+(?:é|e)\s+(?:o|a)|nome|sou\s+(?:o|a)|sou)\s*[:,-]?\s*/i;
+var NOT_A_NAME = new Set([
+  "casa",
+  "casas",
+  "apartamento",
+  "apartamentos",
+  "apto",
+  "aptos",
+  "imovel",
+  "imoveis",
+  "terreno",
+  "cobertura",
+  "kitnet",
+  "sobrado",
+  "sala",
+  "predio",
+  "condominio",
+  "preco",
+  "precos",
+  "valor",
+  "valores",
+  "quanto",
+  "onde",
+  "quando",
+  "qual",
+  "quais",
+  "como",
+  "porque",
+  "quero",
+  "queria",
+  "gostaria",
+  "procuro",
+  "procurando",
+  "busco",
+  "preciso",
+  "tem",
+  "tenho",
+  "temos",
+  "voce",
+  "voces",
+  "corretor",
+  "corretora",
+  "whatsapp",
+  "whats",
+  "zap",
+  "telefone",
+  "contato",
+  "visita",
+  "visitar",
+  "agendar",
+  "aluguel",
+  "alugar",
+  "venda",
+  "vender",
+  "comprar",
+  "compra",
+  "financiamento",
+  "financiar",
+  "entrada",
+  "parcela",
+  "praia",
+  "grande",
+  "bairro",
+  "guilhermina",
+  "obrigado",
+  "obrigada",
+  "bom",
+  "boa",
+  "dia",
+  "tarde",
+  "noite",
+  "sim",
+  "nao",
+  "ok",
+  "certo",
+  "beleza",
+  "tudo",
+  "bem",
+  "oi",
+  "ola",
+  "informacao",
+  "informacoes",
+  "ajuda",
+  "ajudar",
+  "ainda",
+  "so",
+  "mais",
+  "menos",
+  "pra",
+  "para",
+  "com",
+  "sem",
+  "aqui",
+  "ali",
+  "hoje",
+  "amanha",
+  "agora",
+  "depois",
+  "quartos",
+  "quarto",
+  "suite",
+  "metros",
+  "mercado",
+  "disponivel",
+  "disponiveis",
+  "foto",
+  "fotos",
+  "video"
+]);
+var stripAccents2 = (value2) => value2.normalize("NFD").replace(/[̀-ͯ]/g, "");
+var titleCase = (value2) => value2.split(" ").map((word) => word.length <= 2 && /^(?:d[aeo]s?|e)$/i.test(word) ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ");
+function extractContactName(raw2) {
+  const text4 = sanitizeShort(raw2 ?? "", 200);
+  if (!text4 || text4.length > 60)
+    return null;
+  if (/[?¿]/.test(text4))
+    return null;
+  if (/\d/.test(text4))
+    return null;
+  const hadPrefix = NAME_PREFIX.test(text4);
+  const candidate = (hadPrefix ? text4.replace(NAME_PREFIX, "") : text4).replace(/[.,;:!]+$/g, "").trim();
+  if (!candidate)
+    return null;
+  const words = candidate.split(" ").filter(Boolean);
+  const maxWords = hadPrefix ? 3 : 2;
+  if (words.length === 0 || words.length > maxWords)
+    return null;
+  for (const word of words) {
+    if (!/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*$/.test(word))
+      return null;
+    if (NOT_A_NAME.has(stripAccents2(word).toLowerCase()))
+      return null;
+  }
+  const first = words[0] ?? "";
+  if (first.length < 2 || first.length > 20)
+    return null;
+  return titleCase(words.join(" ")).slice(0, 120);
+}
 var CONTACT_PROMPT_AFTER = 2;
 function toPublicState(token, conversation, clientMessages) {
   const hasName = Boolean(conversation.contactName);
@@ -48469,6 +48607,14 @@ var siteChat = {
       authorName: conversation.contactName ?? null,
       body
     });
+    if (!conversation.contactName) {
+      const pending = await loadMessages(db3, conversation.id);
+      const step = toPublicState(token, conversation, countClientMessages(pending));
+      const guessed = step.askName ? extractContactName(body) : null;
+      if (guessed) {
+        await db3.update(conversations).set({ contactName: guessed }).where(eq(conversations.id, conversation.id));
+      }
+    }
     const aiCounted = await recordGuardEvent(db3, fingerprint, "ai");
     if (!aiCounted) {
       const messages3 = await loadMessages(db3, conversation.id);

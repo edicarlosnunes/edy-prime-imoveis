@@ -24,6 +24,7 @@ import { codeFromSlug, propertySlug as buildSlug } from "../lib/slug";
 import {
   CHAT_FALLBACK_NAME,
   MAX_MESSAGE_CHARS,
+  extractContactName,
   SITE_CHAT_CHANNEL,
   conversationRateLimited,
   externalIdFor,
@@ -285,6 +286,24 @@ export const siteChat = {
         authorName: conversation.contactName ?? null,
         body,
       });
+
+      /* Nome dito na conversa, não no formulário. O visitante responde
+         "Meu nome é Edy" no chat e antes nada lia esse texto: `contactName`
+         ficava nulo, `askName` nunca saía e o pedido do WhatsApp não chegava
+         — sobretudo em atendimento humano, onde a IA não roda para reconduzir
+         ao formulário. Só grava quando o passo do nome está ativo e o texto é
+         claramente uma apresentação; na dúvida, segue o fluxo antigo. */
+      if (!conversation.contactName) {
+        const pending = await loadMessages(db, conversation.id);
+        const step = toPublicState(token, conversation, countClientMessages(pending));
+        const guessed = step.askName ? extractContactName(body) : null;
+        if (guessed) {
+          await db
+            .update(schema.conversations)
+            .set({ contactName: guessed })
+            .where(eq(schema.conversations.id, conversation.id));
+        }
+      }
 
       const aiCounted = await recordGuardEvent(db, fingerprint, "ai");
       if (!aiCounted) {

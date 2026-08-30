@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   CHAT_FALLBACK_NAME,
+  extractContactName,
   normalizePhone,
   normalizeVisitorToken,
   sanitizeShort,
@@ -73,6 +74,84 @@ describe("normalizeVisitorToken", () => {
     expect(normalizeVisitorToken(token)).toBe(token);
     expect(normalizeVisitorToken("curto")).toBeNull();
     expect(normalizeVisitorToken(undefined)).toBeNull();
+  });
+});
+
+describe("extractContactName — nome dito na conversa", () => {
+  test('aceita "Meu nome é Edy"', () => {
+    expect(extractContactName("Meu nome é Edy")).toBe("Edy");
+  });
+
+  test('aceita "me chamo Edy" e "sou Edy"', () => {
+    expect(extractContactName("me chamo Edy")).toBe("Edy");
+    expect(extractContactName("sou Edy")).toBe("Edy");
+    expect(extractContactName("Sou o Edy Nunes")).toBe("Edy Nunes");
+    expect(extractContactName("pode me chamar de Edy")).toBe("Edy");
+  });
+
+  test("aceita resposta curta só com o nome", () => {
+    expect(extractContactName("Edy")).toBe("Edy");
+    expect(extractContactName("edy nunes")).toBe("Edy Nunes");
+  });
+
+  test("remove o prefixo antes de salvar", () => {
+    expect(extractContactName("oi, meu nome é Ana Paula")).toBe("Ana Paula");
+    expect(extractContactName("Nome: Ana")).toBe("Ana");
+  });
+
+  test("não trata pergunta sobre imóvel como nome", () => {
+    expect(extractContactName("Vocês têm casa na Guilhermina?")).toBeNull();
+    expect(extractContactName("tem apartamento na praia")).toBeNull();
+    expect(extractContactName("quanto custa")).toBeNull();
+  });
+
+  test("não trata mensagem longa ou conversacional como nome", () => {
+    expect(
+      extractContactName(
+        "gostaria de saber se ainda está disponível aquele imóvel de frente para o mar",
+      ),
+    ).toBeNull();
+    expect(extractContactName("bom dia")).toBeNull();
+    expect(extractContactName("ok obrigado")).toBeNull();
+  });
+
+  test("rejeita número, vazio e lixo", () => {
+    expect(extractContactName("13999999999")).toBeNull();
+    expect(extractContactName("Edy 13999999999")).toBeNull();
+    expect(extractContactName("")).toBeNull();
+    expect(extractContactName(null)).toBeNull();
+    expect(extractContactName("a")).toBeNull();
+  });
+
+  test("em atendimento humano o nome capturado libera o pedido de WhatsApp", () => {
+    const token = "c".repeat(32);
+    const before = toPublicState(token, conversation({ mode: "humano" }), 2);
+    expect(before.askName).toBe(true);
+    expect(before.askPhone).toBe(false);
+
+    const captured = extractContactName("Meu nome é Edy");
+    expect(captured).toBe("Edy");
+
+    const after = toPublicState(
+      token,
+      conversation({ mode: "humano", contactName: captured }),
+      2,
+    );
+    expect(after.mode).toBe("humano");
+    expect(after.askName).toBe(false);
+    expect(after.askPhone).toBe(true);
+  });
+
+  test("não interfere no formulário identify (sanitizeShort continua mandando lá)", () => {
+    const digitado = sanitizeShort("  Edy   Nunes  ", 120);
+    expect(digitado).toBe("Edy Nunes");
+    const state = toPublicState(
+      "d".repeat(32),
+      conversation({ contactName: digitado }),
+      2,
+    );
+    expect(state.askName).toBe(false);
+    expect(state.askPhone).toBe(true);
   });
 });
 

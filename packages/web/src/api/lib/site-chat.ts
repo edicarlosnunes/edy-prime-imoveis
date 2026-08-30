@@ -207,6 +207,84 @@ export async function publicCards(db: AdminDb, codes: string[]): Promise<PublicC
   });
 }
 
+/* ------------------------------------------------------------------ *
+ * Nome dito por mensagem                                             *
+ * ------------------------------------------------------------------ */
+
+/** Prefixos comuns de apresentação ("meu nome é", "me chamo", "sou"...). */
+const NAME_PREFIX =
+  /^(?:oi|ola|olá|opa|bom dia|boa tarde|boa noite)?[\s,!.-]*(?:o\s+)?(?:meu\s+nome\s+(?:é|e)|meu\s+nome|me\s+chamo|pode\s+me\s+chamar\s+de|aqui\s+(?:é|e)\s+(?:o|a)|nome|sou\s+(?:o|a)|sou)\s*[:,-]?\s*/i;
+
+/** Palavras que denunciam pergunta/conversa, nunca um nome. */
+const NOT_A_NAME = new Set([
+  "casa", "casas", "apartamento", "apartamentos", "apto", "aptos", "imovel", "imoveis",
+  "terreno", "cobertura", "kitnet", "sobrado", "sala", "predio", "condominio",
+  "preco", "precos", "valor", "valores", "quanto", "onde", "quando", "qual", "quais",
+  "como", "porque", "quero", "queria", "gostaria", "procuro", "procurando", "busco",
+  "preciso", "tem", "tenho", "temos", "voce", "voces", "corretor", "corretora",
+  "whatsapp", "whats", "zap", "telefone", "contato", "visita", "visitar", "agendar",
+  "aluguel", "alugar", "venda", "vender", "comprar", "compra", "financiamento",
+  "financiar", "entrada", "parcela", "praia", "grande", "bairro", "guilhermina",
+  "obrigado", "obrigada", "bom", "boa", "dia", "tarde", "noite", "sim", "nao",
+  "ok", "certo", "beleza", "tudo", "bem", "oi", "ola", "informacao", "informacoes",
+  "ajuda", "ajudar", "ainda", "so", "mais", "menos", "pra", "para", "com", "sem",
+  "aqui", "ali", "hoje", "amanha", "agora", "depois", "quartos", "quarto", "suite",
+  "metros", "mercado", "disponivel", "disponiveis", "foto", "fotos", "video",
+]);
+
+const stripAccents = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+const titleCase = (value: string) =>
+  value
+    .split(" ")
+    .map((word) =>
+      word.length <= 2 && /^(?:d[aeo]s?|e)$/i.test(word)
+        ? word.toLowerCase()
+        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
+    .join(" ");
+
+/**
+ * Tenta ler o nome do visitante numa mensagem livre do chat.
+ *
+ * Existe porque o visitante costuma responder "Meu nome é Edy" na conversa em
+ * vez de usar o formulário — e só o formulário gravava `contactName`. Sem o
+ * nome gravado, `toPublicState` mantinha `askName` e o pedido do WhatsApp
+ * nunca chegava, principalmente em atendimento humano, onde a IA não roda
+ * para reconduzir o visitante ao formulário.
+ *
+ * É deliberadamente conservador: na dúvida devolve null e o fluxo segue como
+ * antes. Nunca aceita pergunta, texto longo ou frase sobre imóvel.
+ */
+export function extractContactName(raw: string | null | undefined): string | null {
+  const text = sanitizeShort(raw ?? "", 200);
+  if (!text || text.length > 60) return null;
+  /* Pergunta ou frase de conversa: não é apresentação. */
+  if (/[?¿]/.test(text)) return null;
+  if (/\d/.test(text)) return null;
+
+  const hadPrefix = NAME_PREFIX.test(text);
+  const candidate = (hadPrefix ? text.replace(NAME_PREFIX, "") : text)
+    .replace(/[.,;:!]+$/g, "")
+    .trim();
+  if (!candidate) return null;
+
+  const words = candidate.split(" ").filter(Boolean);
+  /* Sem prefixo só vale resposta curta ("Edy", "Edy Nunes"). Com prefixo,
+     aceita até três palavras (nome composto). */
+  const maxWords = hadPrefix ? 3 : 2;
+  if (words.length === 0 || words.length > maxWords) return null;
+
+  for (const word of words) {
+    if (!/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*$/.test(word)) return null;
+    if (NOT_A_NAME.has(stripAccents(word).toLowerCase())) return null;
+  }
+  const first = words[0] ?? "";
+  if (first.length < 2 || first.length > 20) return null;
+
+  return titleCase(words.join(" ")).slice(0, 120);
+}
+
 /** Estado da conversa visível para o visitante (nada administrativo). */
 export interface PublicChatState {
   token: string;
