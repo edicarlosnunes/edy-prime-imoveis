@@ -217,6 +217,9 @@ export interface PublicChatState {
   askPhone: boolean;
 }
 
+/** Mensagens do visitante necessárias antes de pedir nome/WhatsApp. */
+export const CONTACT_PROMPT_AFTER = 2;
+
 export function toPublicState(
   token: string,
   conversation: { mode: string; status: string; contactName: string | null; contactPhone: string | null },
@@ -229,8 +232,13 @@ export function toPublicState(
     mode: conversation.mode === "humano" ? "humano" : "ia",
     status: conversation.status === "fechada" ? "fechada" : "aberta",
     identified: hasName && hasPhone,
-    /* Captação progressiva: só depois de a conversa ter andado. */
-    askName: !hasName && clientMessages >= 2,
-    askPhone: hasName && !hasPhone && clientMessages >= 3,
+    /* Captação progressiva: só depois de a conversa ter andado. O nome e o
+       WhatsApp usam o mesmo limiar de propósito — o pedido do telefone vem
+       logo após o nome ser salvo. Com limiares diferentes (2 e 3) o fluxo
+       travava: o visitante que pedia corretor parava de digitar depois de
+       informar o nome, o contador nunca chegava a 3 e o formulário do
+       WhatsApp não aparecia mais. */
+    askName: !hasName && clientMessages >= CONTACT_PROMPT_AFTER,
+    askPhone: hasName && !hasPhone && clientMessages >= CONTACT_PROMPT_AFTER,
   };
 }

@@ -48308,6 +48308,7 @@ async function publicCards(db3, codes) {
     };
   });
 }
+var CONTACT_PROMPT_AFTER = 2;
 function toPublicState(token, conversation, clientMessages) {
   const hasName = Boolean(conversation.contactName);
   const hasPhone = Boolean(conversation.contactPhone);
@@ -48316,8 +48317,8 @@ function toPublicState(token, conversation, clientMessages) {
     mode: conversation.mode === "humano" ? "humano" : "ia",
     status: conversation.status === "fechada" ? "fechada" : "aberta",
     identified: hasName && hasPhone,
-    askName: !hasName && clientMessages >= 2,
-    askPhone: hasName && !hasPhone && clientMessages >= 3
+    askName: !hasName && clientMessages >= CONTACT_PROMPT_AFTER,
+    askPhone: hasName && !hasPhone && clientMessages >= CONTACT_PROMPT_AFTER
   };
 }
 

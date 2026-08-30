@@ -5,7 +5,16 @@ import {
   normalizePhone,
   normalizeVisitorToken,
   sanitizeShort,
+  toPublicState,
 } from "./site-chat";
+
+const conversation = (over: Partial<Parameters<typeof toPublicState>[1]> = {}) => ({
+  mode: "ia",
+  status: "aberta",
+  contactName: null,
+  contactPhone: null,
+  ...over,
+});
 
 describe("normalizePhone", () => {
   test("aceita celular com DDD e máscara", () => {
@@ -64,5 +73,55 @@ describe("normalizeVisitorToken", () => {
     expect(normalizeVisitorToken(token)).toBe(token);
     expect(normalizeVisitorToken("curto")).toBeNull();
     expect(normalizeVisitorToken(undefined)).toBeNull();
+  });
+});
+
+describe("toPublicState — sequência nome → WhatsApp", () => {
+  const token = "b".repeat(32);
+
+  test("não pede nada antes da conversa andar", () => {
+    const state = toPublicState(token, conversation(), 1);
+    expect(state.askName).toBe(false);
+    expect(state.askPhone).toBe(false);
+  });
+
+  test("pede o nome a partir da segunda mensagem", () => {
+    const state = toPublicState(token, conversation(), 2);
+    expect(state.askName).toBe(true);
+    expect(state.askPhone).toBe(false);
+  });
+
+  test("pede o WhatsApp logo depois do nome, sem exigir nova mensagem", () => {
+    const state = toPublicState(token, conversation({ contactName: "Ana" }), 2);
+    expect(state.askName).toBe(false);
+    expect(state.askPhone).toBe(true);
+  });
+
+  test("pede o WhatsApp mesmo já transferido para o corretor", () => {
+    const state = toPublicState(
+      token,
+      conversation({ contactName: "Ana", mode: "humano" }),
+      2,
+    );
+    expect(state.mode).toBe("humano");
+    expect(state.askPhone).toBe(true);
+  });
+
+  test("visitante que deu só o telefone continua sendo perguntado o nome", () => {
+    const state = toPublicState(token, conversation({ contactPhone: "13999999999" }), 2);
+    expect(state.askName).toBe(true);
+    expect(state.askPhone).toBe(false);
+    expect(state.identified).toBe(false);
+  });
+
+  test("com nome e telefone não pede mais nada", () => {
+    const state = toPublicState(
+      token,
+      conversation({ contactName: "Ana", contactPhone: "13999999999" }),
+      9,
+    );
+    expect(state.askName).toBe(false);
+    expect(state.askPhone).toBe(false);
+    expect(state.identified).toBe(true);
   });
 });
