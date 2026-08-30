@@ -21,6 +21,12 @@ import {
 import { dealStatusLabel, dealStatuses, labelOf } from "../../components/admin/labels";
 import { errorMessage } from "../../lib/admin-session";
 import {
+  MoneyInputError,
+  formatMoneyInput,
+  parseMoneyInput,
+  parsePercentInput,
+} from "../../lib/money-input";
+import {
   useAdminDeals,
   useAdminLeads,
   useClientOptions,
@@ -61,10 +67,16 @@ function emptyForm(): FormState {
   };
 }
 
-function optionalNum(value: string) {
-  if (!value.trim()) return null;
-  const parsed = Number(value.replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : null;
+/**
+ * Monta o payload numérico da proposta a partir do formulário.
+ * Lança MoneyInputError com mensagem clara quando o texto digitado é inválido.
+ */
+function moneyPayload(form: FormState) {
+  return {
+    askingPrice: parseMoneyInput(form.askingPrice, "Valor pedido"),
+    offerPrice: parseMoneyInput(form.offerPrice, "Valor proposto"),
+    commissionRate: parsePercentInput(form.commissionRate, "Comissão"),
+  };
 }
 
 export default function AdminDeals() {
@@ -114,15 +126,28 @@ function Content() {
     event.preventDefault();
     if (!form) return;
     setError(null);
+
+    let amounts: ReturnType<typeof moneyPayload>;
+    try {
+      amounts = moneyPayload(form);
+    } catch (caught) {
+      setError(
+        caught instanceof MoneyInputError
+          ? caught.message
+          : "Verifique os valores informados, use o formato 320.000,00",
+      );
+      return;
+    }
+
     const payload = {
       clientId: form.clientId ? Number(form.clientId) : null,
       leadId: form.leadId ? Number(form.leadId) : null,
       propertyId: form.propertyId ? Number(form.propertyId) : null,
       clientName: form.clientName.trim() || null,
-      askingPrice: optionalNum(form.askingPrice),
-      offerPrice: optionalNum(form.offerPrice),
+      askingPrice: amounts.askingPrice,
+      offerPrice: amounts.offerPrice,
       status: form.status,
-      commissionRate: optionalNum(form.commissionRate),
+      commissionRate: amounts.commissionRate,
       notes: form.notes.trim() || null,
       dealDate: form.dealDate || null,
     };
@@ -210,8 +235,8 @@ function Content() {
                       leadId: deal.leadId ? String(deal.leadId) : "",
                       propertyId: deal.propertyId ? String(deal.propertyId) : "",
                       clientName: deal.clientName ?? "",
-                      askingPrice: deal.askingPrice === null ? "" : String(deal.askingPrice),
-                      offerPrice: deal.offerPrice === null ? "" : String(deal.offerPrice),
+                      askingPrice: formatMoneyInput(deal.askingPrice),
+                      offerPrice: formatMoneyInput(deal.offerPrice),
                       status: deal.status as DealStatus,
                       commissionRate: deal.commissionRate === null ? "" : String(deal.commissionRate),
                       notes: deal.notes ?? "",
