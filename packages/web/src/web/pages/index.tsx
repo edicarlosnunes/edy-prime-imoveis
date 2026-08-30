@@ -15,6 +15,7 @@ import { WhatsappFab } from "../components/site/whatsapp-fab";
 /* Chat com IA: carregado sob demanda para não pesar o carregamento do site. */
 const ChatWidget = lazy(() => import("../components/site/chat-widget"));
 import { PreviewBanner, SiteChrome, useSiteContent } from "../components/site/content";
+import { JsonLd } from "../components/site/json-ld";
 import { orderedSections, type SectionKey } from "../lib/site-content";
 
 const sectionComponents: Record<SectionKey, () => ReactNode> = {
@@ -32,9 +33,32 @@ function Index() {
   const content = useSiteContent();
   const order = orderedSections(content);
 
+  const company = content.company;
+  const agentSchema = {
+    "@context": "https://schema.org",
+    "@type": "RealEstateAgent",
+    name: `${company.name} ${company.brandSuffix}`.trim(),
+    description: company.role,
+    telephone: `+${company.whatsapp}`,
+    email: company.email,
+    url: typeof window === "undefined" ? undefined : window.location.origin,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: company.address,
+      addressLocality: company.city,
+      addressRegion: company.state,
+      addressCountry: "BR",
+    },
+    areaServed: [company.city, ...company.districts].map((name) => ({ "@type": "Place", name })),
+    sameAs: [company.instagram, company.facebook].filter(Boolean),
+    openingHours: company.hours,
+    identifier: company.creci,
+  };
+
   return (
     <div className="site-shell min-h-screen bg-paper">
       <SiteChrome />
+      <JsonLd id="agente" data={agentSchema} />
       <Header />
       <main>
         <Hero />

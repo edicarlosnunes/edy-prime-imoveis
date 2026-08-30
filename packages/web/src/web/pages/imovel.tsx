@@ -19,6 +19,7 @@ import { WhatsappFab } from "../components/site/whatsapp-fab";
 /* Chat com IA: carregado sob demanda, com o imóvel da página como contexto. */
 const ChatWidget = lazy(() => import("../components/site/chat-widget"));
 import { SiteChrome } from "../components/site/content";
+import { JsonLd } from "../components/site/json-ld";
 import { usePropertyDetail } from "../queries/properties";
 import { useCreateLead } from "../queries/leads";
 import { formatBRL, site, whatsappLink } from "../lib/site";
@@ -174,9 +175,48 @@ function PropertyPage() {
       : null,
   );
 
+  const propertySchema = property
+    ? {
+        "@context": "https://schema.org",
+        "@type": property.purpose === "locacao" ? "Residence" : "SingleFamilyResidence",
+        name: property.title,
+        description: property.description || property.title,
+        url: typeof window === "undefined" ? undefined : window.location.href,
+        image: property.images.length > 0 ? property.images : [property.image],
+        sku: property.code,
+        numberOfRooms: property.bedrooms,
+        numberOfBathroomsTotal: property.bathrooms,
+        floorSize: property.area
+          ? { "@type": "QuantitativeValue", value: property.area, unitCode: "MTK" }
+          : undefined,
+        address: {
+          "@type": "PostalAddress",
+          streetAddress: property.address || undefined,
+          addressLocality: property.city,
+          addressRegion: site.state,
+          addressCountry: "BR",
+        },
+        ...(property.price > 0
+          ? {
+              offers: {
+                "@type": "Offer",
+                price: property.price,
+                priceCurrency: "BRL",
+                availability:
+                  property.status === "disponivel"
+                    ? "https://schema.org/InStock"
+                    : "https://schema.org/SoldOut",
+                seller: { "@type": "RealEstateAgent", name: `${site.brand} ${site.brandSuffix}` },
+              },
+            }
+          : {}),
+      }
+    : null;
+
   return (
     <div className="site-shell min-h-screen bg-paper" data-sec="imovel">
       <SiteChrome />
+      <JsonLd id="imovel" data={propertySchema} />
       <Header />
 
       <main className="mx-auto max-w-[1240px] px-6 py-16 lg:px-8 lg:py-20">

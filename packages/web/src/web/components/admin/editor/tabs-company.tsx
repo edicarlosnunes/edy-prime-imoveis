@@ -51,14 +51,14 @@ export function TabCompany({ content, patch }: TabProps) {
           <TextRow
             label="WhatsApp (só números, com DDI e DDD)"
             value={company.whatsapp}
-            placeholder="5513996922804"
+            placeholder="5513997141174"
             hint="Usado em todos os botões de WhatsApp do site."
             onChange={(value) => patch((draft) => void (draft.company.whatsapp = value))}
           />
           <TextRow
             label="Telefone exibido"
             value={company.phone}
-            placeholder="(13) 99692-2804"
+            placeholder="(13) 99714-1174"
             onChange={(value) => patch((draft) => void (draft.company.phone = value))}
           />
           <TextRow
