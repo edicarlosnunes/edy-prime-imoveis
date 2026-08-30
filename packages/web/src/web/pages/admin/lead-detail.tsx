@@ -170,7 +170,7 @@ export function LeadDetail({ leadId, onClose }: { leadId: number | null; onClose
               criado em {dateTimeLabel(lead.createdAt)} · origem {sourceLabel[lead.source] ?? lead.source}
             </span>
             <a
-              href={waLink(lead.phone, `Olá ${lead.name}, tudo bem? Sou o Edy, da Edy Premi Imóveis.`)}
+              href={waLink(lead.phone, `Olá ${lead.name}, tudo bem? Sou o Edy, da Edy Prime Imóveis.`)}
               target="_blank"
               rel="noreferrer"
               className="ml-auto inline-flex items-center gap-1.5 rounded-[3px] bg-emerald-600 px-3 py-2 text-[11px] tracking-wide text-white uppercase hover:bg-emerald-700"

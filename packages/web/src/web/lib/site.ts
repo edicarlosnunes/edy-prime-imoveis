@@ -2,11 +2,11 @@
  * Dados do negócio — edite aqui e o site inteiro se atualiza.
  */
 export const site = {
-  brand: "Edy Premi",
+  brand: "Edy Prime",
   brandSuffix: "Imóveis",
-  broker: "Edy Premi",
+  broker: "Edy Prime",
   role: "Consultor de imóveis · Praia Grande/SP",
-  creci: "CRECI 134718",
+  creci: "CRECI 248229",
   city: "Praia Grande",
   state: "SP",
   /** Somente números, com DDI e DDD. Ex: 5513991234567 */
@@ -124,7 +124,10 @@ export function whatsappLink(message: string) {
   return `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(message)}`;
 }
 
+/* Imóvel cadastrado sem preço (price = 0) mostra "Sob consulta" em vez de
+   "R$ 0" — o valor zero é ausência de dado, não um preço. */
 export function formatBRL(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "Sob consulta";
   return value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",

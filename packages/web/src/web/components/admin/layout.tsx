@@ -71,7 +71,7 @@ export function AdminLayout({
   const sidebar = (
     <div className="admin-sidebar flex h-full flex-col">
       <div className="border-b border-white/10 px-6 py-6">
-        <p className="display text-2xl leading-none text-white">Edy Premi</p>
+        <p className="display text-2xl leading-none text-white">Edy Prime</p>
         <p className="label-xs mt-2 text-brass-soft">Painel administrativo</p>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 py-4">

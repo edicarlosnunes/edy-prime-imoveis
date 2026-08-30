@@ -180,7 +180,7 @@
   --adm-text: #e6edf5;
   --adm-secondary: #9fb0c4;
 
-  /* Identidade Edy Premi no escuro */
+  /* Identidade Edy Prime no escuro */
   --adm-brass: #d3a55a;
   --adm-green: #1d4b3c;
 
@@ -401,7 +401,7 @@
 
 /* ---------------------------------------------- indicadores com cor (KPI) *
  * Cada card de indicador recebe um tom próprio (rotativo), no espírito de   *
- * um CRM moderno, mas dentro da identidade Edy Premi (dourado + verde).     */
+ * um CRM moderno, mas dentro da identidade Edy Prime (dourado + verde).     */
 
 .admin-shell .admin-card:has(.admin-stat) {
   --tone: 211, 165, 90;

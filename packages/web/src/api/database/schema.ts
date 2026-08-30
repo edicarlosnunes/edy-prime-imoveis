@@ -339,8 +339,8 @@ export const deals = sqliteTable("deals", {
 
 export const settings = sqliteTable("settings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  companyName: text("company_name").notNull().default("Edy Premi Imóveis"),
-  brokerName: text("broker_name").notNull().default("Edy Premi"),
+  companyName: text("company_name").notNull().default("Edy Prime Imóveis"),
+  brokerName: text("broker_name").notNull().default("Edy Prime"),
   whatsapp: text("whatsapp").notNull().default(""),
   email: text("email").notNull().default(""),
   creci: text("creci").notNull().default(""),

@@ -168,7 +168,7 @@ function PropertyPage() {
   const [copied, setCopied] = useState(false);
 
   useMeta(
-    property ? `${property.title} — ${property.district}, ${property.city} | Edy Premi Imóveis` : null,
+    property ? `${property.title} — ${property.district}, ${property.city} | Edy Prime Imóveis` : null,
     property
       ? `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.area} m² em ${property.district}. ${formatBRL(property.price)}. Código ${property.code}.`
       : null,

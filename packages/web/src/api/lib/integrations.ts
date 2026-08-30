@@ -57,7 +57,7 @@ export const CATEGORIES = [
   "Instagram / Facebook / Meta",
   "Google",
   "XML / Feeds",
-  "Site Edy Premi",
+  "Site Edy Prime",
   "Agentes de IA",
 ] as const;
 
@@ -411,7 +411,7 @@ export const INTEGRATIONS: IntegrationDef[] = [
   /* ------------------------------------------------------- site próprio */
   {
     key: "site_leads",
-    category: "Site Edy Premi",
+    category: "Site Edy Prime",
     name: "Formulários do site",
     mark: "SI",
     purpose: "Leads da home e das páginas de imóvel caem direto no CRM.",

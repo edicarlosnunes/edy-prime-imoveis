@@ -1,4 +1,4 @@
-# Edy Premi Imóveis — Design
+# Edy Prime Imóveis — Design
 
 Landing page (web) de captação de leads para corretor/imobiliária de imóveis de médio e alto padrão em Praia Grande/SP. Visual sofisticado, litorâneo e sóbrio: bege osso, verde-petróleo profundo e latão. Objetivo único: gerar contato qualificado (formulário + WhatsApp).
 

@@ -50,14 +50,17 @@ export interface AgentReply {
   toolCalls: { tool: string; input: string }[];
 }
 
+/* Preço 0 = não cadastrado. A IA nunca deve dizer "R$ 0" para o cliente. */
 const money = (value: number) =>
-  value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  value > 0
+    ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+    : "sob consulta";
 
 function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
   return {
     buscarImoveis: tool({
       description:
-        "Busca imóveis REAIS no banco da Edy Premi. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
+        "Busca imóveis REAIS no banco da Edy Prime. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
       inputSchema: z.object({
         bairro: z.string().optional().describe("bairro ou região"),
         cidade: z.string().optional(),
@@ -175,7 +178,7 @@ function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
 
 function systemPrompt(agent: AgentRow) {
   return [
-    `Você é ${agent.name}, atendente virtual da Edy Premi Imóveis (imóveis de médio e alto padrão em Praia Grande/SP).`,
+    `Você é ${agent.name}, atendente virtual da Edy Prime Imóveis (imóveis de médio e alto padrão em Praia Grande/SP).`,
     agent.tone ? `Tom de voz: ${agent.tone}` : "Tom sofisticado, direto e humano.",
     agent.instructions ? `Instruções do corretor: ${agent.instructions}` : "",
     agent.qualification ? `Qualifique o cliente coletando: ${agent.qualification}` : "",

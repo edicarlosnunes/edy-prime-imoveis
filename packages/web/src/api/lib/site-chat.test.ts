@@ -5,6 +5,7 @@ import {
   extractContactName,
   normalizePhone,
   normalizeVisitorToken,
+  sanitizeContactName,
   sanitizeShort,
   toPublicState,
 } from "./site-chat";
@@ -202,5 +203,28 @@ describe("toPublicState — sequência nome → WhatsApp", () => {
     expect(state.askName).toBe(false);
     expect(state.askPhone).toBe(false);
     expect(state.identified).toBe(true);
+  });
+});
+
+describe("sanitizeContactName (nome do formulário)", () => {
+  test("aceita nome simples e composto", () => {
+    expect(sanitizeContactName("edy")).toBe("Edy");
+    expect(sanitizeContactName("  maria da silva ")).toBe("Maria da Silva");
+    expect(sanitizeContactName("EDY NUNES")).toBe("Edy Nunes");
+  });
+
+  test("recusa resposta que não é nome", () => {
+    for (const value of ["sim", "ok", "não", "nao", "oi", "quero", "casa", "apartamento", "beleza"]) {
+      expect(sanitizeContactName(value)).toBeNull();
+    }
+  });
+
+  test("recusa vazio, curto, número e texto longo", () => {
+    expect(sanitizeContactName("")).toBeNull();
+    expect(sanitizeContactName(null)).toBeNull();
+    expect(sanitizeContactName("a")).toBeNull();
+    expect(sanitizeContactName("13999999999")).toBeNull();
+    expect(sanitizeContactName("Edy 2")).toBeNull();
+    expect(sanitizeContactName("quero saber o preco do apartamento agora")).toBeNull();
   });
 });

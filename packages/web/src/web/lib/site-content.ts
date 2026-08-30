@@ -264,7 +264,7 @@ export const defaultSiteContent: SiteContent = {
     ],
   },
   menu: {
-    logoText: "Edy Premi",
+    logoText: "Edy Prime",
     logoSuffix: "Imóveis",
     logoUrl: "",
     items: [
@@ -294,7 +294,7 @@ export const defaultSiteContent: SiteContent = {
         {
           id: "p1",
           title: "Corretor registrado",
-          text: "Atendimento conduzido por profissional com registro ativo — CRECI 134718.",
+          text: "Atendimento conduzido por profissional com registro ativo — CRECI 248229.",
         },
         {
           id: "p2",
@@ -366,8 +366,8 @@ export const defaultSiteContent: SiteContent = {
       subtitle: "",
       text: "",
       imageUrl: "/images/corretor.jpg",
-      badgeName: "Edy Premi",
-      badgeCaption: "CRECI 134718",
+      badgeName: "Edy Prime",
+      badgeCaption: "CRECI 248229",
       ctaLabel: "Conversar direto comigo",
       paragraphs: [
         {
@@ -451,11 +451,11 @@ export const defaultSiteContent: SiteContent = {
     },
   },
   company: {
-    name: "Edy Premi",
+    name: "Edy Prime",
     brandSuffix: "Imóveis",
-    broker: "Edy Premi",
+    broker: "Edy Prime",
     role: "Consultor de imóveis · Praia Grande/SP",
-    creci: "CRECI 134718",
+    creci: "CRECI 248229",
     whatsapp: "5513996922804",
     phone: "(13) 99692-2804",
     email: "edyprimeimoveis@gmail.com",
@@ -493,11 +493,11 @@ export const defaultSiteContent: SiteContent = {
     note: "Imagens ilustrativas. Valores e disponibilidade sujeitos a alteração sem aviso prévio.",
   },
   seo: {
-    title: "Edy Premi Imóveis | Imóveis de alto padrão em Praia Grande/SP",
+    title: "Edy Prime Imóveis | Imóveis de alto padrão em Praia Grande/SP",
     description:
-      "Edy Premi Imóveis — assessoria em imóveis de médio e alto padrão em Praia Grande/SP. Seleção curada, atendimento direto e negociação segura, do primeiro contato às chaves.",
+      "Edy Prime Imóveis — assessoria em imóveis de médio e alto padrão em Praia Grande/SP. Seleção curada, atendimento direto e negociação segura, do primeiro contato às chaves.",
     ogImageUrl: "/og-image.png",
-    shareTitle: "Edy Premi Imóveis | Praia Grande/SP",
+    shareTitle: "Edy Prime Imóveis | Praia Grande/SP",
     shareDescription:
       "Imóveis de médio e alto padrão em Praia Grande/SP com curadoria e atendimento direto pelo WhatsApp.",
     noindex: false,

@@ -285,6 +285,32 @@ export function extractContactName(raw: string | null | undefined): string | nul
   return titleCase(words.join(" ")).slice(0, 120);
 }
 
+/**
+ * Nome vindo do FORMULÁRIO de contato do chat.
+ *
+ * O formulário aceitava qualquer texto com 2+ caracteres, então respostas como
+ * "sim", "ok" ou "não" viravam o nome do contato na conversa e no lead do CRM.
+ * A regra aqui é a mínima necessária: só letras, no máximo 5 palavras (nome
+ * composto) e nada que esteja na lista de palavras que nunca são nome.
+ */
+export function sanitizeContactName(raw: string | null | undefined): string | null {
+  const text = sanitizeShort(raw ?? "", 120);
+  if (!text || text.length < 2 || /\d/.test(text)) return null;
+  const words = text
+    .replace(/[.,;:!?]+$/g, "")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  if (words.length === 0 || words.length > 5) return null;
+  for (const word of words) {
+    if (!/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\'’-]*$/.test(word)) return null;
+  }
+  const first = words[0] ?? "";
+  if (first.length < 2 || first.length > 20) return null;
+  if (NOT_A_NAME.has(stripAccents(first).toLowerCase())) return null;
+  return titleCase(words.join(" ")).slice(0, 120);
+}
+
 /** Estado da conversa visível para o visitante (nada administrativo). */
 export interface PublicChatState {
   token: string;

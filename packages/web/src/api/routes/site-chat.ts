@@ -34,6 +34,7 @@ import {
   normalizeVisitorToken,
   publicCards,
   registerIpHit,
+  sanitizeContactName,
   sanitizeMessage,
   sanitizeShort,
   toPublicMessage,
@@ -153,7 +154,7 @@ export const siteChat = {
         available,
         greeting:
           agent?.greeting?.trim() ||
-          "Olá! Sou o atendimento da Edy Premi. Me conte o que você procura em Praia Grande.",
+          "Olá! Sou o atendimento da Edy Prime. Me conte o que você procura em Praia Grande.",
         notice: available ? null : FALLBACK_UNAVAILABLE,
         state,
         messages,
@@ -373,7 +374,11 @@ export const siteChat = {
         return { ok: false, saved: false, crm: false, reason: "sessao_invalida" as const, state: null };
       }
 
-      const name = input.name ? sanitizeShort(input.name, 120) : "";
+      /* Nome do formulário passa por checagem de plausibilidade: "sim"/"ok"
+         não podem virar nome do contato nem do lead. */
+      const rawName = input.name ? sanitizeShort(input.name, 120) : "";
+      const name = sanitizeContactName(rawName) ?? "";
+      const nameRejected = Boolean(rawName) && !name;
       const phoneSent = Boolean(input.phone?.trim());
       const phone = normalizePhone(input.phone);
 
@@ -391,7 +396,18 @@ export const siteChat = {
         };
       }
 
-      const nextName = name.length >= 2 ? name : conversation.contactName;
+      if (nameRejected && !phone) {
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          ok: false,
+          saved: false,
+          crm: false,
+          reason: "nome_invalido" as const,
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+        };
+      }
+
+      const nextName = name || conversation.contactName;
       const nextPhone = phone ?? conversation.contactPhone;
 
       await db
@@ -405,6 +421,7 @@ export const siteChat = {
          ficava fora do CRM. Nada aqui depende da Meta/WhatsApp Cloud API. */
       let leadId = conversation.leadId;
       let crm = Boolean(leadId);
+      let crmFailed = false;
       if (nextPhone && !leadId) {
         const interest = input.interest ? sanitizeShort(input.interest, 160) : "";
         try {
@@ -419,10 +436,18 @@ export const siteChat = {
           });
           leadId = result.id;
           crm = true;
-        } catch {
+        } catch (error) {
           /* Automação/integração externa falhando não pode apagar o contato:
-             o telefone já está salvo na conversa e o corretor vê o aviso. */
+             o telefone já está salvo na conversa e o corretor vê o aviso.
+             O erro precisa aparecer no log do servidor — engolir em silêncio
+             foi o que escondeu a falha de schema que travou o CRM. */
+          console.error("[site-chat] intakeLead falhou", {
+            conversationId: conversation.id,
+            hasPhone: Boolean(nextPhone),
+            error: error instanceof Error ? error.message : String(error),
+          });
           crm = false;
+          crmFailed = true;
         }
         if (leadId) {
           await db
@@ -442,7 +467,7 @@ export const siteChat = {
         ok: true,
         saved: phoneSent ? Boolean(nextPhone) : Boolean(nextName),
         crm,
-        reason: null,
+        reason: crmFailed ? ("crm_indisponivel" as const) : null,
         state: toPublicState(
           token,
           { ...conversation, contactName: nextName ?? null, contactPhone: nextPhone ?? null },

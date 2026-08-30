@@ -48,8 +48,11 @@ function plainText(body: string) {
 
 const phoneDigits = (value: string) => value.replace(/\D/g, "");
 
+/* Imóvel sem preço cadastrado (price = 0) não pode aparecer como "R$ 0". */
 const brl = (value: number) =>
-  value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  value > 0
+    ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+    : "Sob consulta";
 
 function readToken() {
   try {
@@ -177,7 +180,9 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
             setIdentityError(
               data.reason === "telefone_invalido"
                 ? "Não reconheci esse número. Confira o DDD e os dígitos."
-                : "Não consegui salvar agora. Tente novamente.",
+                : data.reason === "nome_invalido"
+                  ? "Digite seu nome (só letras), por exemplo: Maria Silva."
+                  : "Não consegui salvar agora. Tente novamente.",
             );
             return;
           }
@@ -187,7 +192,9 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
           if (phone) {
             setIdentityDone(true);
             setIdentityFeedback(
-              "WhatsApp registrado. Um corretor da Edy Premi vai te chamar por ele.",
+              data.crm
+                ? "WhatsApp registrado. Um corretor da Edy Prime Imóveis vai te chamar por ele."
+                : "Anotei seu WhatsApp na conversa. Um corretor já consegue ver e responder aqui.",
             );
           } else {
             setIdentityFeedback("Obrigado! Anotei seu nome.");
@@ -222,7 +229,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Abrir chat com a Edy Premi"
+          aria-label="Abrir chat com a Edy Prime"
           className="fixed right-5 bottom-24 z-50 flex items-center gap-3 border border-brass/40 bg-deep px-5 py-4 text-white shadow-lg transition-colors hover:bg-brass"
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
         >
@@ -236,7 +243,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
           className="fixed inset-x-3 bottom-3 z-[60] flex max-h-[82vh] flex-col border border-line bg-paper shadow-2xl sm:inset-x-auto sm:right-5 sm:bottom-5 sm:w-[380px]"
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
           role="dialog"
-          aria-label="Chat Edy Premi Imóveis"
+          aria-label="Chat Edy Prime Imóveis"
         >
           <header className="flex items-center justify-between gap-3 bg-deep px-5 py-4 text-white">
             <div>

@@ -4470,8 +4470,8 @@ var init_schema = __esm(() => {
   });
   settings = sqliteTable("settings", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
-    companyName: text("company_name").notNull().default("Edy Premi Imóveis"),
-    brokerName: text("broker_name").notNull().default("Edy Premi"),
+    companyName: text("company_name").notNull().default("Edy Prime Imóveis"),
+    brokerName: text("broker_name").notNull().default("Edy Prime"),
     whatsapp: text("whatsapp").notNull().default(""),
     email: text("email").notNull().default(""),
     creci: text("creci").notNull().default(""),
@@ -33713,7 +33713,7 @@ var CATEGORIES = [
   "Instagram / Facebook / Meta",
   "Google",
   "XML / Feeds",
-  "Site Edy Premi",
+  "Site Edy Prime",
   "Agentes de IA"
 ];
 var imageVariantField = {
@@ -34042,7 +34042,7 @@ var INTEGRATIONS = [
   },
   {
     key: "site_leads",
-    category: "Site Edy Premi",
+    category: "Site Edy Prime",
     name: "Formulários do site",
     mark: "SI",
     purpose: "Leads da home e das páginas de imóvel caem direto no CRM.",
@@ -47825,11 +47825,11 @@ async function searchProperties(db3, input, limit = 6, candidateLimit = 200) {
   }).slice(0, limit);
 }
 // packages/web/src/api/agent/broker.ts
-var money = (value2) => value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+var money = (value2) => value2 > 0 ? value2.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }) : "sob consulta";
 function propertyTools(db3, baseUrl, seen) {
   return {
     buscarImoveis: tool({
-      description: "Busca imóveis REAIS no banco da Edy Premi. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
+      description: "Busca imóveis REAIS no banco da Edy Prime. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
       inputSchema: exports_external.object({
         bairro: exports_external.string().optional().describe("bairro ou região"),
         cidade: exports_external.string().optional(),
@@ -47927,7 +47927,7 @@ function propertyTools(db3, baseUrl, seen) {
 }
 function systemPrompt(agent) {
   return [
-    `Você é ${agent.name}, atendente virtual da Edy Premi Imóveis (imóveis de médio e alto padrão em Praia Grande/SP).`,
+    `Você é ${agent.name}, atendente virtual da Edy Prime Imóveis (imóveis de médio e alto padrão em Praia Grande/SP).`,
     agent.tone ? `Tom de voz: ${agent.tone}` : "Tom sofisticado, direto e humano.",
     agent.instructions ? `Instruções do corretor: ${agent.instructions}` : "",
     agent.qualification ? `Qualifique o cliente coletando: ${agent.qualification}` : "",
@@ -48446,6 +48446,24 @@ function extractContactName(raw2) {
     return null;
   return titleCase(words.join(" ")).slice(0, 120);
 }
+function sanitizeContactName(raw2) {
+  const text4 = sanitizeShort(raw2 ?? "", 120);
+  if (!text4 || text4.length < 2 || /\d/.test(text4))
+    return null;
+  const words = text4.replace(/[.,;:!?]+$/g, "").trim().split(" ").filter(Boolean);
+  if (words.length === 0 || words.length > 5)
+    return null;
+  for (const word of words) {
+    if (!/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\'’-]*$/.test(word))
+      return null;
+  }
+  const first = words[0] ?? "";
+  if (first.length < 2 || first.length > 20)
+    return null;
+  if (NOT_A_NAME.has(stripAccents2(first).toLowerCase()))
+    return null;
+  return titleCase(words.join(" ")).slice(0, 120);
+}
 var CONTACT_PROMPT_AFTER = 2;
 function toPublicState(token, conversation, clientMessages) {
   const hasName = Boolean(conversation.contactName);
@@ -48502,7 +48520,7 @@ var siteChat = {
     const state = toPublicState(token, conversation ?? { mode: "ia", status: "aberta", contactName: null, contactPhone: null }, countClientMessages(messages2));
     return {
       available,
-      greeting: agent?.greeting?.trim() || "Olá! Sou o atendimento da Edy Premi. Me conte o que você procura em Praia Grande.",
+      greeting: agent?.greeting?.trim() || "Olá! Sou o atendimento da Edy Prime. Me conte o que você procura em Praia Grande.",
       notice: available ? null : FALLBACK_UNAVAILABLE,
       state,
       messages: messages2
@@ -48661,7 +48679,9 @@ var siteChat = {
     if (!conversation) {
       return { ok: false, saved: false, crm: false, reason: "sessao_invalida", state: null };
     }
-    const name25 = input.name ? sanitizeShort(input.name, 120) : "";
+    const rawName = input.name ? sanitizeShort(input.name, 120) : "";
+    const name25 = sanitizeContactName(rawName) ?? "";
+    const nameRejected = Boolean(rawName) && !name25;
     const phoneSent = Boolean(input.phone?.trim());
     const phone = normalizePhone(input.phone);
     if (phoneSent && !phone) {
@@ -48674,11 +48694,22 @@ var siteChat = {
         state: toPublicState(token, conversation, countClientMessages(messages3))
       };
     }
-    const nextName = name25.length >= 2 ? name25 : conversation.contactName;
+    if (nameRejected && !phone) {
+      const messages3 = await loadMessages(db3, conversation.id);
+      return {
+        ok: false,
+        saved: false,
+        crm: false,
+        reason: "nome_invalido",
+        state: toPublicState(token, conversation, countClientMessages(messages3))
+      };
+    }
+    const nextName = name25 || conversation.contactName;
     const nextPhone = phone ?? conversation.contactPhone;
     await db3.update(conversations).set({ contactName: nextName ?? null, contactPhone: nextPhone ?? null }).where(eq(conversations.id, conversation.id));
     let leadId = conversation.leadId;
     let crm = Boolean(leadId);
+    let crmFailed = false;
     if (nextPhone && !leadId) {
       const interest = input.interest ? sanitizeShort(input.interest, 160) : "";
       try {
@@ -48693,8 +48724,14 @@ var siteChat = {
         });
         leadId = result.id;
         crm = true;
-      } catch {
+      } catch (error48) {
+        console.error("[site-chat] intakeLead falhou", {
+          conversationId: conversation.id,
+          hasPhone: Boolean(nextPhone),
+          error: error48 instanceof Error ? error48.message : String(error48)
+        });
         crm = false;
+        crmFailed = true;
       }
       if (leadId) {
         await db3.update(conversations).set({ leadId }).where(eq(conversations.id, conversation.id));
@@ -48710,7 +48747,7 @@ var siteChat = {
       ok: true,
       saved: phoneSent ? Boolean(nextPhone) : Boolean(nextName),
       crm,
-      reason: null,
+      reason: crmFailed ? "crm_indisponivel" : null,
       state: toPublicState(token, { ...conversation, contactName: nextName ?? null, contactPhone: nextPhone ?? null }, countClientMessages(messages2))
     };
   }),
@@ -49102,7 +49139,7 @@ var adminPropertyContent = {
     }
     const sheet = buildSheet(input);
     const prompt = [
-      "Você redige anúncios de imóveis para a Edy Premi Imóveis, em Praia Grande (SP), com foco em médio e alto padrão.",
+      "Você redige anúncios de imóveis para a Edy Prime Imóveis, em Praia Grande (SP), com foco em médio e alto padrão.",
       RULES,
       "FICHA DO IMÓVEL (única fonte de verdade):",
       sheet,
@@ -51431,7 +51468,7 @@ function registerFeedRoutes(app) {
         currency: "BRL",
         maximumFractionDigits: 0
       });
-      const title = `${property.title} — ${property.district}, ${property.city} | Edy Premi Imóveis`;
+      const title = `${property.title} — ${property.district}, ${property.city} | Edy Prime Imóveis`;
       const description = `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.areaUtil} m² em ${property.district}. ${price}. Código ${property.code}.`;
       const url2 = `${baseUrl}/imovel/${property.slug ?? propertySlug(property)}`;
       const jsonLd = {

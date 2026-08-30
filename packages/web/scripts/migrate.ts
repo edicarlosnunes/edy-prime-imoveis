@@ -189,8 +189,8 @@ const statements = [
   )`,
   `CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-    company_name TEXT NOT NULL DEFAULT 'Edy Premi Imóveis',
-    broker_name TEXT NOT NULL DEFAULT 'Edy Premi',
+    company_name TEXT NOT NULL DEFAULT 'Edy Prime Imóveis',
+    broker_name TEXT NOT NULL DEFAULT 'Edy Prime',
     whatsapp TEXT NOT NULL DEFAULT '',
     email TEXT NOT NULL DEFAULT '',
     creci TEXT NOT NULL DEFAULT '',

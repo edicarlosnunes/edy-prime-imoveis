@@ -142,7 +142,7 @@ export function registerFeedRoutes(app: Hono) {
         currency: "BRL",
         maximumFractionDigits: 0,
       });
-      const title = `${property.title} — ${property.district}, ${property.city} | Edy Premi Imóveis`;
+      const title = `${property.title} — ${property.district}, ${property.city} | Edy Prime Imóveis`;
       const description = `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.areaUtil} m² em ${property.district}. ${price}. Código ${property.code}.`;
       const url = `${baseUrl}/imovel/${property.slug ?? propertySlug(property)}`;
 
