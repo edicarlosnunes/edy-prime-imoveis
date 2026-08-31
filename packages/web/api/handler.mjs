@@ -49704,6 +49704,59 @@ var adminTasks = {
   })
 };
 
+// packages/web/src/api/lib/deal-stage-sync.ts
+init_schema();
+var LEAD_STAGE_ORDER = [
+  "novo",
+  "primeiro_contato",
+  "qualificado",
+  "imovel_apresentado",
+  "visita_agendada",
+  "proposta_enviada",
+  "negociacao",
+  "venda_fechada"
+];
+var DEAL_STATUS_TO_STAGE = {
+  enviada: "proposta_enviada",
+  em_negociacao: "negociacao",
+  aceita: "negociacao",
+  recusada: null,
+  fechada: "venda_fechada"
+};
+function stageIndex(stage) {
+  if (!stage)
+    return -1;
+  return LEAD_STAGE_ORDER.indexOf(stage);
+}
+function nextLeadStage(currentStage, dealStatus) {
+  const target = DEAL_STATUS_TO_STAGE[dealStatus];
+  if (!target)
+    return null;
+  const current = stageIndex(currentStage);
+  const wanted = stageIndex(target);
+  if (current < 0)
+    return target;
+  if (wanted <= current)
+    return null;
+  return target;
+}
+async function syncLeadStageFromDeal(db3, leadId, dealStatus) {
+  if (!leadId)
+    return { changed: false, leadId: null, from: null, to: null };
+  const [lead] = await db3.select({ id: leads.id, stage: leads.stage, status: leads.status }).from(leads).where(eq(leads.id, leadId)).limit(1);
+  if (!lead)
+    return { changed: false, leadId, from: null, to: null };
+  const target = nextLeadStage(lead.stage, dealStatus);
+  if (!target)
+    return { changed: false, leadId, from: lead.stage, to: null };
+  await db3.update(leads).set({
+    stage: target,
+    ...target === "venda_fechada" && lead.status !== "perdido" ? { status: "ganho" } : {},
+    updatedAt: new Date
+  }).where(eq(leads.id, leadId));
+  return { changed: true, leadId, from: lead.stage, to: target };
+}
+
 // packages/web/src/api/routes/admin-deals.ts
 init_schema();
 var dealInput = exports_external.object({
@@ -49740,13 +49793,17 @@ var adminDeals = {
     return context.db.select().from(deals).orderBy(desc(deals.createdAt)).limit(500);
   }),
   create: adminBase.input(dealInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(deals).values(toRow5(input)).returning();
-    return { id: created?.id ?? 0 };
+    const row = toRow5(input);
+    const [created] = await context.db.insert(deals).values(row).returning();
+    const sync = await syncLeadStageFromDeal(context.db, row.leadId, row.status);
+    return { id: created?.id ?? 0, leadStage: sync };
   }),
   update: adminBase.input(dealInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
     const { id, ...rest } = input;
-    await context.db.update(deals).set(toRow5(rest)).where(eq(deals.id, id));
-    return { ok: true };
+    const row = toRow5(rest);
+    await context.db.update(deals).set(row).where(eq(deals.id, id));
+    const sync = await syncLeadStageFromDeal(context.db, row.leadId, row.status);
+    return { ok: true, leadStage: sync };
   }),
   remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
     await context.db.delete(deals).where(eq(deals.id, input.id));

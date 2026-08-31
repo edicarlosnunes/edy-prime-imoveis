@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { desc, eq } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
+import { syncLeadStageFromDeal } from "../lib/deal-stage-sync";
 import * as schema from "../database/schema";
 
 const dealInput = z.object({
@@ -44,19 +45,22 @@ export const adminDeals = {
   }),
 
   create: adminBase.input(dealInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(schema.deals).values(toRow(input)).returning();
-    return { id: created?.id ?? 0 };
+    const row = toRow(input);
+    const [created] = await context.db.insert(schema.deals).values(row).returning();
+    /* Propostas alimentam o funil: o lead vinculado avança de etapa (só para frente). */
+    const sync = await syncLeadStageFromDeal(context.db, row.leadId, row.status);
+    return { id: created?.id ?? 0, leadStage: sync };
   }),
 
   update: adminBase
     .input(dealInput.extend({ id: z.number().int() }))
     .handler(async ({ input, context }) => {
       const { id, ...rest } = input;
-      await context.db
-        .update(schema.deals)
-        .set(toRow(rest as z.infer<typeof dealInput>))
-        .where(eq(schema.deals.id, id));
-      return { ok: true };
+      const row = toRow(rest as z.infer<typeof dealInput>);
+      await context.db.update(schema.deals).set(row).where(eq(schema.deals.id, id));
+      /* Mesma sincronização da criação: salvar a proposta reflete no funil do CRM. */
+      const sync = await syncLeadStageFromDeal(context.db, row.leadId, row.status);
+      return { ok: true, leadStage: sync };
     }),
 
   remove: adminBase
