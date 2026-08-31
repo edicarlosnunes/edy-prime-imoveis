@@ -1,5 +1,4 @@
 import { ArrowUpRight, BadgeCheck, Clock, MapPin } from "lucide-react";
-import { LeadForm } from "./lead-form";
 import { PropertySearch } from "./property-search";
 import { HeroContactCard } from "./hero-contact-card";
 import { useSiteContent } from "./content";
@@ -39,10 +38,10 @@ export function Hero() {
 
       {/* Camadas escuras: preto sólido à esquerda, imagem respirando à direita. */}
       <div
-        className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/30"
-        style={{ opacity: Math.min(0.96, overlay + 0.38) }}
+        className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/55 to-transparent"
+        style={{ opacity: Math.min(0.9, overlay + 0.08) }}
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/65" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30" />
       {/* Brilho champanhe discreto + fio dourado fechando a dobra. */}
       <div
         aria-hidden="true"
@@ -53,7 +52,7 @@ export function Hero() {
         className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-brass/45 to-transparent"
       />
 
-      <div className="relative mx-auto grid max-w-[1240px] items-start gap-12 px-6 pt-28 pb-10 sm:pt-32 lg:grid-cols-12 lg:gap-12 lg:px-8 lg:pt-40 lg:pb-12">
+      <div className="relative mx-auto grid max-w-[1240px] items-start gap-12 px-6 pt-24 pb-8 sm:pt-28 lg:grid-cols-12 lg:gap-12 lg:px-8 lg:pt-32 lg:pb-6">
         <div
           className={`min-w-0 lg:col-span-7 ${formSide ? "lg:order-2 lg:col-start-6" : ""} ${
             centered ? "text-center" : ""
@@ -79,7 +78,7 @@ export function Hero() {
             <Lines text={hero.title} />
             {hero.titleAccent.trim() && (
               <>
-                {hero.title.trim() && <br />}
+                {hero.title.trim() ? " " : null}
                 <span className="text-brass-soft italic">
                   <Lines text={hero.titleAccent} />
                 </span>
@@ -168,28 +167,11 @@ export function Hero() {
           data-reveal-delay="320"
         >
           <HeroContactCard />
-
-          {hero.showForm && (
-            <div className="grain relative mt-5 border border-white/12 bg-black/45 p-7 backdrop-blur-md lg:p-8">
-              {hero.formEyebrow.trim() && (
-                <p data-t="caption" className="label-xs text-brass-soft">{hero.formEyebrow}</p>
-              )}
-              {hero.formTitle.trim() && (
-                <p data-t="subheading" className="display mt-3 text-[26px] leading-[1.15] text-white">
-                  {hero.formTitle}
-                </p>
-              )}
-              {hero.formText.trim() && (
-                <p data-t="body" className="mt-3 mb-6 text-sm leading-relaxed text-white/60">{hero.formText}</p>
-              )}
-              <LeadForm tone="dark" source="hero" />
-            </div>
-          )}
         </div>
       </div>
 
       {/* Busca integrada: filtra a vitrine já carregada, sem nova chamada de API. */}
-      <div className="relative mx-auto max-w-[1240px] px-6 pb-16 lg:px-8 lg:pb-20">
+      <div className="relative mx-auto max-w-[1240px] px-6 pb-12 lg:px-8 lg:pb-14">
         <div className="reveal" data-reveal-delay="360">
           <PropertySearch />
         </div>
