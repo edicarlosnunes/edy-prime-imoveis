@@ -49757,6 +49757,185 @@ async function syncLeadStageFromDeal(db3, leadId, dealStatus) {
   return { changed: true, leadId, from: lead.stage, to: target };
 }
 
+// packages/web/src/api/lib/deal-client-conversion.ts
+init_schema();
+var CLOSING_DEAL_STATUS = "fechada";
+function districtsToText(raw2) {
+  if (!raw2)
+    return null;
+  try {
+    const parsed = JSON.parse(raw2);
+    if (Array.isArray(parsed)) {
+      const list2 = parsed.filter((v) => typeof v === "string" && v.trim() !== "");
+      return list2.length > 0 ? list2.join(", ") : null;
+    }
+  } catch {}
+  const text4 = String(raw2).trim();
+  return text4 || null;
+}
+function brl(value2) {
+  if (value2 === null || value2 === undefined)
+    return null;
+  const rounded = Math.round(Math.abs(value2));
+  const digits2 = String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${value2 < 0 ? "-" : ""}R$ ${digits2}`;
+}
+function buildConversionNote(args) {
+  const parts = [
+    `Cliente convertido a partir do lead #${args.leadId} após venda fechada da proposta #${args.dealId}`
+  ];
+  if (args.propertyCode)
+    parts.push(`imóvel ${args.propertyCode}`);
+  const value2 = brl(args.offerPrice);
+  if (value2)
+    parts.push(`valor ${value2}`);
+  return `${parts.join(" — ")}.`;
+}
+function blank(value2) {
+  return value2 === null || value2 === undefined || value2.trim() === "";
+}
+function samePhone(a, b) {
+  const na = normalizePhone(a);
+  const nb = normalizePhone(b);
+  return na !== null && nb !== null && na === nb;
+}
+function sameEmail(a, b) {
+  if (blank(a) || blank(b))
+    return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+function findExistingClient(clients2, lead, linkedClientId) {
+  if (linkedClientId) {
+    const linked = clients2.find((c) => c.id === linkedClientId);
+    if (linked)
+      return linked;
+  }
+  const byPhone = clients2.find((c) => samePhone(c.phone, lead.phone));
+  if (byPhone)
+    return byPhone;
+  const byEmail = clients2.find((c) => sameEmail(c.email, lead.email));
+  return byEmail ?? null;
+}
+function planClientConversion(args) {
+  const { dealStatus, deal, lead, profile, propertyCode, existingClients } = args;
+  if (dealStatus !== CLOSING_DEAL_STATUS) {
+    return { action: "none", reason: `status "${dealStatus}" não fecha venda` };
+  }
+  if (!deal.leadId || !lead) {
+    return { action: "none", reason: "proposta sem lead vinculado" };
+  }
+  const usablePhone = normalizePhone(lead.phone);
+  if (!usablePhone && blank(lead.email)) {
+    return { action: "none", reason: "lead sem telefone utilizável e sem e-mail" };
+  }
+  const note = buildConversionNote({
+    leadId: lead.id,
+    dealId: deal.id,
+    propertyCode,
+    offerPrice: deal.offerPrice
+  });
+  const incoming = {
+    name: lead.name.trim(),
+    phone: lead.phone.trim(),
+    email: blank(lead.email) ? null : lead.email.trim(),
+    interest: blank(lead.interest) ? null : lead.interest.trim(),
+    priceMin: profile?.budgetMin ?? null,
+    priceMax: profile?.budgetMax ?? null,
+    districts: districtsToText(profile?.districts),
+    bedrooms: profile?.bedrooms ?? null,
+    notes: note
+  };
+  const existing = findExistingClient(existingClients, lead, deal.clientId);
+  if (!existing)
+    return { action: "create", values: incoming, note };
+  const patch = {};
+  if (blank(existing.name) && !blank(incoming.name))
+    patch.name = incoming.name;
+  if (blank(existing.phone) && !blank(incoming.phone))
+    patch.phone = incoming.phone;
+  if (blank(existing.email) && incoming.email)
+    patch.email = incoming.email;
+  if (blank(existing.interest) && incoming.interest)
+    patch.interest = incoming.interest;
+  if (existing.priceMin === null && incoming.priceMin !== null)
+    patch.priceMin = incoming.priceMin;
+  if (existing.priceMax === null && incoming.priceMax !== null)
+    patch.priceMax = incoming.priceMax;
+  if (blank(existing.districts) && incoming.districts)
+    patch.districts = incoming.districts;
+  if (existing.bedrooms === null && incoming.bedrooms !== null)
+    patch.bedrooms = incoming.bedrooms;
+  if (!(existing.notes ?? "").includes(note)) {
+    patch.notes = blank(existing.notes) ? note : `${existing.notes.trim()}
+${note}`;
+  }
+  return { action: "update", clientId: existing.id, patch, note };
+}
+async function convertDealToClient(db3, dealId, dealStatus, deal) {
+  if (dealStatus !== CLOSING_DEAL_STATUS) {
+    return { action: "none", clientId: null, reason: "status não fecha venda" };
+  }
+  if (!deal.leadId) {
+    return { action: "none", clientId: null, reason: "proposta sem lead vinculado" };
+  }
+  const [lead] = await db3.select({
+    id: leads.id,
+    name: leads.name,
+    phone: leads.phone,
+    email: leads.email,
+    interest: leads.interest
+  }).from(leads).where(eq(leads.id, deal.leadId)).limit(1);
+  if (!lead)
+    return { action: "none", clientId: null, reason: "lead não encontrado" };
+  const [profile] = await db3.select({
+    districts: leadProfile.districts,
+    budgetMin: leadProfile.budgetMin,
+    budgetMax: leadProfile.budgetMax,
+    bedrooms: leadProfile.bedrooms
+  }).from(leadProfile).where(eq(leadProfile.leadId, lead.id)).limit(1);
+  let propertyCode = null;
+  if (deal.propertyId) {
+    const [property] = await db3.select({ code: properties.code }).from(properties).where(eq(properties.id, deal.propertyId)).limit(1);
+    propertyCode = property?.code ?? null;
+  }
+  const clients2 = await db3.select().from(clients);
+  const plan = planClientConversion({
+    dealStatus,
+    deal: { id: dealId, leadId: deal.leadId, clientId: deal.clientId, offerPrice: deal.offerPrice },
+    lead,
+    profile: profile ?? null,
+    propertyCode,
+    existingClients: clients2
+  });
+  if (plan.action === "none")
+    return { action: "none", clientId: null, reason: plan.reason };
+  let clientId;
+  let action;
+  if (plan.action === "create") {
+    const [created] = await db3.insert(clients).values(plan.values).returning();
+    clientId = created.id;
+    action = "created";
+  } else {
+    clientId = plan.clientId;
+    action = "updated";
+    if (Object.keys(plan.patch).length > 0) {
+      await db3.update(clients).set(plan.patch).where(eq(clients.id, clientId));
+    }
+  }
+  const interactions = await db3.select({ body: clientInteractions.body }).from(clientInteractions).where(eq(clientInteractions.clientId, clientId));
+  if (!interactions.some((i) => i.body === plan.note)) {
+    await db3.insert(clientInteractions).values({ clientId, body: plan.note });
+  }
+  if (!deal.clientId) {
+    await db3.update(deals).set({ clientId }).where(eq(deals.id, dealId));
+  }
+  const [leadRow] = await db3.select({ clientId: leads.clientId }).from(leads).where(eq(leads.id, lead.id)).limit(1);
+  if (leadRow && !leadRow.clientId) {
+    await db3.update(leads).set({ clientId }).where(eq(leads.id, lead.id));
+  }
+  return { action, clientId };
+}
+
 // packages/web/src/api/routes/admin-deals.ts
 init_schema();
 var dealInput = exports_external.object({
@@ -49796,14 +49975,26 @@ var adminDeals = {
     const row = toRow5(input);
     const [created] = await context.db.insert(deals).values(row).returning();
     const sync = await syncLeadStageFromDeal(context.db, row.leadId, row.status);
-    return { id: created?.id ?? 0, leadStage: sync };
+    const client2 = created ? await convertDealToClient(context.db, created.id, row.status, {
+      leadId: row.leadId,
+      clientId: row.clientId,
+      offerPrice: row.offerPrice,
+      propertyId: row.propertyId
+    }) : { action: "none", clientId: null };
+    return { id: created?.id ?? 0, leadStage: sync, client: client2 };
   }),
   update: adminBase.input(dealInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
     const { id, ...rest } = input;
     const row = toRow5(rest);
     await context.db.update(deals).set(row).where(eq(deals.id, id));
     const sync = await syncLeadStageFromDeal(context.db, row.leadId, row.status);
-    return { ok: true, leadStage: sync };
+    const client2 = await convertDealToClient(context.db, id, row.status, {
+      leadId: row.leadId,
+      clientId: row.clientId,
+      offerPrice: row.offerPrice,
+      propertyId: row.propertyId
+    });
+    return { ok: true, leadStage: sync, client: client2 };
   }),
   remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
     await context.db.delete(deals).where(eq(deals.id, input.id));
