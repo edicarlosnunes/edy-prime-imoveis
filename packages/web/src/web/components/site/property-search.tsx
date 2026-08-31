@@ -96,9 +96,14 @@ export function PropertySearch() {
     <form
       onSubmit={submit}
       aria-label="Buscar imóveis"
-      className="grain relative border border-white/12 bg-deep/75 p-6 backdrop-blur-md sm:p-7"
+      className="grain relative border border-brass/20 bg-black/60 p-6 backdrop-blur-md sm:p-7"
     >
-      <div className="grid gap-x-7 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <span
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brass/50 to-transparent"
+      />
+      <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:gap-8">
+      <div className="grid min-w-0 flex-1 gap-x-7 gap-y-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <Field
           label="Finalidade"
           value={filters.purpose}
@@ -143,10 +148,14 @@ export function PropertySearch() {
         />
       </div>
 
-      <div className="mt-7 flex flex-wrap items-center gap-3">
-        <button type="submit" data-t="button" className="site-btn site-btn-dark w-full sm:w-auto">
+      <div className="flex flex-wrap items-center gap-3 xl:shrink-0">
+        <button
+          type="submit"
+          data-t="button"
+          className="site-btn site-btn-dark w-full py-4 sm:w-auto xl:px-9"
+        >
           <Search className="h-3.5 w-3.5" strokeWidth={1.6} />
-          Encontrar meu imóvel
+          Buscar
         </button>
         {active && (
           <button
@@ -158,6 +167,7 @@ export function PropertySearch() {
             Limpar
           </button>
         )}
+      </div>
       </div>
     </form>
   );

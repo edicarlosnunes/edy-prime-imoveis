@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { defaultSiteContent, mergeSiteContent, type SiteContent } from "../../lib/site-content";
+import { upgradeSiteCopy } from "../../lib/site-copy";
+import { contrastCss, readableTheme } from "../../lib/theme-contrast";
 import { typographyCss, typographyFonts } from "../../lib/site-typography";
 import { configureSite } from "../../lib/site";
 import { usePublishedContent, useDraftContent } from "../../queries/site";
@@ -39,7 +41,9 @@ export function SiteContentProvider({ children }: { children: React.ReactNode })
   // configureSite precisa rodar ANTES do primeiro render dos componentes,
   // senão os links de WhatsApp saem com o número padrão.
   const content = useMemo(() => {
-    const merged = mergeSiteContent(raw);
+    /* upgradeSiteCopy só troca textos legados exatos por sua versão nova;
+       qualquer texto editado no painel passa intacto. Nada é gravado. */
+    const merged = upgradeSiteCopy(mergeSiteContent(raw));
     configureSite(merged.company);
     return merged;
   }, [raw]);
@@ -83,6 +87,11 @@ export function themeCss(theme: SiteContent["theme"]) {
   const bodyFont = font(theme.bodyFont, d.bodyFont);
   const scale = number(theme.headingScale, 0.7, 1.6, 1);
   const radius = number(theme.buttonRadius, 0, 40, 0);
+  /* Correção de contraste: só cores de TEXTO e apenas quando o tema do CMS
+     ficaria ilegível. As variáveis de fundo (`--color-deep`, `--color-ink`,
+     `--color-paper`, `--color-bone`) e o dourado seguem exatamente iguais. */
+  const readable = readableTheme({ primary, secondary, accent, background, text, muted, surface });
+  const fix = contrastCss(readable);
 
   return `.site-shell{
   --color-deep:${primary};
@@ -92,7 +101,7 @@ export function themeCss(theme: SiteContent["theme"]) {
   --color-ink:${text};
   --color-muted:${muted};
   --color-bone:${surface};
-  --color-line:${alpha(text, "1f", d.text + "1f")};
+  --color-line:${readable.line};
   --font-display:"${headingFont}",ui-serif,Georgia,serif;
   --font-sans:"${bodyFont}",ui-sans-serif,system-ui,sans-serif;
   --h-scale:${scale};
@@ -102,7 +111,7 @@ export function themeCss(theme: SiteContent["theme"]) {
   color:${text};
   font-family:"${bodyFont}",ui-sans-serif,system-ui,sans-serif;
 }
-.site-shell .display{font-family:"${headingFont}",ui-serif,Georgia,serif;}`;
+.site-shell .display{font-family:"${headingFont}",ui-serif,Georgia,serif;}${fix ? `\n${fix}` : ""}`;
 }
 
 /** Tema + tipografia editável, na ordem correta (tipografia sobrepõe o tema). */

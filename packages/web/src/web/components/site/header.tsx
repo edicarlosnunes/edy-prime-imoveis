@@ -9,16 +9,26 @@ export function Header() {
   const links = useMemo(() => {
     const base = menu.items
       .filter((item) => item.visible && item.label.trim() && item.href.trim())
-      .map((item) => ({ id: String(item.id), label: item.label, href: item.href }));
+      .map((item) => ({
+        id: String(item.id),
+        label: item.label,
+        href: item.href,
+        secondary: false,
+      }));
+    /* "Início" abre a lista; Regiões e Vender entram como secundários —
+       aparecem no desktop largo e sempre no menu do celular. */
     const extras = [
-      { id: "regioes", label: "Regiões", href: "#regioes" },
-      { id: "vender", label: "Vender meu imóvel", href: "#vender" },
+      { id: "inicio", label: "Início", href: "#top", secondary: false, first: true },
+      { id: "regioes", label: "Regiões", href: "#regioes", secondary: true },
+      { id: "vender", label: "Vender meu imóvel", href: "#vender", secondary: true },
     ];
     const seen = new Set(base.map((item) => item.href.trim().toLowerCase()));
     for (const extra of extras) {
       if (seen.has(extra.href)) continue;
       seen.add(extra.href);
-      base.push(extra);
+      const item = { id: extra.id, label: extra.label, href: extra.href, secondary: extra.secondary };
+      if ("first" in extra && extra.first) base.unshift(item);
+      else base.push(item);
     }
     return base;
   }, [menu.items]);
@@ -71,7 +81,7 @@ export function Header() {
 
   // Fecha o menu ao voltar para desktop
   useEffect(() => {
-    const mq = window.matchMedia("(min-width: 768px)");
+    const mq = window.matchMedia("(min-width: 1024px)");
     const onChange = () => {
       if (mq.matches) setOpen(false);
     };
@@ -127,7 +137,7 @@ export function Header() {
           )}
         </a>
 
-        <nav className="hidden items-center gap-9 md:flex lg:gap-11">
+        <nav className="hidden items-center gap-5 lg:flex xl:gap-8">
           {links.map((link) => {
             const isActive = active === link.href;
             return (
@@ -136,7 +146,9 @@ export function Header() {
                 href={link.href}
                 aria-current={isActive ? "true" : undefined}
                 data-t="menu"
-                className={`relative py-1.5 text-[12.5px] font-normal tracking-[0.16em] whitespace-nowrap uppercase transition-colors duration-300 after:absolute after:-bottom-px after:left-0 after:h-px after:bg-brass-soft after:transition-[width] after:duration-500 after:ease-out hover:text-brass-soft ${
+                className={`relative py-1.5 text-[11.5px] font-normal tracking-[0.13em] whitespace-nowrap uppercase transition-colors duration-300 after:absolute after:-bottom-px after:left-0 after:h-px after:bg-brass-soft after:transition-[width] after:duration-500 after:ease-out hover:text-brass-soft xl:text-[12.5px] xl:tracking-[0.16em] ${
+                  link.secondary ? "hidden xl:block" : ""
+                } ${
                   isActive
                     ? "text-brass-soft after:w-full"
                     : "text-white/80 after:w-0 hover:after:w-full"
@@ -168,7 +180,7 @@ export function Header() {
             aria-expanded={open}
             aria-controls="menu-mobile"
             onClick={() => setOpen((v) => !v)}
-            className="flex items-center gap-2.5 border border-white/25 px-3.5 py-2.5 text-white transition-colors duration-300 hover:border-brass-soft md:hidden"
+            className="flex items-center gap-2.5 border border-white/25 px-3.5 py-2.5 text-white transition-colors duration-300 hover:border-brass-soft lg:hidden"
           >
             <span className="relative block h-3 w-4">
               <span
@@ -195,7 +207,7 @@ export function Header() {
       {/* Menu mobile */}
       <div
         id="menu-mobile"
-        className={`overflow-hidden border-t border-white/10 bg-deep transition-[max-height,opacity] duration-500 ease-out md:hidden ${
+        className={`overflow-hidden border-t border-white/10 bg-deep transition-[max-height,opacity] duration-500 ease-out lg:hidden ${
           open ? `${fullscreen ? "max-h-[100vh] h-[calc(100vh-68px)]" : "max-h-[70vh]"} opacity-100` : "max-h-0 opacity-0"
         }`}
       >

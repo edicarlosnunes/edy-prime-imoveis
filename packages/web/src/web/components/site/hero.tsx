@@ -1,9 +1,10 @@
-import { ShieldCheck, MapPin, Clock, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, Clock, MapPin } from "lucide-react";
 import { LeadForm } from "./lead-form";
 import { PropertySearch } from "./property-search";
+import { HeroContactCard } from "./hero-contact-card";
 import { useSiteContent } from "./content";
 
-const icons = [ShieldCheck, MapPin, Clock];
+const icons = [MapPin, BadgeCheck, Clock];
 
 /** Quebra de linha no conteúdo (\n) vira <br /> no site. */
 export function Lines({ text }: { text: string }) {
@@ -27,25 +28,34 @@ export function Hero() {
   const overlay = Math.min(100, Math.max(0, hero.overlay)) / 100;
 
   return (
-    <section id="top" data-sec="hero" className="relative min-h-screen overflow-hidden bg-deep">
+    <section id="top" data-sec="hero" className="relative isolate overflow-hidden bg-black">
       {hero.imageUrl.trim() && (
         <img
           src={hero.imageUrl}
-          alt=""
+          alt="Orla e arquitetura do litoral de Praia Grande ao fim do dia"
           className="absolute inset-0 h-full w-full object-cover"
         />
       )}
-      <div
-        className="absolute inset-0 bg-gradient-to-r from-deep via-deep/70 to-deep/20"
-        style={{ opacity: overlay + 0.25 }}
-      />
-      <div className="absolute inset-0 bg-gradient-to-t from-deep via-transparent to-transparent" />
 
+      {/* Camadas escuras: preto sólido à esquerda, imagem respirando à direita. */}
       <div
-        className={`relative mx-auto grid max-w-[1240px] gap-16 px-6 pt-36 pb-24 lg:grid-cols-12 lg:gap-10 lg:px-8 lg:pt-48 lg:pb-32`}
-      >
+        className="absolute inset-0 bg-gradient-to-r from-black via-black/85 to-black/30"
+        style={{ opacity: Math.min(0.96, overlay + 0.38) }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-black/65" />
+      {/* Brilho champanhe discreto + fio dourado fechando a dobra. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-32 -right-24 h-[460px] w-[460px] rounded-full bg-brass/20 blur-[130px]"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-brass/45 to-transparent"
+      />
+
+      <div className="relative mx-auto grid max-w-[1240px] items-start gap-12 px-6 pt-28 pb-10 sm:pt-32 lg:grid-cols-12 lg:gap-12 lg:px-8 lg:pt-40 lg:pb-12">
         <div
-          className={`lg:col-span-7 ${formSide ? "lg:order-2 lg:col-start-6" : ""} ${
+          className={`min-w-0 lg:col-span-7 ${formSide ? "lg:order-2 lg:col-start-6" : ""} ${
             centered ? "text-center" : ""
           }`}
         >
@@ -63,7 +73,7 @@ export function Hero() {
 
           <h1
             data-t="heading"
-            className="reveal display mt-8 text-white text-[calc(clamp(2.6rem,6vw,4.6rem)*var(--h-scale,1))]"
+            className="reveal display mt-7 text-white text-[calc(clamp(2.4rem,5.6vw,4.4rem)*var(--h-scale,1))] leading-[1.04]"
             data-reveal-delay="80"
           >
             <Lines text={hero.title} />
@@ -80,7 +90,7 @@ export function Hero() {
           {hero.subtitle.trim() && (
             <p
               data-t="subheading"
-              className={`reveal mt-8 max-w-xl text-lg leading-relaxed text-white/75 ${
+              className={`reveal mt-7 max-w-xl text-[17px] leading-relaxed text-white/75 ${
                 centered ? "mx-auto" : ""
               }`}
               data-reveal-delay="160"
@@ -103,7 +113,7 @@ export function Hero() {
 
           {(hero.primaryCtaLabel.trim() || hero.secondaryCtaLabel.trim()) && (
             <div
-              className={`reveal mt-10 flex flex-wrap gap-4 ${centered ? "justify-center" : ""}`}
+              className={`reveal mt-9 flex flex-wrap gap-4 ${centered ? "justify-center" : ""}`}
               data-reveal-delay="200"
             >
               {hero.primaryCtaLabel.trim() && (
@@ -130,18 +140,21 @@ export function Hero() {
             </div>
           )}
 
+          {/* Benefícios curtos: ícones dourados discretos, sem promessa inflada. */}
           {hero.assurances.length > 0 && (
             <ul
-              className={`reveal mt-12 space-y-4 ${
-                centered ? "inline-block text-left" : "border-l border-white/15 pl-6"
-              }`}
+              className={`reveal mt-10 flex flex-wrap gap-3 ${centered ? "justify-center" : ""}`}
               data-reveal-delay="240"
             >
               {hero.assurances.map((item, index) => {
                 const Icon = icons[index % icons.length];
                 return (
-                  <li key={item.id} data-t="info" className="flex items-start gap-3 text-sm text-white/70">
-                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brass-soft" strokeWidth={1.5} />
+                  <li
+                    key={item.id}
+                    data-t="info"
+                    className="flex min-w-0 items-center gap-2.5 border border-white/12 bg-white/[0.04] px-4 py-2.5 text-[12.5px] leading-snug text-white/80 backdrop-blur-sm"
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-brass-soft" strokeWidth={1.5} />
                     {item.text}
                   </li>
                 );
@@ -150,29 +163,33 @@ export function Hero() {
           )}
         </div>
 
-        {hero.showForm && (
-          <div
-            className={`reveal lg:col-span-5 ${formSide ? "lg:order-1 lg:col-start-1" : ""}`}
-            data-reveal-delay="320"
-          >
-            <div className="grain relative border border-white/12 bg-deep/70 p-8 backdrop-blur-md lg:p-10">
+        <div
+          className={`reveal min-w-0 lg:col-span-5 ${formSide ? "lg:order-1 lg:col-start-1" : ""}`}
+          data-reveal-delay="320"
+        >
+          <HeroContactCard />
+
+          {hero.showForm && (
+            <div className="grain relative mt-5 border border-white/12 bg-black/45 p-7 backdrop-blur-md lg:p-8">
               {hero.formEyebrow.trim() && (
                 <p data-t="caption" className="label-xs text-brass-soft">{hero.formEyebrow}</p>
               )}
               {hero.formTitle.trim() && (
-                <h2 data-t="subheading" className="display mt-3 text-3xl text-white">{hero.formTitle}</h2>
+                <p data-t="subheading" className="display mt-3 text-[26px] leading-[1.15] text-white">
+                  {hero.formTitle}
+                </p>
               )}
               {hero.formText.trim() && (
-                <p data-t="body" className="mt-3 mb-7 text-sm leading-relaxed text-white/60">{hero.formText}</p>
+                <p data-t="body" className="mt-3 mb-6 text-sm leading-relaxed text-white/60">{hero.formText}</p>
               )}
               <LeadForm tone="dark" source="hero" />
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Busca integrada: filtra a vitrine já carregada, sem nova chamada de API. */}
-      <div className="relative mx-auto -mt-6 max-w-[1240px] px-6 pb-24 lg:px-8 lg:pb-28">
+      <div className="relative mx-auto max-w-[1240px] px-6 pb-16 lg:px-8 lg:pb-20">
         <div className="reveal" data-reveal-delay="360">
           <PropertySearch />
         </div>
