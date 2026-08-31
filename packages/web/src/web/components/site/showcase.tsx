@@ -6,6 +6,8 @@ import { useSiteContent } from "./content";
 import { Lines } from "./hero";
 import { site as brand, whatsappLink } from "../../lib/site";
 import { filterProperties, hasAnyFilter, useSearch } from "./search-store";
+import { isSold } from "../../lib/property-sold";
+import { SoldRibbon, SoldSimilarCta } from "./sold-ribbon";
 
 const statusLabel: Record<string, string> = {
   disponivel: "Disponível",
@@ -107,9 +109,13 @@ export function Showcase() {
                 decoding="async"
                 className="aspect-[4/3] w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
               />
-              <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
-                {statusLabel[property.status]}
-              </span>
+              {isSold(property.status) ? (
+                <SoldRibbon size="card" />
+              ) : (
+                <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
+                  {statusLabel[property.status]}
+                </span>
+              )}
             </Link>
 
             <p data-t="caption" className="label-xs mt-5 text-brass">
@@ -140,15 +146,19 @@ export function Showcase() {
 
             <div className="mt-5 flex items-end justify-between gap-4">
               <p data-t="price" className="display text-3xl text-deep">{formatBRL(property.price)}</p>
-              <Link
-                href={`/imovel/${property.slug}`}
-                data-t="button"
-                className="label-xs flex items-center gap-1.5 border-b border-brass/50 pb-1 text-brass transition-colors hover:border-brass hover:text-deep"
-              >
-                Ver detalhes
-                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.6} />
-              </Link>
+              {!isSold(property.status) && (
+                <Link
+                  href={`/imovel/${property.slug}`}
+                  data-t="button"
+                  className="label-xs flex items-center gap-1.5 border-b border-brass/50 pb-1 text-brass transition-colors hover:border-brass hover:text-deep"
+                >
+                  Ver detalhes
+                  <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={1.6} />
+                </Link>
+              )}
             </div>
+
+            {isSold(property.status) && <SoldSimilarCta property={property} className="mt-4" />}
           </article>
         ))}
       </div>

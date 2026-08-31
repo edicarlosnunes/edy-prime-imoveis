@@ -23,6 +23,8 @@ import { JsonLd } from "../components/site/json-ld";
 import { usePropertyDetail } from "../queries/properties";
 import { useCreateLead } from "../queries/leads";
 import { formatBRL, site, whatsappLink } from "../lib/site";
+import { isSold } from "../lib/property-sold";
+import { SoldRibbon, SoldSimilarCta } from "../components/site/sold-ribbon";
 
 const statusLabel: Record<string, string> = {
   disponivel: "Disponível",
@@ -255,16 +257,22 @@ function PropertyPage() {
         {property && (
           <>
             <div className="mt-8 grid gap-10 lg:grid-cols-[1.35fr_0.65fr]">
-              <div>
+              {/* min-w-0: sem isso a tira de miniaturas (overflow-x-auto) estica a
+                  coluna do grid e cria scroll horizontal no celular. */}
+              <div className="min-w-0">
                 <div className="relative overflow-hidden">
                   <img
                     src={property.images[active] ?? property.image}
                     alt={property.title}
                     className="aspect-[16/10] w-full object-cover"
                   />
-                  <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
-                    {statusLabel[property.status] ?? property.status}
-                  </span>
+                  {isSold(property.status) ? (
+                    <SoldRibbon size="hero" />
+                  ) : (
+                    <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
+                      {statusLabel[property.status] ?? property.status}
+                    </span>
+                  )}
                 </div>
                 {property.images.length > 1 && (
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
@@ -353,17 +361,22 @@ function PropertyPage() {
                     {property.areaTotal ? <p>Área total: {property.areaTotal} m²</p> : null}
                     {property.suites ? <p>Suítes: {property.suites}</p> : null}
                   </div>
-                  <a
-                    href={whatsappLink(
-                      `Olá, ${site.broker}. Tenho interesse no imóvel ${property.code} (${property.title}). Pode me passar mais detalhes?`,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                    data-t="button"
-                    className="label-xs mt-5 inline-flex w-full items-center justify-center gap-2 bg-brass px-6 py-4 text-white transition-colors hover:bg-brass-soft"
-                  >
-                    Falar no WhatsApp <ArrowUpRight className="h-3.5 w-3.5" />
-                  </a>
+                  {isSold(property.status) ? (
+                    /* Imóvel vendido: nada de CTA de compra direta. */
+                    <SoldSimilarCta property={property} className="mt-5" />
+                  ) : (
+                    <a
+                      href={whatsappLink(
+                        `Olá, ${site.broker}. Tenho interesse no imóvel ${property.code} (${property.title}). Pode me passar mais detalhes?`,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                      data-t="button"
+                      className="label-xs mt-5 inline-flex w-full items-center justify-center gap-2 bg-brass px-6 py-4 text-white transition-colors hover:bg-brass-soft"
+                    >
+                      Falar no WhatsApp <ArrowUpRight className="h-3.5 w-3.5" />
+                    </a>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
