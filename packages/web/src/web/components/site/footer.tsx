@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { site, whatsappLink } from "../../lib/site";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
+import { CNAI } from "./sellers";
 
 export function Footer() {
   const { footer, menu, theme } = useSiteContent();
@@ -29,8 +30,22 @@ export function Footer() {
               </p>
             )}
             <p data-t="body" className="mt-5 max-w-sm text-sm leading-relaxed">
-              <Lines text={footer.about} /> {site.creci}.
+              <Lines text={footer.about} />
             </p>
+            {/* Identificação profissional: credenciais + tempo de atuação. */}
+            <div data-t="caption" className="mt-5 max-w-sm text-xs leading-relaxed">
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[#f5f5f0]">
+                <span aria-hidden="true" className="h-px w-6 shrink-0 bg-[#a9834b]" />
+                <span className="whitespace-nowrap">{site.creci}</span>
+                <span aria-hidden="true" className="text-white/25">
+                  ·
+                </span>
+                <span className="whitespace-nowrap">{CNAI}</span>
+              </p>
+              <p className="mt-1.5 pl-8 text-[#c8c5bd]">
+                Atuando no mercado imobiliário desde 2013
+              </p>
+            </div>
           </div>
 
           {footer.links.length > 0 && (
@@ -122,7 +137,7 @@ export function Footer() {
           </ul>
           <p className="order-1">
             © {new Date().getFullYear()} {menu.logoText || site.brand}{" "}
-            {menu.logoSuffix || site.brandSuffix}. {site.creci}. {footer.copyright}
+            {menu.logoSuffix || site.brandSuffix}. {site.creci} · {CNAI}. {footer.copyright}
           </p>
           {footer.note.trim() && <p className="order-4">{footer.note}</p>}
         </div>

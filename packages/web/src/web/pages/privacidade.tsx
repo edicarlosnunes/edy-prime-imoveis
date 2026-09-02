@@ -1,8 +1,12 @@
+import { Suspense, lazy } from "react";
 import { Header } from "../components/site/header";
 import { Footer } from "../components/site/footer";
 import { SiteChrome } from "../components/site/content";
 import { site } from "../lib/site";
 import { LegalPage, Paragraph, Section } from "../components/site/legal";
+
+/* Mesmo widget da Home e da página de imóvel — um único ponto por página. */
+const ChatWidget = lazy(() => import("../components/site/chat-widget"));
 
 function Privacidade() {
   return (
@@ -86,6 +90,9 @@ function Privacidade() {
         </LegalPage>
       </main>
       <Footer />
+      <Suspense fallback={null}>
+        <ChatWidget />
+      </Suspense>
     </div>
   );
 }

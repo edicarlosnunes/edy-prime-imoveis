@@ -38,15 +38,19 @@ export function HeroContactCard() {
         Falar no WhatsApp
       </a>
 
-      {/* Telefone e credenciais em duas linhas: não aperta nem corta no mobile. */}
-      <div className="mt-5 flex items-start gap-2 text-[11.5px] text-white/50">
-        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brass-soft" strokeWidth={1.5} />
-        <p className="min-w-0">
-          <span className="block text-white/70">{site.whatsappLabel}</span>
-          <span className="mt-0.5 block leading-relaxed">
-            {site.creci} · {CNAI}
-          </span>
-        </p>
+      {/* Telefone · CRECI · CNAI: uma única linha alinhada no desktop,
+          com quebra elegante apenas se o espaço realmente faltar (mobile). */}
+      <div className="mt-5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5 text-[11.5px] text-white/55">
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-brass-soft" strokeWidth={1.5} />
+        <span className="whitespace-nowrap text-white/75">{site.whatsappLabel}</span>
+        <span aria-hidden="true" className="text-white/25">
+          ·
+        </span>
+        <span className="whitespace-nowrap">{site.creci}</span>
+        <span aria-hidden="true" className="text-white/25">
+          ·
+        </span>
+        <span className="whitespace-nowrap">{CNAI}</span>
       </div>
     </div>
   );

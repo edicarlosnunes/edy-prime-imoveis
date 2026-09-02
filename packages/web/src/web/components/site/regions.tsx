@@ -30,6 +30,30 @@ const regions = [
     alt: "Praia de Peruíbe com mata atlântica junto à faixa de areia",
     text: "Natureza preservada e procura crescente por quem busca sossego.",
   },
+  {
+    city: "Guarujá",
+    image: "/images/regiao-guaruja.jpg",
+    alt: "Vista da orla do Guarujá com praia e morro ao fundo",
+    text: "Praias badaladas e imóveis de veraneio com boa liquidez o ano todo.",
+  },
+  {
+    city: "Santos",
+    image: "/images/regiao-santos.jpg",
+    alt: "Jardins da orla de Santos com prédios à beira-mar",
+    text: "Infraestrutura completa, jardins da orla e bairros de alto padrão.",
+  },
+  {
+    city: "São Vicente",
+    image: "/images/regiao-sao-vicente.jpg",
+    alt: "Praia do Itararé em São Vicente com a orla ao entardecer",
+    text: "Acesso fácil, praia urbana e ótimo custo-benefício para morar.",
+  },
+  {
+    city: "Cubatão",
+    image: "/images/regiao-cubatao.jpg",
+    alt: "Vista de Cubatão a partir da Serra do Mar",
+    text: "Cidade estratégica na Baixada, forte procura por quem trabalha na região.",
+  },
 ];
 
 export function Regions() {
