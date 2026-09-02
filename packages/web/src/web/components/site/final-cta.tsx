@@ -2,6 +2,7 @@ import { site } from "../../lib/site";
 import { LeadForm } from "./lead-form";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
+import { CNAI } from "./sellers";
 
 /** Seção de contato ("Vamos encontrar o seu endereço"). */
 export function FinalCta() {
@@ -40,16 +41,22 @@ export function FinalCta() {
               )}
             </h2>
           )}
-          <p data-t="body" className="mt-8 max-w-md text-base leading-relaxed text-white/70">
-            {data.text.trim() ? (
+          {data.text.trim() && (
+            <p data-t="body" className="mt-8 max-w-md text-base leading-relaxed text-white/70">
               <Lines text={data.text} />
-            ) : (
-              <>
-                Preencha ao lado ou fale direto no WhatsApp {site.whatsappLabel}. Atendimento{" "}
-                {site.hours.toLowerCase()}.
-              </>
-            )}
-          </p>
+            </p>
+          )}
+
+          {/* Ação real: leva ao formulário de avaliação da seção "vender". */}
+          <div className="mt-9">
+            <a
+              href="#avaliacao"
+              data-t="button"
+              className="site-btn site-btn-dark w-full py-4 text-center sm:w-auto sm:px-10"
+            >
+              Solicitar avaliação do meu imóvel
+            </a>
+          </div>
 
           <dl data-t="info" className="mt-12 space-y-6 border-t border-white/12 pt-8 text-sm text-white/65">
             {data.officeLabel.trim() && (
@@ -67,7 +74,9 @@ export function FinalCta() {
             {data.creciLabel.trim() && (
               <div>
                 <dt data-t="caption" className="label-xs text-brass-soft">{data.creciLabel}</dt>
-                <dd className="mt-2">{site.creci}</dd>
+                <dd className="mt-2">
+                  {site.creci} · {CNAI}
+                </dd>
               </div>
             )}
           </dl>

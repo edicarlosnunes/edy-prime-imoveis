@@ -21,6 +21,9 @@ const LEGACY_HERO_ACCENT = "sem labirinto.";
 const LEGACY_HERO_SUBTITLE =
   "Curadoria pessoal de apartamentos e coberturas em Praia Grande. Você me diz o que procura, eu filtro o mercado e apresento só o que vale a sua visita — com segurança jurídica e negociação conduzida por quem mora aqui.";
 const LEGACY_SHOWCASE_TITLE = "Imóveis que já passaram\npelo meu filtro";
+/** Bloco "Próximo passo" publicado até 01/09/2026. */
+const LEGACY_CONTATO_TITLE = "Vamos encontrar\no seu endereço";
+const LEGACY_CONTATO_ACCENT = "em Praia Grande.";
 
 export const NEW_HERO_TITLE = "Seu próximo imóvel\nno litoral";
 export const NEW_HERO_ACCENT = "começa aqui.";
@@ -29,6 +32,9 @@ export const NEW_HERO_SUBTITLE =
 export const NEW_SHOWCASE_EYEBROW = "Seleção da semana";
 export const NEW_SHOWCASE_TITLE = "Imóveis selecionados para você";
 export const NEW_SHOWCASE_SUBTITLE = "Opções escolhidas para facilitar sua busca no litoral.";
+export const NEW_CONTATO_TITLE = "Quer saber quanto vale o seu imóvel?";
+export const NEW_CONTATO_TEXT =
+  "Conte-me algumas informações sobre o imóvel e eu faço uma análise inicial considerando localização, características e o cenário atual do mercado.";
 
 /** Benefícios curtos do hero, substituindo as garantias longas antigas. */
 const LEGACY_ASSURANCES: Record<string, string> = {
@@ -65,6 +71,14 @@ export function upgradeSiteCopy(content: SiteContent): SiteContent {
     ? [...assurances].sort((a, b) => BENEFIT_ORDER.indexOf(a.text) - BENEFIT_ORDER.indexOf(b.text))
     : assurances;
 
+  const contato = content.sections.contato;
+  const contatoUpgraded =
+    contato.title === LEGACY_CONTATO_TITLE && contato.titleAccent === LEGACY_CONTATO_ACCENT;
+  const contatoTitle = contatoUpgraded ? NEW_CONTATO_TITLE : contato.title;
+  const contatoAccent = contatoUpgraded ? "" : contato.titleAccent;
+  /* Só preenche o texto quando o título antigo foi trocado agora. */
+  const contatoText = contatoUpgraded && !contato.text.trim() ? NEW_CONTATO_TEXT : contato.text;
+
   const showcaseUpgraded = showcase.title === LEGACY_SHOWCASE_TITLE;
   const showcaseTitle = showcaseUpgraded ? NEW_SHOWCASE_TITLE : showcase.title;
   /* Só preenche o subtítulo quando o título antigo foi trocado agora: assim
@@ -87,6 +101,12 @@ export function upgradeSiteCopy(content: SiteContent): SiteContent {
         ...showcase,
         title: showcaseTitle,
         subtitle: showcaseSubtitle,
+      },
+      contato: {
+        ...contato,
+        title: contatoTitle,
+        titleAccent: contatoAccent,
+        text: contatoText,
       },
     },
   };

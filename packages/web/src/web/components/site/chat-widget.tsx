@@ -234,7 +234,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
         >
           <MessageSquare className="h-5 w-5" />
-          <span className="label-xs hidden sm:inline">Falar com a IA</span>
+          <span className="label-xs hidden sm:inline">Fale com agente IA</span>
         </button>
       )}
 

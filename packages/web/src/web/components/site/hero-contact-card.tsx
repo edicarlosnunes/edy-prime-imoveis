@@ -1,5 +1,6 @@
 import { MessageCircle, ShieldCheck } from "lucide-react";
 import { site, whatsappLink } from "../../lib/site";
+import { CNAI } from "./sellers";
 
 /**
  * Card de atendimento da capa. Usa sempre o WhatsApp configurado no Editor
@@ -37,14 +38,16 @@ export function HeroContactCard() {
         Falar no WhatsApp
       </a>
 
-      <p className="mt-5 flex flex-wrap items-center gap-2 text-[11.5px] text-white/50">
-        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-brass-soft" strokeWidth={1.5} />
-        {site.whatsappLabel}
-        <span aria-hidden="true" className="text-white/25">
-          ·
-        </span>
-        {site.creci}
-      </p>
+      {/* Telefone e credenciais em duas linhas: não aperta nem corta no mobile. */}
+      <div className="mt-5 flex items-start gap-2 text-[11.5px] text-white/50">
+        <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brass-soft" strokeWidth={1.5} />
+        <p className="min-w-0">
+          <span className="block text-white/70">{site.whatsappLabel}</span>
+          <span className="mt-0.5 block leading-relaxed">
+            {site.creci} · {CNAI}
+          </span>
+        </p>
+      </div>
     </div>
   );
 }

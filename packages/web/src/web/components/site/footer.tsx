@@ -9,7 +9,7 @@ export function Footer() {
   const logoUrl = (menu.logoUrl || theme.logoUrl).trim();
 
   return (
-    <footer data-sec="footer" className="bg-ink text-white/60">
+    <footer data-sec="footer" className="bg-[#0a0a0a] text-[#c8c5bd]">
       <div className="mx-auto max-w-[1240px] px-6 py-16 lg:px-8">
         <div className="grid gap-12 md:grid-cols-4">
           <div className="md:col-span-2">
@@ -21,9 +21,9 @@ export function Footer() {
                 className="w-auto object-contain"
               />
             ) : (
-              <p className="flex items-baseline gap-2 text-white">
+              <p className="flex items-baseline gap-2 text-[#f5f5f0]">
                 <span className="display text-2xl">{menu.logoText || site.brand}</span>
-                <span className="label-xs text-brass-soft">
+                <span className="label-xs text-[#c9a46a]">
                   {menu.logoSuffix || site.brandSuffix}
                 </span>
               </p>
@@ -35,11 +35,14 @@ export function Footer() {
 
           {footer.links.length > 0 && (
             <div>
-              <p data-t="caption" className="label-xs text-white">{footer.navLabel}</p>
+              <p data-t="caption" className="label-xs flex items-center gap-3 text-[#f5f5f0]">
+                <span aria-hidden="true" className="h-px w-6 bg-[#a9834b]" />
+                {footer.navLabel}
+              </p>
               <ul data-t="footer" className="mt-5 space-y-3 text-sm">
                 {footer.links.map((link) => (
                   <li key={link.id}>
-                    <a href={link.href} className="transition-colors hover:text-brass-soft">
+                    <a href={link.href} className="transition-colors hover:text-[#c9a46a]">
                       {link.label}
                     </a>
                   </li>
@@ -49,25 +52,28 @@ export function Footer() {
           )}
 
           <div>
-            <p data-t="caption" className="label-xs text-white">{footer.contactLabel}</p>
+            <p data-t="caption" className="label-xs flex items-center gap-3 text-[#f5f5f0]">
+              <span aria-hidden="true" className="h-px w-6 bg-[#a9834b]" />
+              {footer.contactLabel}
+            </p>
             <ul data-t="footer" className="mt-5 space-y-3 text-sm">
               <li>
                 <a
                   href={whatsappLink(`Olá, ${site.broker}. Vim pelo site.`)}
                   target="_blank"
                   rel="noreferrer"
-                  className="flex items-center gap-2 transition-colors hover:text-brass-soft"
+                  className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
                 >
-                  <MessageCircle className="h-4 w-4" strokeWidth={1.5} />
+                  <MessageCircle className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
                   {site.whatsappLabel}
                 </a>
               </li>
               <li>
                 <a
                   href={`mailto:${site.email}`}
-                  className="flex items-center gap-2 transition-colors hover:text-brass-soft"
+                  className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
                 >
-                  <Mail className="h-4 w-4" strokeWidth={1.5} />
+                  <Mail className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
                   E-mail
                 </a>
               </li>
@@ -77,9 +83,9 @@ export function Footer() {
                     href={site.instagram}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-2 transition-colors hover:text-brass-soft"
+                    className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
                   >
-                    <Instagram className="h-4 w-4" strokeWidth={1.5} />
+                    <Instagram className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
                     Instagram
                   </a>
                 </li>
@@ -90,9 +96,9 @@ export function Footer() {
                     href={site.facebook}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-2 transition-colors hover:text-brass-soft"
+                    className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
                   >
-                    <Facebook className="h-4 w-4" strokeWidth={1.5} />
+                    <Facebook className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
                     Facebook
                   </a>
                 </li>
@@ -101,15 +107,15 @@ export function Footer() {
           </div>
         </div>
 
-        <div data-t="caption" className="mt-14 flex flex-col gap-3 border-t border-white/10 pt-8 text-xs md:flex-row md:items-center md:justify-between">
+        <div data-t="caption" className="mt-14 flex flex-col gap-3 border-t border-white/12 pt-8 text-xs md:flex-row md:items-center md:justify-between">
           <ul data-t="footer" className="order-2 flex flex-wrap items-center gap-x-6 gap-y-2 md:order-3">
             <li>
-              <Link href="/privacidade" className="transition-colors hover:text-brass-soft">
+              <Link href="/privacidade" className="transition-colors hover:text-[#c9a46a]">
                 Política de Privacidade
               </Link>
             </li>
             <li>
-              <Link href="/termos" className="transition-colors hover:text-brass-soft">
+              <Link href="/termos" className="transition-colors hover:text-[#c9a46a]">
                 Termos de Uso
               </Link>
             </li>
