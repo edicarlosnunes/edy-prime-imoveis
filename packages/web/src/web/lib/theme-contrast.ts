@@ -162,6 +162,44 @@ export function readableTheme(theme: ThemeColorInput): ReadableTheme {
   };
 }
 
+export type SurfaceTokens = {
+  /** true quando o site tem fundo escuro (define o comportamento do chrome). */
+  dark: boolean;
+  /** Superfície de chrome (`--color-deep`): header, botões sólidos, overlays. */
+  chrome: string;
+  /** Superfície de painel (`--color-bone`): faixas e cards de seção clara. */
+  panel: string;
+};
+
+/** Chrome escuro fixo — usado quando o tema do CMS trouxe cor clara nas
+    variáveis que o site usa como FUNDO (header, faixas, botões, overlays). */
+const DARK_CHROME = "#0b0d0c";
+const DARK_PANEL = "#121514";
+
+/**
+ * Superfícies seguras do site. `--color-deep` e `--color-bone` são usadas
+ * simultaneamente como FUNDO (header, faixas, botões, degradês) — se o tema do
+ * CMS colocar uma cor clara ali, o site inteiro perde contraste. Esta função é
+ * PURA: nada é gravado no banco e o tema salvo permanece intacto.
+ *
+ * Em tema claro os valores do CMS passam sem alteração (comportamento antigo).
+ */
+export function surfaceTokens(theme: ThemeColorInput): SurfaceTokens {
+  const bg = relativeLuminance(theme.background);
+  const dark = (bg ?? 0) < 0.45;
+  if (!dark) return { dark, chrome: theme.primary, panel: theme.surface };
+
+  /* Fundo escuro: o chrome só aceita cor do CMS se ela for realmente escura
+     (contraste suficiente contra o branco que o site escreve em cima). */
+  const chromeOk = contrastRatio(theme.primary, "#ffffff") >= TEXT_MIN;
+  const panelOk = contrastRatio(theme.surface, "#ffffff") >= HEADING_MIN;
+  return {
+    dark,
+    chrome: chromeOk ? theme.primary : DARK_CHROME,
+    panel: panelOk ? theme.surface : DARK_PANEL,
+  };
+}
+
 /**
  * CSS de correção, escopado em `.site-shell` (o painel /admin nunca é afetado).
  * Só sobrescreve COR DE TEXTO: `bg-deep`, `bg-ink`, botões sólidos e o dourado

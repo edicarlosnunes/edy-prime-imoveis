@@ -4,13 +4,11 @@ import { Header } from "../components/site/header";
 import { Hero } from "../components/site/hero";
 import { Proof } from "../components/site/proof";
 import { Showcase } from "../components/site/showcase";
-import { CtaFinal } from "../components/site/cta-final";
 import { Process } from "../components/site/process";
 import { About } from "../components/site/about";
 import { Faq } from "../components/site/faq";
 import { FinalCta } from "../components/site/final-cta";
 import { Footer } from "../components/site/footer";
-import { WhatsappFab } from "../components/site/whatsapp-fab";
 import { Regions } from "../components/site/regions";
 import { Sellers } from "../components/site/sellers";
 import { SearchProvider } from "../components/site/search-store";
@@ -24,7 +22,9 @@ import { orderedSections, type SectionKey } from "../lib/site-content";
 const sectionComponents: Record<SectionKey, () => ReactNode> = {
   diferenciais: Proof,
   imoveis: Showcase,
-  ctaFinal: CtaFinal,
+  /* CTA final claro desativado na Home: o CTA oficial é a seção "contato"
+     (escura, antes do rodapé). Continua editável no painel. */
+  ctaFinal: () => null,
   comoFunciona: Process,
   sobre: About,
   faq: Faq,
@@ -79,7 +79,6 @@ function Index() {
           })}
         </main>
         <Footer />
-        <WhatsappFab />
         <Suspense fallback={null}>
           <ChatWidget />
         </Suspense>

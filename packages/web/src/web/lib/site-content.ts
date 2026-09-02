@@ -215,6 +215,32 @@ export const HEADING_FONTS = [
 
 export const BODY_FONTS = ["Jost", "Inter", "Work Sans", "DM Sans", "Lato", "Montserrat"];
 
+/**
+ * Paleta oficial "Edy Prime Premium".
+ *
+ * Só cores: aplicar este preset NÃO altera textos, imagens, seções, logo,
+ * tipografia nem qualquer outro conteúdo do site.
+ *
+ * `primary` e `surface` são usadas pelo site como FUNDO (menu, faixas, botões,
+ * degradês) — por isso são escuras aqui, e o texto claro fica legível em cima.
+ */
+export const EDY_PRIME_PALETTE = {
+  /** menu, faixas escuras e botões sólidos */
+  primary: "#0a0a0a",
+  /** dourado: ícones, links, detalhes e CTAs */
+  secondary: "#a9834b",
+  /** champanhe: realces e títulos em itálico */
+  accent: "#c9a46a",
+  /** fundo do site */
+  background: "#0a0a0a",
+  /** texto claro sobre o fundo escuro */
+  text: "#f5f5f0",
+  /** texto secundário (cinza claro premium) */
+  muted: "#b8b3aa",
+  /** faixas/cards de seção */
+  surface: "#171717",
+} as const;
+
 /** Conteúdo padrão = o site exatamente como está publicado hoje. */
 export const defaultSiteContent: SiteContent = {
   // tudo em branco = o site exatamente como foi entregue (nenhum CSS extra)

@@ -82,7 +82,7 @@ export function Regions() {
                 decoding="async"
                 className="aspect-[3/4] w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
               />
-              <span className="absolute inset-0 bg-gradient-to-t from-deep/80 via-deep/10 to-transparent" />
+              <span className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
               <span className="display absolute right-5 bottom-4 left-5 text-2xl text-white">
                 {region.city}
               </span>

@@ -1,6 +1,6 @@
 import { Select } from "../ui";
 import { Field } from "../ui";
-import { BODY_FONTS, HEADING_FONTS } from "../../../lib/site-content";
+import { BODY_FONTS, EDY_PRIME_PALETTE, HEADING_FONTS } from "../../../lib/site-content";
 import { ImagePicker } from "./image-picker";
 import { ColorRow, Group, NumberRow, Row, TextRow, Toggle, type TabProps } from "./parts";
 
@@ -73,6 +73,26 @@ export function TabIdentity({ content, patch }: TabProps) {
             onChange={(value) => patch((draft) => void (draft.theme.surface = value))}
           />
         </Row>
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <button
+            type="button"
+            className="cursor-pointer rounded-[3px] border border-line bg-white px-4 py-2 text-xs font-medium tracking-wide uppercase transition-colors hover:bg-paper/60"
+            onClick={() => {
+              const ok = window.confirm(
+                "Restaurar a paleta oficial Edy Prime? Isso troca apenas as 7 cores do site. Textos, imagens, logo, seções e tipografia não são alterados.",
+              );
+              if (!ok) return;
+              patch((draft) => {
+                Object.assign(draft.theme, EDY_PRIME_PALETTE);
+              });
+            }}
+          >
+            Restaurar paleta Edy Prime
+          </button>
+          <span className="text-xs text-muted">
+            Troca só as cores. Publique depois para valer no site.
+          </span>
+        </div>
       </Group>
 
       <Group title="Tipografia">

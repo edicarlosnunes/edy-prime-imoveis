@@ -112,7 +112,12 @@ export function Showcase() {
               {isSold(property.status) ? (
                 <SoldRibbon size="card" />
               ) : (
-                <span data-t="caption" className="label-xs absolute top-4 left-4 bg-deep/90 px-3 py-1.5 text-white">
+                <span
+                  data-t="caption"
+                  className={`label-xs absolute top-4 left-4 px-3 py-1.5 text-white ${
+                    property.status === "disponivel" ? "bg-[#1c7a4a]" : "bg-black/85"
+                  }`}
+                >
                   {statusLabel[property.status]}
                 </span>
               )}

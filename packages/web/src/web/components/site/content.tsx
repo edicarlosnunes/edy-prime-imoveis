@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo } from "react";
 import { defaultSiteContent, mergeSiteContent, type SiteContent } from "../../lib/site-content";
 import { upgradeSiteCopy } from "../../lib/site-copy";
-import { contrastCss, readableTheme } from "../../lib/theme-contrast";
+import { contrastCss, readableTheme, surfaceTokens } from "../../lib/theme-contrast";
 import { typographyCss, typographyFonts } from "../../lib/site-typography";
 import { configureSite } from "../../lib/site";
 import { usePublishedContent, useDraftContent } from "../../queries/site";
@@ -92,15 +92,27 @@ export function themeCss(theme: SiteContent["theme"]) {
      `--color-paper`, `--color-bone`) e o dourado seguem exatamente iguais. */
   const readable = readableTheme({ primary, secondary, accent, background, text, muted, surface });
   const fix = contrastCss(readable);
+  /* Superfícies usadas como FUNDO (header, faixas, botões, degradês). Em site
+     de fundo escuro elas só aceitam a cor do CMS quando ela realmente é
+     escura. Nenhum dado do CMS é alterado — só a apresentação. */
+  const { chrome, panel } = surfaceTokens({
+    primary,
+    secondary,
+    accent,
+    background,
+    text,
+    muted,
+    surface,
+  });
 
   return `.site-shell{
-  --color-deep:${primary};
+  --color-deep:${chrome};
   --color-brass:${secondary};
   --color-brass-soft:${accent};
   --color-paper:${background};
   --color-ink:${text};
   --color-muted:${muted};
-  --color-bone:${surface};
+  --color-bone:${panel};
   --color-line:${readable.line};
   --font-display:"${headingFont}",ui-serif,Georgia,serif;
   --font-sans:"${bodyFont}",ui-sans-serif,system-ui,sans-serif;
