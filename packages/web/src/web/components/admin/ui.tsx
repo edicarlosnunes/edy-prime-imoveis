@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { X } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { formatMoneyInput, parseMoneyInput } from "../../lib/money-input";
 
 /* ------------------------------------------------------------- formatação */
 
@@ -212,6 +213,104 @@ export function Textarea({ className, ...rest }: React.ComponentProps<"textarea"
   return <textarea {...rest} className={cn(controlClass, "min-h-24 resize-y", className)} />;
 }
 
+/**
+ * Campo monetário no padrão brasileiro.
+ *
+ * O valor exibido é mascarado (R$ 320.000,00), mas o estado continua sendo uma
+ * string — quem envia converte com `parseMoneyInput`, então o payload da API
+ * segue recebendo `number` exatamente como antes. Nada é reformatado enquanto
+ * o usuário digita, e um valor carregado do banco só muda se ele editar.
+ */
+export function MoneyInput({
+  value,
+  onChange,
+  className,
+  ...rest
+}: Omit<React.ComponentProps<"input">, "value" | "onChange"> & {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  function reformat() {
+    if (!value.trim()) return;
+    try {
+      const parsed = parseMoneyInput(value);
+      if (parsed !== null) onChange(formatMoneyInput(parsed));
+    } catch {
+      /* entrada inválida permanece como está — o erro aparece ao salvar */
+    }
+  }
+
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs text-muted">
+        R$
+      </span>
+      <input
+        {...rest}
+        value={value}
+        inputMode="decimal"
+        onChange={(event) => onChange(event.target.value)}
+        onBlur={reformat}
+        className={cn(controlClass, "pl-9 text-right tabular-nums", className)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Contador rápido para quantidades (dormitórios, suítes, banheiros, vagas).
+ * Os botões só ajustam de 1 em 1 — a digitação manual continua liberada.
+ */
+export function CountInput({
+  value,
+  onChange,
+  max = 40,
+  label,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  max?: number;
+  label: string;
+}) {
+  const current = Math.trunc(Number(value.replace(",", ".")));
+  const safe = Number.isFinite(current) ? current : 0;
+
+  function step(delta: 1 | -1) {
+    const next = Math.min(max, Math.max(0, safe + delta));
+    onChange(String(next));
+  }
+
+  return (
+    <div className="flex items-stretch gap-1">
+      <button
+        type="button"
+        onClick={() => step(-1)}
+        disabled={safe <= 0}
+        aria-label={`Diminuir ${label}`}
+        className="flex w-9 shrink-0 items-center justify-center rounded-[10px] border border-line bg-white text-muted transition-colors hover:bg-bone/60 hover:text-deep disabled:opacity-40"
+      >
+        <Minus className="h-3.5 w-3.5" />
+      </button>
+      <input
+        value={value}
+        inputMode="numeric"
+        aria-label={label}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(controlClass, "min-w-0 flex-1 px-2 text-center tabular-nums")}
+      />
+      <button
+        type="button"
+        onClick={() => step(1)}
+        disabled={safe >= max}
+        aria-label={`Aumentar ${label}`}
+        className="flex w-9 shrink-0 items-center justify-center rounded-[10px] border border-line bg-white text-muted transition-colors hover:bg-bone/60 hover:text-deep disabled:opacity-40"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 export function Select({ className, children, ...rest }: React.ComponentProps<"select">) {
   return (
     <select {...rest} className={cn(controlClass, "appearance-none pr-8", className)}>
@@ -226,12 +325,17 @@ export function Modal({
   title,
   children,
   wide,
+  widthClass,
+  bodyClass,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
   wide?: boolean;
+  /** largura sob medida — sobrepõe `wide` quando informada */
+  widthClass?: string;
+  bodyClass?: string;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -252,7 +356,7 @@ export function Modal({
       <div
         className={cn(
           "admin-card w-full rounded-[4px] border border-line bg-paper shadow-2xl",
-          wide ? "max-w-4xl" : "max-w-xl",
+          widthClass ?? (wide ? "max-w-4xl" : "max-w-xl"),
         )}
       >
         <header className="flex items-center justify-between gap-4 border-b border-line px-5 py-4">
@@ -266,7 +370,7 @@ export function Modal({
             <X className="h-4 w-4" />
           </button>
         </header>
-        <div className="px-5 py-5">{children}</div>
+        <div className={cn("px-5 py-5", bodyClass)}>{children}</div>
       </div>
     </div>
   );
