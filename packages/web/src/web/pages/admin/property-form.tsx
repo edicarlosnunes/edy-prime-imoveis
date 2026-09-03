@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Banknote,
+  CalendarClock,
   Camera,
   FileText,
   Globe,
   MapPin,
   Ruler,
+  ShieldCheck,
   Sparkles,
   User,
 } from "lucide-react";
@@ -44,6 +46,8 @@ import {
   type FormSection,
 } from "../../components/admin/property-form-nav";
 import { PropertyFormHeader } from "../../components/admin/property-form-header";
+import { PropertyDocsSection } from "../../components/admin/property-docs-section";
+import { PropertyRevalidationSection } from "../../components/admin/property-revalidation-section";
 import {
   PropertyGallery,
   type GalleryImage,
@@ -64,6 +68,8 @@ const SECTIONS: readonly FormSection[] = [
   { id: "proprietario", label: "Proprietário", short: "Proprietário", icon: User },
   { id: "descricao", label: "Descrição e diferenciais", short: "Descrição", icon: Sparkles },
   { id: "fotos", label: "Fotos e mídia", short: "Fotos", icon: Camera },
+  { id: "documentacao", label: "Documentação", short: "Documentação", icon: ShieldCheck },
+  { id: "revalidacao", label: "Revalidação", short: "Revalidação", icon: CalendarClock },
   { id: "publicacao", label: "Publicação", short: "Publicação", icon: Globe },
 ];
 
@@ -736,6 +742,12 @@ export function PropertyForm({
                   onSetPrimary={setPrimary}
                   onRemove={removeImage}
                 />
+              )}
+
+              {section === "documentacao" && <PropertyDocsSection propertyId={propertyId} />}
+
+              {section === "revalidacao" && (
+                <PropertyRevalidationSection propertyId={propertyId} />
               )}
 
               {section === "publicacao" && (

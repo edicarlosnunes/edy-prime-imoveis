@@ -210,6 +210,64 @@ export function useRemoveDeal() {
   return useMutation(orpc.adminDeals.remove.mutationOptions({ onSuccess: invalidate }));
 }
 
+/* -------------------------------- documentação + revalidação (V2) */
+
+export function usePropertyDocs(propertyId: number | null) {
+  return useQuery({
+    ...orpc.adminPropertyDocs.get.queryOptions({ input: { propertyId: propertyId ?? 0 } }),
+    enabled: propertyId !== null && propertyId > 0,
+  });
+}
+
+export function useSaveDocConditions() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.saveConditions.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useSaveChecklistItem() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.saveChecklistItem.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useCreatePropertyDocument() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.createDocument.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useUpdateDocumentStatus() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.updateDocumentStatus.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useDeletePropertyDocument() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.deleteDocument.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useSetPortfolioEntry() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.setPortfolioEntry.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useRegisterRevalidation() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.registerRevalidation.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
 /* --------------------------------------------------------- configurações */
 
 export function useAdminSettings() {

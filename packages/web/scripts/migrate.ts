@@ -359,6 +359,51 @@ const statements = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS audit_log_created_idx ON audit_log (created_at)`,
+
+  /* ------------------------------- V2: documentação inteligente + revalidação */
+  `CREATE TABLE IF NOT EXISTS property_checklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    property_id INTEGER NOT NULL,
+    item_key TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    note TEXT,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS property_checklist_property_idx ON property_checklist (property_id)`,
+  `CREATE TABLE IF NOT EXISTS document_files (
+    id TEXT PRIMARY KEY NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    name TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS property_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    property_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'recebido',
+    title TEXT,
+    file_id TEXT,
+    file_name TEXT,
+    note TEXT,
+    received_at INTEGER,
+    analyzed_at INTEGER,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS property_documents_property_idx ON property_documents (property_id)`,
+  `CREATE TABLE IF NOT EXISTS property_revalidations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    property_id INTEGER NOT NULL,
+    outcome TEXT NOT NULL,
+    note TEXT,
+    revalidated_at INTEGER NOT NULL,
+    next_due_at INTEGER,
+    user_name TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS property_revalidations_property_idx ON property_revalidations (property_id)`,
 ];
 
 /** Colunas adicionadas à tabela media (biblioteca de mídia do editor do site). */
@@ -373,6 +418,20 @@ const mediaColumns: Record<string, string> = {
 const propertyColumns: Record<string, string> = {
   slug: "TEXT",
   watermark_off: "INTEGER NOT NULL DEFAULT 0",
+  /* V2 — documentação. Nullable de propósito: NULL = ainda não respondido,
+     diferente de 0 (respondido "não"). Nenhum dado existente é alterado. */
+  in_condominium: "INTEGER",
+  has_heranca: "INTEGER",
+  has_posse: "INTEGER",
+  has_financiamento: "INTEGER",
+  has_aluguel: "INTEGER",
+  /* V2 — revalidação. portfolio_entry_at fica NULL nos imóveis já existentes:
+     sem backfill automático, então eles não entram na fila até alguém definir
+     a data (backfill em massa marcaria toda a carteira como vencida). */
+  portfolio_entry_at: "INTEGER",
+  last_revalidation_at: "INTEGER",
+  next_revalidation_at: "INTEGER",
+  revalidation_status: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */
@@ -446,6 +505,8 @@ for (const sql of [
   "CREATE INDEX IF NOT EXISTS leads_phone_idx ON leads (phone)",
   "CREATE INDEX IF NOT EXISTS leads_score_idx ON leads (score)",
   "CREATE INDEX IF NOT EXISTS leads_next_action_idx ON leads (next_action_at)",
+  /* V2 — índice da fila de revalidação (coluna adicionada acima) */
+  "CREATE INDEX IF NOT EXISTS properties_next_revalidation_idx ON properties (next_revalidation_at)",
 ]) {
   await db.execute(sql);
   console.log("ok:", sql.slice(0, 60));

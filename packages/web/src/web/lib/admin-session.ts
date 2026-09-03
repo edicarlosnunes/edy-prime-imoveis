@@ -111,6 +111,30 @@ export async function uploadBlob(
   return body.url;
 }
 
+/** Tamanho máximo aceito pela rota /api/admin/doc-upload. */
+const MAX_DOC_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Envia um documento privado. Diferente das fotos, NÃO devolve URL pública:
+ * o arquivo só sai por /api/admin/doc/:id, com sessão do painel.
+ */
+export async function uploadDocument(
+  file: File,
+): Promise<{ id: string; name: string; size: number }> {
+  if (file.size > MAX_DOC_BYTES) throw new Error("Documento acima de 8 MB");
+
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await fetch("/api/admin/doc-upload", {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  if (!response.ok) throw new Error(await readError(response, "Falha ao enviar o documento"));
+  return (await response.json()) as { id: string; name: string; size: number };
+}
+
 export function errorMessage(error: unknown, fallback = "Algo deu errado") {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string" && error) return error;

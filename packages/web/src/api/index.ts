@@ -11,6 +11,7 @@ import { siteChat } from "./routes/site-chat";
 import { adminAuth } from "./routes/admin-auth";
 import { adminProperties } from "./routes/admin-properties";
 import { adminPropertyContent } from "./routes/admin-properties-ai";
+import { adminPropertyDocs } from "./routes/admin-property-docs";
 import { adminLeads } from "./routes/admin-leads";
 import { adminLeadProfile } from "./routes/admin-lead-profile";
 import { adminClients } from "./routes/admin-clients";
@@ -59,6 +60,7 @@ export const router = {
   adminAuth,
   adminProperties,
   adminPropertyContent,
+  adminPropertyDocs,
   adminLeads,
   adminLeadProfile,
   adminClients,
@@ -224,6 +226,86 @@ app.get("/api/media/:id", async (c) => {
     headers: {
       "content-type": row.mime,
       "cache-control": "public, max-age=31536000, immutable",
+    },
+  });
+});
+
+/* ------------------------------- V2: documentos privados do imóvel ------ */
+
+const MAX_DOC_BYTES = 8 * 1024 * 1024;
+const ALLOWED_DOC_MIME = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+];
+
+/**
+ * Upload de documento do proprietário (matrícula, IPTU, inventário...).
+ * Vai para `document_files`, NUNCA para `media`: /api/media/:id é rota
+ * pública e serviria o documento para qualquer visitante do site.
+ */
+app.post("/api/admin/doc-upload", async (c) => {
+  const user = await resolveSession(c.req.raw.headers);
+  if (!user) return c.json({ error: "Não autorizado" }, 401);
+
+  const form = await c.req.formData();
+  const file = form.get("file");
+  if (!(file instanceof File)) return c.json({ error: "Arquivo ausente" }, 400);
+  if (!ALLOWED_DOC_MIME.includes(file.type)) {
+    return c.json({ error: "Formato não suportado (use PDF, JPG, PNG, WEBP ou AVIF)" }, 400);
+  }
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  if (buffer.byteLength > MAX_DOC_BYTES) {
+    return c.json({ error: "Documento acima de 8 MB" }, 400);
+  }
+
+  let binary = "";
+  for (let i = 0; i < buffer.length; i += 8192) {
+    binary += String.fromCharCode(...buffer.subarray(i, i + 8192));
+  }
+
+  const id = randomHex(12);
+  const db = await getDb();
+  const safeName = (file.name || "documento").replace(/[^\w.\-() ]+/g, "").slice(0, 160);
+  await db.insert(schema.documentFiles).values({
+    id,
+    mime: file.type,
+    size: buffer.byteLength,
+    data: btoa(binary),
+    name: safeName,
+  });
+
+  // Sem URL pública: o arquivo só sai por /api/admin/doc/:id, autenticado.
+  return c.json({ id, name: safeName, size: buffer.byteLength }, 200);
+});
+
+/** Entrega do documento — exige sessão do painel e nunca é cacheada. */
+app.get("/api/admin/doc/:id", async (c) => {
+  const user = await resolveSession(c.req.raw.headers);
+  if (!user) return c.json({ error: "Não autorizado" }, 401);
+
+  const id = c.req.param("id");
+  if (!/^[a-f0-9]{8,64}$/.test(id)) return c.json({ error: "not found" }, 404);
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(schema.documentFiles)
+    .where(eq(schema.documentFiles.id, id))
+    .limit(1);
+  if (!row) return c.json({ error: "not found" }, 404);
+
+  const binary = atob(row.data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "content-type": row.mime,
+      "content-disposition": `inline; filename="${row.name ?? "documento"}"`,
+      "cache-control": "private, no-store",
     },
   });
 });

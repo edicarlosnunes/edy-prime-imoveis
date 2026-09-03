@@ -70,6 +70,35 @@ export const properties = sqliteTable(
     slug: text("slug"),
     /** 1 = não aplicar marca d'água nas fotos deste imóvel */
     watermarkOff: integer("watermark_off").notNull().default(0),
+
+    /* ------------------------------------------------ V2: documentação */
+    /**
+     * Pergunta independente: o imóvel pertence a condomínio?
+     * NÃO é inferida do `type` — casa comum fora de condomínio responde 0.
+     * NULL = ainda não respondido.
+     */
+    inCondominium: integer("in_condominium"),
+    /** 1 = há herança/inventário/espólio envolvido (liga o bloco) */
+    hasHeranca: integer("has_heranca"),
+    /** 1 = negociação de posse/cessão de direitos (liga o bloco) */
+    hasPosse: integer("has_posse"),
+    /** 1 = financiamento ativo / alienação fiduciária (liga o bloco) */
+    hasFinanciamento: integer("has_financiamento"),
+    /** 1 = imóvel ocupado/alugado (liga o bloco) */
+    hasAluguel: integer("has_aluguel"),
+
+    /* ------------------------------------------------ V2: revalidação */
+    /**
+     * Entrada na carteira — origem do ciclo de 4 meses. NULL nos imóveis
+     * que já existiam: não são backfillados automaticamente e ficam fora
+     * da fila até alguém definir a data.
+     */
+    portfolioEntryAt: integer("portfolio_entry_at", { mode: "timestamp" }),
+    lastRevalidationAt: integer("last_revalidation_at", { mode: "timestamp" }),
+    nextRevalidationAt: integer("next_revalidation_at", { mode: "timestamp" }),
+    /** último desfecho registrado (ver property-revalidation.ts) */
+    revalidationStatus: text("revalidation_status"),
+
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -77,7 +106,10 @@ export const properties = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (t) => [index("properties_status_idx").on(t.status)],
+  (t) => [
+    index("properties_status_idx").on(t.status),
+    index("properties_next_revalidation_idx").on(t.nextRevalidationAt),
+  ],
 );
 
 export const propertyImages = sqliteTable(
@@ -115,6 +147,104 @@ export const media = sqliteTable("media", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/* --------------------------------------- V2: documentação inteligente */
+
+/**
+ * Respostas do checklist. Uma linha por item respondido — item não respondido
+ * simplesmente não tem linha. `itemKey` vem do catálogo em
+ * web/lib/property-docs-catalog.ts.
+ */
+export const propertyChecklist = sqliteTable(
+  "property_checklist",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    propertyId: integer("property_id").notNull(),
+    itemKey: text("item_key").notNull(),
+    /** sim | nao | nao_sabe | na */
+    answer: text("answer").notNull(),
+    note: text("note"),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("property_checklist_property_idx").on(t.propertyId)],
+);
+
+/**
+ * Arquivos privados de documentação. Tabela SEPARADA de `media` de propósito:
+ * `media` é servida publicamente em /api/media/:id e alimenta a vitrine.
+ * Documento de proprietário (matrícula, RG, inventário) nunca pode cair nessa
+ * rota — estes só saem por rota autenticada do painel.
+ */
+export const documentFiles = sqliteTable("document_files", {
+  id: text("id").primaryKey(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  /** conteúdo em base64 */
+  data: text("data").notNull(),
+  /** nome original do arquivo */
+  name: text("name"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
+ * Documento do imóvel. Independente do checklist: o proprietário pode
+ * responder todo o checklist sem anexar nada, e um documento pode existir
+ * sem arquivo (só o registro do status).
+ */
+export const propertyDocuments = sqliteTable(
+  "property_documents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    propertyId: integer("property_id").notNull(),
+    /** matricula | iptu | escritura | condominio | inventario | procuracao | contrato | certidao | planta_habite_se | outros */
+    category: text("category").notNull(),
+    /** recebido | aguardando_analise | analisado | regular | pendencia */
+    status: text("status").notNull().default("recebido"),
+    /** rótulo livre ("Matrícula 12.345 - 2º CRI") */
+    title: text("title"),
+    /** id em document_files — NULL quando não há anexo */
+    fileId: text("file_id"),
+    fileName: text("file_name"),
+    /** observação da análise / motivo da pendência */
+    note: text("note"),
+    receivedAt: integer("received_at", { mode: "timestamp" }),
+    analyzedAt: integer("analyzed_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("property_documents_property_idx").on(t.propertyId)],
+);
+
+/* ------------------------------------------- V2: revalidação 4 meses */
+
+/** Histórico de revalidações. Append-only: nada aqui é apagado ou editado. */
+export const propertyRevalidations = sqliteTable(
+  "property_revalidations",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    propertyId: integer("property_id").notNull(),
+    /** disponivel | vendido | nao_deseja_vender | alterou_condicoes | retornar_depois | sem_resposta */
+    outcome: text("outcome").notNull(),
+    note: text("note"),
+    /** data do contato/desfecho */
+    revalidatedAt: integer("revalidated_at", { mode: "timestamp" }).notNull(),
+    /** próxima data calculada no momento do registro (NULL quando encerra) */
+    nextDueAt: integer("next_due_at", { mode: "timestamp" }),
+    userName: text("user_name"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("property_revalidations_property_idx").on(t.propertyId)],
+);
 
 /* ------------------------------------------------------- proprietários */
 
