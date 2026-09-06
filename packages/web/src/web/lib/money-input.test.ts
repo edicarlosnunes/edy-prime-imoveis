@@ -138,3 +138,45 @@ describe("formatMoneyInput — número persistido volta editável em pt-BR", () 
     expect(formatMoneyInput(null)).toBe("");
   });
 });
+
+describe("parseMoneyInput — valor por extenso curto e padrão brasileiro", () => {
+  test("480 mil -> 480000", () => {
+    expect(parseMoneyInput("480 mil")).toBe(480000);
+  });
+
+  test("480mil -> 480000", () => {
+    expect(parseMoneyInput("480mil")).toBe(480000);
+  });
+
+  test("480.000 -> 480000", () => {
+    expect(parseMoneyInput("480.000")).toBe(480000);
+  });
+
+  test("480.000,00 -> 480000 (não 48.000.000)", () => {
+    expect(parseMoneyInput("480.000,00")).toBe(480000);
+  });
+
+  test("480000 -> 480000", () => {
+    expect(parseMoneyInput("480000")).toBe(480000);
+  });
+
+  test("R$ 480 MIL -> 480000 (caixa e prefixo ignorados)", () => {
+    expect(parseMoneyInput("R$ 480 MIL")).toBe(480000);
+  });
+
+  test("1,2 mi e 1 milhão -> 1200000 e 1000000", () => {
+    expect(parseMoneyInput("1,2 mi")).toBe(1200000);
+    expect(parseMoneyInput("1 milhão")).toBe(1000000);
+  });
+
+  test("todas as formas de 480 mil convergem para o mesmo número", () => {
+    const formas = ["480 mil", "480mil", "480.000", "480.000,00", "480000"];
+    for (const forma of formas) expect(parseMoneyInput(forma)).toBe(480000);
+    expect(formatMoneyInput(parseMoneyInput("480 mil"))).toBe("480.000,00");
+  });
+
+  test("texto sem número continua sendo erro", () => {
+    expect(() => parseMoneyInput("mil")).toThrow();
+    expect(() => parseMoneyInput("abc")).toThrow();
+  });
+});

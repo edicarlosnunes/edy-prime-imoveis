@@ -17,9 +17,26 @@ export class MoneyInputError extends Error {
 const MAX_AMOUNT = 999_999_999;
 
 /**
+ * Sufixos por extenso curtos aceitos na digitacao: `480 mil` -> 480000,
+ * `1,2 mi` -> 1200000. Acentos sao removidos antes da comparacao, entao
+ * "milhao" e "milhao" com acento sao equivalentes. A ordem importa: os
+ * sufixos mais longos precisam ser testados antes de `mi`.
+ */
+const MONEY_SUFFIXES: Array<[string, number]> = [
+  ["milhoes", 1_000_000],
+  ["milhao", 1_000_000],
+  ["mil", 1_000],
+  ["mi", 1_000_000],
+];
+
+const stripAccents = (value: string) =>
+  value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+/**
  * Converte texto em número.
  *
- * Aceita `320000`, `320000,00`, `320.000,00` e `R$ 320.000,00` — todos viram 320000.
+ * Aceita `320000`, `320000,00`, `320.000,00`, `R$ 320.000,00`, `320 mil` e
+ * `320mil` — todos viram 320000.
  * Campo vazio (ou só espaços) devolve `null`, preservando o opcional.
  * Texto inválido lança `MoneyInputError` com mensagem clara.
  *
@@ -29,10 +46,22 @@ const MAX_AMOUNT = 999_999_999;
 export function parseMoneyInput(raw: string, fieldLabel = "Valor"): number | null {
   if (typeof raw !== "string") return null;
 
-  const cleaned = raw
+  let cleaned = stripAccents(raw)
     .replace(/ /g, " ")
     .replace(/R\$/gi, "")
-    .replace(/\s/g, "");
+    .replace(/\s/g, "")
+    .toLowerCase();
+
+  if (!cleaned) return null;
+
+  let multiplier = 1;
+  for (const [suffix, factor] of MONEY_SUFFIXES) {
+    if (cleaned.length > suffix.length && cleaned.endsWith(suffix)) {
+      cleaned = cleaned.slice(0, -suffix.length);
+      multiplier = factor;
+      break;
+    }
+  }
 
   if (!cleaned) return null;
 
@@ -65,7 +94,7 @@ export function parseMoneyInput(raw: string, fieldLabel = "Valor"): number | nul
   }
 
   const normalized = `${digits || "0"}.${decimalPart || "0"}`;
-  const parsed = Number(normalized);
+  const parsed = Number(normalized) * multiplier;
 
   if (!Number.isFinite(parsed)) {
     throw new MoneyInputError(`${fieldLabel}: valor inválido, use 320.000,00`);
