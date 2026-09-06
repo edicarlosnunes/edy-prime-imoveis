@@ -261,6 +261,54 @@ export const owners = sqliteTable("owners", {
     .$defaultFn(() => new Date()),
 });
 
+
+/* ----------------------------------------------- Radar de Captação V1 */
+
+export const propertyCaptures = sqliteTable(
+  "property_captures",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    ownerId: integer("owner_id").notNull(),
+    city: text("city").notNull().default("Praia Grande"),
+    district: text("district"),
+    address: text("address"),
+    propertyType: text("property_type"),
+    askingPrice: real("asking_price"),
+    estimatedPrice: real("estimated_price"),
+    source: text("source").notNull().default("manual"),
+    /** novo_contato | avaliacao | documentacao | captado | perdido */
+    stage: text("stage").notNull().default("novo_contato"),
+    intention: text("intention"),
+    nextAction: text("next_action"),
+    nextActionAt: integer("next_action_at", { mode: "timestamp" }),
+    appraisalStatus: text("appraisal_status").notNull().default("pendente"),
+    appraisalAt: integer("appraisal_at", { mode: "timestamp" }),
+    appraisalNote: text("appraisal_note"),
+    docStatus: text("doc_status").notNull().default("nao_iniciado"),
+    notes: text("notes"),
+    lostReason: text("lost_reason"),
+    lostDetail: text("lost_detail"),
+    convertedPropertyId: integer("converted_property_id"),
+    convertedAt: integer("converted_at", { mode: "timestamp" }),
+    stageChangedAt: integer("stage_changed_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    index("property_captures_owner_idx").on(t.ownerId),
+    index("property_captures_stage_idx").on(t.stage),
+    index("property_captures_next_action_idx").on(t.nextActionAt),
+  ],
+);
+
+export type PropertyCapture = typeof propertyCaptures.$inferSelect;
+
 /* ------------------------------------------------------------ clientes */
 
 export const clients = sqliteTable("clients", {
@@ -438,6 +486,8 @@ export const tasks = sqliteTable("tasks", {
   leadId: integer("lead_id"),
   clientId: integer("client_id"),
   propertyId: integer("property_id"),
+  /** vínculo estrutural com o Radar; nullable para tarefas antigas */
+  captureId: integer("capture_id"),
   notes: text("notes"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()

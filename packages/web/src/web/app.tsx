@@ -6,6 +6,7 @@ import AdminProperties from "./pages/admin/properties";
 import AdminLeads from "./pages/admin/leads";
 import AdminClients from "./pages/admin/clients";
 import AdminOwners from "./pages/admin/owners";
+import AdminCaptacao from "./pages/admin/captacao";
 import AdminAgenda from "./pages/admin/agenda";
 import AdminDeals from "./pages/admin/deals";
 import AdminSettings from "./pages/admin/settings";
@@ -34,6 +35,7 @@ function App() {
         <Route path="/admin/leads" component={AdminLeads} />
         <Route path="/admin/clientes" component={AdminClients} />
         <Route path="/admin/proprietarios" component={AdminOwners} />
+        <Route path="/admin/captacao" component={AdminCaptacao} />
         <Route path="/admin/agenda" component={AdminAgenda} />
         <Route path="/admin/propostas" component={AdminDeals} />
         <Route path="/admin/configuracoes" component={AdminSettings} />
