@@ -1,16 +1,31 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd packages/web && bunx vite build",
+  "buildCommand": "bun run build:api && cd packages/web && bunx vite build",
   "outputDirectory": "packages/web/dist",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/handler?__path=/api/:path*" },
-    { "source": "/feed/:file", "destination": "/api/handler?__path=/api/feed/:file" },
-    { "source": "/sitemap.xml", "destination": "/api/handler?__path=/api/sitemap.xml" },
-    { "source": "/robots.txt", "destination": "/api/handler?__path=/api/robots.txt" },
+    {
+      "source": "/api/:path*",
+      "destination": "/api/handler?__path=/api/:path*"
+    },
+    {
+      "source": "/feed/:file",
+      "destination": "/api/handler?__path=/api/feed/:file"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/handler?__path=/api/sitemap.xml"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/api/handler?__path=/api/robots.txt"
+    },
     {
       "source": "/imovel/:slug",
       "destination": "/api/handler?__path=/api/prerender/imovel/:slug"
     },
-    { "source": "/((?!api).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api).*)",
+      "destination": "/index.html"
+    }
   ]
 }
