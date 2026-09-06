@@ -11,6 +11,7 @@ const taskInput = z.object({
   leadId: z.number().int().nullable().optional(),
   clientId: z.number().int().nullable().optional(),
   propertyId: z.number().int().nullable().optional(),
+  captureId: z.number().int().nullable().optional(),
   notes: z.string().max(2000).nullable().optional(),
 });
 
@@ -23,6 +24,7 @@ function toRow(input: z.infer<typeof taskInput>) {
     leadId: input.leadId ?? null,
     clientId: input.clientId ?? null,
     propertyId: input.propertyId ?? null,
+    captureId: input.captureId ?? null,
     notes: input.notes?.trim() || null,
   };
 }

@@ -282,3 +282,19 @@ export function useSaveSettings() {
 export function useChangePassword() {
   return useMutation(orpc.adminAuth.changePassword.mutationOptions());
 }
+
+/* --------------------------------------------------------- captação / Radar */
+export function useAdminCaptures(filters?: { search?: string; city?: string; stage?: "novo_contato" | "avaliacao" | "documentacao" | "captado" | "perdido"; source?: string }) {
+  return useQuery(orpc.adminCaptures.list.queryOptions({ input: filters ?? {} }));
+}
+export function useCapture(id: number | null) {
+  return useQuery({ ...orpc.adminCaptures.get.queryOptions({ input: { id: id ?? 0 } }), enabled: id !== null });
+}
+export function useCreateCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.create.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureStage() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setStage.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureNextAction() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setNextAction.mutationOptions({ onSuccess: invalidate })); }
+export function useSaveCaptureAppraisal() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.saveAppraisal.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureDocStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setDocStatus.mutationOptions({ onSuccess: invalidate })); }
+export function useMarkCaptureLost() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markLost.mutationOptions({ onSuccess: invalidate })); }
+export function useReopenCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.reopen.mutationOptions({ onSuccess: invalidate })); }
+export function useMarkCaptureConverted() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markConverted.mutationOptions({ onSuccess: invalidate })); }

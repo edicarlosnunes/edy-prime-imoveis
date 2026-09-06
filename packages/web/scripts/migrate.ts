@@ -404,6 +404,38 @@ const statements = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS property_revalidations_property_idx ON property_revalidations (property_id)`,
+
+  /* ----------------------------------------------- Radar de Captação V1 */
+  `CREATE TABLE IF NOT EXISTS property_captures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    owner_id INTEGER NOT NULL,
+    city TEXT NOT NULL DEFAULT 'Praia Grande',
+    district TEXT,
+    address TEXT,
+    property_type TEXT,
+    asking_price REAL,
+    estimated_price REAL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    stage TEXT NOT NULL DEFAULT 'novo_contato',
+    intention TEXT,
+    next_action TEXT,
+    next_action_at INTEGER,
+    appraisal_status TEXT NOT NULL DEFAULT 'pendente',
+    appraisal_at INTEGER,
+    appraisal_note TEXT,
+    doc_status TEXT NOT NULL DEFAULT 'nao_iniciado',
+    notes TEXT,
+    lost_reason TEXT,
+    lost_detail TEXT,
+    converted_property_id INTEGER,
+    converted_at INTEGER,
+    stage_changed_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS property_captures_owner_idx ON property_captures (owner_id)`,
+  `CREATE INDEX IF NOT EXISTS property_captures_stage_idx ON property_captures (stage)`,
+  `CREATE INDEX IF NOT EXISTS property_captures_next_action_idx ON property_captures (next_action_at)`,
 ];
 
 /** Colunas adicionadas à tabela media (biblioteca de mídia do editor do site). */
@@ -437,6 +469,12 @@ const propertyColumns: Record<string, string> = {
 /** Coluna que preserva a foto original quando há marca d'água. */
 const propertyImageColumns: Record<string, string> = {
   original_url: "TEXT",
+};
+
+
+/** Colunas adicionadas à tabela tasks para vínculo estrutural com o Radar. */
+const taskColumns: Record<string, string> = {
+  capture_id: "INTEGER",
 };
 
 /** Colunas adicionadas à tabela leads que já existia em produção. */
@@ -481,6 +519,7 @@ for (const [column, type] of Object.entries(mediaColumns)) {
 for (const [table, columns] of [
   ["properties", propertyColumns],
   ["property_images", propertyImageColumns],
+  ["tasks", taskColumns],
 ] as const) {
   const tableInfo = await db.execute(`PRAGMA table_info(${table})`);
   const present = new Set(tableInfo.rows.map((r) => String(r.name)));
@@ -507,6 +546,7 @@ for (const sql of [
   "CREATE INDEX IF NOT EXISTS leads_next_action_idx ON leads (next_action_at)",
   /* V2 — índice da fila de revalidação (coluna adicionada acima) */
   "CREATE INDEX IF NOT EXISTS properties_next_revalidation_idx ON properties (next_revalidation_at)",
+  "CREATE INDEX IF NOT EXISTS tasks_capture_idx ON tasks (capture_id)",
 ]) {
   await db.execute(sql);
   console.log("ok:", sql.slice(0, 60));
