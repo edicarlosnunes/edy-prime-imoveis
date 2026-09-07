@@ -171,12 +171,21 @@ export const adminCaptures = {
   setStage: adminBase.input(z.object({ id: z.number().int().positive(), stage: z.enum(STAGES) })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
     if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    // Idempotente: reclique na etapa atual nao gera novo evento de historico.
+    if (capture.stage === input.stage) return { ok: true, changed: false };
     const now = new Date();
-    await context.db.update(schema.propertyCaptures).set({ stage: input.stage, stageChangedAt: now, updatedAt: now }).where(eq(schema.propertyCaptures.id, input.id));
+    // Compare-and-set: se dois cliques chegarem juntos, so o primeiro encontra
+    // a etapa anterior e devolve linha; o segundo nao audita nada.
+    const changed = await context.db
+      .update(schema.propertyCaptures)
+      .set({ stage: input.stage, stageChangedAt: now, updatedAt: now })
+      .where(and(eq(schema.propertyCaptures.id, input.id), eq(schema.propertyCaptures.stage, capture.stage)))
+      .returning({ id: schema.propertyCaptures.id });
+    if (changed.length === 0) return { ok: true, changed: false };
     if (input.stage === "captado" || input.stage === "perdido") await closePendingTasks(context, input.id);
     await syncOwnerStatus(context, capture.ownerId);
     await audit(context, "capture_stage_changed", input.id, input.stage);
-    return { ok: true };
+    return { ok: true, changed: true };
   }),
 
   setNextAction: adminBase.input(z.object({ id: z.number().int().positive(), title: z.string().max(200).nullable(), dueAt: z.string().max(40).nullable() })).handler(async ({ input, context }) => {
