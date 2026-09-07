@@ -75,14 +75,25 @@ export function readSessionToken(headers: Headers) {
   return null;
 }
 
+/**
+ * Em produção o painel roda em primeira parte: SameSite=Lax + Secure.
+ * Em dev/preview o app é servido dentro de um iframe cross-site (painel de
+ * preview), e o Chrome descarta qualquer cookie que não seja
+ * `SameSite=None; Secure` — por isso a sessão não colava no preview.
+ * `Secure` é aceito em http://localhost, que o navegador trata como origem segura.
+ */
+function cookieAttributes() {
+  return process.env.NODE_ENV === "production"
+    ? "SameSite=Lax; Secure"
+    : "SameSite=None; Secure";
+}
+
 export function sessionCookie(token: string, maxAge = SESSION_TTL_SECONDS) {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
+  return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; ${cookieAttributes()}; Max-Age=${maxAge}`;
 }
 
 export function clearedSessionCookie() {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
+  return `${SESSION_COOKIE}=; Path=/; HttpOnly; ${cookieAttributes()}; Max-Age=0`;
 }
 
 type Db = Awaited<ReturnType<typeof getDb>>;
