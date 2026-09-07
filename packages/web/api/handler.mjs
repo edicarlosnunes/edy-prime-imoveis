@@ -51447,7 +51447,7 @@ async function brokerOf(context) {
   };
   const name25 = pick2(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
   const creci = pick2(row?.creci, BROKER_FALLBACK.creci, "CRECI");
-  const cnai = pick2(row?.cnai, BROKER_FALLBACK.cnai, "CNAI");
+  const cnai = String(row?.cnai ?? "").trim() || BROKER_FALLBACK.cnai;
   const phone = pick2(row?.whatsapp, BROKER_FALLBACK.phone, "telefone");
   const email3 = pick2(row?.email, BROKER_FALLBACK.email, "e-mail");
   return { name: name25, creci: cnai ? `${creci} · ${cnai}` : creci, phone, email: email3, missing };

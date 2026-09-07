@@ -61,6 +61,21 @@ describe("fiacao da reemissao em generate", () => {
   });
 });
 
+describe("CNAI nao e pendencia da imobiliaria", () => {
+  /* CNAI pertence ao profissional avaliador/perito e será tratado à parte.
+     Ele sai impresso quando existe, mas NUNCA pode virar pendência nem
+     bloquear a emissão da Ficha Técnica ou da Autorização. */
+  test("brokerOf nao registra CNAI em missing", () => {
+    const start = routeSource.indexOf("async function brokerOf");
+    expect(start).toBeGreaterThan(-1);
+    const body = routeSource.slice(start, routeSource.indexOf("\n}", start));
+    expect(body).not.toMatch(/pick\([^)]*"CNAI"\)/);
+    expect(body).not.toContain('missing.push("CNAI")');
+    /* continua impresso no cabeçalho quando houver valor */
+    expect(body).toContain("cnai ? `${creci} · ${cnai}` : creci");
+  });
+});
+
 describe("artefato servido pela vercel", () => {
   const bundles = [join(repoRoot, "api/handler.mjs"), join(webRoot, "api/handler.mjs")];
 

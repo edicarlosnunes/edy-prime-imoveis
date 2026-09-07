@@ -64,7 +64,10 @@ async function brokerOf(context: any): Promise<BrokerHeader> {
   };
   const name = pick(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
   const creci = pick(row?.creci, BROKER_FALLBACK.creci, "CRECI");
-  const cnai = pick(row?.cnai, BROKER_FALLBACK.cnai, "CNAI");
+  /* CNAI NÃO é dado obrigatório da imobiliária: pertence ao profissional
+     avaliador/perito e será tratado à parte. Sai impresso quando existe, mas
+     nunca entra em `missing` — não vira pendência nem bloqueia emissão. */
+  const cnai = String(row?.cnai ?? "").trim() || BROKER_FALLBACK.cnai;
   const phone = pick(row?.whatsapp, BROKER_FALLBACK.phone, "telefone");
   const email = pick(row?.email, BROKER_FALLBACK.email, "e-mail");
   return { name, creci: cnai ? `${creci} · ${cnai}` : creci, phone, email, missing };
