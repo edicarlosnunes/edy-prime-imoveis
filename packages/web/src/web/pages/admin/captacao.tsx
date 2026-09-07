@@ -82,6 +82,19 @@ function NewCapture({open,onClose,onCreated}:{open:boolean;onClose:()=>void;onCr
 
 function Detail({id,onClose}:{id:number|null;onClose:()=>void}) {
   const q=useCapture(id); const setStage=useSetCaptureStage(); const next=useSetCaptureNextAction(); const appraisal=useSaveCaptureAppraisal(); const docs=useSetCaptureDocStatus(); const checkItem=useSetCaptureChecklist(); const lost=useMarkCaptureLost(); const reopen=useReopenCapture(); const converted=useMarkCaptureConverted(); const addPhotos=useAddCapturePhotos(); const removePhoto=useRemoveCapturePhoto(); const [,navigate]=useLocation();
+  /* TODO HOOK RODA ANTES DO EARLY RETURN: o "Carregando..." abaixo saia
+     antes destes hooks, entao o render seguinte (com a captacao carregada)
+     chamava mais hooks que o anterior. O React aborta com "Rendered more
+     hooks than during the previous render" e a ficha abria em tela branca.
+     Recebem o prop id (number|null): as queries ja tem enabled:id!==null. */
+  const identity=useSetOwnerIdentity();
+  const clearDup=useClearOwnerDuplicate();
+  const [uploading,setUploading]=useState(false);
+  const promotedQ=useCapturePromotedPhotos(id);
+  const promote=usePromoteCapturePhoto();
+  const demote=useDemoteCapturePhoto();
+  const docList=useCaptureDocuments(id);
+  const genDoc=useGenerateCaptureDocument();
   const c=q.data; if(!c) return <Modal open={id!==null} onClose={onClose} title="Captação">Carregando...</Modal>;
   async function run(p:Promise<unknown>){try{await p}catch(e){alert(errorMessage(e,"Não foi possível concluir"))}}
   const checklist=parseChecklist(c.notes);
@@ -94,8 +107,6 @@ function Detail({id,onClose}:{id:number|null;onClose:()=>void}) {
   const photos=parseOwnerPhotos(c.ownerPhotos);
   /* IDENTIDADE: CPF/CNPJ e RG alimentam Ficha Tecnica e Autorizacao. NAO
      identificam imovel — imovel e identificado pelo serial/unitKey. */
-  const identity=useSetOwnerIdentity();
-  const clearDup=useClearOwnerDuplicate();
   async function editIdentity(){
     const ownerId=c!.owner?.id; if(!ownerId){alert("Captação sem proprietário vinculado");return}
     const document=prompt("CPF ou CNPJ do proprietário (em branco apaga):",formatDoc(c!.owner?.document));
@@ -116,7 +127,6 @@ function Detail({id,onClose}:{id:number|null;onClose:()=>void}) {
   /* FOTOS: upload real reutilizando /api/admin/upload (mesmo caminho do
      cadastro de imoveis). Continua PROVISORIA: nada vai para o site sem a
      promocao explicita abaixo. */
-  const [uploading,setUploading]=useState(false);
   async function uploadPhotos(files:FileList|null){
     if(!files||files.length===0)return;
     setUploading(true);
@@ -129,16 +139,11 @@ function Detail({id,onClose}:{id:number|null;onClose:()=>void}) {
   }
   /* PROMOCAO: unica ponte entre a foto provisoria e property_images (o que o
      site publico exibe). Sempre foto a foto, sempre por acao da equipe. */
-  const promotedQ=useCapturePromotedPhotos(c.id);
-  const promote=usePromoteCapturePhoto();
-  const demote=useDemoteCapturePhoto();
   const promotedUrls=promotedQ.data?.urls??[];
   function addPhoto(){const url=prompt("URL da foto provisória enviada pelo proprietário:");if(!url)return;const caption=prompt("Legenda (opcional):")||null;run(addPhotos.mutateAsync({id:c!.id,photos:[{url,caption}]}))}
   /* DOCUMENTOS: a emissao congela um snapshot; a tela imprimivel le esse
      snapshot, nunca a captacao atual. Emitir de novo gera 2a via, sem
      apagar a emissao anterior. */
-  const docList=useCaptureDocuments(c.id);
-  const genDoc=useGenerateCaptureDocument();
   function askTerms(){
     /* Nada e preenchido por conta propria: campo em branco vira LACUNA no
        documento impresso, para o corretor combinar e escrever a mao. */
