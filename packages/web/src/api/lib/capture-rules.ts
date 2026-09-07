@@ -2,25 +2,67 @@
  * Regras do funil do Radar de Captação.
  *
  * Módulo puro de propósito: nenhuma dependência de banco, oRPC ou request.
- * Assim as invariantes do funil (ordem das etapas, avaliação obrigatória,
- * CAPTADO só por conversão) são testáveis sem escrever uma linha no banco.
- * Os handlers em `routes/admin-captures.ts` só traduzem o resultado em ORPCError.
+ * Assim as invariantes do funil (ordem das etapas, documentação obrigatória,
+ * preço validado dentro de VALIDAÇÃO, CAPTADO só por conversão) são testáveis
+ * sem escrever uma linha no banco. Os handlers em `routes/admin-captures.ts`
+ * só traduzem o resultado em ORPCError.
+ *
+ * FLUXO V3: NOVO CONTATO -> DOCUMENTAÇÃO -> VALIDAÇÃO -> CAPTADO.
+ *
+ * AVALIAÇÃO deixou de ser etapa independente: o preço/avaliação passou a viver
+ * dentro de VALIDAÇÃO. Captações antigas gravadas com `avaliacao` continuam no
+ * banco com esse valor — a compatibilidade é SOMENTE NA LEITURA, via
+ * `normalizeStage`, que as exibe como DOCUMENTAÇÃO. Nenhum UPDATE em massa é
+ * feito, nenhum histórico antigo é reescrito.
  */
 
-/** Etapas do funil, na ordem obrigatória. `perdido` fica fora da ordem. */
-export const CAPTURE_STAGES = ["novo_contato", "avaliacao", "documentacao", "captado", "perdido"] as const;
+/** Etapas canônicas do funil. `perdido` fica fora da ordem. */
+export const CAPTURE_STAGES = ["novo_contato", "documentacao", "validacao", "captado", "perdido"] as const;
 export type CaptureStage = (typeof CAPTURE_STAGES)[number];
 
-/** Sequência obrigatória: NOVO CONTATO -> AVALIAÇÃO -> DOCUMENTAÇÃO -> CAPTADO. */
-export const STAGE_ORDER: CaptureStage[] = ["novo_contato", "avaliacao", "documentacao", "captado"];
+/**
+ * Etapa legada aceita na entrada.
+ *
+ * Não é gravada por fluxo novo nenhum. Fica aceita para que uma aba antiga do
+ * navegador (bundle velho em cache) não tome erro de validação, e para que
+ * linhas antigas possam ser reenviadas sem quebrar.
+ */
+export const LEGACY_STAGE = "avaliacao";
+
+/** Valores aceitos na entrada de `setStage`: canônicos + legado. */
+export const STAGE_INPUTS = [...CAPTURE_STAGES, LEGACY_STAGE] as const;
+export type StageInput = (typeof STAGE_INPUTS)[number];
+
+/** Sequência obrigatória: NOVO CONTATO -> DOCUMENTAÇÃO -> VALIDAÇÃO -> CAPTADO. */
+export const STAGE_ORDER: CaptureStage[] = ["novo_contato", "documentacao", "validacao", "captado"];
 
 export const STAGE_LABELS: Record<CaptureStage, string> = {
   novo_contato: "NOVO CONTATO",
-  avaliacao: "AVALIAÇÃO",
   documentacao: "DOCUMENTAÇÃO",
+  validacao: "VALIDAÇÃO",
   captado: "CAPTADO",
   perdido: "PERDIDO",
 };
+
+/**
+ * Etapa canônica de um valor gravado no banco.
+ *
+ * `avaliacao` (legado) é lido como DOCUMENTAÇÃO. Valor desconhecido devolve
+ * null para que quem chama decida — a UI cai em NOVO CONTATO, as regras negam.
+ */
+export function normalizeStage(raw: string | null | undefined): CaptureStage | null {
+  if (raw === LEGACY_STAGE) return "documentacao";
+  if (typeof raw === "string" && (CAPTURE_STAGES as readonly string[]).includes(raw)) {
+    return raw as CaptureStage;
+  }
+  return null;
+}
+
+/** Rótulo de tela de qualquer valor gravado, inclusive legado. */
+export function stageLabel(raw: string | null | undefined): string {
+  const stage = normalizeStage(raw);
+  return stage ? STAGE_LABELS[stage] : String(raw ?? "—");
+}
 
 /**
  * Status de documentação aceitos na entrada.
@@ -29,35 +71,61 @@ export const STAGE_LABELS: Record<CaptureStage, string> = {
  * `solicitado` existir. Continua aceito na leitura e na escrita para não
  * quebrar linha nenhuma, e é tratado como equivalente a `solicitado`.
  * Fluxos novos usam `solicitado`.
+ *
+ * `validado_pela_equipe` cobre o proprietário que não faz upload: a equipe
+ * confere a documentação por WhatsApp/telefone/e-mail e registra a validação
+ * com usuário, data e observação — sem criar upload falso de documento
+ * inexistente.
  */
-export const DOC_STATUSES = ["nao_iniciado", "solicitado", "parcial", "completo", "pendente"] as const;
+export const DOC_STATUSES = [
+  "nao_iniciado",
+  "solicitado",
+  "parcial",
+  "completo",
+  "validado_pela_equipe",
+  "pendente",
+] as const;
 export type DocStatus = (typeof DOC_STATUSES)[number];
+export type CanonicalDocStatus = Exclude<DocStatus, "pendente">;
 
 /** Status canônico do legado: `pendente` é lido como `solicitado`. */
-export function normalizeDocStatus(raw: string | null | undefined): Exclude<DocStatus, "pendente"> {
+export function normalizeDocStatus(raw: string | null | undefined): CanonicalDocStatus {
   if (raw === "pendente" || raw === "solicitado") return "solicitado";
   if (raw === "parcial") return "parcial";
   if (raw === "completo") return "completo";
+  if (raw === "validado_pela_equipe") return "validado_pela_equipe";
   return "nao_iniciado";
 }
 
-/** Documentação fechada é o único estado que libera a conversão em imóvel. */
+/** A equipe validou por outro meio, sem upload do proprietário. */
+export function isDocValidatedByTeam(raw: string | null | undefined): boolean {
+  return normalizeDocStatus(raw) === "validado_pela_equipe";
+}
+
+/**
+ * Documentação fechada = COMPLETO ou VALIDADA PELA EQUIPE.
+ *
+ * É o que libera o avanço para VALIDAÇÃO e, mais adiante, a conversão.
+ */
 export function isDocComplete(raw: string | null | undefined): boolean {
-  return normalizeDocStatus(raw) === "completo";
+  const status = normalizeDocStatus(raw);
+  return status === "completo" || status === "validado_pela_equipe";
 }
 
 /**
  * Avaliação registrada = valor estimado presente e maior que zero.
  *
- * `appraisalStatus` não entra na conta de propósito: o que trava o avanço para
- * DOCUMENTAÇÃO é o número, e é ele que o usuário digita em "Registrar avaliação".
+ * `appraisalStatus` não entra na conta de propósito: o que trava a conversão é
+ * o número, e é ele que o usuário digita em "Registrar avaliação" — agora
+ * dentro de VALIDAÇÃO.
  */
 export function hasValidAppraisal(capture: { estimatedPrice: number | null | undefined }): boolean {
   const value = capture.estimatedPrice;
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-const stageIndex = (stage: string): number => STAGE_ORDER.indexOf(stage as CaptureStage);
+const stageIndex = (stage: string | null): number =>
+  stage === null ? -1 : STAGE_ORDER.indexOf(stage as CaptureStage);
 
 export type RuleFailure = { ok: false; code: "BAD_REQUEST" | "FORBIDDEN" | "CONFLICT"; message: string };
 export type RuleResult = { ok: true } | RuleFailure;
@@ -69,14 +137,17 @@ const deny = (code: RuleFailure["code"], message: string): RuleFailure => ({ ok:
  *
  * Só decide "pode ou não pode" — não sabe nada de banco. Quem chama já tratou
  * o caso `from === to` (reclique), que não é transição e não gera histórico.
+ * `from` pode chegar como `avaliacao` (legado) e é lido como DOCUMENTAÇÃO.
  */
 export function checkStageTransition(input: {
   from: string;
-  to: CaptureStage;
+  to: StageInput;
+  docStatus?: string | null | undefined;
   estimatedPrice: number | null | undefined;
   convertedPropertyId: number | null | undefined;
 }): RuleResult {
-  const { from, to } = input;
+  const from = normalizeStage(input.from);
+  const to = normalizeStage(input.to);
 
   // CAPTADO nunca é manual: quem grava é a conversão, depois do imóvel existir.
   if (to === "captado") {
@@ -105,7 +176,7 @@ export function checkStageTransition(input: {
   // Retroceder é correção de operação, sempre liberado entre etapas ativas.
   if (toIdx < fromIdx) return { ok: true };
 
-  // Avançar é de um em um: nada de NOVO CONTATO direto para DOCUMENTAÇÃO.
+  // Avançar é de um em um: nada de NOVO CONTATO direto para VALIDAÇÃO.
   if (toIdx - fromIdx > 1) {
     return deny(
       "FORBIDDEN",
@@ -113,9 +184,12 @@ export function checkStageTransition(input: {
     );
   }
 
-  // DOCUMENTAÇÃO exige avaliação registrada.
-  if (to === "documentacao" && !hasValidAppraisal(input)) {
-    return deny("FORBIDDEN", "Registre a avaliação (valor estimado) antes de avançar para DOCUMENTAÇÃO");
+  // VALIDAÇÃO exige documentação fechada (COMPLETO ou VALIDADA PELA EQUIPE).
+  if (to === "validacao" && !isDocComplete(input.docStatus)) {
+    return deny(
+      "FORBIDDEN",
+      "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de avançar para VALIDAÇÃO",
+    );
   }
 
   return { ok: true };
@@ -137,20 +211,22 @@ export function checkConversionStart(input: {
   estimatedPrice: number | null | undefined;
   convertedPropertyId: number | null | undefined;
 }): RuleResult {
+  const stage = normalizeStage(input.stage);
+
   if (input.convertedPropertyId != null) {
     return deny("CONFLICT", "Esta captação já foi convertida em outro imóvel");
   }
-  if (input.stage === "perdido") {
+  if (stage === "perdido") {
     return deny("CONFLICT", "Captação perdida: use \"Reabrir\" antes de captar");
   }
-  if (!hasValidAppraisal(input)) {
-    return deny("FORBIDDEN", "Registre a avaliação (valor estimado) antes de captar");
-  }
-  if (input.stage !== "documentacao") {
-    return deny("FORBIDDEN", "A captação precisa estar em DOCUMENTAÇÃO para ser captada");
-  }
   if (!isDocComplete(input.docStatus)) {
-    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO) antes de captar");
+    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de captar");
+  }
+  if (stage !== "validacao") {
+    return deny("FORBIDDEN", "A captação precisa estar em VALIDAÇÃO para ser captada");
+  }
+  if (!hasValidAppraisal(input)) {
+    return deny("FORBIDDEN", "Registre o valor avaliado/validado em VALIDAÇÃO antes de captar");
   }
   return { ok: true };
 }
@@ -159,7 +235,8 @@ export function checkConversionStart(input: {
  * Valida a conversão da captação em imóvel.
  *
  * Vale para o momento em que o PropertyForm devolve o id do imóvel criado.
- * `already` sinaliza reentrada idempotente: mesma captação, mesmo imóvel.
+ * `already` sinaliza reentrada idempotente: mesma captação, mesmo imóvel —
+ * é o que garante histórico único mesmo com duplo clique.
  * Fora desse caso idempotente, delega em `checkConversionStart` para que a
  * regra exista em um lugar só.
  */

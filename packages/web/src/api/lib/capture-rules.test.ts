@@ -1,78 +1,149 @@
 import { describe, expect, test } from "bun:test";
 import {
+  CAPTURE_STAGES,
+  STAGE_ORDER,
   checkConversion,
   checkConversionStart,
   checkStageTransition,
   hasValidAppraisal,
   isDocComplete,
+  isDocValidatedByTeam,
   normalizeDocStatus,
+  normalizeStage,
+  stageLabel,
 } from "./capture-rules";
 
-const base = { estimatedPrice: null as number | null, convertedPropertyId: null as number | null };
+const base = {
+  docStatus: null as string | null,
+  estimatedPrice: null as number | null,
+  convertedPropertyId: null as number | null,
+};
 
-describe("ordem obrigatoria das etapas", () => {
-  test("novo_contato -> avaliacao e permitido", () => {
-    expect(checkStageTransition({ ...base, from: "novo_contato", to: "avaliacao" }).ok).toBe(true);
+/** Captação pronta para converter no fluxo V3. */
+const pronta = {
+  stage: "validacao",
+  docStatus: "completo",
+  estimatedPrice: 480000,
+  convertedPropertyId: null as number | null,
+};
+
+describe("fluxo V3: NOVO CONTATO -> DOCUMENTACAO -> VALIDACAO -> CAPTADO", () => {
+  test("a ordem do funil nao tem mais AVALIACAO como etapa", () => {
+    expect(STAGE_ORDER).toEqual(["novo_contato", "documentacao", "validacao", "captado"]);
+    expect(CAPTURE_STAGES).not.toContain("avaliacao");
   });
 
-  test("novo_contato -> documentacao e bloqueado (pular etapa)", () => {
-    const r = checkStageTransition({ ...base, from: "novo_contato", to: "documentacao" });
+  test("novo_contato -> documentacao e permitido sem preco nenhum", () => {
+    // A avaliacao saiu do caminho: preco agora pertence a VALIDACAO.
+    expect(checkStageTransition({ ...base, from: "novo_contato", to: "documentacao" }).ok).toBe(true);
+  });
+
+  test("novo_contato -> validacao e bloqueado (pular etapa)", () => {
+    const r = checkStageTransition({ ...base, from: "novo_contato", to: "validacao", docStatus: "completo" });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toContain("pular etapas");
   });
 
-  test("avaliacao -> documentacao exige avaliacao registrada", () => {
-    const sem = checkStageTransition({ ...base, from: "avaliacao", to: "documentacao" });
-    expect(sem.ok).toBe(false);
-    if (!sem.ok) expect(sem.message).toContain("Registre a avaliação");
-
-    const com = checkStageTransition({ ...base, from: "avaliacao", to: "documentacao", estimatedPrice: 480000 });
-    expect(com.ok).toBe(true);
-  });
-
-  test("estimated_price zero ou negativo nao conta como avaliacao", () => {
-    expect(checkStageTransition({ ...base, from: "avaliacao", to: "documentacao", estimatedPrice: 0 }).ok).toBe(false);
-    expect(checkStageTransition({ ...base, from: "avaliacao", to: "documentacao", estimatedPrice: -1 }).ok).toBe(false);
+  test("documentacao -> validacao exige documentacao fechada", () => {
+    for (const docStatus of [null, "nao_iniciado", "solicitado", "pendente", "parcial"]) {
+      const r = checkStageTransition({ ...base, from: "documentacao", to: "validacao", docStatus });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.message).toContain("Conclua a documentação");
+    }
+    expect(checkStageTransition({ ...base, from: "documentacao", to: "validacao", docStatus: "completo" }).ok).toBe(true);
+    expect(
+      checkStageTransition({ ...base, from: "documentacao", to: "validacao", docStatus: "validado_pela_equipe" }).ok,
+    ).toBe(true);
   });
 
   test("retroceder e permitido entre etapas ativas", () => {
-    expect(checkStageTransition({ ...base, from: "documentacao", to: "avaliacao", estimatedPrice: 480000 }).ok).toBe(true);
-    expect(checkStageTransition({ ...base, from: "documentacao", to: "novo_contato", estimatedPrice: 480000 }).ok).toBe(true);
+    expect(checkStageTransition({ ...base, from: "validacao", to: "documentacao" }).ok).toBe(true);
+    expect(checkStageTransition({ ...base, from: "validacao", to: "novo_contato" }).ok).toBe(true);
+    expect(checkStageTransition({ ...base, from: "documentacao", to: "novo_contato" }).ok).toBe(true);
   });
 
   test("perdido e permitido de qualquer etapa ativa", () => {
-    expect(checkStageTransition({ ...base, from: "novo_contato", to: "perdido" }).ok).toBe(true);
-    expect(checkStageTransition({ ...base, from: "documentacao", to: "perdido" }).ok).toBe(true);
+    for (const from of ["novo_contato", "documentacao", "validacao", "avaliacao"]) {
+      expect(checkStageTransition({ ...base, from, to: "perdido" }).ok).toBe(true);
+    }
   });
 
   test("de perdido so se sai por Reabrir", () => {
-    const r = checkStageTransition({ ...base, from: "perdido", to: "avaliacao" });
+    const r = checkStageTransition({ ...base, from: "perdido", to: "documentacao" });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toContain("Reabrir");
+  });
+
+  test("etapa desconhecida e rejeitada", () => {
+    expect(checkStageTransition({ ...base, from: "hackeado", to: "documentacao" }).ok).toBe(false);
+    expect(checkStageTransition({ ...base, from: "", to: "documentacao" }).ok).toBe(false);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Compatibilidade com o valor legado `avaliacao`.
+ *
+ * A decisao fechada com o usuario e: compatibilidade SOMENTE NA LEITURA.
+ * O valor gravado nao e alterado, nenhum UPDATE em massa e feito, e o
+ * historico antigo fica intacto. Mesmo padrao ja usado para `pendente`.
+ * ------------------------------------------------------------------------ */
+describe("captacoes antigas em avaliacao sao lidas como DOCUMENTACAO", () => {
+  test("normalizeStage traduz o legado", () => {
+    expect(normalizeStage("avaliacao")).toBe("documentacao");
+    expect(stageLabel("avaliacao")).toBe("DOCUMENTAÇÃO");
+  });
+
+  test("etapas canonicas passam direto", () => {
+    for (const stage of CAPTURE_STAGES) expect(normalizeStage(stage)).toBe(stage);
+  });
+
+  test("valor desconhecido devolve null e nao inventa etapa", () => {
+    expect(normalizeStage("qualquer_coisa")).toBeNull();
+    expect(normalizeStage(null)).toBeNull();
+    expect(normalizeStage(undefined)).toBeNull();
+  });
+
+  test("uma captacao legada em avaliacao avanca para VALIDACAO como se fosse DOCUMENTACAO", () => {
+    expect(checkStageTransition({ ...base, from: "avaliacao", to: "validacao", docStatus: "completo" }).ok).toBe(true);
+    // E continua sem poder pular direto para CAPTADO.
+    expect(checkStageTransition({ ...base, from: "avaliacao", to: "captado" }).ok).toBe(false);
+  });
+
+  test("reenviar o valor legado como destino nao quebra (aba antiga do navegador)", () => {
+    // "avaliacao" chega como DOCUMENTACAO: de novo_contato e um passo valido.
+    expect(checkStageTransition({ ...base, from: "novo_contato", to: "avaliacao" }).ok).toBe(true);
+  });
+
+  test("conversao aceita a etapa legada apenas se ela ja passou por VALIDACAO", () => {
+    // Legado `avaliacao` == DOCUMENTACAO, que NAO converte: falta VALIDACAO.
+    const r = checkConversionStart({ ...pronta, stage: "avaliacao" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain("VALIDAÇÃO");
   });
 });
 
 describe("CAPTADO nunca e manual", () => {
   test("setStage para captado e sempre bloqueado", () => {
-    for (const from of ["novo_contato", "avaliacao", "documentacao"]) {
-      const r = checkStageTransition({ ...base, from, to: "captado", estimatedPrice: 480000 });
+    for (const from of ["novo_contato", "avaliacao", "documentacao", "validacao"]) {
+      const r = checkStageTransition({ ...base, from, to: "captado", docStatus: "completo", estimatedPrice: 480000 });
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.message).toContain("Vincular imóvel e captar");
     }
   });
 
   test("captacao ja convertida e terminal", () => {
-    const r = checkStageTransition({ from: "captado", to: "documentacao", estimatedPrice: 480000, convertedPropertyId: 12 });
+    const r = checkStageTransition({ ...base, from: "captado", to: "documentacao", convertedPropertyId: 12 });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("CONFLICT");
   });
 });
 
 describe("conversao em imovel", () => {
-  const ok = { stage: "documentacao", docStatus: "completo", estimatedPrice: 480000, convertedPropertyId: null, propertyId: 12 };
+  const ok = { ...pronta, propertyId: 12 };
 
-  test("documentacao completa + avaliacao + etapa correta libera a conversao", () => {
+  test("VALIDACAO + documentacao fechada + preco libera a conversao", () => {
     expect(checkConversion(ok).ok).toBe(true);
+    expect(checkConversion({ ...ok, docStatus: "validado_pela_equipe" }).ok).toBe(true);
   });
 
   test("doc_status incompleto bloqueia a conversao", () => {
@@ -83,16 +154,17 @@ describe("conversao em imovel", () => {
     }
   });
 
-  test("sem avaliacao bloqueia a conversao", () => {
+  test("sem preco validado bloqueia a conversao", () => {
     const r = checkConversion({ ...ok, estimatedPrice: null });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toContain("avaliação");
+    if (!r.ok) expect(r.message).toContain("avaliado");
   });
 
-  test("fora de DOCUMENTACAO bloqueia a conversao", () => {
-    const r = checkConversion({ ...ok, stage: "avaliacao" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toContain("DOCUMENTAÇÃO");
+  test("fora de VALIDACAO bloqueia a conversao", () => {
+    for (const stage of ["novo_contato", "documentacao", "avaliacao", "perdido"]) {
+      const r = checkConversion({ ...ok, stage });
+      expect(r.ok).toBe(false);
+    }
   });
 
   test("reentrada com o mesmo imovel e idempotente", () => {
@@ -107,7 +179,7 @@ describe("conversao em imovel", () => {
   });
 });
 
-describe("doc_status mantem compatibilidade com o legado", () => {
+describe("doc_status: status novos e compatibilidade com o legado", () => {
   test("pendente antigo e lido como solicitado", () => {
     expect(normalizeDocStatus("pendente")).toBe("solicitado");
     expect(normalizeDocStatus("solicitado")).toBe("solicitado");
@@ -117,18 +189,29 @@ describe("doc_status mantem compatibilidade com o legado", () => {
     expect(normalizeDocStatus("nao_iniciado")).toBe("nao_iniciado");
     expect(normalizeDocStatus("parcial")).toBe("parcial");
     expect(normalizeDocStatus("completo")).toBe("completo");
+    expect(normalizeDocStatus("validado_pela_equipe")).toBe("validado_pela_equipe");
   });
 
   test("valor desconhecido ou nulo cai em nao_iniciado", () => {
     expect(normalizeDocStatus(null)).toBe("nao_iniciado");
     expect(normalizeDocStatus(undefined)).toBe("nao_iniciado");
     expect(normalizeDocStatus("qualquer_coisa")).toBe("nao_iniciado");
+    expect(normalizeDocStatus("COMPLETO")).toBe("nao_iniciado");
   });
 
-  test("so completo libera conversao", () => {
+  test("documentacao fechada = completo OU validado_pela_equipe", () => {
     expect(isDocComplete("completo")).toBe(true);
+    expect(isDocComplete("validado_pela_equipe")).toBe(true);
     expect(isDocComplete("pendente")).toBe(false);
     expect(isDocComplete("parcial")).toBe(false);
+    expect(isDocComplete("solicitado")).toBe(false);
+    expect(isDocComplete("nao_iniciado")).toBe(false);
+    expect(isDocComplete(null)).toBe(false);
+  });
+
+  test("isDocValidatedByTeam distingue validacao da equipe de upload completo", () => {
+    expect(isDocValidatedByTeam("validado_pela_equipe")).toBe(true);
+    expect(isDocValidatedByTeam("completo")).toBe(false);
   });
 });
 
@@ -148,107 +231,142 @@ describe("hasValidAppraisal", () => {
 });
 
 /* ---------------------------------------------------------------------------
- * Guardas reportadas em producao na captacao #4 (07/09/2026).
- *
- * Os testes abaixo sao os 5 casos pedidos explicitamente. Eles cobrem a REGRA;
- * a fiacao no handler e o artefato realmente servido pela Vercel sao cobertos
- * em `routes/capture-guards.test.ts` — sem esse segundo arquivo a regra pode
- * estar certa e mesmo assim nao chegar em producao, que foi exatamente o que
- * aconteceu.
+ * Testes numerados do pedido (secao 29) cobertos por este modulo.
  * ------------------------------------------------------------------------ */
-describe("guardas do funil (casos reportados na captacao #4)", () => {
-  // 1. setStage(documentacao) sem estimated_price -> rejeita
-  test("1. avancar para DOCUMENTACAO sem avaliacao e rejeitado", () => {
-    for (const from of ["novo_contato", "avaliacao"]) {
-      for (const estimatedPrice of [null, undefined, 0, -1, Number.NaN]) {
-        const result = checkStageTransition({
-          from,
-          to: "documentacao",
-          estimatedPrice: estimatedPrice as number | null,
-          convertedPropertyId: null,
-        });
-        expect(result.ok).toBe(false);
-      }
-    }
-    const direct = checkStageTransition({ ...base, from: "avaliacao", to: "documentacao" });
-    expect(direct.ok).toBe(false);
-    if (!direct.ok) {
-      expect(direct.code).toBe("FORBIDDEN");
-      expect(direct.message).toContain("Registre a avaliação");
-    }
+describe("teste 7 — documentacao solicitada", () => {
+  test("solicitado nao fecha a documentacao e nao libera VALIDACAO", () => {
+    expect(normalizeDocStatus("solicitado")).toBe("solicitado");
+    expect(isDocComplete("solicitado")).toBe(false);
+    const r = checkStageTransition({ ...base, from: "documentacao", to: "validacao", docStatus: "solicitado" });
+    expect(r.ok).toBe(false);
   });
 
-  // 2. setStage(documentacao) com avaliacao -> aceita
-  test("2. avancar de AVALIACAO para DOCUMENTACAO com avaliacao e aceito", () => {
+  test("solicitado nao libera a conversao", () => {
+    expect(checkConversionStart({ ...pronta, docStatus: "solicitado" }).ok).toBe(false);
+  });
+});
+
+describe("teste 8 — documentacao parcial", () => {
+  test("parcial e um estado proprio, nem nao_iniciado nem completo", () => {
+    expect(normalizeDocStatus("parcial")).toBe("parcial");
+    expect(isDocComplete("parcial")).toBe(false);
+    expect(isDocValidatedByTeam("parcial")).toBe(false);
+  });
+
+  test("parcial nao avanca para VALIDACAO nem converte", () => {
+    expect(checkStageTransition({ ...base, from: "documentacao", to: "validacao", docStatus: "parcial" }).ok).toBe(false);
+    expect(checkConversionStart({ ...pronta, docStatus: "parcial" }).ok).toBe(false);
+  });
+
+  test("mas a captacao pode continuar em DOCUMENTACAO e retroceder", () => {
+    expect(checkStageTransition({ ...base, from: "documentacao", to: "novo_contato", docStatus: "parcial" }).ok).toBe(true);
+  });
+});
+
+describe("teste 9 — documentacao validada pela equipe", () => {
+  test("vale o mesmo que completo para avancar e para converter", () => {
     expect(
-      checkStageTransition({
-        from: "avaliacao",
-        to: "documentacao",
-        estimatedPrice: 480000,
-        convertedPropertyId: null,
-      }).ok,
+      checkStageTransition({ ...base, from: "documentacao", to: "validacao", docStatus: "validado_pela_equipe" }).ok,
     ).toBe(true);
-    // Continua sendo proibido pular NOVO CONTATO -> DOCUMENTACAO, mesmo avaliado.
-    expect(
-      checkStageTransition({
-        from: "novo_contato",
-        to: "documentacao",
-        estimatedPrice: 480000,
-        convertedPropertyId: null,
-      }).ok,
-    ).toBe(false);
+    expect(checkConversionStart({ ...pronta, docStatus: "validado_pela_equipe" }).ok).toBe(true);
   });
 
-  // 3. iniciar conversao com doc_status != completo -> rejeita
-  test("3. iniciar conversao com documentacao incompleta e rejeitado", () => {
-    for (const docStatus of [null, undefined, "nao_iniciado", "solicitado", "pendente", "parcial"]) {
-      const result = checkConversionStart({
-        stage: "documentacao",
-        docStatus: docStatus as string | null,
+  test("continua distinguivel de completo, para o historico nao mentir", () => {
+    // O proprietario NAO enviou upload: quem fechou foi a equipe. O status
+    // preserva essa diferenca em vez de fingir documento recebido.
+    expect(isDocValidatedByTeam("validado_pela_equipe")).toBe(true);
+    expect(isDocValidatedByTeam("completo")).toBe(false);
+    expect(normalizeDocStatus("validado_pela_equipe")).not.toBe("completo");
+  });
+});
+
+describe("teste 10 — validacao com preco", () => {
+  test("em VALIDACAO, sem preco, a captacao nao converte", () => {
+    for (const estimatedPrice of [null, undefined, 0, -1, Number.NaN]) {
+      const r = checkConversionStart({ ...pronta, estimatedPrice: estimatedPrice as number | null });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.message).toContain("VALIDAÇÃO");
+    }
+  });
+
+  test("em VALIDACAO, com preco e documentacao fechada, converte", () => {
+    expect(checkConversionStart(pronta).ok).toBe(true);
+  });
+
+  test("o preco nao e mais exigido para entrar em DOCUMENTACAO", () => {
+    // Era a regra antiga (AVALIACAO -> DOCUMENTACAO). Agora preco e de VALIDACAO.
+    expect(checkStageTransition({ ...base, from: "novo_contato", to: "documentacao", estimatedPrice: null }).ok).toBe(true);
+  });
+});
+
+describe("teste 19 — cancelamento nao marca CAPTADO", () => {
+  test("sem propertyId nao existe conversao possivel", () => {
+    // Cancelar o Cadastro Premium simplesmente nunca chama markConverted.
+    // A regra garante que, mesmo se chamado, nada abaixo de uma captacao
+    // pronta passa — e CAPTADO nunca vem de setStage.
+    expect(checkStageTransition({ ...base, from: "validacao", to: "captado", ...pronta }).ok).toBe(false);
+  });
+
+  test("captacao pronta permanece nao convertida ate o imovel existir", () => {
+    expect(pronta.convertedPropertyId).toBeNull();
+    expect(checkConversionStart(pronta).ok).toBe(true); // pode iniciar
+    // ...mas iniciar nao e converter: quem converte e markConverted com o id.
+  });
+});
+
+describe("teste 22 — CAPTADO somente depois da criacao do imovel", () => {
+  test("nenhum caminho de setStage grava captado", () => {
+    for (const from of [...CAPTURE_STAGES, "avaliacao", "hackeado", ""]) {
+      const r = checkStageTransition({
+        from,
+        to: "captado",
+        docStatus: "completo",
         estimatedPrice: 480000,
         convertedPropertyId: null,
       });
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.message).toContain("COMPLETO");
-    }
-    // Sem avaliacao tambem nao inicia, mesmo com documentacao completa.
-    expect(
-      checkConversionStart({
-        stage: "documentacao",
-        docStatus: "completo",
-        estimatedPrice: null,
-        convertedPropertyId: null,
-      }).ok,
-    ).toBe(false);
-    // Fora de DOCUMENTACAO nao inicia.
-    for (const stage of ["novo_contato", "avaliacao", "perdido"]) {
-      expect(
-        checkConversionStart({
-          stage,
-          docStatus: "completo",
-          estimatedPrice: 480000,
-          convertedPropertyId: null,
-        }).ok,
-      ).toBe(false);
+      expect(r.ok).toBe(false);
     }
   });
 
-  // 4. doc_status completo -> permite seguir para o Cadastro Premium
-  test("4. DOCUMENTACAO + avaliacao + doc completo libera o Cadastro Premium", () => {
-    const ready = {
-      stage: "documentacao",
-      docStatus: "completo",
-      estimatedPrice: 480000,
-      convertedPropertyId: null,
-    };
-    expect(checkConversionStart(ready).ok).toBe(true);
-    expect(checkConversion({ ...ready, propertyId: 12 }).ok).toBe(true);
+  test("captado exige um propertyId real vindo do Cadastro Premium", () => {
+    const r = checkConversion({ ...pronta, propertyId: 77 });
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("teste 23 — historico nao duplica", () => {
+  test("reentrada com o mesmo imovel devolve already, para nao gravar 2 eventos", () => {
+    const first = checkConversion({ ...pronta, propertyId: 12 });
+    expect(first.ok).toBe(true);
+    expect("already" in first).toBe(false);
+
+    const second = checkConversion({ ...pronta, convertedPropertyId: 12, propertyId: 12 });
+    expect(second).toEqual({ ok: true, already: true });
+
+    const third = checkConversion({ ...pronta, convertedPropertyId: 12, propertyId: 12 });
+    expect(third).toEqual({ ok: true, already: true });
   });
 
-  // 5. request direto nao burla: nenhuma combinacao invalida passa
-  test("5. nenhuma combinacao invalida de entrada passa nas regras", () => {
-    const stages = ["novo_contato", "avaliacao", "documentacao", "captado", "perdido", "hackeado", ""];
-    const docs = [null, "nao_iniciado", "solicitado", "pendente", "parcial", "completo", "COMPLETO", "sim"];
+  test("duplo clique em outro imovel nao gera evento nenhum: e conflito", () => {
+    const r = checkConversion({ ...pronta, convertedPropertyId: 12, propertyId: 13 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("CONFLICT");
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Varredura: nenhuma combinacao invalida de entrada passa.
+ *
+ * Herdado das guardas da captacao #4 e reescrito para o fluxo V3. A fiacao no
+ * handler e o artefato realmente servido pela Vercel sao cobertos em
+ * `routes/capture-guards.test.ts` — sem esse segundo arquivo a regra pode
+ * estar certa e mesmo assim nao chegar em producao, que foi exatamente o que
+ * aconteceu.
+ * ------------------------------------------------------------------------ */
+describe("request direto nao burla as regras", () => {
+  test("nenhuma combinacao invalida de entrada passa", () => {
+    const stages = ["novo_contato", "documentacao", "validacao", "captado", "perdido", "avaliacao", "hackeado", ""];
+    const docs = [null, "nao_iniciado", "solicitado", "pendente", "parcial", "completo", "validado_pela_equipe", "COMPLETO", "sim"];
     const prices = [null, 0, -5, 480000];
 
     for (const stage of stages) {
@@ -256,7 +374,9 @@ describe("guardas do funil (casos reportados na captacao #4)", () => {
         for (const estimatedPrice of prices) {
           const start = checkConversionStart({ stage, docStatus, estimatedPrice, convertedPropertyId: null });
           const shouldPass =
-            stage === "documentacao" && docStatus === "completo" && estimatedPrice === 480000;
+            stage === "validacao" &&
+            (docStatus === "completo" || docStatus === "validado_pela_equipe") &&
+            estimatedPrice === 480000;
           expect(start.ok).toBe(shouldPass);
 
           // checkConversion delega em checkConversionStart: mesmo veredito.
@@ -278,7 +398,13 @@ describe("guardas do funil (casos reportados na captacao #4)", () => {
     // CAPTADO manual continua proibido por qualquer caminho.
     for (const from of stages) {
       expect(
-        checkStageTransition({ from, to: "captado", estimatedPrice: 480000, convertedPropertyId: null }).ok,
+        checkStageTransition({
+          from,
+          to: "captado",
+          docStatus: "completo",
+          estimatedPrice: 480000,
+          convertedPropertyId: null,
+        }).ok,
       ).toBe(false);
     }
   });

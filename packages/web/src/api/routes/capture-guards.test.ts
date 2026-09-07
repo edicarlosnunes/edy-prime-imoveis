@@ -40,6 +40,8 @@ describe("fiacao das guardas nos handlers", () => {
     const body = procedureBody(routeSource, "setStage");
     expect(body).toContain("checkStageTransition");
     expect(body).toContain("estimatedPrice: capture.estimatedPrice");
+    // VALIDAÇÃO depende da documentação: sem docStatus a guarda decidiria no vazio.
+    expect(body).toContain("docStatus: capture.docStatus");
     // A validação vem antes do primeiro update no banco.
     expect(body.indexOf("checkStageTransition")).toBeLessThan(body.indexOf(".update("));
     expect(body).toContain("throw new ORPCError(allowed.code");
@@ -58,9 +60,10 @@ describe("fiacao das guardas nos handlers", () => {
 /* Marcadores: mensagens e ações que SÓ existem se as guardas estiverem no
    bundle. Se alguma mensagem mudar, atualize aqui e rode build:api de novo. */
 const BUNDLE_MARKERS = [
-  "antes de avançar para DOCUMENTAÇÃO",
+  "antes de avançar para VALIDAÇÃO",
   "status COMPLETO",
-  "precisa estar em DOCUMENTAÇÃO para ser captada",
+  "DOCUMENTAÇÃO VALIDADA PELA EQUIPE",
+  "precisa estar em VALIDAÇÃO para ser captada",
   "capture_checklist",
 ];
 

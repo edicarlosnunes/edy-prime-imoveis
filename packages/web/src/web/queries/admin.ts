@@ -284,7 +284,7 @@ export function useChangePassword() {
 }
 
 /* --------------------------------------------------------- captação / Radar */
-export function useAdminCaptures(filters?: { search?: string; city?: string; stage?: "novo_contato" | "avaliacao" | "documentacao" | "captado" | "perdido"; source?: string }) {
+export function useAdminCaptures(filters?: { search?: string; city?: string; stage?: "novo_contato" | "documentacao" | "validacao" | "captado" | "perdido"; source?: string }) {
   return useQuery(orpc.adminCaptures.list.queryOptions({ input: filters ?? {} }));
 }
 export function useCapture(id: number | null) {

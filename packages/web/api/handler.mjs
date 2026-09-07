@@ -50129,16 +50129,33 @@ var adminOwners = {
 init_schema();
 
 // packages/web/src/api/lib/capture-rules.ts
-var CAPTURE_STAGES = ["novo_contato", "avaliacao", "documentacao", "captado", "perdido"];
-var STAGE_ORDER = ["novo_contato", "avaliacao", "documentacao", "captado"];
+var CAPTURE_STAGES = ["novo_contato", "documentacao", "validacao", "captado", "perdido"];
+var LEGACY_STAGE = "avaliacao";
+var STAGE_INPUTS = [...CAPTURE_STAGES, LEGACY_STAGE];
+var STAGE_ORDER = ["novo_contato", "documentacao", "validacao", "captado"];
 var STAGE_LABELS = {
   novo_contato: "NOVO CONTATO",
-  avaliacao: "AVALIAÇÃO",
   documentacao: "DOCUMENTAÇÃO",
+  validacao: "VALIDAÇÃO",
   captado: "CAPTADO",
   perdido: "PERDIDO"
 };
-var DOC_STATUSES2 = ["nao_iniciado", "solicitado", "parcial", "completo", "pendente"];
+function normalizeStage(raw2) {
+  if (raw2 === LEGACY_STAGE)
+    return "documentacao";
+  if (typeof raw2 === "string" && CAPTURE_STAGES.includes(raw2)) {
+    return raw2;
+  }
+  return null;
+}
+var DOC_STATUSES2 = [
+  "nao_iniciado",
+  "solicitado",
+  "parcial",
+  "completo",
+  "validado_pela_equipe",
+  "pendente"
+];
 function normalizeDocStatus(raw2) {
   if (raw2 === "pendente" || raw2 === "solicitado")
     return "solicitado";
@@ -50146,19 +50163,26 @@ function normalizeDocStatus(raw2) {
     return "parcial";
   if (raw2 === "completo")
     return "completo";
+  if (raw2 === "validado_pela_equipe")
+    return "validado_pela_equipe";
   return "nao_iniciado";
 }
+function isDocValidatedByTeam(raw2) {
+  return normalizeDocStatus(raw2) === "validado_pela_equipe";
+}
 function isDocComplete(raw2) {
-  return normalizeDocStatus(raw2) === "completo";
+  const status = normalizeDocStatus(raw2);
+  return status === "completo" || status === "validado_pela_equipe";
 }
 function hasValidAppraisal(capture) {
   const value2 = capture.estimatedPrice;
   return typeof value2 === "number" && Number.isFinite(value2) && value2 > 0;
 }
-var stageIndex = (stage) => STAGE_ORDER.indexOf(stage);
+var stageIndex = (stage) => stage === null ? -1 : STAGE_ORDER.indexOf(stage);
 var deny = (code, message) => ({ ok: false, code, message });
 function checkStageTransition(input) {
-  const { from, to } = input;
+  const from = normalizeStage(input.from);
+  const to = normalizeStage(input.to);
   if (to === "captado") {
     return deny("FORBIDDEN", 'CAPTADO não é manual: use "Vincular imóvel e captar" para criar o imóvel e concluir a captação');
   }
@@ -50180,26 +50204,27 @@ function checkStageTransition(input) {
   if (toIdx - fromIdx > 1) {
     return deny("FORBIDDEN", `Não é possível pular etapas: siga ${STAGE_LABELS[STAGE_ORDER[fromIdx]]} → ${STAGE_LABELS[STAGE_ORDER[fromIdx + 1]]}`);
   }
-  if (to === "documentacao" && !hasValidAppraisal(input)) {
-    return deny("FORBIDDEN", "Registre a avaliação (valor estimado) antes de avançar para DOCUMENTAÇÃO");
+  if (to === "validacao" && !isDocComplete(input.docStatus)) {
+    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de avançar para VALIDAÇÃO");
   }
   return { ok: true };
 }
 function checkConversionStart(input) {
+  const stage = normalizeStage(input.stage);
   if (input.convertedPropertyId != null) {
     return deny("CONFLICT", "Esta captação já foi convertida em outro imóvel");
   }
-  if (input.stage === "perdido") {
+  if (stage === "perdido") {
     return deny("CONFLICT", 'Captação perdida: use "Reabrir" antes de captar');
   }
-  if (!hasValidAppraisal(input)) {
-    return deny("FORBIDDEN", "Registre a avaliação (valor estimado) antes de captar");
-  }
-  if (input.stage !== "documentacao") {
-    return deny("FORBIDDEN", "A captação precisa estar em DOCUMENTAÇÃO para ser captada");
-  }
   if (!isDocComplete(input.docStatus)) {
-    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO) antes de captar");
+    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de captar");
+  }
+  if (stage !== "validacao") {
+    return deny("FORBIDDEN", "A captação precisa estar em VALIDAÇÃO para ser captada");
+  }
+  if (!hasValidAppraisal(input)) {
+    return deny("FORBIDDEN", "Registre o valor avaliado/validado em VALIDAÇÃO antes de captar");
   }
   return { ok: true };
 }
@@ -50269,7 +50294,7 @@ function toggleChecklistItem(notes, key, value2) {
 }
 
 // packages/web/src/api/routes/admin-captures.ts
-var STAGES = CAPTURE_STAGES;
+var STAGES = STAGE_INPUTS;
 var digits2 = (value2) => String(value2 ?? "").replace(/\D/g, "");
 async function audit2(context, action, id, detail) {
   await context.db.insert(auditLog).values({
@@ -50283,12 +50308,13 @@ async function audit2(context, action, id, detail) {
 }
 async function syncOwnerStatus(context, ownerId) {
   const rows = await context.db.select({ stage: propertyCaptures.stage }).from(propertyCaptures).where(eq(propertyCaptures.ownerId, ownerId));
+  const stages = rows.map((row) => normalizeStage(row.stage));
   let next = "prospeccao";
-  if (rows.some((row) => row.stage === "captado"))
+  if (stages.some((stage) => stage === "captado"))
     next = "captado";
-  else if (rows.some((row) => row.stage === "avaliacao" || row.stage === "documentacao"))
+  else if (stages.some((stage) => stage === "documentacao" || stage === "validacao"))
     next = "em_negociacao";
-  else if (rows.length > 0 && rows.every((row) => row.stage === "perdido"))
+  else if (stages.length > 0 && stages.every((stage) => stage === "perdido"))
     next = "perdido";
   await context.db.update(owners).set({ captureStatus: next }).where(eq(owners.id, ownerId));
 }
@@ -50328,7 +50354,7 @@ var adminCaptures = {
     return captures.map((capture) => ({ ...capture, owner: ownerById.get(capture.ownerId) ?? null })).filter((row) => {
       if (input?.city && row.city !== input.city)
         return false;
-      if (input?.stage && row.stage !== input.stage)
+      if (input?.stage && normalizeStage(row.stage) !== normalizeStage(input.stage))
         return false;
       if (input?.source && row.source !== input.source)
         return false;
@@ -50401,11 +50427,12 @@ var adminCaptures = {
     const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
     if (!capture)
       throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
-    if (capture.stage === input.stage)
+    if (normalizeStage(capture.stage) === normalizeStage(input.stage))
       return { ok: true, changed: false };
     const allowed = checkStageTransition({
       from: capture.stage,
       to: input.stage,
+      docStatus: capture.docStatus,
       estimatedPrice: capture.estimatedPrice,
       convertedPropertyId: capture.convertedPropertyId
     });
@@ -50467,17 +50494,35 @@ var adminCaptures = {
     await audit2(context, "capture_appraisal_saved", input.id, input.estimatedPrice === null ? "pendente" : String(input.estimatedPrice));
     return { ok: true, changed: true };
   }),
-  setDocStatus: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), docStatus: exports_external.enum(DOC_STATUSES2) })).handler(async ({ input, context }) => {
+  setDocStatus: adminBase.input(exports_external.object({
+    id: exports_external.number().int().positive(),
+    docStatus: exports_external.enum(DOC_STATUSES2),
+    note: exports_external.string().max(2000).nullable().optional()
+  })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
     if (!capture)
       throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const note = input.note?.trim() || null;
+    const validatedByTeam = isDocValidatedByTeam(input.docStatus);
+    if (validatedByTeam && !note) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Informe a observação de quem conferiu a documentação para marcar DOCUMENTAÇÃO VALIDADA PELA EQUIPE"
+      });
+    }
     if (normalizeDocStatus(capture.docStatus) === normalizeDocStatus(input.docStatus)) {
       return { ok: true, changed: false };
     }
-    const changed = await context.db.update(propertyCaptures).set({ docStatus: input.docStatus, updatedAt: new Date }).where(and(eq(propertyCaptures.id, input.id), eq(propertyCaptures.docStatus, capture.docStatus))).returning({ id: propertyCaptures.id });
+    const now2 = new Date;
+    const changed = await context.db.update(propertyCaptures).set({
+      docStatus: input.docStatus,
+      docValidatedBy: validatedByTeam ? context.user.name : null,
+      docValidatedAt: validatedByTeam ? now2 : null,
+      docValidationNote: validatedByTeam ? note : null,
+      updatedAt: now2
+    }).where(and(eq(propertyCaptures.id, input.id), eq(propertyCaptures.docStatus, capture.docStatus))).returning({ id: propertyCaptures.id });
     if (changed.length === 0)
       return { ok: true, changed: false };
-    await audit2(context, "capture_doc_status", input.id, input.docStatus);
+    await audit2(context, validatedByTeam ? "capture_doc_validated_by_team" : "capture_doc_status", input.id, validatedByTeam ? `DOCUMENTAÇÃO VALIDADA PELA EQUIPE — ${note}` : input.docStatus);
     return { ok: true, changed: true };
   }),
   setChecklist: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), key: exports_external.string().min(1).max(40), value: exports_external.boolean() })).handler(async ({ input, context }) => {

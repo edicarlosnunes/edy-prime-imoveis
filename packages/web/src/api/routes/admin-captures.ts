@@ -4,15 +4,26 @@ import { ORPCError } from "@orpc/server";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
 import {
-  CAPTURE_STAGES,
+  type CaptureStage,
   DOC_STATUSES,
+  STAGE_INPUTS,
   checkConversion,
   checkStageTransition,
+  isDocValidatedByTeam,
   normalizeDocStatus,
+  normalizeStage,
 } from "../lib/capture-rules";
 import { CHECKLIST_ITEMS, isChecklistKey, toggleChecklistItem } from "../lib/capture-checklist";
 
-const STAGES = CAPTURE_STAGES;
+/**
+ * Etapas aceitas na ENTRADA.
+ *
+ * Inclui o valor legado `avaliacao` de propósito: uma aba antiga do navegador
+ * (bundle em cache) ainda manda esse valor, e recusar com erro de validação
+ * seria pior que traduzir para DOCUMENTAÇÃO, que é o que ele significa no
+ * fluxo V3. A tradução é `normalizeStage`, e nenhuma linha antiga é reescrita.
+ */
+const STAGES = STAGE_INPUTS;
 const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
 
 async function audit(context: any, action: string, id: number, detail?: string) {
@@ -32,10 +43,14 @@ async function syncOwnerStatus(context: any, ownerId: number) {
     .from(schema.propertyCaptures)
     .where(eq(schema.propertyCaptures.ownerId, ownerId));
 
+  /* Etapa canônica: `avaliacao` (legado) conta como DOCUMENTAÇÃO. Sem isso um
+     proprietário com captação antiga voltaria para `prospeccao` sem motivo. */
+  const stages: (CaptureStage | null)[] = rows.map((row: any) => normalizeStage(row.stage));
+
   let next: "prospeccao" | "em_negociacao" | "captado" | "perdido" = "prospeccao";
-  if (rows.some((row: any) => row.stage === "captado")) next = "captado";
-  else if (rows.some((row: any) => row.stage === "avaliacao" || row.stage === "documentacao")) next = "em_negociacao";
-  else if (rows.length > 0 && rows.every((row: any) => row.stage === "perdido")) next = "perdido";
+  if (stages.some((stage) => stage === "captado")) next = "captado";
+  else if (stages.some((stage) => stage === "documentacao" || stage === "validacao")) next = "em_negociacao";
+  else if (stages.length > 0 && stages.every((stage) => stage === "perdido")) next = "perdido";
 
   await context.db.update(schema.owners).set({ captureStatus: next }).where(eq(schema.owners.id, ownerId));
 }
@@ -96,7 +111,9 @@ export const adminCaptures = {
         .map((capture) => ({ ...capture, owner: ownerById.get(capture.ownerId) ?? null }))
         .filter((row) => {
           if (input?.city && row.city !== input.city) return false;
-          if (input?.stage && row.stage !== input.stage) return false;
+          /* Compara etapa CANÔNICA: filtrar por DOCUMENTAÇÃO tem que trazer
+             também as captações antigas gravadas como `avaliacao`. */
+          if (input?.stage && normalizeStage(row.stage) !== normalizeStage(input.stage)) return false;
           if (input?.source && row.source !== input.source) return false;
           if (q) {
             const hay = [row.owner?.name, row.owner?.phone, row.city, row.district, row.address, row.propertyType]
@@ -179,11 +196,15 @@ export const adminCaptures = {
   setStage: adminBase.input(z.object({ id: z.number().int().positive(), stage: z.enum(STAGES) })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
     if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
-    // Idempotente: reclique na etapa atual nao gera novo evento de historico.
-    if (capture.stage === input.stage) return { ok: true, changed: false };
+    /* Idempotente: reclique na etapa atual nao gera novo evento de historico.
+       Compara a etapa CANONICA, entao uma captacao antiga gravada como
+       `avaliacao` que receba `documentacao` e reclique, nao alteracao — o valor
+       legado fica no banco exatamente como esta, sem UPDATE e sem historico. */
+    if (normalizeStage(capture.stage) === normalizeStage(input.stage)) return { ok: true, changed: false };
     const allowed = checkStageTransition({
       from: capture.stage,
       to: input.stage,
+      docStatus: capture.docStatus,
       estimatedPrice: capture.estimatedPrice,
       convertedPropertyId: capture.convertedPropertyId,
     });
@@ -250,21 +271,55 @@ export const adminCaptures = {
     return { ok: true, changed: true };
   }),
 
-  setDocStatus: adminBase.input(z.object({ id: z.number().int().positive(), docStatus: z.enum(DOC_STATUSES) })).handler(async ({ input, context }) => {
+  /**
+   * Status da documentação.
+   *
+   * `validado_pela_equipe` cobre o proprietário que não faz upload: a equipe
+   * confere por WhatsApp/telefone/e-mail e registra a validação. Nesse caso a
+   * observação é OBRIGATÓRIA e ficam gravados usuário responsável e data/hora
+   * — é o que substitui o documento, então precisa ter autor. Nenhum upload
+   * falso é criado: `property_docs` não é tocado aqui.
+   */
+  setDocStatus: adminBase.input(z.object({
+    id: z.number().int().positive(),
+    docStatus: z.enum(DOC_STATUSES),
+    note: z.string().max(2000).nullable().optional(),
+  })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
     if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const note = input.note?.trim() || null;
+    const validatedByTeam = isDocValidatedByTeam(input.docStatus);
+    if (validatedByTeam && !note) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Informe a observação de quem conferiu a documentação para marcar DOCUMENTAÇÃO VALIDADA PELA EQUIPE",
+      });
+    }
     // `pendente` legado e `solicitado` sao o mesmo estado: trocar um pelo outro
     // nao e alteracao relevante e nao gera historico (nem reescreve o dado antigo).
     if (normalizeDocStatus(capture.docStatus) === normalizeDocStatus(input.docStatus)) {
       return { ok: true, changed: false };
     }
+    const now = new Date();
+    /* Sair de `validado_pela_equipe` limpa o selo para a ficha nao exibir uma
+       validacao que nao vale mais. O evento original continua no audit_log. */
     const changed = await context.db
       .update(schema.propertyCaptures)
-      .set({ docStatus: input.docStatus, updatedAt: new Date() })
+      .set({
+        docStatus: input.docStatus,
+        docValidatedBy: validatedByTeam ? context.user.name : null,
+        docValidatedAt: validatedByTeam ? now : null,
+        docValidationNote: validatedByTeam ? note : null,
+        updatedAt: now,
+      })
       .where(and(eq(schema.propertyCaptures.id, input.id), eq(schema.propertyCaptures.docStatus, capture.docStatus)))
       .returning({ id: schema.propertyCaptures.id });
     if (changed.length === 0) return { ok: true, changed: false };
-    await audit(context, "capture_doc_status", input.id, input.docStatus);
+    await audit(
+      context,
+      validatedByTeam ? "capture_doc_validated_by_team" : "capture_doc_status",
+      input.id,
+      validatedByTeam ? `DOCUMENTAÇÃO VALIDADA PELA EQUIPE — ${note}` : input.docStatus,
+    );
     return { ok: true, changed: true };
   }),
 
