@@ -3,8 +3,15 @@ import { and, asc, desc, eq, isNull, like, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
+import {
+  CAPTURE_STAGES,
+  DOC_STATUSES,
+  checkConversion,
+  checkStageTransition,
+  normalizeDocStatus,
+} from "../lib/capture-rules";
 
-const STAGES = ["novo_contato", "avaliacao", "documentacao", "captado", "perdido"] as const;
+const STAGES = CAPTURE_STAGES;
 const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
 
 async function audit(context: any, action: string, id: number, detail?: string) {
@@ -173,6 +180,13 @@ export const adminCaptures = {
     if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
     // Idempotente: reclique na etapa atual nao gera novo evento de historico.
     if (capture.stage === input.stage) return { ok: true, changed: false };
+    const allowed = checkStageTransition({
+      from: capture.stage,
+      to: input.stage,
+      estimatedPrice: capture.estimatedPrice,
+      convertedPropertyId: capture.convertedPropertyId,
+    });
+    if (!allowed.ok) throw new ORPCError(allowed.code, { message: allowed.message });
     const now = new Date();
     // Compare-and-set: se dois cliques chegarem juntos, so o primeiro encontra
     // a etapa anterior e devolve linha; o segundo nao audita nada.
@@ -209,22 +223,48 @@ export const adminCaptures = {
   }),
 
   saveAppraisal: adminBase.input(z.object({ id: z.number().int().positive(), estimatedPrice: z.number().nonnegative().nullable(), note: z.string().max(4000).nullable().optional() })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+    if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const note = input.note?.trim() || null;
+    // Idempotente: salvar a mesma avaliacao de novo (reclique/duplo clique) nao
+    // gera segundo capture_appraisal_saved.
+    if (capture.estimatedPrice === input.estimatedPrice && capture.appraisalNote === note) {
+      return { ok: true, changed: false };
+    }
     const now = new Date();
-    await context.db.update(schema.propertyCaptures).set({
+    // Compare-and-set no valor anterior: de dois requests simultaneos, so o
+    // primeiro encontra o estado antigo e audita.
+    const previousPrice = capture.estimatedPrice === null
+      ? isNull(schema.propertyCaptures.estimatedPrice)
+      : eq(schema.propertyCaptures.estimatedPrice, capture.estimatedPrice);
+    const changed = await context.db.update(schema.propertyCaptures).set({
       estimatedPrice: input.estimatedPrice,
       appraisalStatus: input.estimatedPrice === null ? "pendente" : "concluida",
       appraisalAt: input.estimatedPrice === null ? null : now,
-      appraisalNote: input.note?.trim() || null,
+      appraisalNote: note,
       updatedAt: now,
-    }).where(eq(schema.propertyCaptures.id, input.id));
+    }).where(and(eq(schema.propertyCaptures.id, input.id), previousPrice)).returning({ id: schema.propertyCaptures.id });
+    if (changed.length === 0) return { ok: true, changed: false };
     await audit(context, "capture_appraisal_saved", input.id, input.estimatedPrice === null ? "pendente" : String(input.estimatedPrice));
-    return { ok: true };
+    return { ok: true, changed: true };
   }),
 
-  setDocStatus: adminBase.input(z.object({ id: z.number().int().positive(), docStatus: z.enum(["nao_iniciado", "pendente", "parcial", "completo"]) })).handler(async ({ input, context }) => {
-    await context.db.update(schema.propertyCaptures).set({ docStatus: input.docStatus, updatedAt: new Date() }).where(eq(schema.propertyCaptures.id, input.id));
+  setDocStatus: adminBase.input(z.object({ id: z.number().int().positive(), docStatus: z.enum(DOC_STATUSES) })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+    if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    // `pendente` legado e `solicitado` sao o mesmo estado: trocar um pelo outro
+    // nao e alteracao relevante e nao gera historico (nem reescreve o dado antigo).
+    if (normalizeDocStatus(capture.docStatus) === normalizeDocStatus(input.docStatus)) {
+      return { ok: true, changed: false };
+    }
+    const changed = await context.db
+      .update(schema.propertyCaptures)
+      .set({ docStatus: input.docStatus, updatedAt: new Date() })
+      .where(and(eq(schema.propertyCaptures.id, input.id), eq(schema.propertyCaptures.docStatus, capture.docStatus)))
+      .returning({ id: schema.propertyCaptures.id });
+    if (changed.length === 0) return { ok: true, changed: false };
     await audit(context, "capture_doc_status", input.id, input.docStatus);
-    return { ok: true };
+    return { ok: true, changed: true };
   }),
 
   markLost: adminBase.input(z.object({ id: z.number().int().positive(), reason: z.string().min(2).max(120), detail: z.string().max(1000).nullable().optional() })).handler(async ({ input, context }) => {
@@ -254,10 +294,15 @@ export const adminCaptures = {
   markConverted: adminBase.input(z.object({ id: z.number().int().positive(), propertyId: z.number().int().positive() })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
     if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
-    if (capture.convertedPropertyId !== null) {
-      if (capture.convertedPropertyId === input.propertyId) return { ok: true, already: true };
-      throw new ORPCError("CONFLICT", { message: "Esta captação já foi convertida em outro imóvel" });
-    }
+    const allowed = checkConversion({
+      stage: capture.stage,
+      docStatus: capture.docStatus,
+      estimatedPrice: capture.estimatedPrice,
+      convertedPropertyId: capture.convertedPropertyId,
+      propertyId: input.propertyId,
+    });
+    if (!allowed.ok) throw new ORPCError(allowed.code, { message: allowed.message });
+    if ("already" in allowed) return { ok: true, already: true };
     const [property] = await context.db.select({ id: schema.properties.id }).from(schema.properties).where(eq(schema.properties.id, input.propertyId)).limit(1);
     if (!property) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
     const now = new Date();
