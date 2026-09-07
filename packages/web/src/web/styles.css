@@ -579,3 +579,52 @@
     rgba(var(--tone), 0) 70%
   );
 }
+
+/* ==========================================================================
+   Impressão dos documentos (Ficha Técnica e Autorização de Venda)
+   Só o papel: sem barra de trabalho, sem botões, sem fundo de tela.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .doc-screen {
+    background: #fff !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .doc-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    font-size: 10.5pt;
+    line-height: 1.35;
+  }
+
+  .doc-screen button,
+  .doc-screen [data-print="hide"] {
+    display: none !important;
+  }
+
+  .doc-sheet section,
+  .doc-sheet header,
+  .doc-sheet footer {
+    break-inside: avoid;
+  }
+
+  .doc-sheet .doc-sign {
+    break-inside: avoid;
+    break-before: avoid;
+  }
+}
