@@ -29,26 +29,45 @@ import { parseComplements } from "../lib/capture-intake";
 import { parseOwnerPhotos } from "../lib/capture-photos";
 import { allocateSerial } from "../lib/serial-counter";
 
-/* Dados da imobiliária usados no cabeçalho do documento. São os mesmos de
-   /admin → Configurações; os fallbacks são os dados reais já publicados no
-   site, não invenção. */
+/* Dados da imobiliária usados no cabeçalho do documento.
+
+   A FONTE é /admin → Configurações (tabela `settings`): nome, CRECI, CNAI,
+   telefone e e-mail são editáveis lá. Os valores abaixo são apenas rede de
+   segurança para uma base ainda não configurada — e quando algum deles é
+   usado, o documento sai marcado como CONFIGURAÇÃO PENDENTE, para ninguém
+   assinar um papel com dado jurídico vindo de fallback escondido. */
 const BROKER_FALLBACK = {
   name: "Edy Prime Imóveis",
-  creci: "CRECI 134718-F · PERITO CNAI 55.918",
+  creci: "CRECI 134718-F",
+  cnai: "PERITO CNAI 55.918",
   phone: "(13) 99714-1174",
   email: "edyprimeimoveis@gmail.com",
 };
 
-async function brokerOf(context: any) {
+export interface BrokerHeader {
+  name: string;
+  creci: string;
+  phone: string | null;
+  email: string | null;
+  /** campos que vieram do fallback porque Configurações está incompleto */
+  missing: string[];
+}
+
+async function brokerOf(context: any): Promise<BrokerHeader> {
   const [row] = await context.db.select().from(schema.settings).limit(1);
-  if (!row) return BROKER_FALLBACK;
-  const creci = String(row.creci ?? "").trim();
-  return {
-    name: String(row.companyName ?? "").trim() || BROKER_FALLBACK.name,
-    creci: creci || BROKER_FALLBACK.creci,
-    phone: String(row.whatsapp ?? "").trim() || BROKER_FALLBACK.phone,
-    email: String(row.email ?? "").trim() || BROKER_FALLBACK.email,
+  const missing: string[] = [];
+  const pick = (value: unknown, fallback: string, label: string) => {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+    missing.push(label);
+    return fallback;
   };
+  const name = pick(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
+  const creci = pick(row?.creci, BROKER_FALLBACK.creci, "CRECI");
+  const cnai = pick(row?.cnai, BROKER_FALLBACK.cnai, "CNAI");
+  const phone = pick(row?.whatsapp, BROKER_FALLBACK.phone, "telefone");
+  const email = pick(row?.email, BROKER_FALLBACK.email, "e-mail");
+  return { name, creci: cnai ? `${creci} · ${cnai}` : creci, phone, email, missing };
 }
 
 async function documentEvent(
@@ -201,7 +220,10 @@ export const adminDocuments = {
             name: owner?.name ?? null,
             phone: owner?.phone ?? null,
             email: owner?.email ?? null,
-            document: null,
+            /* CPF/CNPJ e RG entram no documento impresso. Ficam congelados no
+               snapshot: corrigir o cadastro depois NÃO altera papel emitido. */
+            document: owner?.document ?? null,
+            rg: owner?.rg ?? null,
           },
           address: {
             cep: capture.cep,

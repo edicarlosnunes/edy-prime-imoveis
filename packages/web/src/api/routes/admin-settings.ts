@@ -9,6 +9,8 @@ const settingsInput = z.object({
   whatsapp: z.string().min(8).max(20),
   email: z.string().min(5).max(160),
   creci: z.string().max(60),
+  /* CNAI = registro de perito avaliador. Impresso nos documentos. */
+  cnai: z.string().max(60).default(""),
   address: z.string().max(300),
   instagram: z.string().max(300),
   facebook: z.string().max(300),
@@ -28,6 +30,7 @@ export const adminSettings = {
       whatsapp: input.whatsapp.replace(/\D/g, ""),
       email: input.email.trim(),
       creci: input.creci.trim(),
+      cnai: input.cnai.trim(),
       address: input.address.trim(),
       instagram: input.instagram.trim(),
       facebook: input.facebook.trim(),

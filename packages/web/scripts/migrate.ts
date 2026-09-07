@@ -516,6 +516,14 @@ const ownerColumns: Record<string, string> = {
   possible_duplicate: "INTEGER NOT NULL DEFAULT 0",
   duplicate_of_owner_id: "INTEGER",
   duplicate_note: "TEXT",
+  /* CPF/CNPJ e RG do proprietário — usados nos documentos impressos. */
+  document: "TEXT",
+  rg: "TEXT",
+};
+
+/** Registro de perito avaliador impresso nos documentos (V3). */
+const settingsColumns: Record<string, string> = {
+  cnai: "TEXT NOT NULL DEFAULT ''",
 };
 
 /**
@@ -595,6 +603,7 @@ const columnMaps: Record<string, Record<string, string>> = {
   leads: leadColumns,
   owners: ownerColumns,
   property_captures: propertyCaptureColumns,
+  settings: settingsColumns,
 };
 
 /** Índices que dependem de colunas adicionadas acima — criados por último. */

@@ -257,3 +257,63 @@ describe("20 — QR aponta para a ficha interna, autenticada", () => {
     expect(url).not.toContain("13997141174");
   });
 });
+
+/* ------------------------------------------- fechamento V3: identidade e
+   dados da imobiliária no papel impresso */
+
+describe("CPF/CNPJ e RG no documento", () => {
+  const now = new Date("2026-09-07T12:00:00.000Z");
+
+  test("sem CPF/CNPJ e sem RG a autorização abre lacuna, nunca deduz", () => {
+    const snap = buildSnapshot("autorizacao", fullSource, { now });
+    expect(snap.blanks).toContain("CPF/CNPJ do proprietário");
+    expect(snap.blanks).toContain("RG/documento de identidade do proprietário");
+  });
+
+  test("com CPF e RG cadastrados a lacuna some e o dado vai congelado no snapshot", () => {
+    const snap = buildSnapshot(
+      "autorizacao",
+      { ...fullSource, owner: { ...owner, document: "52998224725", rg: "12.345.678-9" } },
+      { now },
+    );
+    expect(snap.blanks).not.toContain("CPF/CNPJ do proprietário");
+    expect(snap.blanks).not.toContain("RG/documento de identidade do proprietário");
+    expect(snap.owner.document).toBe("52998224725");
+    expect(snap.owner.rg).toBe("12.345.678-9");
+  });
+});
+
+describe("preço autorizado é ato do proprietário", () => {
+  const now = new Date("2026-09-07T12:00:00.000Z");
+
+  test("valor avaliado internamente NÃO vira preço autorizado", () => {
+    const snap = buildSnapshot("autorizacao", fullSource, { now });
+    expect(snap.blanks).toContain("Preço autorizado");
+    expect(snap.clauses.join(" ")).not.toContain("Preço autorizado de venda");
+  });
+
+  test("preço informado na emissão vira cláusula", () => {
+    const snap = buildSnapshot("autorizacao", fullSource, { now, terms: { authorizedPrice: 520000 } });
+    expect(snap.blanks).not.toContain("Preço autorizado");
+    expect(snap.clauses.join(" ")).toContain("Preço autorizado de venda");
+  });
+});
+
+describe("dados da imobiliária não ficam escondidos em fallback", () => {
+  const now = new Date("2026-09-07T12:00:00.000Z");
+
+  test("configuração incompleta é impressa como pendência de conferência", () => {
+    const snap = buildSnapshot(
+      "ficha_tecnica",
+      { ...fullSource, broker: { ...broker, missing: ["CRECI", "CNAI"] } },
+      { now },
+    );
+    expect(snap.blanks.join(" ")).toContain("Conferir em Configurações");
+    expect(snap.blanks.join(" ")).toContain("CNAI");
+  });
+
+  test("configuração completa não gera aviso", () => {
+    const snap = buildSnapshot("ficha_tecnica", fullSource, { now });
+    expect(snap.blanks.join(" ")).not.toContain("Conferir em Configurações");
+  });
+});

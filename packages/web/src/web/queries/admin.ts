@@ -165,6 +165,19 @@ export function useRemoveOwner() {
   return useMutation(orpc.adminOwners.remove.mutationOptions({ onSuccess: invalidate }));
 }
 
+/* CPF/CNPJ + RG direto da ficha da captação. Documento com dígito verificador
+   errado é aceito e volta com `warning` — a equipe registra e confere depois. */
+export function useSetOwnerIdentity() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminOwners.setIdentity.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* Baixa o alerta de POSSÍVEL DUPLICADO. Não faz merge: nada é apagado. */
+export function useClearOwnerDuplicate() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminOwners.clearDuplicate.mutationOptions({ onSuccess: invalidate }));
+}
+
 /* --------------------------------------------------------------- agenda */
 
 export function useAdminTasks() {
@@ -312,5 +325,12 @@ export function useCaptureDocument(id: number | null) {
 export function useCaptureDocumentStatusPanel(captureId: number | null) {
   return useQuery({ ...orpc.adminDocuments.status.queryOptions({ input: { captureId: captureId ?? 0 } }), enabled: captureId !== null });
 }
+/* ------------------------------- fotos provisórias -> fotos oficiais do anúncio */
+export function useCapturePromotedPhotos(captureId: number | null) {
+  return useQuery({ ...orpc.adminCapturePhotos.promoted.queryOptions({ input: { id: captureId ?? 0 } }), enabled: captureId !== null });
+}
+export function usePromoteCapturePhoto() { const invalidate = useInvalidate(); return useMutation(orpc.adminCapturePhotos.promote.mutationOptions({ onSuccess: invalidate })); }
+export function useDemoteCapturePhoto() { const invalidate = useInvalidate(); return useMutation(orpc.adminCapturePhotos.demote.mutationOptions({ onSuccess: invalidate })); }
+
 export function useGenerateCaptureDocument() { const invalidate = useInvalidate(); return useMutation(orpc.adminDocuments.generate.mutationOptions({ onSuccess: invalidate })); }
 export function useSetCaptureDocumentStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminDocuments.setStatus.mutationOptions({ onSuccess: invalidate })); }

@@ -19,6 +19,7 @@ import {
   checkDocTransition,
   qrTarget,
 } from "../../../api/lib/capture-documents";
+import { docLabel, formatDoc } from "../../../api/lib/person-doc";
 import { COMPLEMENT_FIELDS } from "../../../api/lib/capture-address";
 import { useCaptureDocument, useSetCaptureDocumentStatus } from "../../queries/admin";
 
@@ -29,7 +30,7 @@ type Snapshot = {
   baseSerial: string;
   captureId: number;
   issuedAt: string;
-  owner: { name?: string | null; phone?: string | null; email?: string | null; document?: string | null };
+  owner: { name?: string | null; phone?: string | null; email?: string | null; document?: string | null; rg?: string | null };
   addressLine: string;
   address: Record<string, string | null | undefined>;
   complements: Record<string, string | undefined>;
@@ -137,9 +138,11 @@ function DocumentBody() {
         <Row label="Nome" value={snapshot.owner.name ?? ""} />
         <Row label="Telefone / WhatsApp" value={snapshot.owner.phone ?? ""} />
         <Row label="E-mail" value={snapshot.owner.email ?? ""} />
-        {/* CPF/RG não são coletados pelo CRM: linha em branco para preencher à
-            mão, nunca um valor inventado. */}
-        <Row label="CPF / RG" value="" />
+{/* CPF/CNPJ e RG vêm do snapshot CONGELADO na emissão: corrigir o
+            cadastro depois não altera papel já impresso. Sem cadastro, a linha
+            sai em branco para preencher à mão. */}
+        <Row label={snapshot.owner.document ? docLabel(snapshot.owner.document) : "CPF / CNPJ"} value={formatDoc(snapshot.owner.document)} />
+        <Row label="RG / documento de identidade" value={snapshot.owner.rg ?? ""} />
       </section>
 
       <section className="mt-4">

@@ -154,7 +154,10 @@ export interface DocumentSource {
     name?: string | null;
     phone?: string | null;
     email?: string | null;
+    /** CPF ou CNPJ, só dígitos quando o tamanho é conhecido */
     document?: string | null;
+    /** RG/CNH, texto livre */
+    rg?: string | null;
   };
   address: {
     cep?: string | null;
@@ -173,7 +176,14 @@ export interface DocumentSource {
   checklistDone?: string[];
   ownerPhotoCount?: number;
   officialPhotoCount?: number;
-  broker: { name: string; creci: string; phone?: string | null; email?: string | null };
+  broker: {
+    name: string;
+    creci: string;
+    phone?: string | null;
+    email?: string | null;
+    /** campos do cabeçalho que ainda não foram configurados em /admin */
+    missing?: string[];
+  };
   source?: string | null;
   notes?: string | null;
   intention?: string | null;
@@ -244,8 +254,18 @@ export function buildSnapshot(
   const blanks: string[] = [];
 
   if (kind === "autorizacao") {
-    const price = terms.authorizedPrice ?? source.estimatedPrice ?? source.askingPrice ?? null;
-    if (!(Number(price) > 0)) blanks.push("Preço autorizado");
+    const price = terms.authorizedPrice ?? null;
+    if (Number(price) > 0) {
+      clauses.push(`Preço autorizado de venda: R$ ${Number(price).toLocaleString("pt-BR")}.`);
+    } else {
+      /* O preço avaliado internamente NÃO vira preço autorizado sozinho:
+         autorizar valor é ato do proprietário, não estimativa da equipe. */
+      blanks.push("Preço autorizado");
+    }
+    /* Sem CPF/CNPJ no cadastro, a qualificação do proprietário sai em branco
+       no papel — nunca preenchida por dedução. */
+    if (!String(source.owner?.document ?? "").trim()) blanks.push("CPF/CNPJ do proprietário");
+    if (!String(source.owner?.rg ?? "").trim()) blanks.push("RG/documento de identidade do proprietário");
     clauses.push(
       "O(A) proprietário(a) autoriza a Edy Prime Imóveis a intermediar a negociação do imóvel identificado nesta autorização.",
       "Autoriza a divulgação do imóvel nos canais da imobiliária, incluindo site, portais e redes sociais.",
@@ -264,6 +284,14 @@ export function buildSnapshot(
     if (terms.termDays != null && terms.termDays > 0) clauses.push(`Prazo de vigência: ${terms.termDays} dias.`);
     else blanks.push("Prazo de vigência");
     blanks.push("Assinatura do proprietário");
+  }
+
+  /* Cabeçalho vindo de fallback é sinalizado no papel: dado jurídico da
+     imobiliária tem de estar em /admin → Configurações, não escondido no
+     código. Vale para os dois tipos de documento. */
+  const missingBroker = source.broker.missing ?? [];
+  if (missingBroker.length > 0) {
+    blanks.push(`Conferir em Configurações: ${missingBroker.join(", ")}`);
   }
 
   return {

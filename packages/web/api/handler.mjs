@@ -4392,6 +4392,8 @@ var init_schema = __esm(() => {
     phone: text("phone"),
     email: text("email"),
     notes: text("notes"),
+    document: text("document"),
+    rg: text("rg"),
     captureStatus: text("capture_status").notNull().default("prospeccao"),
     possibleDuplicate: integer2("possible_duplicate").notNull().default(0),
     duplicateOfOwnerId: integer2("duplicate_of_owner_id"),
@@ -4619,6 +4621,7 @@ var init_schema = __esm(() => {
     whatsapp: text("whatsapp").notNull().default(""),
     email: text("email").notNull().default(""),
     creci: text("creci").notNull().default(""),
+    cnai: text("cnai").notNull().default(""),
     address: text("address").notNull().default(""),
     instagram: text("instagram").notNull().default(""),
     facebook: text("facebook").notNull().default(""),
@@ -50572,11 +50575,86 @@ var adminClients = {
 
 // packages/web/src/api/routes/admin-owners.ts
 init_schema();
+
+// packages/web/src/api/lib/person-doc.ts
+var onlyDigits2 = (value2) => String(value2 ?? "").replace(/\D/g, "");
+function docKind(value2) {
+  const digits3 = onlyDigits2(value2);
+  if (digits3.length === 11)
+    return "cpf";
+  if (digits3.length === 14)
+    return "cnpj";
+  return "desconhecido";
+}
+function isValidCpf(value2) {
+  const d = onlyDigits2(value2);
+  if (d.length !== 11)
+    return false;
+  if (/^(\d)\1{10}$/.test(d))
+    return false;
+  const check2 = (size) => {
+    let sum = 0;
+    for (let i = 0;i < size; i++)
+      sum += Number(d[i]) * (size + 1 - i);
+    const rest = sum * 10 % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return check2(9) === Number(d[9]) && check2(10) === Number(d[10]);
+}
+function isValidCnpj(value2) {
+  const d = onlyDigits2(value2);
+  if (d.length !== 14)
+    return false;
+  if (/^(\d)\1{13}$/.test(d))
+    return false;
+  const check2 = (size) => {
+    const weights = size === 12 ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2] : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    let sum = 0;
+    for (let i = 0;i < size; i++)
+      sum += Number(d[i]) * weights[i];
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+  return check2(12) === Number(d[12]) && check2(13) === Number(d[13]);
+}
+function isValidDoc(value2) {
+  const kind = docKind(value2);
+  if (kind === "cpf")
+    return isValidCpf(value2);
+  if (kind === "cnpj")
+    return isValidCnpj(value2);
+  return false;
+}
+function normalizeDoc(value2) {
+  const raw2 = String(value2 ?? "").trim();
+  if (!raw2)
+    return null;
+  const kind = docKind(raw2);
+  if (kind === "desconhecido")
+    return raw2.slice(0, 40);
+  return onlyDigits2(raw2);
+}
+function normalizeRg(value2) {
+  const raw2 = String(value2 ?? "").trim();
+  return raw2 ? raw2.slice(0, 40) : null;
+}
+function docWarning(value2) {
+  const raw2 = String(value2 ?? "").trim();
+  if (!raw2)
+    return null;
+  if (isValidDoc(raw2))
+    return null;
+  return "Documento não confere — revise antes de imprimir a autorização.";
+}
+
+// packages/web/src/api/routes/admin-owners.ts
 var ownerInput = exports_external.object({
   name: exports_external.string().min(2).max(120),
   phone: exports_external.string().max(30).nullable().optional(),
   email: exports_external.string().max(160).nullable().optional(),
   notes: exports_external.string().max(4000).nullable().optional(),
+  document: exports_external.string().max(40).nullable().optional(),
+  rg: exports_external.string().max(40).nullable().optional(),
   captureStatus: exports_external.enum(["prospeccao", "em_negociacao", "captado", "perdido"]).default("prospeccao")
 });
 function toRow3(input) {
@@ -50585,6 +50663,8 @@ function toRow3(input) {
     phone: input.phone?.trim() || null,
     email: input.email?.trim() || null,
     notes: input.notes?.trim() || null,
+    document: normalizeDoc(input.document),
+    rg: normalizeRg(input.rg),
     captureStatus: input.captureStatus
   };
 }
@@ -50614,6 +50694,43 @@ var adminOwners = {
   remove: adminBase.input(exports_external.object({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
     await context.db.update(properties).set({ ownerId: null }).where(eq(properties.ownerId, input.id));
     await context.db.delete(owners).where(eq(owners.id, input.id));
+    return { ok: true };
+  }),
+  setIdentity: adminBase.input(exports_external.object({
+    id: exports_external.number().int().positive(),
+    document: exports_external.string().max(40).nullable().optional(),
+    rg: exports_external.string().max(40).nullable().optional()
+  })).handler(async ({ input, context }) => {
+    const document = normalizeDoc(input.document);
+    const rg = normalizeRg(input.rg);
+    await context.db.update(owners).set({ document, rg }).where(eq(owners.id, input.id));
+    await context.db.insert(auditLog).values({
+      userId: context.user.id,
+      userName: context.user.name,
+      action: "owner_identity_updated",
+      entity: "owner",
+      entityId: String(input.id),
+      detail: `documento:${document ? "preenchido" : "vazio"} rg:${rg ? "preenchido" : "vazio"}`
+    });
+    return { ok: true, document, rg, warning: docWarning(document) };
+  }),
+  clearDuplicate: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), note: exports_external.string().max(300).optional() })).handler(async ({ input, context }) => {
+    const [owner] = await context.db.select().from(owners).where(eq(owners.id, input.id)).limit(1);
+    if (!owner)
+      throw new ORPCError("NOT_FOUND", { message: "Proprietário não encontrado" });
+    const note = input.note?.trim();
+    await context.db.update(owners).set({
+      possibleDuplicate: 0,
+      duplicateNote: note ? `${owner.duplicateNote ?? ""} | revisado: ${note}`.trim() : owner.duplicateNote
+    }).where(eq(owners.id, input.id));
+    await context.db.insert(auditLog).values({
+      userId: context.user.id,
+      userName: context.user.name,
+      action: "owner_duplicate_reviewed",
+      entity: "owner",
+      entityId: String(input.id),
+      detail: note ?? null
+    });
     return { ok: true };
   }),
   options: adminBase.handler(async ({ context }) => {
@@ -50754,6 +50871,18 @@ function addOwnerPhotos(current, incoming, options = {}) {
 }
 function removeOwnerPhoto(current, url2) {
   return parseOwnerPhotos(current).filter((photo) => photo.url !== url2);
+}
+function promoteToOfficial(current, chosen, options = {}) {
+  const photos = parseOwnerPhotos(current);
+  const wanted = chosen.map((url2) => cleanUrl(url2)).filter(Boolean);
+  const approved = wanted.filter((url2) => photos.some((photo) => photo.url === url2));
+  const startOrder = options.startOrder ?? 0;
+  const primaryUrl = options.primaryUrl && approved.includes(cleanUrl(options.primaryUrl)) ? cleanUrl(options.primaryUrl) : approved[0] ?? null;
+  return approved.map((url2, index2) => ({
+    url: url2,
+    sortOrder: startOrder + index2,
+    isPrimary: url2 === primaryUrl ? 1 : 0
+  }));
 }
 
 // packages/web/src/api/routes/admin-captures.ts
@@ -51235,9 +51364,16 @@ function buildSnapshot(kind, source, options = {}) {
   const clauses = [];
   const blanks = [];
   if (kind === "autorizacao") {
-    const price = terms.authorizedPrice ?? source.estimatedPrice ?? source.askingPrice ?? null;
-    if (!(Number(price) > 0))
+    const price = terms.authorizedPrice ?? null;
+    if (Number(price) > 0) {
+      clauses.push(`Preço autorizado de venda: R$ ${Number(price).toLocaleString("pt-BR")}.`);
+    } else {
       blanks.push("Preço autorizado");
+    }
+    if (!String(source.owner?.document ?? "").trim())
+      blanks.push("CPF/CNPJ do proprietário");
+    if (!String(source.owner?.rg ?? "").trim())
+      blanks.push("RG/documento de identidade do proprietário");
     clauses.push("O(A) proprietário(a) autoriza a Edy Prime Imóveis a intermediar a negociação do imóvel identificado nesta autorização.", "Autoriza a divulgação do imóvel nos canais da imobiliária, incluindo site, portais e redes sociais.", "Autoriza o uso das fotos e das informações do imóvel exclusivamente para fins de divulgação da venda.", "Autoriza a apresentação do imóvel a interessados e o recebimento e a apresentação de propostas.");
     if (terms.commissionPercent != null && terms.commissionPercent > 0) {
       clauses.push(`Comissão de intermediação: ${terms.commissionPercent}% sobre o valor da venda.`);
@@ -51253,6 +51389,10 @@ function buildSnapshot(kind, source, options = {}) {
     else
       blanks.push("Prazo de vigência");
     blanks.push("Assinatura do proprietário");
+  }
+  const missingBroker = source.broker.missing ?? [];
+  if (missingBroker.length > 0) {
+    blanks.push(`Conferir em Configurações: ${missingBroker.join(", ")}`);
   }
   return {
     kind,
@@ -51289,21 +51429,27 @@ function qrTarget(baseUrl, captureId) {
 // packages/web/src/api/routes/admin-documents.ts
 var BROKER_FALLBACK = {
   name: "Edy Prime Imóveis",
-  creci: "CRECI 134718-F · PERITO CNAI 55.918",
+  creci: "CRECI 134718-F",
+  cnai: "PERITO CNAI 55.918",
   phone: "(13) 99714-1174",
   email: "edyprimeimoveis@gmail.com"
 };
 async function brokerOf(context) {
   const [row] = await context.db.select().from(settings).limit(1);
-  if (!row)
-    return BROKER_FALLBACK;
-  const creci = String(row.creci ?? "").trim();
-  return {
-    name: String(row.companyName ?? "").trim() || BROKER_FALLBACK.name,
-    creci: creci || BROKER_FALLBACK.creci,
-    phone: String(row.whatsapp ?? "").trim() || BROKER_FALLBACK.phone,
-    email: String(row.email ?? "").trim() || BROKER_FALLBACK.email
+  const missing = [];
+  const pick2 = (value2, fallback, label) => {
+    const text5 = String(value2 ?? "").trim();
+    if (text5)
+      return text5;
+    missing.push(label);
+    return fallback;
   };
+  const name25 = pick2(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
+  const creci = pick2(row?.creci, BROKER_FALLBACK.creci, "CRECI");
+  const cnai = pick2(row?.cnai, BROKER_FALLBACK.cnai, "CNAI");
+  const phone = pick2(row?.whatsapp, BROKER_FALLBACK.phone, "telefone");
+  const email3 = pick2(row?.email, BROKER_FALLBACK.email, "e-mail");
+  return { name: name25, creci: cnai ? `${creci} · ${cnai}` : creci, phone, email: email3, missing };
 }
 async function documentEvent(context, documentId, status, note) {
   await context.db.insert(crmDocumentEvents).values({
@@ -51387,7 +51533,8 @@ var adminDocuments = {
         name: owner?.name ?? null,
         phone: owner?.phone ?? null,
         email: owner?.email ?? null,
-        document: null
+        document: owner?.document ?? null,
+        rg: owner?.rg ?? null
       },
       address: {
         cep: capture.cep,
@@ -51476,6 +51623,78 @@ async function hasSignedAuthorization(context, captureId) {
   const rows = await context.db.select({ kind: crmDocuments.kind, status: crmDocuments.status }).from(crmDocuments).where(eq(crmDocuments.captureId, captureId)).limit(100);
   return rows.some((row) => row.kind === "autorizacao" && (row.status === "assinada" || row.status === "devolvida" || row.status === "arquivada"));
 }
+
+// packages/web/src/api/routes/admin-capture-photos.ts
+init_schema();
+var adminCapturePhotos = {
+  promoted: adminBase.input(exports_external.object({ id: exports_external.number().int().positive() })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    if (!capture.convertedPropertyId)
+      return { propertyId: null, urls: [] };
+    const rows = await context.db.select({ url: propertyImages.url }).from(propertyImages).where(eq(propertyImages.propertyId, capture.convertedPropertyId));
+    return { propertyId: capture.convertedPropertyId, urls: rows.map((r) => r.url) };
+  }),
+  promote: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), url: exports_external.string().min(4).max(1000) })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const propertyId = capture.convertedPropertyId;
+    if (!propertyId) {
+      throw new ORPCError("BAD_REQUEST", {
+        message: "Cadastre o imóvel antes de promover fotos: a foto oficial pertence ao anúncio, não à captação"
+      });
+    }
+    const chosen = promoteToOfficial(capture.ownerPhotos, [input.url]);
+    if (chosen.length === 0) {
+      throw new ORPCError("BAD_REQUEST", { message: "Foto não encontrada entre as provisórias desta captação" });
+    }
+    const existing = await context.db.select({ url: propertyImages.url, sortOrder: propertyImages.sortOrder }).from(propertyImages).where(eq(propertyImages.propertyId, propertyId)).orderBy(desc(propertyImages.sortOrder));
+    if (existing.some((row) => row.url === chosen[0].url)) {
+      return { ok: true, changed: false, propertyId };
+    }
+    const nextOrder = existing.length > 0 ? (existing[0].sortOrder ?? 0) + 1 : 0;
+    const isPrimary = existing.length === 0 ? 1 : 0;
+    await context.db.insert(propertyImages).values({
+      propertyId,
+      url: chosen[0].url,
+      sortOrder: nextOrder,
+      isPrimary
+    });
+    await context.db.insert(auditLog).values({
+      userId: context.user.id,
+      userName: context.user.name,
+      action: "capture_photo_promoted",
+      entity: "capture",
+      entityId: String(input.id),
+      detail: `imóvel ${propertyId} · ${input.url.slice(0, 180)}`
+    });
+    return { ok: true, changed: true, propertyId, isPrimary };
+  }),
+  demote: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), url: exports_external.string().min(4).max(1000) })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const propertyId = capture.convertedPropertyId;
+    if (!propertyId)
+      return { ok: true, changed: false };
+    const provisional = parseOwnerPhotos(capture.ownerPhotos).some((photo) => photo.url === input.url);
+    if (!provisional) {
+      throw new ORPCError("BAD_REQUEST", { message: "Esta foto não veio das provisórias desta captação" });
+    }
+    await context.db.delete(propertyImages).where(and(eq(propertyImages.propertyId, propertyId), eq(propertyImages.url, input.url)));
+    await context.db.insert(auditLog).values({
+      userId: context.user.id,
+      userName: context.user.name,
+      action: "capture_photo_demoted",
+      entity: "capture",
+      entityId: String(input.id),
+      detail: `imóvel ${propertyId} · ${input.url.slice(0, 180)}`
+    });
+    return { ok: true, changed: true };
+  })
+};
 
 // packages/web/src/api/routes/admin-tasks.ts
 init_schema();
@@ -51920,6 +52139,7 @@ var settingsInput = exports_external.object({
   whatsapp: exports_external.string().min(8).max(20),
   email: exports_external.string().min(5).max(160),
   creci: exports_external.string().max(60),
+  cnai: exports_external.string().max(60).default(""),
   address: exports_external.string().max(300),
   instagram: exports_external.string().max(300),
   facebook: exports_external.string().max(300),
@@ -51937,6 +52157,7 @@ var adminSettings = {
       whatsapp: input.whatsapp.replace(/\D/g, ""),
       email: input.email.trim(),
       creci: input.creci.trim(),
+      cnai: input.cnai.trim(),
       address: input.address.trim(),
       instagram: input.instagram.trim(),
       facebook: input.facebook.trim(),
@@ -53956,6 +54177,7 @@ var router = {
   adminOwners,
   adminCaptures,
   adminDocuments,
+  adminCapturePhotos,
   adminTasks,
   adminDeals,
   adminDashboard,

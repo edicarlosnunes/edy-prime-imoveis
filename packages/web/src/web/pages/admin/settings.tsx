@@ -11,6 +11,7 @@ interface FormState {
   whatsapp: string;
   email: string;
   creci: string;
+  cnai: string;
   address: string;
   instagram: string;
   facebook: string;
@@ -23,6 +24,7 @@ const empty: FormState = {
   whatsapp: "",
   email: "",
   creci: "",
+  cnai: "",
   address: "",
   instagram: "",
   facebook: "",
@@ -61,6 +63,7 @@ function Content() {
       whatsapp: row.whatsapp,
       email: row.email,
       creci: row.creci ?? "",
+      cnai: row.cnai ?? "",
       address: row.address ?? "",
       instagram: row.instagram ?? "",
       facebook: row.facebook ?? "",
@@ -84,6 +87,7 @@ function Content() {
         whatsapp: form.whatsapp.trim(),
         email: form.email.trim(),
         creci: form.creci.trim(),
+        cnai: form.cnai.trim(),
         address: form.address.trim(),
         instagram: form.instagram.trim(),
         facebook: form.facebook.trim(),
@@ -141,6 +145,11 @@ function Content() {
               </Field>
               <Field label="CRECI">
                 <Input value={form.creci} onChange={(e) => set("creci", e.target.value)} />
+              </Field>
+              {/* CRECI e CNAI saem impressos na Ficha Técnica e na Autorização.
+                  Ficarem só no fallback do código escondia dado jurídico. */}
+              <Field label="CNAI (avaliação de imóveis)">
+                <Input value={form.cnai} onChange={(e) => set("cnai", e.target.value)} />
               </Field>
               <Field label="Comissão padrão (%)">
                 <Input

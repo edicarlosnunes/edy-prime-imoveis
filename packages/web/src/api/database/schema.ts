@@ -265,6 +265,15 @@ export const owners = sqliteTable("owners", {
   phone: text("phone"),
   email: text("email"),
   notes: text("notes"),
+  /**
+   * V3 — CPF ou CNPJ do proprietário e documento de identidade (RG/CNH).
+   *
+   * Alimentam a Ficha Técnica e a Autorização de Venda. NÃO identificam
+   * imóvel: a identidade da unidade continua sendo CEP + número +
+   * complementos, e a do proprietário continua sendo o telefone.
+   */
+  document: text("document"),
+  rg: text("rg"),
   /** prospeccao | em_negociacao | captado | perdido */
   captureStatus: text("capture_status").notNull().default("prospeccao"),
   /**
@@ -670,6 +679,8 @@ export const settings = sqliteTable("settings", {
   whatsapp: text("whatsapp").notNull().default(""),
   email: text("email").notNull().default(""),
   creci: text("creci").notNull().default(""),
+  /** V3 — registro de perito avaliador, impresso nos documentos. */
+  cnai: text("cnai").notNull().default(""),
   address: text("address").notNull().default(""),
   instagram: text("instagram").notNull().default(""),
   facebook: text("facebook").notNull().default(""),
