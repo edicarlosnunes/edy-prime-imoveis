@@ -36,10 +36,18 @@ import {
 import { errorMessage, uploadImage } from "../../lib/admin-session";
 import {
   useAdminProperties,
+  useCapture,
   useGeneratePropertyContent,
+  useMarkCaptureConverted,
   useOwnerOptions,
   useSaveProperty,
 } from "../../queries/admin";
+import {
+  initConversion,
+  planConversion,
+  type ConversionState,
+} from "../../lib/capture-conversion-flow";
+import { parseChecklist } from "../../../api/lib/capture-checklist";
 import { FeaturesPicker } from "../../components/admin/features-picker";
 import {
   PropertyFormNav,
@@ -150,9 +158,12 @@ function softMoney(value: string) {
 
 export function PropertyForm({
   propertyId,
+  captureId = null,
   onClose,
 }: {
   propertyId: number | null;
+  /** Vem de /admin/imoveis/novo?capture_id=<id>: cadastro que fecha uma captação. */
+  captureId?: number | null;
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
@@ -164,6 +175,12 @@ export function PropertyForm({
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiContent, setAiContent] = useState<GeneratedContent | null>(null);
   const [aiUsedFields, setAiUsedFields] = useState<string[]>([]);
+
+  /* Fluxo de captação: a captação só vira CAPTADO se o imóvel for criado. */
+  const capture = useCapture(captureId);
+  const markConverted = useMarkCaptureConverted();
+  const [conversion, setConversion] = useState<ConversionState>(() => initConversion(captureId));
+  const [prefilled, setPrefilled] = useState(false);
 
   const generate = useGeneratePropertyContent();
   const owners = useOwnerOptions();
@@ -219,6 +236,35 @@ export function PropertyForm({
       })),
     );
   }, [detail.data]);
+
+  /**
+   * Prefill a partir da captação. Só em cadastro novo, uma única vez, e sem
+   * sobrescrever o que o corretor já digitou. `ownerId` é preservado: é o mesmo
+   * proprietário da captação.
+   */
+  useEffect(() => {
+    if (propertyId !== null || captureId === null || prefilled) return;
+    const row = capture.data;
+    if (!row) return;
+    setPrefilled(true);
+    const price = row.estimatedPrice ?? row.askingPrice ?? null;
+    setForm((current) => ({
+      ...current,
+      purpose: purposes.includes(row.intention as FormState["purpose"])
+        ? (row.intention as FormState["purpose"])
+        : current.purpose,
+      type: propertyTypes.includes(row.propertyType as FormState["type"])
+        ? (row.propertyType as FormState["type"])
+        : current.type,
+      price: current.price || (price === null ? "" : formatMoneyInput(price)),
+      city: row.city || current.city,
+      district: row.district || current.district,
+      address: row.address ?? current.address,
+      ownerId: row.ownerId ? String(row.ownerId) : current.ownerId,
+      /* Imóvel vindo de captação nasce fora do ar: revisão antes da vitrine. */
+      published: false,
+    }));
+  }, [capture.data, captureId, prefilled, propertyId]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -432,7 +478,27 @@ export function PropertyForm({
       if (propertyId) {
         await save.mutateAsync({ ...payload, id: propertyId });
       } else {
-        await save.mutateAsync(payload);
+        const created = await save.mutateAsync(payload);
+        const plan = planConversion(conversion, {
+          type: "property_created",
+          propertyId: created.id,
+        });
+        setConversion(plan.state);
+        if (plan.action === "mark" && captureId !== null && plan.propertyId !== null) {
+          try {
+            await markConverted.mutateAsync({ id: captureId, propertyId: plan.propertyId });
+            setConversion((current) => planConversion(current, { type: "mark_ok" }).state);
+          } catch (caught) {
+            setConversion((current) => planConversion(current, { type: "mark_failed" }).state);
+            /* O imóvel existe; só o vínculo falhou. Não fecha, para o usuário ver. */
+            return void setError(
+              errorMessage(
+                caught,
+                "Imóvel criado, mas não foi possível marcar a captação como captada",
+              ),
+            );
+          }
+        }
       }
       onClose();
     } catch (caught) {
@@ -477,6 +543,18 @@ export function PropertyForm({
             <div className="mt-4 space-y-5">
               {section === "basico" && (
                 <>
+                  {captureId !== null && capture.data && (
+                    <div className="rounded-[10px] border border-line bg-bone/40 p-3 text-sm">
+                      <div className="label-xs text-deep">
+                        Captação #{captureId} · {capture.data.owner?.name ?? "proprietário"}
+                      </div>
+                      {/* Observações ficam à vista, não são copiadas para campos
+                          públicos: o texto é interno e o imóvel nasce fora do ar. */}
+                      <p className="mt-1 whitespace-pre-line text-muted">
+                        {parseChecklist(capture.data.notes).text || "Sem observações na captação."}
+                      </p>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                     <Field label="Código">
                       <Input

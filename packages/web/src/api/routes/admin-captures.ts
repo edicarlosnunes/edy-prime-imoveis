@@ -10,6 +10,7 @@ import {
   checkStageTransition,
   normalizeDocStatus,
 } from "../lib/capture-rules";
+import { CHECKLIST_ITEMS, isChecklistKey, toggleChecklistItem } from "../lib/capture-checklist";
 
 const STAGES = CAPTURE_STAGES;
 const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
@@ -264,6 +265,32 @@ export const adminCaptures = {
       .returning({ id: schema.propertyCaptures.id });
     if (changed.length === 0) return { ok: true, changed: false };
     await audit(context, "capture_doc_status", input.id, input.docStatus);
+    return { ok: true, changed: true };
+  }),
+
+  /**
+   * Checklist de pré-captação item a item.
+   *
+   * Sem tabela nova: grava um bloco estruturado no fim de `notes` e preserva o
+   * texto livre do corretor. `doc_status` continua sendo a persistência
+   * principal do estágio e NÃO é alterado aqui — quem decide o status é o
+   * corretor no Select, porque recebido e conferido não são a mesma coisa.
+   */
+  setChecklist: adminBase.input(z.object({ id: z.number().int().positive(), key: z.string().min(1).max(40), value: z.boolean() })).handler(async ({ input, context }) => {
+    if (!isChecklistKey(input.key)) throw new ORPCError("BAD_REQUEST", { message: "Item de checklist desconhecido" });
+    const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+    if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const notes = toggleChecklistItem(capture.notes, input.key, input.value);
+    /* Nada mudou (duplo clique no mesmo item): sem UPDATE e sem histórico. */
+    if (notes === (capture.notes ?? null)) return { ok: true, changed: false };
+    const changed = await context.db
+      .update(schema.propertyCaptures)
+      .set({ notes, updatedAt: new Date() })
+      .where(and(eq(schema.propertyCaptures.id, input.id), capture.notes === null ? isNull(schema.propertyCaptures.notes) : eq(schema.propertyCaptures.notes, capture.notes)))
+      .returning({ id: schema.propertyCaptures.id });
+    if (changed.length === 0) return { ok: true, changed: false };
+    const label = CHECKLIST_ITEMS.find((item) => item.key === input.key)?.label ?? input.key;
+    await audit(context, "capture_checklist", input.id, `${input.value ? "recebido" : "removido"}: ${label}`);
     return { ok: true, changed: true };
   }),
 

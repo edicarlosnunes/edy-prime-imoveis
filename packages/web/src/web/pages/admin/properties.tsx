@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useSearch } from "wouter";
 import { Eye, EyeOff, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
@@ -26,6 +27,7 @@ import {
   useRemoveProperty,
 } from "../../queries/admin";
 import { PropertyForm } from "./property-form";
+import { readCaptureId } from "../../lib/capture-conversion-flow";
 
 type StatusFilter = (typeof propertyStatuses)[number] | "";
 
@@ -41,6 +43,16 @@ function Content() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
   const [editing, setEditing] = useState<number | "new" | null>(null);
+  /**
+   * O Radar abre o Cadastro Premium por rota: /admin/imoveis/novo?capture_id=<id>.
+   * Ler da rota (e não de estado em memória) faz o prefill sobreviver a refresh.
+   */
+  const search_ = useSearch();
+  const [, navigate] = useLocation();
+  const captureId = readCaptureId(search_);
+  useEffect(() => {
+    if (captureId !== null) setEditing("new");
+  }, [captureId]);
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(
@@ -213,7 +225,12 @@ function Content() {
       {editing !== null && (
         <PropertyForm
           propertyId={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
+          captureId={editing === "new" ? captureId : null}
+          onClose={() => {
+            setEditing(null);
+            /* Sai do fluxo de captação: a query string não fica presa na tela. */
+            if (captureId !== null) navigate("/admin/imoveis");
+          }}
         />
       )}
     </AdminLayout>

@@ -295,6 +295,7 @@ export function useSetCaptureStage() { const invalidate = useInvalidate(); retur
 export function useSetCaptureNextAction() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setNextAction.mutationOptions({ onSuccess: invalidate })); }
 export function useSaveCaptureAppraisal() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.saveAppraisal.mutationOptions({ onSuccess: invalidate })); }
 export function useSetCaptureDocStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setDocStatus.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureChecklist() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setChecklist.mutationOptions({ onSuccess: invalidate })); }
 export function useMarkCaptureLost() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markLost.mutationOptions({ onSuccess: invalidate })); }
 export function useReopenCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.reopen.mutationOptions({ onSuccess: invalidate })); }
 export function useMarkCaptureConverted() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markConverted.mutationOptions({ onSuccess: invalidate })); }

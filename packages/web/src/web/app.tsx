@@ -32,6 +32,8 @@ function App() {
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/imoveis" component={AdminProperties} />
+        {/* Cadastro Premium aberto pelo Radar: /admin/imoveis/novo?capture_id=<id> */}
+        <Route path="/admin/imoveis/novo" component={AdminProperties} />
         <Route path="/admin/leads" component={AdminLeads} />
         <Route path="/admin/clientes" component={AdminClients} />
         <Route path="/admin/proprietarios" component={AdminOwners} />
