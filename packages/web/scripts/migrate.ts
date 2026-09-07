@@ -436,6 +436,43 @@ const statements = [
   `CREATE INDEX IF NOT EXISTS property_captures_owner_idx ON property_captures (owner_id)`,
   `CREATE INDEX IF NOT EXISTS property_captures_stage_idx ON property_captures (stage)`,
   `CREATE INDEX IF NOT EXISTS property_captures_next_action_idx ON property_captures (next_action_at)`,
+
+  /* ------------------------------------- Captação V3: serial + documentos */
+  /* Contador do sequencial GLOBAL do serial. Linha única id=1, semente
+     next=0, então o primeiro serial emitido é 000001. */
+  `CREATE TABLE IF NOT EXISTS crm_serials (
+    id INTEGER PRIMARY KEY NOT NULL,
+    next INTEGER NOT NULL DEFAULT 0
+  )`,
+  /* Ficha Técnica (FC-) e Autorização de Venda (AV-). O serial é herdado do
+     imóvel; snapshot congela os dados da via impressa/assinada. */
+  `CREATE TABLE IF NOT EXISTS crm_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    kind TEXT NOT NULL,
+    serial TEXT NOT NULL,
+    base_serial TEXT,
+    capture_id INTEGER,
+    property_id INTEGER,
+    owner_id INTEGER,
+    status TEXT NOT NULL DEFAULT 'gerada',
+    snapshot TEXT,
+    note TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS crm_documents_serial_idx ON crm_documents (serial)`,
+  `CREATE INDEX IF NOT EXISTS crm_documents_capture_idx ON crm_documents (capture_id)`,
+  `CREATE INDEX IF NOT EXISTS crm_documents_property_idx ON crm_documents (property_id)`,
+  `CREATE TABLE IF NOT EXISTS crm_document_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    document_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    note TEXT,
+    user_id INTEGER,
+    user_name TEXT,
+    created_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS crm_document_events_document_idx ON crm_document_events (document_id)`,
 ];
 
 /** Colunas adicionadas à tabela media (biblioteca de mídia do editor do site). */
@@ -464,6 +501,43 @@ const propertyColumns: Record<string, string> = {
   last_revalidation_at: "INTEGER",
   next_revalidation_at: "INTEGER",
   revalidation_status: "TEXT",
+  /* V3 — serial global TIPO-ANO-SEQUENCIAL. Nullable: os imóveis que já
+     existem ficam com NULL e o `code` antigo NÃO é renumerado. */
+  serial: "TEXT",
+};
+
+/**
+ * Colunas adicionadas à tabela owners — alerta de POSSÍVEL DUPLICADO (V3).
+ *
+ * Só sinalizam para revisão humana: nenhum proprietário existente é alterado,
+ * nenhum merge antigo é desfeito e o alerta nunca bloqueia cadastro.
+ */
+const ownerColumns: Record<string, string> = {
+  possible_duplicate: "INTEGER NOT NULL DEFAULT 0",
+  duplicate_of_owner_id: "INTEGER",
+  duplicate_note: "TEXT",
+};
+
+/**
+ * Colunas adicionadas à tabela property_captures — ficha única V3.
+ *
+ * Todas nullable de propósito: as captações que já existem continuam válidas
+ * sem nenhum backfill. `address` (texto livre) segue existindo e não é
+ * reescrito; o endereço estruturado é o caminho novo.
+ */
+const propertyCaptureColumns: Record<string, string> = {
+  serial: "TEXT",
+  cep: "TEXT",
+  street: "TEXT",
+  number: "TEXT",
+  state: "TEXT",
+  /* complementos em JSON; a busca por unidade usa unit_key, que é indexado */
+  complements: "TEXT",
+  unit_key: "TEXT",
+  /* "DOCUMENTAÇÃO VALIDADA PELA EQUIPE": quem validou, quando e por quê */
+  doc_validated_by: "TEXT",
+  doc_validated_at: "INTEGER",
+  doc_validation_note: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */
@@ -503,43 +577,25 @@ const leadColumns: Record<string, string> = {
   qualified_at: "INTEGER",
 };
 
-for (const sql of statements) {
-  await db.execute(sql);
-  console.log("ok:", sql.slice(0, 60).replace(/\s+/g, " "));
-}
+/**
+ * Mapa único tabela -> colunas aditivas.
+ *
+ * Fonte de verdade tanto da migração quanto do modo `--check`: se a coluna
+ * estiver aqui, ela é conferida. Manter duas listas separadas era o caminho
+ * garantido para o `--check` aprovar um schema incompleto.
+ */
+const columnMaps: Record<string, Record<string, string>> = {
+  media: mediaColumns,
+  properties: propertyColumns,
+  property_images: propertyImageColumns,
+  tasks: taskColumns,
+  leads: leadColumns,
+  owners: ownerColumns,
+  property_captures: propertyCaptureColumns,
+};
 
-const mediaInfo = await db.execute("PRAGMA table_info(media)");
-const mediaExisting = new Set(mediaInfo.rows.map((r) => String(r.name)));
-for (const [column, type] of Object.entries(mediaColumns)) {
-  if (mediaExisting.has(column)) continue;
-  await db.execute(`ALTER TABLE media ADD COLUMN ${column} ${type}`);
-  console.log("media += ", column);
-}
-
-for (const [table, columns] of [
-  ["properties", propertyColumns],
-  ["property_images", propertyImageColumns],
-  ["tasks", taskColumns],
-] as const) {
-  const tableInfo = await db.execute(`PRAGMA table_info(${table})`);
-  const present = new Set(tableInfo.rows.map((r) => String(r.name)));
-  for (const [column, type] of Object.entries(columns)) {
-    if (present.has(column)) continue;
-    await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
-    console.log(`${table} += `, column);
-  }
-}
-
-const info = await db.execute("PRAGMA table_info(leads)");
-const existing = new Set(info.rows.map((r) => String(r.name)));
-for (const [column, type] of Object.entries(leadColumns)) {
-  if (existing.has(column)) continue;
-  await db.execute(`ALTER TABLE leads ADD COLUMN ${column} ${type}`);
-  console.log("leads += ", column);
-}
-
-/* índices sobre colunas recém-adicionadas (após os ALTER TABLE acima) */
-for (const sql of [
+/** Índices que dependem de colunas adicionadas acima — criados por último. */
+const lateIndexes = [
   "CREATE INDEX IF NOT EXISTS leads_stage_idx ON leads (stage)",
   "CREATE INDEX IF NOT EXISTS leads_phone_idx ON leads (phone)",
   "CREATE INDEX IF NOT EXISTS leads_score_idx ON leads (score)",
@@ -547,14 +603,118 @@ for (const sql of [
   /* V2 — índice da fila de revalidação (coluna adicionada acima) */
   "CREATE INDEX IF NOT EXISTS properties_next_revalidation_idx ON properties (next_revalidation_at)",
   "CREATE INDEX IF NOT EXISTS tasks_capture_idx ON tasks (capture_id)",
-]) {
-  await db.execute(sql);
-  console.log("ok:", sql.slice(0, 60));
-}
+  /* V3 — backstop do serial: o banco recusa duplicata mesmo se alguém gerar
+     serial por fora de lib/serial-counter.ts. UNIQUE aceita vários NULL no
+     SQLite, então imóveis e captações antigos (serial NULL) não conflitam. */
+  "CREATE UNIQUE INDEX IF NOT EXISTS properties_serial_idx ON properties (serial)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS property_captures_serial_idx ON property_captures (serial)",
+  /* identidade da unidade: NÃO é único, porque um imóvel perdido pode ser
+     recaptado depois. A duplicidade é avisada pela aplicação, não travada. */
+  "CREATE INDEX IF NOT EXISTS property_captures_unit_idx ON property_captures (unit_key)",
+];
 
-const tables = await db.execute(
-  "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+/**
+ * Sementes idempotentes.
+ *
+ * `INSERT OR IGNORE` para que rodar a migração de novo não zere o contador de
+ * serial — zerar reemitiria seriais já impressos em documentos assinados.
+ */
+const seeds = ["INSERT OR IGNORE INTO crm_serials (id, next) VALUES (1, 0)"];
+
+const nameOf = (pattern: RegExp, sources: string[]) =>
+  sources.map((s) => pattern.exec(s)?.[1]).filter((n): n is string => Boolean(n));
+
+const expectedTables = nameOf(/CREATE TABLE IF NOT EXISTS (\w+)/i, statements);
+const expectedIndexes = nameOf(
+  /CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)/i,
+  [...statements, ...lateIndexes],
 );
-console.log("TABELAS:", tables.rows.map((r) => r.name).join(", "));
-const leadCount = await db.execute("SELECT count(*) as n FROM leads");
-console.log("LEADS PRESERVADOS:", leadCount.rows[0]?.n);
+
+const objectNames = async (type: "table" | "index") => {
+  const rows = await db.execute(`SELECT name FROM sqlite_master WHERE type='${type}'`);
+  return new Set(rows.rows.map((r) => String(r.name)));
+};
+
+const columnsOf = async (table: string) => {
+  const info = await db.execute(`PRAGMA table_info(${table})`);
+  return new Set(info.rows.map((r) => String(r.name)));
+};
+
+/**
+ * Modo --check: NÃO escreve nada. Lista o que falta e sai com código 1.
+ *
+ * Existe porque `schema.ts` é a única descrição do schema de produção e nada
+ * verificava se os dois batiam. É o gate para conferir o banco depois de
+ * aplicar a migração, antes de publicar o código que depende dela.
+ */
+if (process.argv.includes("--check")) {
+  const drift: string[] = [];
+
+  const tables = await objectNames("table");
+  for (const table of expectedTables) {
+    if (!tables.has(table)) drift.push(`TABELA AUSENTE: ${table}`);
+  }
+
+  for (const [table, columns] of Object.entries(columnMaps)) {
+    if (!tables.has(table)) continue; /* já reportado como tabela ausente */
+    const present = await columnsOf(table);
+    for (const column of Object.keys(columns)) {
+      if (!present.has(column)) drift.push(`COLUNA AUSENTE: ${table}.${column}`);
+    }
+  }
+
+  const indexes = await objectNames("index");
+  for (const name of expectedIndexes) {
+    if (!indexes.has(name)) drift.push(`ÍNDICE AUSENTE: ${name}`);
+  }
+
+  if (tables.has("crm_serials")) {
+    const seeded = await db.execute("SELECT count(*) as n FROM crm_serials WHERE id = 1");
+    if (Number(seeded.rows[0]?.n ?? 0) === 0) {
+      drift.push("SEMENTE AUSENTE: crm_serials id=1");
+    }
+  }
+
+  if (drift.length === 0) {
+    console.log("CHECK: schema em dia — nada a aplicar.");
+    console.log(
+      `CONFERIDO: ${expectedTables.length} tabelas, ${expectedIndexes.length} índices,`,
+      `${Object.values(columnMaps).reduce((n, c) => n + Object.keys(c).length, 0)} colunas aditivas.`,
+    );
+  } else {
+    console.log(`CHECK: ${drift.length} divergência(s) — NADA foi escrito.`);
+    for (const line of drift) console.log(" -", line);
+    process.exitCode = 1;
+  }
+} else {
+  for (const sql of statements) {
+    await db.execute(sql);
+    console.log("ok:", sql.slice(0, 60).replace(/\s+/g, " "));
+  }
+
+  for (const [table, columns] of Object.entries(columnMaps)) {
+    const present = await columnsOf(table);
+    for (const [column, type] of Object.entries(columns)) {
+      if (present.has(column)) continue;
+      await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      console.log(`${table} += `, column);
+    }
+  }
+
+  for (const sql of lateIndexes) {
+    await db.execute(sql);
+    console.log("ok:", sql.slice(0, 60));
+  }
+
+  for (const sql of seeds) {
+    await db.execute(sql);
+    console.log("ok:", sql.slice(0, 60));
+  }
+
+  const tables = await db.execute(
+    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
+  );
+  console.log("TABELAS:", tables.rows.map((r) => r.name).join(", "));
+  const leadCount = await db.execute("SELECT count(*) as n FROM leads");
+  console.log("LEADS PRESERVADOS:", leadCount.rows[0]?.n);
+}

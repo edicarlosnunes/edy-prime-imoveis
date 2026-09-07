@@ -14,6 +14,7 @@
 import { and, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
 import type { AdminDb } from "./admin-base";
+import { duplicateAlertText, resolveOwnerIdentity } from "./owner-identity";
 
 export interface OwnerIntakeInput {
   name: string;
@@ -106,12 +107,15 @@ export async function intakeOwner(
     .from(schema.owners)
     .limit(500);
 
-  const existing = candidates.find((owner) => {
-    const ownerPhone = onlyDigits(owner.phone ?? "");
-    if (phoneDigits && ownerPhone && ownerPhone === phoneDigits) return true;
-    const ownerEmail = owner.email?.trim().toLowerCase() || null;
-    return Boolean(email && ownerEmail && ownerEmail === email);
-  });
+  /* Identidade V3: o TELEFONE reutiliza o proprietário; o e-mail NÃO mescla
+     mais. E-mail repetido cria o proprietário normalmente e só marca POSSÍVEL
+     DUPLICADO para revisão humana — ver lib/owner-identity.ts. */
+  const decision = resolveOwnerIdentity(candidates, { phone: phoneDigits, email });
+
+  const existing =
+    decision.action === "reuse"
+      ? candidates.find((owner) => owner.id === decision.ownerId)
+      : undefined;
 
   if (existing) {
     const history = [existing.notes?.trim(), buildHistoryLine(input, now)]
@@ -140,6 +144,12 @@ export async function intakeOwner(
     };
   }
 
+  /* Proprietário novo. Um e-mail já usado por outra pessoa NÃO impede o
+     cadastro: apenas levanta o alerta de revisão, porque e-mail compartilhado
+     (cônjuge, contato@, síndico) fundia pessoas diferentes num único owner. */
+  const duplicateOfOwnerId = decision.action === "create" ? decision.duplicateOfOwnerId : null;
+  const duplicateNote = duplicateAlertText(duplicateOfOwnerId);
+
   const [created] = await db
     .insert(schema.owners)
     .values({
@@ -148,6 +158,9 @@ export async function intakeOwner(
       email,
       notes: buildHistoryLine(input, now).slice(0, 4000),
       captureStatus: "prospeccao",
+      possibleDuplicate: duplicateOfOwnerId == null ? 0 : 1,
+      duplicateOfOwnerId,
+      duplicateNote,
     })
     .returning();
 
@@ -156,6 +169,8 @@ export async function intakeOwner(
   return {
     id: created?.id ?? 0,
     duplicated: false,
-    detail: "Proprietário criado no CRM com tarefa de retorno.",
+    detail: duplicateNote
+      ? `Proprietário criado no CRM com tarefa de retorno. ${duplicateNote}`
+      : "Proprietário criado no CRM com tarefa de retorno.",
   };
 }

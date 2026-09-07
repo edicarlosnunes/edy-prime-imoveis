@@ -1,4 +1,4 @@
-import { sqliteTable, integer, text, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, integer, text, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { FALLBACK_MODEL } from "../agent/model";
 
 /**
@@ -38,6 +38,14 @@ export const properties = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     code: text("code").notNull().unique(),
+    /**
+     * V3 — serial global `TIPO-ANO-SEQUENCIAL` (ex.: AP-2026-000124).
+     *
+     * Nullable de propósito: os imóveis que já existem ficam com NULL e o
+     * `code` antigo deles NÃO é renumerado. Índice UNIQUE aceita vários NULL
+     * no SQLite, então a unicidade vale só para os seriais realmente emitidos.
+     */
+    serial: text("serial"),
     title: text("title").notNull(),
     /** venda | locacao | venda_locacao */
     purpose: text("purpose").notNull().default("venda"),
@@ -109,6 +117,9 @@ export const properties = sqliteTable(
   (t) => [
     index("properties_status_idx").on(t.status),
     index("properties_next_revalidation_idx").on(t.nextRevalidationAt),
+    /* backstop do serial: o banco recusa duplicata mesmo se alguém gerar
+       serial por fora de lib/serial-counter.ts */
+    uniqueIndex("properties_serial_idx").on(t.serial),
   ],
 );
 
@@ -256,9 +267,35 @@ export const owners = sqliteTable("owners", {
   notes: text("notes"),
   /** prospeccao | em_negociacao | captado | perdido */
   captureStatus: text("capture_status").notNull().default("prospeccao"),
+  /**
+   * V3 — alerta de POSSÍVEL DUPLICADO (revisão humana).
+   *
+   * O telefone é a chave de reuso do proprietário; o e-mail NÃO mescla mais.
+   * E-mail repetido cria o proprietário normalmente e apenas levanta este
+   * alerta, que nunca bloqueia e não afeta serial, captação ou documentos.
+   * Limpar o alerta = `possible_duplicate = 0`, preservando a referência.
+   */
+  possibleDuplicate: integer("possible_duplicate").notNull().default(0),
+  duplicateOfOwnerId: integer("duplicate_of_owner_id"),
+  duplicateNote: text("duplicate_note"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
+});
+
+/* ------------------------------------------- serial global do CRM (V3) */
+
+/**
+ * Contador do sequencial GLOBAL do serial (`TIPO-ANO-SEQUENCIAL`).
+ *
+ * Linha única (`id = 1`). Sem contador por tipo e sem reinício por ano, de
+ * propósito: dois tipos diferentes nunca compartilham o mesmo número-base.
+ * A reserva é feita em um único statement atômico — ver `lib/serial-counter.ts`.
+ */
+export const crmSerials = sqliteTable("crm_serials", {
+  id: integer("id").primaryKey(),
+  /** último número reservado; a próxima reserva devolve `next + 1` */
+  next: integer("next").notNull().default(0),
 });
 
 
@@ -273,6 +310,40 @@ export const propertyCaptures = sqliteTable(
     district: text("district"),
     address: text("address"),
     propertyType: text("property_type"),
+    /**
+     * V3 — serial global do imóvel. Nullable: captações antigas ficam com NULL
+     * e nada é renumerado. Ficha Técnica (FC-) e Autorização (AV-) herdam este
+     * número-base, nunca criam sequência nova.
+     */
+    serial: text("serial"),
+    /* V3 — endereço estruturado. `address` (texto livre) continua existindo e
+       não é reescrito: as colunas abaixo são o caminho novo, preenchidas pela
+       consulta de CEP ou pelo preenchimento manual. */
+    cep: text("cep"),
+    street: text("street"),
+    number: text("number"),
+    state: text("state"),
+    /**
+     * Complementos em JSON (apartamento, bloco, torre, sala, lote...).
+     *
+     * Decisão de implementação: um campo JSON em vez de 14 colunas esparsas —
+     * os 14 campos do formulário continuam existindo, mas a consulta por
+     * unidade é servida por `unit_key`, que é o que precisa ser indexado.
+     */
+    complements: text("complements"),
+    /**
+     * Identidade da unidade: CEP + número + complementos identificadores.
+     *
+     * Duas captações com a mesma chave são o MESMO imóvel. O telefone do
+     * proprietário NÃO entra aqui: telefone identifica pessoa, não imóvel.
+     * Gerado por `lib/capture-address.ts#unitKey`.
+     */
+    unitKey: text("unit_key"),
+    /* V3 — "DOCUMENTAÇÃO VALIDADA PELA EQUIPE": registro de quem validou e
+       quando, sem exigir upload falso de documento. */
+    docValidatedBy: text("doc_validated_by"),
+    docValidatedAt: integer("doc_validated_at", { mode: "timestamp" }),
+    docValidationNote: text("doc_validation_note"),
     askingPrice: real("asking_price"),
     estimatedPrice: real("estimated_price"),
     source: text("source").notNull().default("manual"),
@@ -304,10 +375,77 @@ export const propertyCaptures = sqliteTable(
     index("property_captures_owner_idx").on(t.ownerId),
     index("property_captures_stage_idx").on(t.stage),
     index("property_captures_next_action_idx").on(t.nextActionAt),
+    /* backstop do serial, igual ao de properties */
+    uniqueIndex("property_captures_serial_idx").on(t.serial),
+    /* NÃO é único: o mesmo imóvel pode ser recaptado depois de perdido, e
+       bloquear isso no banco impediria trabalho legítimo. A verificação de
+       duplicidade é feita na aplicação, que avisa em vez de travar. */
+    index("property_captures_unit_idx").on(t.unitKey),
   ],
 );
 
 export type PropertyCapture = typeof propertyCaptures.$inferSelect;
+
+/* ------------------------- documentos impressos do CRM (V3): FC / AV */
+
+/**
+ * Ficha Técnica (`FC-`) e Autorização de Venda (`AV-`).
+ *
+ * Uma linha por documento emitido, com serial herdado do imóvel e rastreio de
+ * status. `snapshot` guarda os dados como estavam na emissão: se o preço mudar
+ * depois, a via impressa que o proprietário assinou continua conferindo com o
+ * que está registrado aqui.
+ */
+export const crmDocuments = sqliteTable(
+  "crm_documents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** ficha_tecnica | autorizacao */
+    kind: text("kind").notNull(),
+    /** FC-AP-2026-000124 | AV-AP-2026-000124 — herda o serial-base */
+    serial: text("serial").notNull(),
+    baseSerial: text("base_serial"),
+    captureId: integer("capture_id"),
+    propertyId: integer("property_id"),
+    ownerId: integer("owner_id"),
+    /**
+     * gerada | impressa | com_corretor | entregue_ao_proprietario | assinada |
+     * devolvida | arquivada | cancelada
+     */
+    status: text("status").notNull().default("gerada"),
+    /** dados congelados na emissão (JSON) */
+    snapshot: text("snapshot"),
+    note: text("note"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("crm_documents_serial_idx").on(t.serial),
+    index("crm_documents_capture_idx").on(t.captureId),
+    index("crm_documents_property_idx").on(t.propertyId),
+  ],
+);
+
+/** Histórico de status do documento — só cresce, nunca é reescrito. */
+export const crmDocumentEvents = sqliteTable(
+  "crm_document_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    documentId: integer("document_id").notNull(),
+    status: text("status").notNull(),
+    note: text("note"),
+    userId: integer("user_id"),
+    userName: text("user_name"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [index("crm_document_events_document_idx").on(t.documentId)],
+);
 
 /* ------------------------------------------------------------ clientes */
 

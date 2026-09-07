@@ -2206,6 +2206,9 @@ var init_table3 = __esm(() => {
 function index(name) {
   return new IndexBuilderOn(name, false);
 }
+function uniqueIndex(name) {
+  return new IndexBuilderOn(name, true);
+}
 var IndexBuilderOn, IndexBuilder, Index;
 var init_indexes = __esm(() => {
   init_entity();
@@ -4244,6 +4247,9 @@ __export(exports_schema, {
   integrationEvents: () => integrationEvents,
   documentFiles: () => documentFiles,
   deals: () => deals,
+  crmSerials: () => crmSerials,
+  crmDocuments: () => crmDocuments,
+  crmDocumentEvents: () => crmDocumentEvents,
   conversations: () => conversations,
   clients: () => clients,
   clientInteractions: () => clientInteractions,
@@ -4255,7 +4261,7 @@ __export(exports_schema, {
   adminUsers: () => adminUsers,
   adminSessions: () => adminSessions
 });
-var adminUsers, adminSessions, properties, propertyImages, media, propertyChecklist, documentFiles, propertyDocuments, propertyRevalidations, owners, propertyCaptures, clients, clientInteractions, leads, leadNotes, leadProfile, leadEvents, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
+var adminUsers, adminSessions, properties, propertyImages, media, propertyChecklist, documentFiles, propertyDocuments, propertyRevalidations, owners, crmSerials, propertyCaptures, crmDocuments, crmDocumentEvents, clients, clientInteractions, leads, leadNotes, leadProfile, leadEvents, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
 var init_schema = __esm(() => {
   init_sqlite_core();
   adminUsers = sqliteTable("admin_users", {
@@ -4278,6 +4284,7 @@ var init_schema = __esm(() => {
   properties = sqliteTable("properties", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     code: text("code").notNull().unique(),
+    serial: text("serial"),
     title: text("title").notNull(),
     purpose: text("purpose").notNull().default("venda"),
     type: text("type").notNull().default("apartamento"),
@@ -4316,7 +4323,8 @@ var init_schema = __esm(() => {
     updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
   }, (t) => [
     index("properties_status_idx").on(t.status),
-    index("properties_next_revalidation_idx").on(t.nextRevalidationAt)
+    index("properties_next_revalidation_idx").on(t.nextRevalidationAt),
+    uniqueIndex("properties_serial_idx").on(t.serial)
   ]);
   propertyImages = sqliteTable("property_images", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -4385,7 +4393,14 @@ var init_schema = __esm(() => {
     email: text("email"),
     notes: text("notes"),
     captureStatus: text("capture_status").notNull().default("prospeccao"),
+    possibleDuplicate: integer2("possible_duplicate").notNull().default(0),
+    duplicateOfOwnerId: integer2("duplicate_of_owner_id"),
+    duplicateNote: text("duplicate_note"),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  });
+  crmSerials = sqliteTable("crm_serials", {
+    id: integer2("id").primaryKey(),
+    next: integer2("next").notNull().default(0)
   });
   propertyCaptures = sqliteTable("property_captures", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
@@ -4394,6 +4409,16 @@ var init_schema = __esm(() => {
     district: text("district"),
     address: text("address"),
     propertyType: text("property_type"),
+    serial: text("serial"),
+    cep: text("cep"),
+    street: text("street"),
+    number: text("number"),
+    state: text("state"),
+    complements: text("complements"),
+    unitKey: text("unit_key"),
+    docValidatedBy: text("doc_validated_by"),
+    docValidatedAt: integer2("doc_validated_at", { mode: "timestamp" }),
+    docValidationNote: text("doc_validation_note"),
     askingPrice: real("asking_price"),
     estimatedPrice: real("estimated_price"),
     source: text("source").notNull().default("manual"),
@@ -4416,8 +4441,37 @@ var init_schema = __esm(() => {
   }, (t) => [
     index("property_captures_owner_idx").on(t.ownerId),
     index("property_captures_stage_idx").on(t.stage),
-    index("property_captures_next_action_idx").on(t.nextActionAt)
+    index("property_captures_next_action_idx").on(t.nextActionAt),
+    uniqueIndex("property_captures_serial_idx").on(t.serial),
+    index("property_captures_unit_idx").on(t.unitKey)
   ]);
+  crmDocuments = sqliteTable("crm_documents", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    kind: text("kind").notNull(),
+    serial: text("serial").notNull(),
+    baseSerial: text("base_serial"),
+    captureId: integer2("capture_id"),
+    propertyId: integer2("property_id"),
+    ownerId: integer2("owner_id"),
+    status: text("status").notNull().default("gerada"),
+    snapshot: text("snapshot"),
+    note: text("note"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [
+    uniqueIndex("crm_documents_serial_idx").on(t.serial),
+    index("crm_documents_capture_idx").on(t.captureId),
+    index("crm_documents_property_idx").on(t.propertyId)
+  ]);
+  crmDocumentEvents = sqliteTable("crm_document_events", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    documentId: integer2("document_id").notNull(),
+    status: text("status").notNull(),
+    note: text("note"),
+    userId: integer2("user_id"),
+    userName: text("user_name"),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [index("crm_document_events_document_idx").on(t.documentId)]);
   clients = sqliteTable("clients", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
@@ -35417,6 +35471,60 @@ var leads2 = {
 
 // packages/web/src/api/lib/owner-intake.ts
 init_schema();
+
+// packages/web/src/api/lib/owner-identity.ts
+function ownerPhoneKey(phone) {
+  return String(phone ?? "").replace(/\D/g, "");
+}
+function ownerEmailKey(email3) {
+  const value2 = String(email3 ?? "").trim().toLowerCase();
+  return value2.includes("@") ? value2 : null;
+}
+function findOwnerByPhone(candidates, phone) {
+  const key = ownerPhoneKey(phone);
+  if (!key)
+    return null;
+  return candidates.find((owner) => ownerPhoneKey(owner.phone) === key) ?? null;
+}
+function findEmailDuplicate(candidates, email3, excludeOwnerId = null) {
+  const key = ownerEmailKey(email3);
+  if (!key)
+    return null;
+  return candidates.find((owner) => owner.id !== excludeOwnerId && ownerEmailKey(owner.email) === key) ?? null;
+}
+function resolveOwnerIdentity(candidates, input) {
+  const byPhone = findOwnerByPhone(candidates, input.phone);
+  if (byPhone) {
+    return {
+      action: "reuse",
+      ownerId: byPhone.id,
+      duplicateOfOwnerId: null,
+      reason: `Telefone já cadastrado: proprietário #${byPhone.id} reutilizado.`
+    };
+  }
+  const emailTwin = findEmailDuplicate(candidates, input.email);
+  if (emailTwin) {
+    return {
+      action: "create",
+      ownerId: null,
+      duplicateOfOwnerId: emailTwin.id,
+      reason: `E-mail já usado pelo proprietário #${emailTwin.id}. Proprietário criado assim mesmo e marcado como possível duplicado para revisão.`
+    };
+  }
+  return {
+    action: "create",
+    ownerId: null,
+    duplicateOfOwnerId: null,
+    reason: "Proprietário novo."
+  };
+}
+function duplicateAlertText(duplicateOfOwnerId) {
+  if (duplicateOfOwnerId == null)
+    return null;
+  return `Possível duplicado do proprietário #${duplicateOfOwnerId} (mesmo e-mail). Revisar manualmente.`;
+}
+
+// packages/web/src/api/lib/owner-intake.ts
 var onlyDigits = (value2) => value2.replace(/\D/g, "");
 var ownerTaskMarker = (ownerId) => `[owner:${ownerId}]`;
 function buildHistoryLine(input, when) {
@@ -35461,13 +35569,8 @@ async function intakeOwner(db3, input) {
   const email3 = input.email?.trim().toLowerCase() || null;
   const now = new Date;
   const candidates = await db3.select().from(owners).limit(500);
-  const existing = candidates.find((owner) => {
-    const ownerPhone = onlyDigits(owner.phone ?? "");
-    if (phoneDigits && ownerPhone && ownerPhone === phoneDigits)
-      return true;
-    const ownerEmail = owner.email?.trim().toLowerCase() || null;
-    return Boolean(email3 && ownerEmail && ownerEmail === email3);
-  });
+  const decision = resolveOwnerIdentity(candidates, { phone: phoneDigits, email: email3 });
+  const existing = decision.action === "reuse" ? candidates.find((owner) => owner.id === decision.ownerId) : undefined;
   if (existing) {
     const history = [existing.notes?.trim(), buildHistoryLine(input, now)].filter(Boolean).join(`
 
@@ -35484,19 +35587,24 @@ async function intakeOwner(db3, input) {
       detail: taskCreated ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.` : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`
     };
   }
+  const duplicateOfOwnerId = decision.action === "create" ? decision.duplicateOfOwnerId : null;
+  const duplicateNote = duplicateAlertText(duplicateOfOwnerId);
   const [created] = await db3.insert(owners).values({
     name: input.name.trim().slice(0, 120) || "Proprietário sem nome",
     phone: phoneDigits || null,
     email: email3,
     notes: buildHistoryLine(input, now).slice(0, 4000),
-    captureStatus: "prospeccao"
+    captureStatus: "prospeccao",
+    possibleDuplicate: duplicateOfOwnerId == null ? 0 : 1,
+    duplicateOfOwnerId,
+    duplicateNote
   }).returning();
   if (created)
     await ensureFollowUpTask(db3, created.id, input);
   return {
     id: created?.id ?? 0,
     duplicated: false,
-    detail: "Proprietário criado no CRM com tarefa de retorno."
+    detail: duplicateNote ? `Proprietário criado no CRM com tarefa de retorno. ${duplicateNote}` : "Proprietário criado no CRM com tarefa de retorno."
   };
 }
 
