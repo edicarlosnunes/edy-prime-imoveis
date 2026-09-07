@@ -168,7 +168,17 @@ export const adminCaptures = {
       .where(and(eq(schema.auditLog.entity, "capture"), eq(schema.auditLog.entityId, String(input.id))))
       .orderBy(desc(schema.auditLog.createdAt))
       .limit(100);
-    return { ...capture, owner: owner ?? null, tasks, history };
+    /* O Radar mostra o código OFICIAL que nasceu no Cadastro Premium: serial
+       novo (TIPO-ANO-SEQUENCIAL) ou o `code` legado de imóvel antigo. Leitura
+       pura — nada aqui gera, altera ou renumera serial. */
+    const [convertedProperty] = capture.convertedPropertyId
+      ? await context.db
+          .select({ id: schema.properties.id, serial: schema.properties.serial, code: schema.properties.code })
+          .from(schema.properties)
+          .where(eq(schema.properties.id, capture.convertedPropertyId))
+          .limit(1)
+      : [];
+    return { ...capture, owner: owner ?? null, convertedProperty: convertedProperty ?? null, tasks, history };
   }),
 
   create: adminBase.input(createInput).handler(async ({ input, context }) => {

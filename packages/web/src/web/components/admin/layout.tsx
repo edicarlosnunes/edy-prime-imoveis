@@ -34,7 +34,9 @@ const nav: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/admin/leads", label: "Leads / CRM", icon: Users },
   { href: "/admin/clientes", label: "Clientes", icon: UserRound },
   { href: "/admin/proprietarios", label: "Proprietários", icon: KeyRound },
-  { href: "/admin/captacao", label: "Captação", icon: Radar },
+  /* RADAR DE CAPTAÇÃO = ferramenta de prospecção/pré-cadastro.
+     "Captação" (sem Radar) segue sendo o processo interno de cada ficha. */
+  { href: "/admin/captacao", label: "Radar de Captação", icon: Radar },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarClock },
   { href: "/admin/propostas", label: "Propostas", icon: Handshake },
   { href: "/admin/conversas", label: "Conversas", icon: MessagesSquare },

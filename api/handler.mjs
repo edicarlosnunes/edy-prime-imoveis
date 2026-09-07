@@ -50971,7 +50971,8 @@ var adminCaptures = {
     const [owner] = await context.db.select().from(owners).where(eq(owners.id, capture.ownerId)).limit(1);
     const tasks2 = await context.db.select().from(tasks).where(or(eq(tasks.captureId, input.id), like(tasks.notes, `%[capture:${input.id}]%`))).orderBy(desc(tasks.dueAt));
     const history = await context.db.select().from(auditLog).where(and(eq(auditLog.entity, "capture"), eq(auditLog.entityId, String(input.id)))).orderBy(desc(auditLog.createdAt)).limit(100);
-    return { ...capture, owner: owner ?? null, tasks: tasks2, history };
+    const [convertedProperty] = capture.convertedPropertyId ? await context.db.select({ id: properties.id, serial: properties.serial, code: properties.code }).from(properties).where(eq(properties.id, capture.convertedPropertyId)).limit(1) : [];
+    return { ...capture, owner: owner ?? null, convertedProperty: convertedProperty ?? null, tasks: tasks2, history };
   }),
   create: adminBase.input(createInput3).handler(async ({ input, context }) => {
     const phoneDigits = digits3(input.ownerPhone);
