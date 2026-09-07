@@ -15,6 +15,8 @@ import { and, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
 import type { AdminDb } from "./admin-base";
 import { duplicateAlertText, resolveOwnerIdentity } from "./owner-identity";
+import type { Complements } from "./capture-address";
+import { buildCapturePayload, findDuplicateUnit } from "./capture-intake";
 
 export interface OwnerIntakeInput {
   name: string;
@@ -27,12 +29,31 @@ export interface OwnerIntakeInput {
   message?: string | null;
   /** de onde veio: site_vender, etc. */
   source?: string | null;
+  /* V3 — ficha única: o imóvel vem junto com o proprietário. Todos opcionais,
+     porque o formulário público não pode exigir CEP para aceitar um contato. */
+  cep?: string | null;
+  street?: string | null;
+  number?: string | null;
+  city?: string | null;
+  state?: string | null;
+  complements?: Complements | null;
+  askingPrice?: number | null;
 }
 
 export interface OwnerIntakeResult {
   id: number;
   duplicated: boolean;
   detail: string;
+  /**
+   * Captação criada para ESTE imóvel.
+   *
+   * O formulário público alimentava só `owners` + `tasks` e o Radar de
+   * Captação nunca via o contato do site. Agora todo envio cria também a
+   * `property_capture` com `source = site`.
+   */
+  captureId: number | null;
+  /** Aviso de unidade repetida. Informativo: nada é bloqueado. */
+  duplicateUnit: string | null;
 }
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
@@ -56,7 +77,12 @@ function buildHistoryLine(input: OwnerIntakeInput, when: Date) {
  * Cria a tarefa de retorno, a menos que já exista uma pendente para o mesmo
  * proprietário — evita fila de tarefas duplicadas quando a pessoa reenvia.
  */
-async function ensureFollowUpTask(db: AdminDb, ownerId: number, input: OwnerIntakeInput) {
+async function ensureFollowUpTask(
+  db: AdminDb,
+  ownerId: number,
+  input: OwnerIntakeInput,
+  captureId: number | null = null,
+) {
   const marker = ownerTaskMarker(ownerId);
 
   const pending = await db
@@ -70,6 +96,9 @@ async function ensureFollowUpTask(db: AdminDb, ownerId: number, input: OwnerInta
   const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const notes = [
     marker,
+    /* Marcador do Radar: é por ele que a ficha da captação encontra a tarefa
+       criada pelo site (mesmo padrão usado em routes/admin-captures.ts). */
+    captureId ? `[capture:${captureId}]` : "",
     `Proprietário quer avaliação de imóvel.`,
     `WhatsApp: ${input.phone}`,
     input.propertyType ? `Tipo: ${input.propertyType}` : "",
@@ -85,10 +114,98 @@ async function ensureFollowUpTask(db: AdminDb, ownerId: number, input: OwnerInta
     type: "retorno",
     dueAt,
     status: "pendente",
+    captureId: captureId ?? null,
     notes,
   });
 
   return true;
+}
+
+/**
+ * Cria a captação do imóvel que veio na ficha.
+ *
+ * Antes do V3 o formulário público gravava só `owners` + `tasks`, e o Radar de
+ * Captação nunca via o contato do site — o funil começava vazio. Agora todo
+ * envio cria a `property_capture` correspondente, com origem `site`.
+ *
+ * O mesmo proprietário pode mandar vários imóveis: cada envio com unidade
+ * diferente vira uma captação nova. Unidade repetida AVISA e reaproveita a
+ * captação existente em vez de duplicar a ficha.
+ */
+async function ensureCapture(
+  db: AdminDb,
+  ownerId: number,
+  ownerName: string,
+  input: OwnerIntakeInput,
+  now: Date,
+): Promise<{ captureId: number | null; duplicateUnit: string | null }> {
+  const payload = buildCapturePayload({
+    ownerName: input.name,
+    ownerPhone: input.phone,
+    ownerEmail: input.email ?? null,
+    cep: input.cep ?? null,
+    street: input.street ?? null,
+    number: input.number ?? null,
+    district: input.neighborhood ?? null,
+    city: input.city ?? null,
+    state: input.state ?? null,
+    complements: input.complements ?? null,
+    propertyType: input.propertyType ?? null,
+    askingPrice: input.askingPrice ?? null,
+    notes: input.message ?? null,
+    source: input.source ?? "site",
+  });
+
+  const existing = await db
+    .select({
+      id: schema.propertyCaptures.id,
+      ownerId: schema.propertyCaptures.ownerId,
+      unitKey: schema.propertyCaptures.unitKey,
+      stage: schema.propertyCaptures.stage,
+    })
+    .from(schema.propertyCaptures)
+    .limit(1000);
+
+  const duplicate = findDuplicateUnit(existing, { unitKey: payload.unitKey, ownerId });
+
+  /* Reenvio do MESMO imóvel pelo MESMO dono não cria ficha nova: o Radar
+     ficaria com duas fichas idênticas a cada vez que a pessoa clica de novo. */
+  if (duplicate.duplicate && duplicate.sameOwner) {
+    return { captureId: duplicate.captureId, duplicateUnit: duplicate.message };
+  }
+
+  const due = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const [capture] = await db
+    .insert(schema.propertyCaptures)
+    .values({
+      ownerId,
+      city: payload.city,
+      district: payload.district,
+      address: payload.address,
+      cep: payload.cep,
+      street: payload.street,
+      number: payload.number,
+      state: payload.state,
+      complements: payload.complements,
+      unitKey: payload.unitKey,
+      propertyType: payload.propertyType,
+      askingPrice: payload.askingPrice,
+      intention: payload.intention,
+      /* Aviso de duplicidade fica registrado na ficha, sem travar nada. */
+      notes: [payload.notes, duplicate.duplicate ? duplicate.message : ""].filter(Boolean).join("\n\n") || null,
+      source: payload.source,
+      stage: "novo_contato",
+      nextAction: `Retornar proprietário — ${ownerName}`,
+      nextActionAt: due,
+      stageChangedAt: now,
+      updatedAt: now,
+    })
+    .returning();
+
+  return {
+    captureId: capture?.id ?? null,
+    duplicateUnit: duplicate.duplicate ? duplicate.message : null,
+  };
 }
 
 /** Grava (ou funde) um proprietário. Sempre retorna o id no CRM. */
@@ -133,14 +250,26 @@ export async function intakeOwner(
       })
       .where(eq(schema.owners.id, existing.id));
 
-    const taskCreated = await ensureFollowUpTask(db, existing.id, input);
+    /* Proprietário reaproveitado NÃO significa imóvel reaproveitado: o mesmo
+       dono pode mandar o segundo, o terceiro imóvel. Cada unidade diferente
+       gera a sua própria captação. */
+    const capture = await ensureCapture(db, existing.id, existing.name ?? input.name, input, now);
+    const taskCreated = await ensureFollowUpTask(db, existing.id, input, capture.captureId);
 
     return {
       id: existing.id,
       duplicated: true,
-      detail: taskCreated
-        ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.`
-        : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`,
+      captureId: capture.captureId,
+      duplicateUnit: capture.duplicateUnit,
+      detail: [
+        taskCreated
+          ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.`
+          : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`,
+        capture.captureId ? `Captação #${capture.captureId} no Radar.` : "",
+        capture.duplicateUnit ?? "",
+      ]
+        .filter(Boolean)
+        .join(" "),
     };
   }
 
@@ -164,13 +293,27 @@ export async function intakeOwner(
     })
     .returning();
 
-  if (created) await ensureFollowUpTask(db, created.id, input);
+  let capture: { captureId: number | null; duplicateUnit: string | null } = {
+    captureId: null,
+    duplicateUnit: null,
+  };
+  if (created) {
+    capture = await ensureCapture(db, created.id, created.name ?? input.name, input, now);
+    await ensureFollowUpTask(db, created.id, input, capture.captureId);
+  }
 
   return {
     id: created?.id ?? 0,
     duplicated: false,
-    detail: duplicateNote
-      ? `Proprietário criado no CRM com tarefa de retorno. ${duplicateNote}`
-      : "Proprietário criado no CRM com tarefa de retorno.",
+    captureId: capture.captureId,
+    duplicateUnit: capture.duplicateUnit,
+    detail: [
+      "Proprietário criado no CRM com tarefa de retorno.",
+      capture.captureId ? `Captação #${capture.captureId} no Radar.` : "",
+      duplicateNote ?? "",
+      capture.duplicateUnit ?? "",
+    ]
+      .filter(Boolean)
+      .join(" "),
   };
 }

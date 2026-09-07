@@ -14,6 +14,26 @@ import {
   normalizeStage,
 } from "../lib/capture-rules";
 import { CHECKLIST_ITEMS, isChecklistKey, toggleChecklistItem } from "../lib/capture-checklist";
+import { COMPLEMENT_FIELDS } from "../lib/capture-address";
+import { buildCapturePayload, findDuplicateUnit } from "../lib/capture-intake";
+import {
+  MAX_OWNER_PHOTOS,
+  addOwnerPhotos,
+  parseOwnerPhotos,
+  removeOwnerPhoto,
+  serializeOwnerPhotos,
+} from "../lib/capture-photos";
+
+/** Complementos da unidade: todos opcionais e curtos. */
+const complementsInput = z
+  .object(
+    Object.fromEntries(
+      COMPLEMENT_FIELDS.map((field) => [field.key, z.string().max(60).optional()]),
+    ) as Record<string, z.ZodOptional<z.ZodString>>,
+  )
+  .partial()
+  .nullable()
+  .optional();
 
 /**
  * Etapas aceitas na ENTRADA.
@@ -90,6 +110,13 @@ const createInput = z.object({
   source: z.string().max(80).default("manual"),
   intention: z.string().max(80).nullable().optional(),
   notes: z.string().max(4000).nullable().optional(),
+  /* V3 — endereço estruturado. Tudo opcional: uma captação por telefone, sem
+     endereço ainda, continua sendo aceita. */
+  cep: z.string().max(12).nullable().optional(),
+  street: z.string().max(200).nullable().optional(),
+  number: z.string().max(30).nullable().optional(),
+  state: z.string().max(2).nullable().optional(),
+  complements: complementsInput,
 });
 
 export const adminCaptures = {
@@ -161,18 +188,64 @@ export const adminCaptures = {
     }
     if (!owner) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível criar proprietário" });
 
+    /* V3 — ficha única: o endereço vira estrutura (CEP + número + complementos)
+       e a identidade da unidade (`unitKey`) é calculada uma única vez, pelo
+       mesmo módulo que o formulário público usa. */
+    const payload = buildCapturePayload({
+      ownerName: input.ownerName,
+      ownerPhone: input.ownerPhone,
+      ownerEmail: input.ownerEmail ?? null,
+      cep: input.cep ?? null,
+      street: input.street ?? null,
+      number: input.number ?? null,
+      district: input.district ?? null,
+      city: input.city,
+      state: input.state ?? null,
+      complements: input.complements ?? null,
+      propertyType: input.propertyType ?? null,
+      askingPrice: input.askingPrice ?? null,
+      intention: input.intention ?? null,
+      notes: input.notes ?? null,
+      source: input.source,
+    });
+
+    /* Aviso de unidade repetida. Só informa — recaptar é decisão humana. */
+    const existing = await context.db
+      .select({
+        id: schema.propertyCaptures.id,
+        ownerId: schema.propertyCaptures.ownerId,
+        unitKey: schema.propertyCaptures.unitKey,
+        stage: schema.propertyCaptures.stage,
+      })
+      .from(schema.propertyCaptures)
+      .limit(1000);
+    const duplicateUnit = findDuplicateUnit(existing, {
+      unitKey: payload.unitKey,
+      ownerId: owner.id,
+    });
+
     const now = new Date();
     const due = new Date(now.getTime() + 2 * 60 * 60 * 1000);
     const [capture] = await context.db.insert(schema.propertyCaptures).values({
       ownerId: owner.id,
-      city: input.city,
-      district: input.district?.trim() || null,
-      address: input.address?.trim() || null,
-      propertyType: input.propertyType?.trim() || null,
-      askingPrice: input.askingPrice ?? null,
-      source: input.source,
-      intention: input.intention?.trim() || null,
-      notes: input.notes?.trim() || null,
+      city: payload.city,
+      district: payload.district,
+      /* `address` (texto livre) segue preenchido: telas e documentos antigos
+         continuam lendo essa coluna. O digitado à mão tem prioridade. */
+      address: input.address?.trim() || payload.address,
+      cep: payload.cep,
+      street: payload.street,
+      number: payload.number,
+      state: payload.state,
+      complements: payload.complements,
+      unitKey: payload.unitKey || null,
+      propertyType: payload.propertyType,
+      askingPrice: payload.askingPrice,
+      source: payload.source,
+      intention: payload.intention,
+      notes: duplicateUnit.duplicate
+        ? [payload.notes, duplicateUnit.message].filter(Boolean).join("\n")
+        : payload.notes,
       stage: "novo_contato",
       nextAction: `Retornar proprietário — ${owner.name}`,
       nextActionAt: due,
@@ -190,7 +263,16 @@ export const adminCaptures = {
       notes: `[capture:${capture.id}] Retorno automático criado pelo Radar de Captação`,
     });
     await audit(context, "capture_created", capture.id, ownerCreated ? "Proprietário novo" : "Proprietário existente reutilizado");
-    return { id: capture.id, ownerId: owner.id, ownerCreated };
+    if (duplicateUnit.duplicate) {
+      await audit(context, "capture_duplicate_unit", capture.id, duplicateUnit.message);
+    }
+    return {
+      id: capture.id,
+      ownerId: owner.id,
+      ownerCreated,
+      /* Aviso, não bloqueio: a tela mostra e o corretor decide. */
+      duplicateUnit: duplicateUnit.duplicate ? duplicateUnit.message : null,
+    };
   }),
 
   setStage: adminBase.input(z.object({ id: z.number().int().positive(), stage: z.enum(STAGES) })).handler(async ({ input, context }) => {
@@ -348,6 +430,49 @@ export const adminCaptures = {
     await audit(context, "capture_checklist", input.id, `${input.value ? "recebido" : "removido"}: ${label}`);
     return { ok: true, changed: true };
   }),
+
+  /**
+   * Fotos PROVISÓRIAS do proprietário.
+   *
+   * Vivem em `property_captures.owner_photos` (JSON) e NUNCA em
+   * `property_images`: o que está em `property_images` é o que o site publica,
+   * e foto tirada pelo dono não pode vazar para o anúncio. A promoção a foto
+   * oficial é ato explícito do corretor, no cadastro do imóvel.
+   */
+  addPhotos: adminBase
+    .input(z.object({
+      id: z.number().int().positive(),
+      photos: z.array(z.object({ url: z.string().min(4).max(1000), caption: z.string().max(200).nullable().optional() })).min(1).max(MAX_OWNER_PHOTOS),
+    }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      /* Anexada pelo CRM: a origem é a equipe, mas a foto continua PROVISÓRIA. */
+      const photos = addOwnerPhotos(capture.ownerPhotos, input.photos, { source: "equipe" });
+      const before = parseOwnerPhotos(capture.ownerPhotos).length;
+      if (photos.length === before) return { ok: true, changed: false, total: before };
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+        .where(eq(schema.propertyCaptures.id, input.id));
+      await audit(context, "capture_photos_added", input.id, `${photos.length - before} foto(s) provisória(s)`);
+      return { ok: true, changed: true, total: photos.length };
+    }),
+
+  removePhoto: adminBase
+    .input(z.object({ id: z.number().int().positive(), url: z.string().min(4).max(1000) }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      const photos = removeOwnerPhoto(capture.ownerPhotos, input.url);
+      if (photos.length === parseOwnerPhotos(capture.ownerPhotos).length) return { ok: true, changed: false };
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+        .where(eq(schema.propertyCaptures.id, input.id));
+      await audit(context, "capture_photo_removed", input.id, input.url.slice(0, 200));
+      return { ok: true, changed: true };
+    }),
 
   markLost: adminBase.input(z.object({ id: z.number().int().positive(), reason: z.string().min(2).max(120), detail: z.string().max(1000).nullable().optional() })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);

@@ -2,6 +2,9 @@ import { useState } from "react";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { useCreateOwner } from "../../queries/owners";
 import { site, whatsappLink } from "../../lib/site";
+import { COMPLEMENT_FIELDS, formatCep, isValidCep, normalizeCep } from "../../../api/lib/capture-address";
+import type { ComplementKey } from "../../../api/lib/capture-address";
+import { lookupCep } from "../../../api/lib/cep-lookup";
 
 const propertyTypes = [
   "Apartamento",
@@ -15,6 +18,11 @@ const propertyTypes = [
 /**
  * Captação de proprietários. Grava direto no CRM (tabela owners) e abre uma
  * tarefa de retorno — antes disso o CTA só abria o WhatsApp e nada era gravado.
+ *
+ * V3 — ficha única: o mesmo envio já traz o endereço estruturado (CEP, número e
+ * complementos) e cria a captação no Radar. Tudo opcional: nome e telefone
+ * continuam sendo os únicos campos obrigatórios, porque um contato real não
+ * pode ser perdido por falta de CEP.
  */
 export function OwnerForm() {
   const createOwner = useCreateOwner();
@@ -24,6 +32,19 @@ export function OwnerForm() {
   const [neighborhood, setNeighborhood] = useState("");
   const [message, setMessage] = useState("");
   const [done, setDone] = useState(false);
+
+  const [cep, setCep] = useState("");
+  const [street, setStreet] = useState("");
+  const [number, setNumber] = useState("");
+  const [city, setCity] = useState("");
+  const [uf, setUf] = useState("");
+  /* manual = a consulta falhou ou o CEP não existe: os campos aparecem para
+     preenchimento à mão e o envio segue normalmente. */
+  const [manual, setManual] = useState(false);
+  const [cepBusy, setCepBusy] = useState(false);
+  const [cepNote, setCepNote] = useState("");
+  const [showComplements, setShowComplements] = useState(false);
+  const [complements, setComplements] = useState<Partial<Record<ComplementKey, string>>>({});
 
   const fieldClass =
     "w-full border border-white/20 bg-white/5 px-4 py-3.5 text-sm text-white placeholder:text-white/40 outline-none transition-colors focus:border-brass-soft";
@@ -37,9 +58,34 @@ export function OwnerForm() {
     return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
   }
 
+  /** Consulta a ViaCEP no navegador. Falha nunca vira erro de tela: vira modo manual. */
+  async function handleCep(value: string) {
+    const masked = formatCep(value);
+    setCep(masked);
+    if (!isValidCep(masked)) return;
+    setCepBusy(true);
+    setCepNote("");
+    const result = await lookupCep(masked);
+    setCepBusy(false);
+    if (result.ok) {
+      setStreet(result.address.street);
+      setCity(result.address.city);
+      setUf(result.address.state);
+      if (!neighborhood && result.address.district) setNeighborhood(result.address.district);
+      setManual(true);
+      setCepNote(result.address.street ? "" : "CEP geral: confirme a rua abaixo.");
+      return;
+    }
+    setManual(true);
+    setCepNote(`${result.reason} Pode preencher o endereço à mão.`);
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (createOwner.isPending) return;
+    const filledComplements = Object.fromEntries(
+      Object.entries(complements).filter(([, v]) => (v ?? "").trim().length > 0),
+    );
     try {
       await createOwner.mutateAsync({
         name,
@@ -48,6 +94,12 @@ export function OwnerForm() {
         neighborhood: neighborhood || undefined,
         message: message || undefined,
         source: "site_vender",
+        cep: normalizeCep(cep) || undefined,
+        street: street || undefined,
+        number: number || undefined,
+        city: city || undefined,
+        state: uf ? uf.toUpperCase().slice(0, 2) : undefined,
+        complements: Object.keys(filledComplements).length ? filledComplements : undefined,
       });
       setDone(true);
     } catch {
@@ -124,6 +176,83 @@ export function OwnerForm() {
           className={fieldClass}
         />
       </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <input
+          inputMode="numeric"
+          value={cep}
+          onChange={(e) => void handleCep(e.target.value)}
+          placeholder="CEP do imóvel (opcional)"
+          data-t="form"
+          className={fieldClass}
+        />
+        <input
+          value={number}
+          onChange={(e) => setNumber(e.target.value)}
+          placeholder="Número"
+          data-t="form"
+          className={fieldClass}
+        />
+      </div>
+
+      {cepBusy && <p className="text-[11px] text-white/45">Buscando endereço do CEP…</p>}
+      {cepNote && <p className="text-[11px] text-amber-300/80">{cepNote}</p>}
+
+      {manual && (
+        <div className="space-y-3">
+          <input
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+            placeholder="Rua / avenida"
+            data-t="form"
+            className={fieldClass}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="Cidade"
+              data-t="form"
+              className={fieldClass}
+            />
+            <input
+              value={uf}
+              maxLength={2}
+              onChange={(e) => setUf(e.target.value.toUpperCase())}
+              placeholder="UF"
+              data-t="form"
+              className={fieldClass}
+            />
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowComplements((v) => !v)}
+        className="text-[11px] text-brass-soft underline-offset-4 hover:underline"
+      >
+        {showComplements ? "Ocultar complemento" : "Apartamento, bloco, lote… (opcional)"}
+      </button>
+
+      {showComplements && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {COMPLEMENT_FIELDS.map((field) => (
+            <input
+              key={field.key}
+              value={complements[field.key] ?? ""}
+              onChange={(e) =>
+                setComplements((prev) => ({ ...prev, [field.key]: e.target.value }))
+              }
+              placeholder={field.label}
+              maxLength={60}
+              data-t="form"
+              className={fieldClass}
+            />
+          ))}
+        </div>
+      )}
+
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}

@@ -538,6 +538,9 @@ const propertyCaptureColumns: Record<string, string> = {
   doc_validated_by: "TEXT",
   doc_validated_at: "INTEGER",
   doc_validation_note: "TEXT",
+  /* FOTOS DO PROPRIETÁRIO / PROVISÓRIAS em JSON — ficam fora de
+     property_images de propósito: aquela tabela alimenta o site público. */
+  owner_photos: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */

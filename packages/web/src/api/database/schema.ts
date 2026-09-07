@@ -344,6 +344,14 @@ export const propertyCaptures = sqliteTable(
     docValidatedBy: text("doc_validated_by"),
     docValidatedAt: integer("doc_validated_at", { mode: "timestamp" }),
     docValidationNote: text("doc_validation_note"),
+    /**
+     * V3 — FOTOS DO PROPRIETÁRIO / PROVISÓRIAS, em JSON.
+     *
+     * Ficam aqui de propósito, fora de `property_images`: aquela tabela é a
+     * fonte do que o site público mostra, e foto de proprietário só vira
+     * oficial por ato explícito do corretor. Ver lib/capture-photos.ts.
+     */
+    ownerPhotos: text("owner_photos"),
     askingPrice: real("asking_price"),
     estimatedPrice: real("estimated_price"),
     source: text("source").notNull().default("manual"),

@@ -4419,6 +4419,7 @@ var init_schema = __esm(() => {
     docValidatedBy: text("doc_validated_by"),
     docValidatedAt: integer2("doc_validated_at", { mode: "timestamp" }),
     docValidationNote: text("doc_validation_note"),
+    ownerPhotos: text("owner_photos"),
     askingPrice: real("asking_price"),
     estimatedPrice: real("estimated_price"),
     source: text("source").notNull().default("manual"),
@@ -35524,6 +35525,139 @@ function duplicateAlertText(duplicateOfOwnerId) {
   return `Possível duplicado do proprietário #${duplicateOfOwnerId} (mesmo e-mail). Revisar manualmente.`;
 }
 
+// packages/web/src/api/lib/capture-address.ts
+var digits2 = (value2) => String(value2 ?? "").replace(/\D/g, "");
+function normalizeCep(raw2) {
+  const only = digits2(raw2);
+  return only.length === 8 ? only : null;
+}
+function formatCep(raw2) {
+  const cep = normalizeCep(raw2);
+  if (!cep)
+    return String(raw2 ?? "").trim();
+  return `${cep.slice(0, 5)}-${cep.slice(5)}`;
+}
+var COMPLEMENT_FIELDS = [
+  { key: "unit", label: "Apartamento / unidade", identifies: true },
+  { key: "block", label: "Bloco", identifies: true },
+  { key: "tower", label: "Torre", identifies: true },
+  { key: "conjunto", label: "Conjunto", identifies: true },
+  { key: "room", label: "Sala", identifies: true },
+  { key: "store", label: "Loja", identifies: true },
+  { key: "house", label: "Casa / fundos", identifies: true },
+  { key: "chale", label: "Chalé", identifies: true },
+  { key: "lot", label: "Lote", identifies: true },
+  { key: "quadra", label: "Quadra", identifies: true },
+  { key: "otherId", label: "Outro identificador", identifies: true },
+  { key: "floor", label: "Andar", identifies: false },
+  { key: "box", label: "Box / garagem", identifies: false },
+  { key: "complement", label: "Complemento", identifies: false }
+];
+var IDENTIFYING_COMPLEMENTS = COMPLEMENT_FIELDS.filter((field) => field.identifies).map((field) => field.key);
+function normalizeComplementValue(raw2) {
+  const base2 = String(raw2 ?? "").normalize("NFD").replace(/[\u0300-\u036F]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/([a-z])(\d)/g, "$1 $2").replace(/(\d)([a-z])/g, "$1 $2").trim();
+  if (!base2)
+    return "";
+  const stripped = base2.replace(/\b(apartamento|apto|apt|ap|unidade|und|un|bloco|bl|torre|tr|conjunto|conj|sala|sl|loja|lj|casa|cs|chale|lote|lt|quadra|qd|andar|and|box|bx|numero|num|no|n)\b/g, " ").replace(/\s+/g, "").trim();
+  return stripped || base2.replace(/\s+/g, "");
+}
+function unitKey(address, complements = {}) {
+  const cep = normalizeCep(address.cep);
+  const number5 = normalizeComplementValue(address.number);
+  const head = cep ? `cep:${cep}` : `st:${normalizeComplementValue(address.street)}|ct:${normalizeComplementValue(address.city)}`;
+  const parts = IDENTIFYING_COMPLEMENTS.map((key) => {
+    const value2 = normalizeComplementValue(complements[key]);
+    return value2 ? `${key}=${value2}` : "";
+  }).filter(Boolean);
+  return [head, `n:${number5}`, ...parts].join("|");
+}
+function formatUnitAddress(address, complements = {}) {
+  const complementText = COMPLEMENT_FIELDS.map((field) => {
+    const value2 = String(complements[field.key] ?? "").trim();
+    return value2 ? `${field.label}: ${value2}` : "";
+  }).filter(Boolean).join(", ");
+  const line = [
+    [String(address.street ?? "").trim(), String(address.number ?? "").trim()].filter(Boolean).join(", "),
+    complementText,
+    String(address.district ?? "").trim(),
+    [String(address.city ?? "").trim(), String(address.state ?? "").trim()].filter(Boolean).join("/"),
+    address.cep ? `CEP ${formatCep(address.cep)}` : ""
+  ].filter(Boolean).join(" — ");
+  return line;
+}
+
+// packages/web/src/api/lib/capture-intake.ts
+var CAPTURE_SOURCES = ["site", "manual", "prospeccao", "indicacao", "portal"];
+function normalizeSource(raw2) {
+  const value2 = String(raw2 ?? "").trim().toLowerCase();
+  if (CAPTURE_SOURCES.includes(value2))
+    return value2;
+  if (value2.startsWith("site"))
+    return "site";
+  return "manual";
+}
+var text3 = (value2, max = 200) => {
+  const clean = typeof value2 === "string" ? value2.trim() : "";
+  return clean ? clean.slice(0, max) : null;
+};
+var DEFAULT_CITY = "Praia Grande";
+var COMPLEMENT_KEYS = COMPLEMENT_FIELDS.map((field) => field.key);
+function cleanComplements(raw2) {
+  const out = {};
+  if (!raw2 || typeof raw2 !== "object")
+    return out;
+  for (const key of COMPLEMENT_KEYS) {
+    const value2 = text3(raw2[key], 60);
+    if (value2)
+      out[key] = value2;
+  }
+  return out;
+}
+function serializeComplements(complements) {
+  return Object.keys(complements).length ? JSON.stringify(complements) : null;
+}
+function buildCapturePayload(input) {
+  const complements = cleanComplements(input.complements);
+  const cep = normalizeCep(input.cep);
+  const street = text3(input.street, 200);
+  const number5 = text3(input.number, 30);
+  const city = text3(input.city, 120) ?? DEFAULT_CITY;
+  const district = text3(input.district, 120);
+  const state = text3(input.state, 2)?.toUpperCase() ?? null;
+  const address = formatUnitAddress({ cep, street, number: number5, city, district, state }, complements) || null;
+  return {
+    city,
+    district,
+    address,
+    cep,
+    street,
+    number: number5,
+    state,
+    complements: serializeComplements(complements),
+    unitKey: unitKey({ cep, number: number5, street, city }, complements),
+    propertyType: text3(input.propertyType, 60),
+    askingPrice: typeof input.askingPrice === "number" && Number.isFinite(input.askingPrice) && input.askingPrice > 0 ? input.askingPrice : null,
+    intention: text3(input.intention, 120),
+    notes: text3(input.notes, 4000),
+    source: normalizeSource(input.source)
+  };
+}
+function findDuplicateUnit(existing, candidate) {
+  if (!candidate.unitKey)
+    return { duplicate: false };
+  const hit = existing.find((row) => row.unitKey && row.unitKey === candidate.unitKey);
+  if (!hit)
+    return { duplicate: false };
+  const sameOwner = candidate.ownerId != null && hit.ownerId === candidate.ownerId;
+  const suffix = hit.stage === "perdido" ? " (marcada como PERDIDA — recaptar é permitido)" : "";
+  return {
+    duplicate: true,
+    captureId: hit.id,
+    sameOwner,
+    message: sameOwner ? `Este mesmo imóvel já tem a captação #${hit.id} para este proprietário${suffix}.` : `POSSÍVEL DUPLICADO: já existe a captação #${hit.id} para este endereço, de outro proprietário${suffix}.`
+  };
+}
+
 // packages/web/src/api/lib/owner-intake.ts
 var onlyDigits = (value2) => value2.replace(/\D/g, "");
 var ownerTaskMarker = (ownerId) => `[owner:${ownerId}]`;
@@ -35539,7 +35673,7 @@ function buildHistoryLine(input, when) {
   return parts.join(`
 `);
 }
-async function ensureFollowUpTask(db3, ownerId, input) {
+async function ensureFollowUpTask(db3, ownerId, input, captureId = null) {
   const marker = ownerTaskMarker(ownerId);
   const pending = await db3.select({ id: tasks.id, notes: tasks.notes }).from(tasks).where(and(eq(tasks.status, "pendente"), eq(tasks.type, "retorno"))).limit(200);
   if (pending.some((task) => (task.notes ?? "").includes(marker)))
@@ -35547,6 +35681,7 @@ async function ensureFollowUpTask(db3, ownerId, input) {
   const dueAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   const notes = [
     marker,
+    captureId ? `[capture:${captureId}]` : "",
     `Proprietário quer avaliação de imóvel.`,
     `WhatsApp: ${input.phone}`,
     input.propertyType ? `Tipo: ${input.propertyType}` : "",
@@ -35560,9 +35695,67 @@ async function ensureFollowUpTask(db3, ownerId, input) {
     type: "retorno",
     dueAt,
     status: "pendente",
+    captureId: captureId ?? null,
     notes
   });
   return true;
+}
+async function ensureCapture(db3, ownerId, ownerName, input, now) {
+  const payload = buildCapturePayload({
+    ownerName: input.name,
+    ownerPhone: input.phone,
+    ownerEmail: input.email ?? null,
+    cep: input.cep ?? null,
+    street: input.street ?? null,
+    number: input.number ?? null,
+    district: input.neighborhood ?? null,
+    city: input.city ?? null,
+    state: input.state ?? null,
+    complements: input.complements ?? null,
+    propertyType: input.propertyType ?? null,
+    askingPrice: input.askingPrice ?? null,
+    notes: input.message ?? null,
+    source: input.source ?? "site"
+  });
+  const existing = await db3.select({
+    id: propertyCaptures.id,
+    ownerId: propertyCaptures.ownerId,
+    unitKey: propertyCaptures.unitKey,
+    stage: propertyCaptures.stage
+  }).from(propertyCaptures).limit(1000);
+  const duplicate = findDuplicateUnit(existing, { unitKey: payload.unitKey, ownerId });
+  if (duplicate.duplicate && duplicate.sameOwner) {
+    return { captureId: duplicate.captureId, duplicateUnit: duplicate.message };
+  }
+  const due = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const [capture] = await db3.insert(propertyCaptures).values({
+    ownerId,
+    city: payload.city,
+    district: payload.district,
+    address: payload.address,
+    cep: payload.cep,
+    street: payload.street,
+    number: payload.number,
+    state: payload.state,
+    complements: payload.complements,
+    unitKey: payload.unitKey,
+    propertyType: payload.propertyType,
+    askingPrice: payload.askingPrice,
+    intention: payload.intention,
+    notes: [payload.notes, duplicate.duplicate ? duplicate.message : ""].filter(Boolean).join(`
+
+`) || null,
+    source: payload.source,
+    stage: "novo_contato",
+    nextAction: `Retornar proprietário — ${ownerName}`,
+    nextActionAt: due,
+    stageChangedAt: now,
+    updatedAt: now
+  }).returning();
+  return {
+    captureId: capture?.id ?? null,
+    duplicateUnit: duplicate.duplicate ? duplicate.message : null
+  };
 }
 async function intakeOwner(db3, input) {
   const phoneDigits = onlyDigits(input.phone).slice(0, 20);
@@ -35580,11 +35773,18 @@ async function intakeOwner(db3, input) {
       phone: existing.phone ?? (phoneDigits || null),
       notes: history
     }).where(eq(owners.id, existing.id));
-    const taskCreated = await ensureFollowUpTask(db3, existing.id, input);
+    const capture2 = await ensureCapture(db3, existing.id, existing.name ?? input.name, input, now);
+    const taskCreated = await ensureFollowUpTask(db3, existing.id, input, capture2.captureId);
     return {
       id: existing.id,
       duplicated: true,
-      detail: taskCreated ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.` : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`
+      captureId: capture2.captureId,
+      duplicateUnit: capture2.duplicateUnit,
+      detail: [
+        taskCreated ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.` : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`,
+        capture2.captureId ? `Captação #${capture2.captureId} no Radar.` : "",
+        capture2.duplicateUnit ?? ""
+      ].filter(Boolean).join(" ")
     };
   }
   const duplicateOfOwnerId = decision.action === "create" ? decision.duplicateOfOwnerId : null;
@@ -35599,16 +35799,30 @@ async function intakeOwner(db3, input) {
     duplicateOfOwnerId,
     duplicateNote
   }).returning();
-  if (created)
-    await ensureFollowUpTask(db3, created.id, input);
+  let capture = {
+    captureId: null,
+    duplicateUnit: null
+  };
+  if (created) {
+    capture = await ensureCapture(db3, created.id, created.name ?? input.name, input, now);
+    await ensureFollowUpTask(db3, created.id, input, capture.captureId);
+  }
   return {
     id: created?.id ?? 0,
     duplicated: false,
-    detail: duplicateNote ? `Proprietário criado no CRM com tarefa de retorno. ${duplicateNote}` : "Proprietário criado no CRM com tarefa de retorno."
+    captureId: capture.captureId,
+    duplicateUnit: capture.duplicateUnit,
+    detail: [
+      "Proprietário criado no CRM com tarefa de retorno.",
+      capture.captureId ? `Captação #${capture.captureId} no Radar.` : "",
+      duplicateNote ?? "",
+      capture.duplicateUnit ?? ""
+    ].filter(Boolean).join(" ")
   };
 }
 
 // packages/web/src/api/routes/owners.ts
+var complementsInput = exports_external.object(Object.fromEntries(COMPLEMENT_FIELDS.map((field) => [field.key, exports_external.string().max(60).optional()]))).partial().optional();
 var createInput2 = exports_external.object({
   name: exports_external.string().min(2).max(120),
   phone: exports_external.string().min(8).max(30),
@@ -35616,7 +35830,14 @@ var createInput2 = exports_external.object({
   propertyType: exports_external.string().max(60).optional(),
   neighborhood: exports_external.string().max(120).optional(),
   message: exports_external.string().max(1000).optional(),
-  source: exports_external.string().max(60).optional()
+  source: exports_external.string().max(60).optional(),
+  cep: exports_external.string().max(12).optional(),
+  street: exports_external.string().max(200).optional(),
+  number: exports_external.string().max(30).optional(),
+  city: exports_external.string().max(120).optional(),
+  state: exports_external.string().max(2).optional(),
+  complements: complementsInput,
+  askingPrice: exports_external.number().nonnegative().optional()
 });
 var owners2 = {
   create: base.input(createInput2).handler(async ({ input }) => {
@@ -35628,7 +35849,14 @@ var owners2 = {
       propertyType: input.propertyType ?? null,
       neighborhood: input.neighborhood ?? null,
       message: input.message ?? null,
-      source: input.source ?? "site_vender"
+      source: input.source ?? "site_vender",
+      cep: input.cep ?? null,
+      street: input.street ?? null,
+      number: input.number ?? null,
+      city: input.city ?? null,
+      state: input.state ?? null,
+      complements: input.complements ?? null,
+      askingPrice: input.askingPrice ?? null
     });
     return { ok: true, duplicated: result.duplicated };
   })
@@ -35966,15 +36194,15 @@ var symbol7 = Symbol.for(marker7);
 var _a7;
 var _b7;
 var JSONParseError = class extends (_b7 = AISDKError, _a7 = symbol7, _b7) {
-  constructor({ text: text3, cause }) {
+  constructor({ text: text4, cause }) {
     super({
       name: name6,
-      message: `JSON parsing failed: Text: ${text3}.
+      message: `JSON parsing failed: Text: ${text4}.
 Error message: ${getErrorMessage(cause)}`,
       cause
     });
     this[_a7] = true;
-    this.text = text3;
+    this.text = text4;
   }
   static isInstance(error48) {
     return AISDKError.hasMarker(error48, marker7);
@@ -36477,7 +36705,7 @@ function connectToWebSocket({
   };
   let tail = Promise.resolve();
   socket.onmessage = (event) => {
-    tail = tail.then(() => readWebSocketMessageText(event.data)).then((text3) => onMessageText(text3)).catch(onProcessingError);
+    tail = tail.then(() => readWebSocketMessageText(event.data)).then((text4) => onMessageText(text4)).catch(onProcessingError);
   };
   socket.onerror = () => {
     tail = tail.then(() => onSocketError == null ? undefined : onSocketError()).catch(onProcessingError);
@@ -37500,12 +37728,12 @@ function loadOptionalSetting({
 }
 var suspectProtoRx = /"(?:_|\\u005[Ff])(?:_|\\u005[Ff])(?:p|\\u0070)(?:r|\\u0072)(?:o|\\u006[Ff])(?:t|\\u0074)(?:o|\\u006[Ff])(?:_|\\u005[Ff])(?:_|\\u005[Ff])"\s*:/;
 var suspectConstructorRx = /"(?:c|\\u0063)(?:o|\\u006[Ff])(?:n|\\u006[Ee])(?:s|\\u0073)(?:t|\\u0074)(?:r|\\u0072)(?:u|\\u0075)(?:c|\\u0063)(?:t|\\u0074)(?:o|\\u006[Ff])(?:r|\\u0072)"\s*:/;
-function _parse2(text3) {
-  const obj = JSON.parse(text3);
+function _parse2(text4) {
+  const obj = JSON.parse(text4);
   if (obj === null || typeof obj !== "object") {
     return obj;
   }
-  if (suspectProtoRx.test(text3) === false && suspectConstructorRx.test(text3) === false) {
+  if (suspectProtoRx.test(text4) === false && suspectConstructorRx.test(text4) === false) {
     return obj;
   }
   return filter(obj);
@@ -37532,15 +37760,15 @@ function filter(obj) {
   }
   return obj;
 }
-function secureJsonParse(text3) {
+function secureJsonParse(text4) {
   const { stackTraceLimit } = Error;
   try {
     Error.stackTraceLimit = 0;
   } catch (e) {
-    return _parse2(text3);
+    return _parse2(text4);
   }
   try {
-    return _parse2(text3);
+    return _parse2(text4);
   } finally {
     Error.stackTraceLimit = stackTraceLimit;
   }
@@ -38707,11 +38935,11 @@ async function safeValidateTypes({
   }
 }
 async function parseJSON({
-  text: text3,
+  text: text4,
   schema
 }) {
   try {
-    const value2 = secureJsonParse(text3);
+    const value2 = secureJsonParse(text4);
     if (schema == null) {
       return value2;
     }
@@ -38720,15 +38948,15 @@ async function parseJSON({
     if (JSONParseError.isInstance(error48) || TypeValidationError.isInstance(error48)) {
       throw error48;
     }
-    throw new JSONParseError({ text: text3, cause: error48 });
+    throw new JSONParseError({ text: text4, cause: error48 });
   }
 }
 async function safeParseJSON({
-  text: text3,
+  text: text4,
   schema
 }) {
   try {
-    const value2 = secureJsonParse(text3);
+    const value2 = secureJsonParse(text4);
     if (schema == null) {
       return { success: true, value: value2, rawValue: value2 };
     }
@@ -38736,7 +38964,7 @@ async function safeParseJSON({
   } catch (error48) {
     return {
       success: false,
-      error: JSONParseError.isInstance(error48) ? error48 : new JSONParseError({ text: text3, cause: error48 }),
+      error: JSONParseError.isInstance(error48) ? error48 : new JSONParseError({ text: text4, cause: error48 }),
       rawValue: undefined
     };
   }
@@ -39108,10 +39336,10 @@ function resolveSync(value2) {
 }
 var TRANSCRIPTION_STREAM_START_FRAME_TYPE = "transcription-stream.start";
 var TRANSCRIPTION_STREAM_AUDIO_DONE_FRAME_TYPE = "transcription-stream.audio-done";
-function parseTranscriptionStreamPart(text3) {
+function parseTranscriptionStreamPart(text4) {
   let value2;
   try {
-    value2 = secureJsonParse(text3);
+    value2 = secureJsonParse(text4);
   } catch (e) {
     return;
   }
@@ -41118,7 +41346,7 @@ var GatewaySpeechModel = class {
     return this.config.provider;
   }
   async doGenerate({
-    text: text3,
+    text: text4,
     voice,
     outputFormat,
     instructions,
@@ -41139,7 +41367,7 @@ var GatewaySpeechModel = class {
         url: this.getUrl(),
         headers: combineHeaders(resolvedHeaders, headers != null ? headers : {}, this.getModelConfigHeaders(), await resolve(this.config.o11yHeaders)),
         body: {
-          text: text3,
+          text: text4,
           ...voice && { voice },
           ...outputFormat && { outputFormat },
           ...instructions && { instructions },
@@ -41413,10 +41641,10 @@ function createGatewayTranscriptionStream({
           socket.send(JSON.stringify(startFrame));
           sendAudio(socket).catch(finishWithError);
         },
-        onMessageText: (text3) => {
+        onMessageText: (text4) => {
           if (finished)
             return;
-          const part = parseTranscriptionStreamPart(text3);
+          const part = parseTranscriptionStreamPart(text4);
           if (part == null)
             return;
           if (part.type === "finish") {
@@ -44493,7 +44721,7 @@ __export2(output_exports, {
   choice: () => choice,
   json: () => json2,
   object: () => object22,
-  text: () => text3
+  text: () => text4
 });
 function fixJson(input) {
   const stack = ["ROOT"];
@@ -44844,7 +45072,7 @@ async function parsePartialJson(jsonText) {
   }
   return { value: undefined, state: "failed-parse" };
 }
-var text3 = () => ({
+var text4 = () => ({
   name: "text",
   responseFormat: Promise.resolve({ type: "text" }),
   async parseCompleteOutput({ text: text22 }) {
@@ -47130,7 +47358,7 @@ async function generateText({
       });
       let resolvedOutput;
       if (lastStep.finishReason === "stop") {
-        const outputSpecification = output != null ? output : text3();
+        const outputSpecification = output != null ? output : text4();
         resolvedOutput = await outputSpecification.parseCompleteOutput({ text: lastStep.text }, {
           response: lastStep.response,
           usage: lastStep.usage,
@@ -48281,9 +48509,9 @@ async function agentReply(db3, agent, turns, baseUrl) {
       }
     }
   }
-  const text4 = result.text.trim() || (handoffReason ? agent.transferMessage || "Vou chamar um corretor para continuar seu atendimento." : "Pode me contar um pouco mais sobre o que você procura?");
+  const text5 = result.text.trim() || (handoffReason ? agent.transferMessage || "Vou chamar um corretor para continuar seu atendimento." : "Pode me contar um pouco mais sobre o que você procura?");
   return {
-    text: text4,
+    text: text5,
     handoff: Boolean(handoffReason),
     handoffReason,
     usedProperties: [...seen],
@@ -48547,8 +48775,8 @@ function sanitizeMessage(raw2) {
   return raw2.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, " ").replace(/[ \t]+/g, " ").trim().slice(0, MAX_MESSAGE_CHARS);
 }
 function normalizePhone(raw2) {
-  const digits2 = (raw2 ?? "").replace(/\D/g, "");
-  const local = digits2.startsWith("55") && digits2.length > 11 ? digits2.slice(2) : digits2;
+  const digits3 = (raw2 ?? "").replace(/\D/g, "");
+  const local = digits3.startsWith("55") && digits3.length > 11 ? digits3.slice(2) : digits3;
   if (local.length < 10 || local.length > 11)
     return null;
   if (Number.parseInt(local.slice(0, 2), 10) < 11)
@@ -48729,15 +48957,15 @@ var NOT_A_NAME = new Set([
 var stripAccents2 = (value2) => value2.normalize("NFD").replace(/[̀-ͯ]/g, "");
 var titleCase = (value2) => value2.split(" ").map((word) => word.length <= 2 && /^(?:d[aeo]s?|e)$/i.test(word) ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(" ");
 function extractContactName(raw2) {
-  const text4 = sanitizeShort(raw2 ?? "", 200);
-  if (!text4 || text4.length > 60)
+  const text5 = sanitizeShort(raw2 ?? "", 200);
+  if (!text5 || text5.length > 60)
     return null;
-  if (/[?¿]/.test(text4))
+  if (/[?¿]/.test(text5))
     return null;
-  if (/\d/.test(text4))
+  if (/\d/.test(text5))
     return null;
-  const hadPrefix = NAME_PREFIX.test(text4);
-  const candidate = (hadPrefix ? text4.replace(NAME_PREFIX, "") : text4).replace(/[.,;:!]+$/g, "").trim();
+  const hadPrefix = NAME_PREFIX.test(text5);
+  const candidate = (hadPrefix ? text5.replace(NAME_PREFIX, "") : text5).replace(/[.,;:!]+$/g, "").trim();
   if (!candidate)
     return null;
   const words = candidate.split(" ").filter(Boolean);
@@ -48756,10 +48984,10 @@ function extractContactName(raw2) {
   return titleCase(words.join(" ")).slice(0, 120);
 }
 function sanitizeContactName(raw2) {
-  const text4 = sanitizeShort(raw2 ?? "", 120);
-  if (!text4 || text4.length < 2 || /\d/.test(text4))
+  const text5 = sanitizeShort(raw2 ?? "", 120);
+  if (!text5 || text5.length < 2 || /\d/.test(text5))
     return null;
-  const words = text4.replace(/[.,;:!?]+$/g, "").trim().split(" ").filter(Boolean);
+  const words = text5.replace(/[.,;:!?]+$/g, "").trim().split(" ").filter(Boolean);
   if (words.length === 0 || words.length > 5)
     return null;
   for (const word of words) {
@@ -49409,18 +49637,18 @@ var outputSchema2 = exports_external.object({
   metaDescription: exports_external.string().min(20).max(400)
 });
 function parseJson2(raw2) {
-  let text4 = raw2.trim();
-  if (text4.startsWith("```")) {
-    text4 = text4.replace(/^```[a-zA-Z]*\s*/, "").replace(/```\s*$/, "").trim();
+  let text5 = raw2.trim();
+  if (text5.startsWith("```")) {
+    text5 = text5.replace(/^```[a-zA-Z]*\s*/, "").replace(/```\s*$/, "").trim();
   }
-  const start = text4.indexOf("{");
-  const end = text4.lastIndexOf("}");
-  if (start > 0 || end < text4.length - 1) {
+  const start = text5.indexOf("{");
+  const end = text5.lastIndexOf("}");
+  if (start > 0 || end < text5.length - 1) {
     if (start === -1 || end === -1)
       throw new Error("Resposta da IA fora do formato esperado");
-    text4 = text4.slice(start, end + 1);
+    text5 = text5.slice(start, end + 1);
   }
-  return JSON.parse(text4);
+  return JSON.parse(text5);
 }
 function missingFields(input) {
   const missing = [];
@@ -49456,14 +49684,14 @@ var adminPropertyContent = {
     ].join(`
 
 `);
-    let text4 = "";
+    let text5 = "";
     try {
       const result = await generateText({
         model: gateway2(FALLBACK_MODEL),
         temperature: 0.6,
         prompt
       });
-      text4 = result.text;
+      text5 = result.text;
     } catch (error48) {
       throw new ORPCError("INTERNAL_SERVER_ERROR", {
         message: error48 instanceof Error ? error48.message : "Falha ao consultar a IA"
@@ -49471,7 +49699,7 @@ var adminPropertyContent = {
     }
     const parsed = outputSchema2.safeParse((() => {
       try {
-        return parseJson2(text4);
+        return parseJson2(text5);
       } catch {
         return null;
       }
@@ -50271,8 +50499,8 @@ function parseChecklist(notes) {
   return { text: kept.join(`
 `).trim(), done };
 }
-function serializeChecklist(text4, done) {
-  const body = (text4 ?? "").trim();
+function serializeChecklist(text5, done) {
+  const body = (text5 ?? "").trim();
   const keys = normalizeChecklist(done);
   if (keys.length === 0)
     return body.length > 0 ? body : null;
@@ -50282,20 +50510,95 @@ function serializeChecklist(text4, done) {
 ${block}` : block;
 }
 function toggleChecklistItem(notes, key, value2) {
-  const { text: text4, done } = parseChecklist(notes);
+  const { text: text5, done } = parseChecklist(notes);
   if (!isChecklistKey(key))
-    return serializeChecklist(text4, done);
+    return serializeChecklist(text5, done);
   const set2 = new Set(done);
   if (value2)
     set2.add(key);
   else
     set2.delete(key);
-  return serializeChecklist(text4, [...set2]);
+  return serializeChecklist(text5, [...set2]);
+}
+
+// packages/web/src/api/lib/capture-photos.ts
+var MAX_OWNER_PHOTOS = 30;
+var cleanUrl = (value2) => {
+  const url2 = typeof value2 === "string" ? value2.trim() : "";
+  if (!url2 || url2.length > 600)
+    return "";
+  if (url2.startsWith("/"))
+    return url2;
+  if (/^https?:\/\//i.test(url2))
+    return url2;
+  return "";
+};
+function parseOwnerPhotos(raw2) {
+  if (!raw2 || typeof raw2 !== "string")
+    return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(raw2);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed))
+    return [];
+  const photos = [];
+  for (const item of parsed) {
+    if (!item || typeof item !== "object")
+      continue;
+    const row = item;
+    const url2 = cleanUrl(row.url);
+    if (!url2)
+      continue;
+    if (photos.some((photo) => photo.url === url2))
+      continue;
+    photos.push({
+      url: url2,
+      caption: typeof row.caption === "string" && row.caption.trim() ? row.caption.trim().slice(0, 200) : null,
+      source: row.source === "equipe" ? "equipe" : "proprietario",
+      addedAt: typeof row.addedAt === "string" && row.addedAt ? row.addedAt : new Date(0).toISOString()
+    });
+    if (photos.length >= MAX_OWNER_PHOTOS)
+      break;
+  }
+  return photos;
+}
+function serializeOwnerPhotos(photos) {
+  if (!photos.length)
+    return null;
+  return JSON.stringify(photos.slice(0, MAX_OWNER_PHOTOS));
+}
+function addOwnerPhotos(current, incoming, options = {}) {
+  const source = options.source ?? "proprietario";
+  const addedAt = (options.now ?? new Date).toISOString();
+  const photos = parseOwnerPhotos(current);
+  for (const item of incoming) {
+    if (photos.length >= MAX_OWNER_PHOTOS)
+      break;
+    const url2 = cleanUrl(item?.url);
+    if (!url2)
+      continue;
+    if (photos.some((photo) => photo.url === url2))
+      continue;
+    photos.push({
+      url: url2,
+      caption: item.caption?.trim().slice(0, 200) || null,
+      source,
+      addedAt
+    });
+  }
+  return photos;
+}
+function removeOwnerPhoto(current, url2) {
+  return parseOwnerPhotos(current).filter((photo) => photo.url !== url2);
 }
 
 // packages/web/src/api/routes/admin-captures.ts
+var complementsInput2 = exports_external.object(Object.fromEntries(COMPLEMENT_FIELDS.map((field) => [field.key, exports_external.string().max(60).optional()]))).partial().nullable().optional();
 var STAGES = STAGE_INPUTS;
-var digits2 = (value2) => String(value2 ?? "").replace(/\D/g, "");
+var digits3 = (value2) => String(value2 ?? "").replace(/\D/g, "");
 async function audit2(context, action, id, detail) {
   await context.db.insert(auditLog).values({
     userId: context.user.id,
@@ -50338,7 +50641,12 @@ var createInput3 = exports_external.object({
   askingPrice: exports_external.number().nonnegative().nullable().optional(),
   source: exports_external.string().max(80).default("manual"),
   intention: exports_external.string().max(80).nullable().optional(),
-  notes: exports_external.string().max(4000).nullable().optional()
+  notes: exports_external.string().max(4000).nullable().optional(),
+  cep: exports_external.string().max(12).nullable().optional(),
+  street: exports_external.string().max(200).nullable().optional(),
+  number: exports_external.string().max(30).nullable().optional(),
+  state: exports_external.string().max(2).nullable().optional(),
+  complements: complementsInput2
 });
 var adminCaptures = {
   list: adminBase.input(exports_external.object({
@@ -50376,9 +50684,9 @@ var adminCaptures = {
     return { ...capture, owner: owner ?? null, tasks: tasks2, history };
   }),
   create: adminBase.input(createInput3).handler(async ({ input, context }) => {
-    const phoneDigits = digits2(input.ownerPhone);
+    const phoneDigits = digits3(input.ownerPhone);
     const owners3 = await context.db.select().from(owners).limit(1000);
-    let owner = owners3.find((row) => digits2(row.phone) === phoneDigits);
+    let owner = owners3.find((row) => digits3(row.phone) === phoneDigits);
     let ownerCreated = false;
     if (!owner) {
       const [created] = await context.db.insert(owners).values({
@@ -50392,18 +50700,52 @@ var adminCaptures = {
     }
     if (!owner)
       throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível criar proprietário" });
+    const payload = buildCapturePayload({
+      ownerName: input.ownerName,
+      ownerPhone: input.ownerPhone,
+      ownerEmail: input.ownerEmail ?? null,
+      cep: input.cep ?? null,
+      street: input.street ?? null,
+      number: input.number ?? null,
+      district: input.district ?? null,
+      city: input.city,
+      state: input.state ?? null,
+      complements: input.complements ?? null,
+      propertyType: input.propertyType ?? null,
+      askingPrice: input.askingPrice ?? null,
+      intention: input.intention ?? null,
+      notes: input.notes ?? null,
+      source: input.source
+    });
+    const existing = await context.db.select({
+      id: propertyCaptures.id,
+      ownerId: propertyCaptures.ownerId,
+      unitKey: propertyCaptures.unitKey,
+      stage: propertyCaptures.stage
+    }).from(propertyCaptures).limit(1000);
+    const duplicateUnit = findDuplicateUnit(existing, {
+      unitKey: payload.unitKey,
+      ownerId: owner.id
+    });
     const now2 = new Date;
     const due = new Date(now2.getTime() + 2 * 60 * 60 * 1000);
     const [capture] = await context.db.insert(propertyCaptures).values({
       ownerId: owner.id,
-      city: input.city,
-      district: input.district?.trim() || null,
-      address: input.address?.trim() || null,
-      propertyType: input.propertyType?.trim() || null,
-      askingPrice: input.askingPrice ?? null,
-      source: input.source,
-      intention: input.intention?.trim() || null,
-      notes: input.notes?.trim() || null,
+      city: payload.city,
+      district: payload.district,
+      address: input.address?.trim() || payload.address,
+      cep: payload.cep,
+      street: payload.street,
+      number: payload.number,
+      state: payload.state,
+      complements: payload.complements,
+      unitKey: payload.unitKey || null,
+      propertyType: payload.propertyType,
+      askingPrice: payload.askingPrice,
+      source: payload.source,
+      intention: payload.intention,
+      notes: duplicateUnit.duplicate ? [payload.notes, duplicateUnit.message].filter(Boolean).join(`
+`) : payload.notes,
       stage: "novo_contato",
       nextAction: `Retornar proprietário — ${owner.name}`,
       nextActionAt: due,
@@ -50421,7 +50763,15 @@ var adminCaptures = {
       notes: `[capture:${capture.id}] Retorno automático criado pelo Radar de Captação`
     });
     await audit2(context, "capture_created", capture.id, ownerCreated ? "Proprietário novo" : "Proprietário existente reutilizado");
-    return { id: capture.id, ownerId: owner.id, ownerCreated };
+    if (duplicateUnit.duplicate) {
+      await audit2(context, "capture_duplicate_unit", capture.id, duplicateUnit.message);
+    }
+    return {
+      id: capture.id,
+      ownerId: owner.id,
+      ownerCreated,
+      duplicateUnit: duplicateUnit.duplicate ? duplicateUnit.message : null
+    };
   }),
   setStage: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), stage: exports_external.enum(STAGES) })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
@@ -50539,6 +50889,32 @@ var adminCaptures = {
       return { ok: true, changed: false };
     const label = CHECKLIST_ITEMS.find((item) => item.key === input.key)?.label ?? input.key;
     await audit2(context, "capture_checklist", input.id, `${input.value ? "recebido" : "removido"}: ${label}`);
+    return { ok: true, changed: true };
+  }),
+  addPhotos: adminBase.input(exports_external.object({
+    id: exports_external.number().int().positive(),
+    photos: exports_external.array(exports_external.object({ url: exports_external.string().min(4).max(1000), caption: exports_external.string().max(200).nullable().optional() })).min(1).max(MAX_OWNER_PHOTOS)
+  })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const photos = addOwnerPhotos(capture.ownerPhotos, input.photos, { source: "equipe" });
+    const before = parseOwnerPhotos(capture.ownerPhotos).length;
+    if (photos.length === before)
+      return { ok: true, changed: false, total: before };
+    await context.db.update(propertyCaptures).set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date }).where(eq(propertyCaptures.id, input.id));
+    await audit2(context, "capture_photos_added", input.id, `${photos.length - before} foto(s) provisória(s)`);
+    return { ok: true, changed: true, total: photos.length };
+  }),
+  removePhoto: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), url: exports_external.string().min(4).max(1000) })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const photos = removeOwnerPhoto(capture.ownerPhotos, input.url);
+    if (photos.length === parseOwnerPhotos(capture.ownerPhotos).length)
+      return { ok: true, changed: false };
+    await context.db.update(propertyCaptures).set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date }).where(eq(propertyCaptures.id, input.id));
+    await audit2(context, "capture_photo_removed", input.id, input.url.slice(0, 200));
     return { ok: true, changed: true };
   }),
   markLost: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), reason: exports_external.string().min(2).max(120), detail: exports_external.string().max(1000).nullable().optional() })).handler(async ({ input, context }) => {
@@ -50724,15 +51100,15 @@ function districtsToText(raw2) {
       return list2.length > 0 ? list2.join(", ") : null;
     }
   } catch {}
-  const text4 = String(raw2).trim();
-  return text4 || null;
+  const text5 = String(raw2).trim();
+  return text5 || null;
 }
 function brl(value2) {
   if (value2 === null || value2 === undefined)
     return null;
   const rounded = Math.round(Math.abs(value2));
-  const digits3 = String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `${value2 < 0 ? "-" : ""}R$ ${digits3}`;
+  const digits4 = String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `${value2 < 0 ? "-" : ""}R$ ${digits4}`;
 }
 function buildConversionNote(args) {
   const parts = [
@@ -51740,14 +52116,14 @@ async function runTest(db3, key, config2, baseUrl) {
       }
       try {
         const model = pickModel(null, config2.defaultModel);
-        const { text: text4 } = await generateText({
+        const { text: text5 } = await generateText({
           model: gateway2(model),
           prompt: 'Responda apenas com a palavra "ok".'
         });
         return {
           ok: true,
           status: "conectado",
-          message: `Modelo ${model} respondeu: ${text4.trim().slice(0, 40)}`
+          message: `Modelo ${model} respondeu: ${text5.trim().slice(0, 40)}`
         };
       } catch (error48) {
         return {
