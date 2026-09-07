@@ -4,6 +4,8 @@ import { ORPCError } from "@orpc/server";
 import { adminBase, type AdminDb } from "../lib/admin-base";
 import { propertySlug } from "../lib/slug";
 import * as schema from "../database/schema";
+import { allocateSerial } from "../lib/serial-counter";
+import { planPropertyFromCapture } from "../lib/capture-conversion";
 
 const statusEnum = z.enum(["disponivel", "reservado", "vendido", "alugado"]);
 const purposeEnum = z.enum(["venda", "locacao", "venda_locacao"]);
@@ -183,7 +185,9 @@ export const adminProperties = {
       return { ...row, images: await loadImages(context.db, row.id) };
     }),
 
-  create: adminBase.input(propertyInput).handler(async ({ input, context }) => {
+  create: adminBase
+    .input(propertyInput.extend({ captureId: z.number().int().positive().nullable().optional() }))
+    .handler(async ({ input, context }) => {
     const row = toRow(input);
     const [existing] = await context.db
       .select({ id: schema.properties.id })
@@ -192,10 +196,67 @@ export const adminProperties = {
       .limit(1);
     if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
 
-    const [created] = await context.db.insert(schema.properties).values(row).returning();
+    /* Cadastro aberto pela captação (`/admin/imoveis/novo?capture_id=`).
+       As mesmas regras do Radar valem aqui: sem documentação fechada e sem
+       preço validado o imóvel nem chega a ser criado, para não sobrar imóvel
+       órfão no banco. */
+    let capture: typeof schema.propertyCaptures.$inferSelect | null = null;
+    let inherited: string | null = null;
+    if (input.captureId) {
+      const [found] = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, input.captureId))
+        .limit(1);
+      if (!found) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      /* A REGRA vive em lib/capture-conversion.ts (pura e testada). Aqui só a
+         execução: liberar, herdar serial e nascer fora do ar. */
+      const plan = planPropertyFromCapture(found);
+      if (!plan.ok) throw new ORPCError(plan.code, { message: plan.message });
+      capture = found;
+      inherited = plan.serial;
+      row.published = plan.published;
+    }
+
+    /* Serial global: herdado da ficha quando existe, senão reservado agora.
+       O sequencial é global e nunca reiniciado. */
+    const serial = inherited ?? (await allocateSerial(context.db, input.type));
+
+    const [created] = await context.db
+      .insert(schema.properties)
+      .values({ ...row, serial })
+      .returning();
     if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
     await syncImages(context.db, created.id, input.images);
-    return { id: created.id };
+
+    if (capture) {
+      const now = new Date();
+      /* Grava o serial de volta na captação quando ela ainda não tinha, para
+         ficha e imóvel mostrarem o MESMO número. */
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({
+          serial,
+          convertedPropertyId: created.id,
+          convertedAt: now,
+          stage: "captado",
+          stageChangedAt: now,
+          nextAction: null,
+          nextActionAt: null,
+          updatedAt: now,
+        })
+        .where(eq(schema.propertyCaptures.id, capture.id));
+      await context.db.insert(schema.auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "capture_converted",
+        entity: "capture",
+        entityId: String(capture.id),
+        detail: `property:${created.id} serial:${serial}`,
+      });
+    }
+
+    return { id: created.id, serial };
   }),
 
   update: adminBase

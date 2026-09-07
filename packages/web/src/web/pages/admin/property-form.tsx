@@ -49,6 +49,8 @@ import {
 } from "../../lib/capture-conversion-flow";
 import { parseChecklist } from "../../../api/lib/capture-checklist";
 import { checkConversionStart } from "../../../api/lib/capture-rules";
+import { formatUnitAddress } from "../../../api/lib/capture-address";
+import { parseComplements } from "../../../api/lib/capture-intake";
 import { FeaturesPicker } from "../../components/admin/features-picker";
 import {
   PropertyFormNav,
@@ -277,7 +279,23 @@ export function PropertyForm({
       price: current.price || (price === null ? "" : formatMoneyInput(price)),
       city: row.city || current.city,
       district: row.district || current.district,
-      address: row.address ?? current.address,
+      /* V3 — o endereço da ficha é estruturado (CEP + número + complementos).
+         `properties` guarda uma linha única de endereço, então a linha é
+         montada pelo MESMO formatador usado na ficha e nos documentos, para
+         imóvel e Ficha Técnica não divergirem. O texto livre antigo continua
+         valendo como fallback das captações que não têm CEP. */
+      address:
+        formatUnitAddress(
+          {
+            cep: row.cep,
+            street: row.street,
+            number: row.number,
+            district: row.district,
+            city: row.city,
+            state: row.state,
+          },
+          parseComplements(row.complements),
+        ) || (row.address ?? current.address),
       ownerId: row.ownerId ? String(row.ownerId) : current.ownerId,
       /* Imóvel vindo de captação nasce fora do ar: revisão antes da vitrine. */
       published: false,
@@ -492,6 +510,9 @@ export function PropertyForm({
         originalUrl: image.originalUrl ?? null,
         isPrimary: image.isPrimary === true,
       })),
+      /* Vindo de captação, o backend herda o serial-base, força o imóvel fora
+         do ar e fecha a captação na MESMA operação. */
+      captureId,
     };
 
     try {
@@ -568,6 +589,13 @@ export function PropertyForm({
                       <div className="label-xs text-deep">
                         Captação #{captureId} · {capture.data.owner?.name ?? "proprietário"}
                       </div>
+                      {capture.data.serial && (
+                        /* Mesmo número impresso na Ficha Técnica e na
+                           Autorização: o imóvel HERDA, não recebe outro. */
+                        <div className="mt-1 font-mono text-xs text-deep">
+                          Serial {capture.data.serial}
+                        </div>
+                      )}
                       {/* Observações ficam à vista, não são copiadas para campos
                           públicos: o texto é interno e o imóvel nasce fora do ar. */}
                       <p className="mt-1 whitespace-pre-line text-muted">

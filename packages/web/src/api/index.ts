@@ -17,6 +17,7 @@ import { adminLeadProfile } from "./routes/admin-lead-profile";
 import { adminClients } from "./routes/admin-clients";
 import { adminOwners } from "./routes/admin-owners";
 import { adminCaptures } from "./routes/admin-captures";
+import { adminDocuments } from "./routes/admin-documents";
 import { adminTasks } from "./routes/admin-tasks";
 import { adminDeals } from "./routes/admin-deals";
 import { adminDashboard } from "./routes/admin-dashboard";
@@ -67,6 +68,7 @@ export const router = {
   adminClients,
   adminOwners,
   adminCaptures,
+  adminDocuments,
   adminTasks,
   adminDeals,
   adminDashboard,

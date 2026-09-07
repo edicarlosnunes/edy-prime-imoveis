@@ -65,6 +65,12 @@ const BUNDLE_MARKERS = [
   "DOCUMENTAÇÃO VALIDADA PELA EQUIPE",
   "precisa estar em VALIDAÇÃO para ser captada",
   "capture_checklist",
+  /* COMMIT 4: emissão de documentos, rastreio e serial global. Se o bundle
+     for antigo, o CRM abre a tela de impressão e o backend responde 404. */
+  "crm_documents",
+  "entregue_ao_proprietario",
+  "capture_serial_allocated",
+  "Autorização de venda assinada",
 ];
 
 const BUNDLES = [

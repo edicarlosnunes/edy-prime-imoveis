@@ -301,3 +301,16 @@ export function useRemoveCapturePhoto() { const invalidate = useInvalidate(); re
 export function useMarkCaptureLost() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markLost.mutationOptions({ onSuccess: invalidate })); }
 export function useReopenCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.reopen.mutationOptions({ onSuccess: invalidate })); }
 export function useMarkCaptureConverted() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markConverted.mutationOptions({ onSuccess: invalidate })); }
+
+/* ------------------------------------------- documentos da captação (FC/AV) */
+export function useCaptureDocuments(captureId: number | null) {
+  return useQuery({ ...orpc.adminDocuments.list.queryOptions({ input: { captureId: captureId ?? 0 } }), enabled: captureId !== null });
+}
+export function useCaptureDocument(id: number | null) {
+  return useQuery({ ...orpc.adminDocuments.get.queryOptions({ input: { id: id ?? 0 } }), enabled: id !== null });
+}
+export function useCaptureDocumentStatusPanel(captureId: number | null) {
+  return useQuery({ ...orpc.adminDocuments.status.queryOptions({ input: { captureId: captureId ?? 0 } }), enabled: captureId !== null });
+}
+export function useGenerateCaptureDocument() { const invalidate = useInvalidate(); return useMutation(orpc.adminDocuments.generate.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureDocumentStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminDocuments.setStatus.mutationOptions({ onSuccess: invalidate })); }

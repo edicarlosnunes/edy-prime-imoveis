@@ -35616,6 +35616,15 @@ function cleanComplements(raw2) {
 function serializeComplements(complements) {
   return Object.keys(complements).length ? JSON.stringify(complements) : null;
 }
+function parseComplements(raw2) {
+  if (!raw2)
+    return {};
+  try {
+    return cleanComplements(JSON.parse(raw2));
+  } catch {
+    return {};
+  }
+}
 function buildCapturePayload(input) {
   const complements = cleanComplements(input.complements);
   const cep = normalizeCep(input.cep);
@@ -49346,6 +49355,230 @@ var adminAuth = {
 
 // packages/web/src/api/routes/admin-properties.ts
 init_schema();
+
+// packages/web/src/api/lib/capture-serial.ts
+var DOC_SERIAL_PREFIXES = { ficha_tecnica: "FC", autorizacao: "AV" };
+var TYPE_PREFIXES = {
+  casa: "CS",
+  apartamento: "AP",
+  loja: "LJ",
+  comercial: "CL",
+  sala_comercial: "SL",
+  sala: "SL",
+  terreno: "TE",
+  chacara: "CH",
+  studio: "ST",
+  cobertura: "CB",
+  sobrado: "SB",
+  kitnet: "KT",
+  galpao: "GP",
+  predio: "PR",
+  lote: "LT",
+  outro: "OT"
+};
+var FALLBACK_PREFIX = "OT";
+var ALL_PREFIXES = [...new Set(Object.values(TYPE_PREFIXES))];
+function serialPrefix(type) {
+  const key = String(type ?? "").normalize("NFD").replace(/[\u0300-\u036F]/g, "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return TYPE_PREFIXES[key] ?? FALLBACK_PREFIX;
+}
+var SERIAL_PAD = 6;
+function formatSerial(prefix, year, sequential2) {
+  if (!Number.isInteger(sequential2) || sequential2 < 1) {
+    throw new Error("Sequencial de serial inválido");
+  }
+  const safePrefix = ALL_PREFIXES.includes(prefix) ? prefix : FALLBACK_PREFIX;
+  return `${safePrefix}-${year}-${String(sequential2).padStart(SERIAL_PAD, "0")}`;
+}
+function buildSerial(type, year, sequential2) {
+  return formatSerial(serialPrefix(type), year, sequential2);
+}
+var SERIAL_RE = /^([A-Z]{2})-(\d{4})-(\d{6})$/;
+var DOC_SERIAL_RE = /^(FC|AV)-([A-Z]{2})-(\d{4})-(\d{6})$/;
+function parseSerial(value2) {
+  const raw2 = String(value2 ?? "").trim().toUpperCase();
+  const doc2 = DOC_SERIAL_RE.exec(raw2);
+  if (doc2) {
+    const base2 = `${doc2[2]}-${doc2[3]}-${doc2[4]}`;
+    return { prefix: doc2[2], year: Number(doc2[3]), sequential: Number(doc2[4]), doc: doc2[1], base: base2 };
+  }
+  const plain = SERIAL_RE.exec(raw2);
+  if (!plain)
+    return null;
+  return {
+    prefix: plain[1],
+    year: Number(plain[2]),
+    sequential: Number(plain[3]),
+    doc: null,
+    base: raw2
+  };
+}
+function documentSerial(kind, baseSerial) {
+  const parsed = parseSerial(baseSerial);
+  if (!parsed)
+    throw new Error(`Serial-base inválido: ${baseSerial}`);
+  if (parsed.doc)
+    throw new Error("Serial de documento não pode gerar outro documento");
+  return `${DOC_SERIAL_PREFIXES[kind]}-${parsed.base}`;
+}
+
+// packages/web/src/api/lib/serial-counter.ts
+var SERIAL_COUNTER_ID = 1;
+async function ensureSerialCounter(db3) {
+  await db3.run(sql`INSERT OR IGNORE INTO crm_serials (id, next) VALUES (${SERIAL_COUNTER_ID}, 0)`);
+}
+function readNext(rows) {
+  const list = Array.isArray(rows) ? rows : rows?.rows;
+  const row = Array.isArray(list) ? list[0] : undefined;
+  if (row == null)
+    return null;
+  const raw2 = Array.isArray(row) ? row[0] : typeof row === "object" ? row.next : row;
+  const value2 = Number(raw2);
+  return Number.isInteger(value2) && value2 > 0 ? value2 : null;
+}
+async function allocateSequential(db3) {
+  await ensureSerialCounter(db3);
+  const rows = await db3.all(sql`UPDATE crm_serials SET next = next + 1 WHERE id = ${SERIAL_COUNTER_ID} RETURNING next`);
+  const next = readNext(rows);
+  if (next == null) {
+    throw new Error("Não foi possível reservar o sequencial do serial");
+  }
+  return next;
+}
+async function allocateSerial(db3, propertyType, year = new Date().getFullYear()) {
+  const sequential2 = await allocateSequential(db3);
+  return buildSerial(propertyType, year, sequential2);
+}
+
+// packages/web/src/api/lib/capture-rules.ts
+var CAPTURE_STAGES = ["novo_contato", "documentacao", "validacao", "captado", "perdido"];
+var LEGACY_STAGE = "avaliacao";
+var STAGE_INPUTS = [...CAPTURE_STAGES, LEGACY_STAGE];
+var STAGE_ORDER = ["novo_contato", "documentacao", "validacao", "captado"];
+var STAGE_LABELS = {
+  novo_contato: "NOVO CONTATO",
+  documentacao: "DOCUMENTAÇÃO",
+  validacao: "VALIDAÇÃO",
+  captado: "CAPTADO",
+  perdido: "PERDIDO"
+};
+function normalizeStage(raw2) {
+  if (raw2 === LEGACY_STAGE)
+    return "documentacao";
+  if (typeof raw2 === "string" && CAPTURE_STAGES.includes(raw2)) {
+    return raw2;
+  }
+  return null;
+}
+var DOC_STATUSES = [
+  "nao_iniciado",
+  "solicitado",
+  "parcial",
+  "completo",
+  "validado_pela_equipe",
+  "pendente"
+];
+function normalizeDocStatus(raw2) {
+  if (raw2 === "pendente" || raw2 === "solicitado")
+    return "solicitado";
+  if (raw2 === "parcial")
+    return "parcial";
+  if (raw2 === "completo")
+    return "completo";
+  if (raw2 === "validado_pela_equipe")
+    return "validado_pela_equipe";
+  return "nao_iniciado";
+}
+function isDocValidatedByTeam(raw2) {
+  return normalizeDocStatus(raw2) === "validado_pela_equipe";
+}
+function isDocComplete(raw2) {
+  const status = normalizeDocStatus(raw2);
+  return status === "completo" || status === "validado_pela_equipe";
+}
+function hasValidAppraisal(capture) {
+  const value2 = capture.estimatedPrice;
+  return typeof value2 === "number" && Number.isFinite(value2) && value2 > 0;
+}
+var stageIndex = (stage) => stage === null ? -1 : STAGE_ORDER.indexOf(stage);
+var deny = (code, message) => ({ ok: false, code, message });
+function checkStageTransition(input) {
+  const from = normalizeStage(input.from);
+  const to = normalizeStage(input.to);
+  if (to === "captado") {
+    return deny("FORBIDDEN", 'CAPTADO não é manual: use "Vincular imóvel e captar" para criar o imóvel e concluir a captação');
+  }
+  if (from === "captado" || input.convertedPropertyId != null) {
+    return deny("CONFLICT", "Esta captação já foi captada e vinculada a um imóvel");
+  }
+  if (from === "perdido") {
+    return deny("CONFLICT", 'Captação perdida: use "Reabrir" para voltar ao funil');
+  }
+  if (to === "perdido")
+    return { ok: true };
+  const fromIdx = stageIndex(from);
+  const toIdx = stageIndex(to);
+  if (fromIdx === -1 || toIdx === -1) {
+    return deny("BAD_REQUEST", "Etapa inválida");
+  }
+  if (toIdx < fromIdx)
+    return { ok: true };
+  if (toIdx - fromIdx > 1) {
+    return deny("FORBIDDEN", `Não é possível pular etapas: siga ${STAGE_LABELS[STAGE_ORDER[fromIdx]]} → ${STAGE_LABELS[STAGE_ORDER[fromIdx + 1]]}`);
+  }
+  if (to === "validacao" && !isDocComplete(input.docStatus)) {
+    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de avançar para VALIDAÇÃO");
+  }
+  return { ok: true };
+}
+function checkConversionStart(input) {
+  const stage = normalizeStage(input.stage);
+  if (input.convertedPropertyId != null) {
+    return deny("CONFLICT", "Esta captação já foi convertida em outro imóvel");
+  }
+  if (stage === "perdido") {
+    return deny("CONFLICT", 'Captação perdida: use "Reabrir" antes de captar');
+  }
+  if (!isDocComplete(input.docStatus)) {
+    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de captar");
+  }
+  if (stage !== "validacao") {
+    return deny("FORBIDDEN", "A captação precisa estar em VALIDAÇÃO para ser captada");
+  }
+  if (!hasValidAppraisal(input)) {
+    return deny("FORBIDDEN", "Registre o valor avaliado/validado em VALIDAÇÃO antes de captar");
+  }
+  return { ok: true };
+}
+function checkConversion(input) {
+  if (input.convertedPropertyId != null && input.convertedPropertyId === input.propertyId) {
+    return { ok: true, already: true };
+  }
+  return checkConversionStart(input);
+}
+
+// packages/web/src/api/lib/capture-conversion.ts
+function planPropertyFromCapture(capture) {
+  const allowed = checkConversionStart({
+    stage: capture.stage,
+    docStatus: capture.docStatus,
+    estimatedPrice: capture.estimatedPrice,
+    convertedPropertyId: capture.convertedPropertyId
+  });
+  if (!allowed.ok)
+    return { ok: false, code: allowed.code, message: allowed.message };
+  const inherited = String(capture.serial ?? "").trim();
+  return {
+    ok: true,
+    serial: inherited || null,
+    writeBackSerial: inherited.length === 0,
+    published: 0,
+    captureId: capture.id,
+    propertyType: capture.propertyType ?? null
+  };
+}
+
+// packages/web/src/api/routes/admin-properties.ts
 var statusEnum = exports_external.enum(["disponivel", "reservado", "vendido", "alugado"]);
 var purposeEnum = exports_external.enum(["venda", "locacao", "venda_locacao"]);
 var typeEnum = exports_external.enum([
@@ -49475,16 +49708,51 @@ var adminProperties = {
       throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
     return { ...row, images: await loadImages(context.db, row.id) };
   }),
-  create: adminBase.input(propertyInput).handler(async ({ input, context }) => {
+  create: adminBase.input(propertyInput.extend({ captureId: exports_external.number().int().positive().nullable().optional() })).handler(async ({ input, context }) => {
     const row = toRow(input);
     const [existing] = await context.db.select({ id: properties.id }).from(properties).where(eq(properties.code, row.code)).limit(1);
     if (existing)
       throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
-    const [created] = await context.db.insert(properties).values(row).returning();
+    let capture = null;
+    let inherited = null;
+    if (input.captureId) {
+      const [found] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.captureId)).limit(1);
+      if (!found)
+        throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      const plan = planPropertyFromCapture(found);
+      if (!plan.ok)
+        throw new ORPCError(plan.code, { message: plan.message });
+      capture = found;
+      inherited = plan.serial;
+      row.published = plan.published;
+    }
+    const serial = inherited ?? await allocateSerial(context.db, input.type);
+    const [created] = await context.db.insert(properties).values({ ...row, serial }).returning();
     if (!created)
       throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
     await syncImages(context.db, created.id, input.images);
-    return { id: created.id };
+    if (capture) {
+      const now2 = new Date;
+      await context.db.update(propertyCaptures).set({
+        serial,
+        convertedPropertyId: created.id,
+        convertedAt: now2,
+        stage: "captado",
+        stageChangedAt: now2,
+        nextAction: null,
+        nextActionAt: null,
+        updatedAt: now2
+      }).where(eq(propertyCaptures.id, capture.id));
+      await context.db.insert(auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "capture_converted",
+        entity: "capture",
+        entityId: String(capture.id),
+        detail: `property:${created.id} serial:${serial}`
+      });
+    }
+    return { id: created.id, serial };
   }),
   update: adminBase.input(propertyInput.extend({ id: exports_external.number().int() })).handler(async ({ input, context }) => {
     const { id, ...rest } = input;
@@ -49753,7 +50021,7 @@ var DOC_CATEGORIES = [
   "planta_habite_se",
   "outros"
 ];
-var DOC_STATUSES = [
+var DOC_STATUSES2 = [
   "recebido",
   "aguardando_analise",
   "analisado",
@@ -49893,7 +50161,7 @@ var adminPropertyDocs = {
     fileId: exports_external.string().max(64).nullable().optional(),
     fileName: exports_external.string().max(200).nullable().optional(),
     note: exports_external.string().max(1000).nullable().optional(),
-    status: exports_external.enum(DOC_STATUSES).default("recebido")
+    status: exports_external.enum(DOC_STATUSES2).default("recebido")
   })).handler(async ({ input, context }) => {
     const property = await ensureProperty(context.db, input.propertyId);
     const now2 = new Date;
@@ -49916,7 +50184,7 @@ var adminPropertyDocs = {
   }),
   updateDocumentStatus: adminBase.input(exports_external.object({
     id: exports_external.number().int().positive(),
-    status: exports_external.enum(DOC_STATUSES),
+    status: exports_external.enum(DOC_STATUSES2),
     note: exports_external.string().max(1000).nullable().optional()
   })).handler(async ({ input, context }) => {
     const [document] = await context.db.select().from(propertyDocuments).where(eq(propertyDocuments.id, input.id)).limit(1);
@@ -50356,113 +50624,6 @@ var adminOwners = {
 // packages/web/src/api/routes/admin-captures.ts
 init_schema();
 
-// packages/web/src/api/lib/capture-rules.ts
-var CAPTURE_STAGES = ["novo_contato", "documentacao", "validacao", "captado", "perdido"];
-var LEGACY_STAGE = "avaliacao";
-var STAGE_INPUTS = [...CAPTURE_STAGES, LEGACY_STAGE];
-var STAGE_ORDER = ["novo_contato", "documentacao", "validacao", "captado"];
-var STAGE_LABELS = {
-  novo_contato: "NOVO CONTATO",
-  documentacao: "DOCUMENTAÇÃO",
-  validacao: "VALIDAÇÃO",
-  captado: "CAPTADO",
-  perdido: "PERDIDO"
-};
-function normalizeStage(raw2) {
-  if (raw2 === LEGACY_STAGE)
-    return "documentacao";
-  if (typeof raw2 === "string" && CAPTURE_STAGES.includes(raw2)) {
-    return raw2;
-  }
-  return null;
-}
-var DOC_STATUSES2 = [
-  "nao_iniciado",
-  "solicitado",
-  "parcial",
-  "completo",
-  "validado_pela_equipe",
-  "pendente"
-];
-function normalizeDocStatus(raw2) {
-  if (raw2 === "pendente" || raw2 === "solicitado")
-    return "solicitado";
-  if (raw2 === "parcial")
-    return "parcial";
-  if (raw2 === "completo")
-    return "completo";
-  if (raw2 === "validado_pela_equipe")
-    return "validado_pela_equipe";
-  return "nao_iniciado";
-}
-function isDocValidatedByTeam(raw2) {
-  return normalizeDocStatus(raw2) === "validado_pela_equipe";
-}
-function isDocComplete(raw2) {
-  const status = normalizeDocStatus(raw2);
-  return status === "completo" || status === "validado_pela_equipe";
-}
-function hasValidAppraisal(capture) {
-  const value2 = capture.estimatedPrice;
-  return typeof value2 === "number" && Number.isFinite(value2) && value2 > 0;
-}
-var stageIndex = (stage) => stage === null ? -1 : STAGE_ORDER.indexOf(stage);
-var deny = (code, message) => ({ ok: false, code, message });
-function checkStageTransition(input) {
-  const from = normalizeStage(input.from);
-  const to = normalizeStage(input.to);
-  if (to === "captado") {
-    return deny("FORBIDDEN", 'CAPTADO não é manual: use "Vincular imóvel e captar" para criar o imóvel e concluir a captação');
-  }
-  if (from === "captado" || input.convertedPropertyId != null) {
-    return deny("CONFLICT", "Esta captação já foi captada e vinculada a um imóvel");
-  }
-  if (from === "perdido") {
-    return deny("CONFLICT", 'Captação perdida: use "Reabrir" para voltar ao funil');
-  }
-  if (to === "perdido")
-    return { ok: true };
-  const fromIdx = stageIndex(from);
-  const toIdx = stageIndex(to);
-  if (fromIdx === -1 || toIdx === -1) {
-    return deny("BAD_REQUEST", "Etapa inválida");
-  }
-  if (toIdx < fromIdx)
-    return { ok: true };
-  if (toIdx - fromIdx > 1) {
-    return deny("FORBIDDEN", `Não é possível pular etapas: siga ${STAGE_LABELS[STAGE_ORDER[fromIdx]]} → ${STAGE_LABELS[STAGE_ORDER[fromIdx + 1]]}`);
-  }
-  if (to === "validacao" && !isDocComplete(input.docStatus)) {
-    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de avançar para VALIDAÇÃO");
-  }
-  return { ok: true };
-}
-function checkConversionStart(input) {
-  const stage = normalizeStage(input.stage);
-  if (input.convertedPropertyId != null) {
-    return deny("CONFLICT", "Esta captação já foi convertida em outro imóvel");
-  }
-  if (stage === "perdido") {
-    return deny("CONFLICT", 'Captação perdida: use "Reabrir" antes de captar');
-  }
-  if (!isDocComplete(input.docStatus)) {
-    return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO ou DOCUMENTAÇÃO VALIDADA PELA EQUIPE) antes de captar");
-  }
-  if (stage !== "validacao") {
-    return deny("FORBIDDEN", "A captação precisa estar em VALIDAÇÃO para ser captada");
-  }
-  if (!hasValidAppraisal(input)) {
-    return deny("FORBIDDEN", "Registre o valor avaliado/validado em VALIDAÇÃO antes de captar");
-  }
-  return { ok: true };
-}
-function checkConversion(input) {
-  if (input.convertedPropertyId != null && input.convertedPropertyId === input.propertyId) {
-    return { ok: true, already: true };
-  }
-  return checkConversionStart(input);
-}
-
 // packages/web/src/api/lib/capture-checklist.ts
 var CHECKLIST_ITEMS = [
   { key: "owner_id", group: "proprietario", label: "Documento de identificação" },
@@ -50846,7 +51007,7 @@ var adminCaptures = {
   }),
   setDocStatus: adminBase.input(exports_external.object({
     id: exports_external.number().int().positive(),
-    docStatus: exports_external.enum(DOC_STATUSES2),
+    docStatus: exports_external.enum(DOC_STATUSES),
     note: exports_external.string().max(2000).nullable().optional()
   })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
@@ -50981,6 +51142,340 @@ var adminCaptures = {
     return { ok: true, already: false };
   })
 };
+
+// packages/web/src/api/routes/admin-documents.ts
+init_schema();
+
+// packages/web/src/api/lib/capture-documents.ts
+var DOC_KINDS = ["ficha_tecnica", "autorizacao"];
+var DOC_KIND_LABELS = {
+  ficha_tecnica: "FICHA TÉCNICA",
+  autorizacao: "AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO"
+};
+var DOC_TRACK_STATUSES = [
+  "gerada",
+  "impressa",
+  "com_corretor",
+  "entregue_ao_proprietario",
+  "assinada",
+  "devolvida",
+  "arquivada",
+  "cancelada"
+];
+function isDocTrackStatus(value2) {
+  return DOC_TRACK_STATUSES.includes(String(value2));
+}
+function checkDocTransition(current, next) {
+  if (!isDocTrackStatus(next))
+    return { ok: false, message: "Status de documento desconhecido." };
+  const from = isDocTrackStatus(current) ? current : "gerada";
+  if (from === next)
+    return { ok: false, message: "O documento já está nesse status." };
+  if (from === "cancelada") {
+    return { ok: false, message: "Documento cancelado não muda de status. Gere um novo documento." };
+  }
+  if (from === "arquivada" && next !== "cancelada") {
+    return { ok: false, message: "Documento arquivado só pode ser cancelado." };
+  }
+  return { ok: true, message: "" };
+}
+function serialFor(kind, baseSerial) {
+  return documentSerial(kind, baseSerial);
+}
+function pendingItems(source) {
+  const done = source.checklistDone ?? [];
+  const out = [];
+  if (!source.hasOwnerPhone)
+    out.push("Telefone/WhatsApp do proprietário");
+  if (!source.hasAddress)
+    out.push("Endereço completo (CEP e número)");
+  if (!done.includes("property_deed"))
+    out.push("Matrícula / documento do imóvel");
+  if (!done.includes("property_iptu"))
+    out.push("IPTU");
+  if (!done.includes("owner_id"))
+    out.push("Documento de identificação do proprietário");
+  if (!done.includes("owner_cpf"))
+    out.push("CPF do proprietário");
+  if (!done.includes("owner_address"))
+    out.push("Comprovante de endereço");
+  if (!isDocComplete(source.docStatus))
+    out.push("Documentação concluída ou validada pela equipe");
+  if (!(Number(source.estimatedPrice) > 0))
+    out.push("Preço validado");
+  if (!(source.officialPhotoCount ?? 0))
+    out.push("Fotos profissionais/oficiais");
+  if (!source.hasSignedAuthorization)
+    out.push("Autorização de venda assinada");
+  return out;
+}
+function canFinalize(source) {
+  const pending = pendingItems(source);
+  const blockers = pending.filter((item) => item === "Documentação concluída ou validada pela equipe" || item === "Preço validado" || item === "Autorização de venda assinada");
+  if (blockers.length) {
+    return { ok: false, message: `Falta: ${blockers.join("; ")}.`, pending };
+  }
+  return { ok: true, message: "", pending };
+}
+var pendingSourceOf = (source) => ({
+  docStatus: source.docStatus,
+  checklistDone: source.checklistDone,
+  estimatedPrice: source.estimatedPrice,
+  askingPrice: source.askingPrice,
+  ownerPhotoCount: source.ownerPhotoCount,
+  officialPhotoCount: source.officialPhotoCount,
+  hasSignedAuthorization: source.hasSignedAuthorization,
+  hasAddress: Boolean(source.address?.cep && source.address?.number),
+  hasOwnerPhone: Boolean(source.owner?.phone)
+});
+function buildSnapshot(kind, source, options = {}) {
+  const now2 = options.now ?? new Date;
+  const complements = source.complements ?? {};
+  const terms = options.terms ?? {};
+  const clauses = [];
+  const blanks = [];
+  if (kind === "autorizacao") {
+    const price = terms.authorizedPrice ?? source.estimatedPrice ?? source.askingPrice ?? null;
+    if (!(Number(price) > 0))
+      blanks.push("Preço autorizado");
+    clauses.push("O(A) proprietário(a) autoriza a Edy Prime Imóveis a intermediar a negociação do imóvel identificado nesta autorização.", "Autoriza a divulgação do imóvel nos canais da imobiliária, incluindo site, portais e redes sociais.", "Autoriza o uso das fotos e das informações do imóvel exclusivamente para fins de divulgação da venda.", "Autoriza a apresentação do imóvel a interessados e o recebimento e a apresentação de propostas.");
+    if (terms.commissionPercent != null && terms.commissionPercent > 0) {
+      clauses.push(`Comissão de intermediação: ${terms.commissionPercent}% sobre o valor da venda.`);
+    } else {
+      blanks.push("Percentual de comissão");
+    }
+    if (terms.exclusive == null)
+      blanks.push("Exclusividade (sim ou não)");
+    else
+      clauses.push(terms.exclusive ? "Autorização com EXCLUSIVIDADE." : "Autorização SEM exclusividade.");
+    if (terms.termDays != null && terms.termDays > 0)
+      clauses.push(`Prazo de vigência: ${terms.termDays} dias.`);
+    else
+      blanks.push("Prazo de vigência");
+    blanks.push("Assinatura do proprietário");
+  }
+  return {
+    kind,
+    title: DOC_KIND_LABELS[kind],
+    serial: serialFor(kind, source.serial),
+    baseSerial: source.serial,
+    captureId: source.captureId,
+    issuedAt: now2.toISOString(),
+    owner: source.owner,
+    addressLine: formatUnitAddress(source.address ?? {}, complements),
+    address: source.address ?? {},
+    complements,
+    propertyType: source.propertyType ?? null,
+    features: source.features ?? [],
+    askingPrice: source.askingPrice ?? null,
+    estimatedPrice: source.estimatedPrice ?? null,
+    docStatus: source.docStatus ?? null,
+    checklistDone: source.checklistDone ?? [],
+    photos: { owner: source.ownerPhotoCount ?? 0, official: source.officialPhotoCount ?? 0 },
+    broker: source.broker,
+    source: source.source ?? null,
+    intention: source.intention ?? null,
+    notes: source.notes ?? null,
+    pending: pendingItems(pendingSourceOf(source)),
+    clauses,
+    blanks
+  };
+}
+function qrTarget(baseUrl, captureId) {
+  const root = baseUrl.replace(/\/+$/, "");
+  return `${root}/admin/captacao?ficha=${captureId}`;
+}
+
+// packages/web/src/api/routes/admin-documents.ts
+var BROKER_FALLBACK = {
+  name: "Edy Prime Imóveis",
+  creci: "CRECI 134718-F · PERITO CNAI 55.918",
+  phone: "(13) 99714-1174",
+  email: "edyprimeimoveis@gmail.com"
+};
+async function brokerOf(context) {
+  const [row] = await context.db.select().from(settings).limit(1);
+  if (!row)
+    return BROKER_FALLBACK;
+  const creci = String(row.creci ?? "").trim();
+  return {
+    name: String(row.companyName ?? "").trim() || BROKER_FALLBACK.name,
+    creci: creci || BROKER_FALLBACK.creci,
+    phone: String(row.whatsapp ?? "").trim() || BROKER_FALLBACK.phone,
+    email: String(row.email ?? "").trim() || BROKER_FALLBACK.email
+  };
+}
+async function documentEvent(context, documentId, status, note) {
+  await context.db.insert(crmDocumentEvents).values({
+    documentId,
+    status,
+    note,
+    userId: context.user.id,
+    userName: context.user.name
+  });
+}
+async function audit3(context, action, id, detail) {
+  await context.db.insert(auditLog).values({
+    userId: context.user.id,
+    userName: context.user.name,
+    action,
+    entity: "capture_document",
+    entityId: String(id),
+    detail: detail ?? null
+  });
+}
+async function loadCapture(context, captureId) {
+  const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, captureId)).limit(1);
+  if (!capture)
+    throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+  const [owner] = await context.db.select().from(owners).where(eq(owners.id, capture.ownerId)).limit(1);
+  return { capture, owner: owner ?? null };
+}
+async function officialPhotoCount(context, propertyId) {
+  if (!propertyId)
+    return 0;
+  const rows = await context.db.select({ id: propertyImages.id }).from(propertyImages).where(eq(propertyImages.propertyId, propertyId)).limit(200);
+  return rows.length;
+}
+async function ensureBaseSerial(context, capture) {
+  const current = String(capture.serial ?? "").trim();
+  if (current)
+    return current;
+  const serial = await allocateSerial(context.db, capture.propertyType);
+  await context.db.update(propertyCaptures).set({ serial, updatedAt: new Date }).where(eq(propertyCaptures.id, capture.id));
+  await audit3(context, "capture_serial_allocated", capture.id, serial);
+  return serial;
+}
+var termsInput = exports_external.object({
+  commissionPercent: exports_external.number().min(0).max(100).nullable().optional(),
+  exclusive: exports_external.boolean().nullable().optional(),
+  termDays: exports_external.number().int().min(0).max(3650).nullable().optional(),
+  authorizedPrice: exports_external.number().min(0).nullable().optional()
+}).optional();
+var adminDocuments = {
+  list: adminBase.input(exports_external.object({ captureId: exports_external.number().int().positive() })).handler(async ({ input, context }) => {
+    const rows = await context.db.select().from(crmDocuments).where(eq(crmDocuments.captureId, input.captureId)).orderBy(desc(crmDocuments.createdAt)).limit(100);
+    return rows;
+  }),
+  get: adminBase.input(exports_external.object({ id: exports_external.number().int().positive() })).handler(async ({ input, context }) => {
+    const [doc2] = await context.db.select().from(crmDocuments).where(eq(crmDocuments.id, input.id)).limit(1);
+    if (!doc2)
+      throw new ORPCError("NOT_FOUND", { message: "Documento não encontrado" });
+    const events = await context.db.select().from(crmDocumentEvents).where(eq(crmDocumentEvents.documentId, input.id)).orderBy(asc(crmDocumentEvents.createdAt)).limit(200);
+    let snapshot = null;
+    try {
+      snapshot = doc2.snapshot ? JSON.parse(doc2.snapshot) : null;
+    } catch {
+      snapshot = null;
+    }
+    return { ...doc2, snapshot, events };
+  }),
+  generate: adminBase.input(exports_external.object({
+    captureId: exports_external.number().int().positive(),
+    kind: exports_external.enum(DOC_KINDS),
+    terms: termsInput
+  })).handler(async ({ input, context }) => {
+    const { capture, owner } = await loadCapture(context, input.captureId);
+    const baseSerial = await ensureBaseSerial(context, capture);
+    const checklist = parseChecklist(capture.notes);
+    const broker = await brokerOf(context);
+    const official = await officialPhotoCount(context, capture.convertedPropertyId ?? null);
+    const snapshot = buildSnapshot(input.kind, {
+      captureId: capture.id,
+      serial: baseSerial,
+      owner: {
+        name: owner?.name ?? null,
+        phone: owner?.phone ?? null,
+        email: owner?.email ?? null,
+        document: null
+      },
+      address: {
+        cep: capture.cep,
+        street: capture.street,
+        number: capture.number,
+        district: capture.district,
+        city: capture.city,
+        state: capture.state
+      },
+      complements: parseComplements(capture.complements),
+      propertyType: capture.propertyType,
+      askingPrice: capture.askingPrice,
+      estimatedPrice: capture.estimatedPrice,
+      docStatus: capture.docStatus,
+      checklistDone: checklist.done,
+      ownerPhotoCount: parseOwnerPhotos(capture.ownerPhotos).length,
+      officialPhotoCount: official,
+      broker,
+      source: capture.source,
+      notes: checklist.text || null,
+      intention: capture.intention,
+      hasSignedAuthorization: await hasSignedAuthorization(context, capture.id)
+    }, { terms: input.terms ?? undefined });
+    const serial = serialFor(input.kind, baseSerial);
+    const [created] = await context.db.insert(crmDocuments).values({
+      kind: input.kind,
+      serial,
+      baseSerial,
+      captureId: capture.id,
+      propertyId: capture.convertedPropertyId ?? null,
+      ownerId: capture.ownerId,
+      status: "gerada",
+      snapshot: JSON.stringify(snapshot)
+    }).returning();
+    if (!created) {
+      throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível emitir o documento" });
+    }
+    await documentEvent(context, created.id, "gerada", null);
+    await audit3(context, "capture_document_generated", capture.id, serial);
+    return { ...created, snapshot, events: [] };
+  }),
+  setStatus: adminBase.input(exports_external.object({
+    id: exports_external.number().int().positive(),
+    status: exports_external.enum(DOC_TRACK_STATUSES),
+    note: exports_external.string().max(400).nullable().optional()
+  })).handler(async ({ input, context }) => {
+    const [doc2] = await context.db.select().from(crmDocuments).where(eq(crmDocuments.id, input.id)).limit(1);
+    if (!doc2)
+      throw new ORPCError("NOT_FOUND", { message: "Documento não encontrado" });
+    const check2 = checkDocTransition(doc2.status, input.status);
+    if (!check2.ok)
+      throw new ORPCError("BAD_REQUEST", { message: check2.message });
+    const note = input.note?.trim() || null;
+    await context.db.update(crmDocuments).set({ status: input.status, note, updatedAt: new Date }).where(eq(crmDocuments.id, input.id));
+    await documentEvent(context, input.id, input.status, note);
+    await audit3(context, "capture_document_status", doc2.captureId ?? input.id, `${doc2.serial}: ${doc2.status} → ${input.status}`);
+    return { ok: true, status: input.status };
+  }),
+  status: adminBase.input(exports_external.object({ captureId: exports_external.number().int().positive(), baseUrl: exports_external.string().max(200).optional() })).handler(async ({ input, context }) => {
+    const { capture, owner } = await loadCapture(context, input.captureId);
+    const checklist = parseChecklist(capture.notes);
+    const official = await officialPhotoCount(context, capture.convertedPropertyId ?? null);
+    const signed = await hasSignedAuthorization(context, capture.id);
+    const finalize2 = canFinalize({
+      docStatus: capture.docStatus,
+      checklistDone: checklist.done,
+      estimatedPrice: capture.estimatedPrice,
+      askingPrice: capture.askingPrice,
+      ownerPhotoCount: parseOwnerPhotos(capture.ownerPhotos).length,
+      officialPhotoCount: official,
+      hasSignedAuthorization: signed,
+      hasAddress: Boolean(capture.cep && capture.number),
+      hasOwnerPhone: Boolean(owner?.phone)
+    });
+    return {
+      serial: capture.serial ?? null,
+      pending: finalize2.pending,
+      canFinalize: finalize2.ok,
+      finalizeMessage: finalize2.message,
+      signedAuthorization: signed,
+      qr: qrTarget(input.baseUrl?.trim() || "https://www.edyprimeimoveis.com.br", capture.id)
+    };
+  })
+};
+async function hasSignedAuthorization(context, captureId) {
+  const rows = await context.db.select({ kind: crmDocuments.kind, status: crmDocuments.status }).from(crmDocuments).where(eq(crmDocuments.captureId, captureId)).limit(100);
+  return rows.some((row) => row.kind === "autorizacao" && (row.status === "assinada" || row.status === "devolvida" || row.status === "arquivada"));
+}
 
 // packages/web/src/api/routes/admin-tasks.ts
 init_schema();
@@ -53460,6 +53955,7 @@ var router = {
   adminClients,
   adminOwners,
   adminCaptures,
+  adminDocuments,
   adminTasks,
   adminDeals,
   adminDashboard,
