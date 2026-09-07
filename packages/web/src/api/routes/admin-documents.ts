@@ -251,6 +251,47 @@ export const adminDocuments = {
       );
 
       const serial = serialFor(input.kind as DocKind, baseSerial);
+
+      /* O serial do documento é determinístico (FC-/AV- + serial-base) e a
+         coluna tem índice UNIQUE. Clicar em "gerar" outra vez no mesmo
+         documento estourava a constraint e derrubava a emissão com erro 500.
+         Reemitir agora reaproveita a MESMA linha: o papel continua único e
+         rastreável, e o botão sempre abre o documento.
+
+         Documento já assinado/arquivado/cancelado não é reescrito: o snapshot
+         precisa continuar igual ao papel que saiu na impressora. */
+      const [existing] = await context.db
+        .select()
+        .from(schema.crmDocuments)
+        .where(eq(schema.crmDocuments.serial, serial))
+        .limit(1);
+      if (existing) {
+        let current = existing;
+        if (existing.status === "gerada") {
+          const [refreshed] = await context.db
+            .update(schema.crmDocuments)
+            .set({ snapshot: JSON.stringify(snapshot), updatedAt: new Date() })
+            .where(eq(schema.crmDocuments.id, existing.id))
+            .returning();
+          if (refreshed) current = refreshed;
+        }
+        const events = await context.db
+          .select()
+          .from(schema.crmDocumentEvents)
+          .where(eq(schema.crmDocumentEvents.documentId, current.id))
+          .orderBy(asc(schema.crmDocumentEvents.createdAt))
+          .limit(200);
+        let frozen: unknown = snapshot;
+        if (current.status !== "gerada") {
+          try {
+            frozen = current.snapshot ? JSON.parse(current.snapshot) : null;
+          } catch {
+            frozen = null;
+          }
+        }
+        return { ...current, snapshot: frozen, events: events as unknown[] };
+      }
+
       const [created] = await context.db
         .insert(schema.crmDocuments)
         .values({

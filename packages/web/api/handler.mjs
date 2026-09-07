@@ -51560,6 +51560,25 @@ var adminDocuments = {
       hasSignedAuthorization: await hasSignedAuthorization(context, capture.id)
     }, { terms: input.terms ?? undefined });
     const serial = serialFor(input.kind, baseSerial);
+    const [existing] = await context.db.select().from(crmDocuments).where(eq(crmDocuments.serial, serial)).limit(1);
+    if (existing) {
+      let current = existing;
+      if (existing.status === "gerada") {
+        const [refreshed] = await context.db.update(crmDocuments).set({ snapshot: JSON.stringify(snapshot), updatedAt: new Date }).where(eq(crmDocuments.id, existing.id)).returning();
+        if (refreshed)
+          current = refreshed;
+      }
+      const events = await context.db.select().from(crmDocumentEvents).where(eq(crmDocumentEvents.documentId, current.id)).orderBy(asc(crmDocumentEvents.createdAt)).limit(200);
+      let frozen = snapshot;
+      if (current.status !== "gerada") {
+        try {
+          frozen = current.snapshot ? JSON.parse(current.snapshot) : null;
+        } catch {
+          frozen = null;
+        }
+      }
+      return { ...current, snapshot: frozen, events };
+    }
     const [created] = await context.db.insert(crmDocuments).values({
       kind: input.kind,
       serial,
