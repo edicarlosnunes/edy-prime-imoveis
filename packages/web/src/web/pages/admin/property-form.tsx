@@ -48,6 +48,7 @@ import {
   type ConversionState,
 } from "../../lib/capture-conversion-flow";
 import { parseChecklist } from "../../../api/lib/capture-checklist";
+import { checkConversionStart } from "../../../api/lib/capture-rules";
 import { FeaturesPicker } from "../../components/admin/features-picker";
 import {
   PropertyFormNav,
@@ -181,6 +182,23 @@ export function PropertyForm({
   const markConverted = useMarkCaptureConverted();
   const [conversion, setConversion] = useState<ConversionState>(() => initConversion(captureId));
   const [prefilled, setPrefilled] = useState(false);
+
+  /* Mesma regra do backend, aplicada antes de criar o imóvel. Abrir esta rota
+     com ?capture_id= de uma captação inelegível (documentação incompleta, sem
+     avaliação, fora de DOCUMENTAÇÃO) não pode gerar imóvel: o cadastro fica
+     bloqueado em vez de criar a linha e falhar depois no vínculo. */
+  const captureBlock =
+    captureId !== null && capture.data
+      ? (() => {
+          const check = checkConversionStart({
+            stage: capture.data.stage,
+            docStatus: capture.data.docStatus,
+            estimatedPrice: capture.data.estimatedPrice,
+            convertedPropertyId: capture.data.convertedPropertyId,
+          });
+          return check.ok ? null : check.message;
+        })()
+      : null;
 
   const generate = useGeneratePropertyContent();
   const owners = useOwnerOptions();
@@ -421,6 +439,8 @@ export function PropertyForm({
     event.preventDefault();
     setError(null);
 
+    if (captureBlock) return void fail("basico", captureBlock);
+
     if (!form.code.trim()) return void fail("basico", "Informe o código do imóvel.");
     if (form.title.trim().length < 3) {
       return void fail("basico", "Informe um título com pelo menos 3 caracteres.");
@@ -553,6 +573,9 @@ export function PropertyForm({
                       <p className="mt-1 whitespace-pre-line text-muted">
                         {parseChecklist(capture.data.notes).text || "Sem observações na captação."}
                       </p>
+                      {captureBlock && (
+                        <p className="mt-2 font-medium text-red-700">{captureBlock}</p>
+                      )}
                     </div>
                   )}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -912,7 +935,11 @@ export function PropertyForm({
             <Btn tone="outline" onClick={onClose}>
               Cancelar
             </Btn>
-            <Btn type="submit" tone="brass" disabled={save.isPending || uploading}>
+            <Btn
+              type="submit"
+              tone="brass"
+              disabled={save.isPending || uploading || captureBlock !== null}
+            >
               {save.isPending ? "Salvando…" : "Salvar imóvel"}
             </Btn>
           </div>

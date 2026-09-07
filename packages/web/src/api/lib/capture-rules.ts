@@ -122,20 +122,22 @@ export function checkStageTransition(input: {
 }
 
 /**
- * Valida a conversão da captação em imóvel.
+ * Valida se a captação PODE INICIAR a conversão — antes de abrir o cadastro
+ * do imóvel.
  *
- * Vale para o momento em que o PropertyForm devolve o id do imóvel criado.
- * `already` sinaliza reentrada idempotente: mesma captação, mesmo imóvel.
+ * Mesmas negativas de `checkConversion`, sem o `propertyId` (que ainda não
+ * existe). Serve à UI: o botão "Cadastrar imóvel e captar" só fica habilitado
+ * quando isto devolve ok, e o formulário aberto por `?capture_id=` recusa o
+ * envio quando não devolve. Sem isso o corretor criava um imóvel real e só
+ * então tomava o erro do backend, deixando imóvel órfão no banco.
  */
-export function checkConversion(input: {
+export function checkConversionStart(input: {
   stage: string;
   docStatus: string | null | undefined;
   estimatedPrice: number | null | undefined;
   convertedPropertyId: number | null | undefined;
-  propertyId: number;
-}): RuleResult | { ok: true; already: true } {
+}): RuleResult {
   if (input.convertedPropertyId != null) {
-    if (input.convertedPropertyId === input.propertyId) return { ok: true, already: true };
     return deny("CONFLICT", "Esta captação já foi convertida em outro imóvel");
   }
   if (input.stage === "perdido") {
@@ -151,4 +153,25 @@ export function checkConversion(input: {
     return deny("FORBIDDEN", "Conclua a documentação (status COMPLETO) antes de captar");
   }
   return { ok: true };
+}
+
+/**
+ * Valida a conversão da captação em imóvel.
+ *
+ * Vale para o momento em que o PropertyForm devolve o id do imóvel criado.
+ * `already` sinaliza reentrada idempotente: mesma captação, mesmo imóvel.
+ * Fora desse caso idempotente, delega em `checkConversionStart` para que a
+ * regra exista em um lugar só.
+ */
+export function checkConversion(input: {
+  stage: string;
+  docStatus: string | null | undefined;
+  estimatedPrice: number | null | undefined;
+  convertedPropertyId: number | null | undefined;
+  propertyId: number;
+}): RuleResult | { ok: true; already: true } {
+  if (input.convertedPropertyId != null && input.convertedPropertyId === input.propertyId) {
+    return { ok: true, already: true };
+  }
+  return checkConversionStart(input);
 }
