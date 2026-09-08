@@ -11,6 +11,7 @@
  *  - cancelar / fechar o formulário nunca marca (a captação fica em DOCUMENTAÇÃO);
  *  - imóvel criado marca exatamente uma vez, mesmo com dois eventos seguidos.
  */
+import { parseOwnerPhotos } from "../../api/lib/capture-photos";
 
 export type ConversionState = {
   captureId: number | null;
@@ -89,4 +90,32 @@ export function readCaptureId(search: string | null | undefined): number | null 
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+/* ------------------------------------- fotos do Radar -> galeria do imóvel */
+
+/** Uma linha da galeria do Cadastro de Imóveis (mesmo formato de `GalleryImage`). */
+export interface InheritedImage {
+  url: string;
+  originalUrl: string | null;
+  isPrimary: boolean;
+}
+
+/**
+ * Converte as fotos PROVISÓRIAS da captação nas linhas da galeria do imóvel.
+ *
+ * Preserva a ORDEM da captação e a CAPA marcada no Radar (`primary`); sem
+ * marca, a capa é a primeira — mesma convenção da galeria. Não faz upload:
+ * devolve a MESMA URL, então nenhum arquivo é duplicado e as fotos continuam
+ * na captação. Publicar segue sendo ato separado.
+ */
+export function galleryFromOwnerPhotos(raw: string | null | undefined): InheritedImage[] {
+  const photos = parseOwnerPhotos(raw);
+  if (photos.length === 0) return [];
+  const primaryUrl = photos.find((photo) => photo.primary)?.url ?? photos[0]?.url ?? null;
+  return photos.map((photo) => ({
+    url: photo.url,
+    originalUrl: null,
+    isPrimary: photo.url === primaryUrl,
+  }));
 }

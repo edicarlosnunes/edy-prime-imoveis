@@ -19,9 +19,11 @@ import { buildCapturePayload, findDuplicateUnit } from "../lib/capture-intake";
 import {
   MAX_OWNER_PHOTOS,
   addOwnerPhotos,
+  moveOwnerPhoto,
   parseOwnerPhotos,
   removeOwnerPhoto,
   serializeOwnerPhotos,
+  setOwnerPhotoPrimary,
 } from "../lib/capture-photos";
 
 /** Complementos da unidade: todos opcionais e curtos. */
@@ -481,6 +483,53 @@ export const adminCaptures = {
         .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
         .where(eq(schema.propertyCaptures.id, input.id));
       await audit(context, "capture_photo_removed", input.id, input.url.slice(0, 200));
+      return { ok: true, changed: true };
+    }),
+
+  /**
+   * FOTO PRINCIPAL PROVISÓRIA (capa provável).
+   *
+   * Continua sendo foto provisória: marcar capa aqui NÃO publica nada e não
+   * toca em `property_images`. Serve para o Cadastro Premium herdar a capa
+   * certa quando a captação virar imóvel.
+   */
+  setPhotoPrimary: adminBase
+    .input(z.object({ id: z.number().int().positive(), url: z.string().min(4).max(1000) }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      const photos = setOwnerPhotoPrimary(capture.ownerPhotos, input.url);
+      if (!photos.some((photo) => photo.url === input.url && photo.primary)) {
+        throw new ORPCError("BAD_REQUEST", { message: "Foto não encontrada entre as provisórias desta captação" });
+      }
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+        .where(eq(schema.propertyCaptures.id, input.id));
+      await audit(context, "capture_photo_primary", input.id, input.url.slice(0, 200));
+      return { ok: true, changed: true };
+    }),
+
+  /** Reordena a lista provisória. A marca de capa viaja junto com a foto. */
+  movePhoto: adminBase
+    .input(z.object({
+      id: z.number().int().positive(),
+      url: z.string().min(4).max(1000),
+      direction: z.union([z.literal(-1), z.literal(1)]),
+    }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      const before = parseOwnerPhotos(capture.ownerPhotos);
+      const photos = moveOwnerPhoto(capture.ownerPhotos, input.url, input.direction);
+      /* Já está na ponta da lista: nada a fazer, sem erro na cara do corretor. */
+      if (photos.map((p) => p.url).join("|") === before.map((p) => p.url).join("|")) {
+        return { ok: true, changed: false };
+      }
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+        .where(eq(schema.propertyCaptures.id, input.id));
       return { ok: true, changed: true };
     }),
 

@@ -50836,17 +50836,51 @@ function parseOwnerPhotos(raw2) {
       url: url2,
       caption: typeof row.caption === "string" && row.caption.trim() ? row.caption.trim().slice(0, 200) : null,
       source: row.source === "equipe" ? "equipe" : "proprietario",
-      addedAt: typeof row.addedAt === "string" && row.addedAt ? row.addedAt : new Date(0).toISOString()
+      addedAt: typeof row.addedAt === "string" && row.addedAt ? row.addedAt : new Date(0).toISOString(),
+      ...row.primary === true ? { primary: true } : {}
     });
     if (photos.length >= MAX_OWNER_PHOTOS)
       break;
   }
+  let seen = false;
+  for (const photo of photos) {
+    if (photo.primary === true && !seen)
+      seen = true;
+    else
+      delete photo.primary;
+  }
   return photos;
+}
+function setOwnerPhotoPrimary(current, url2) {
+  const target = cleanUrl(url2);
+  const photos = parseOwnerPhotos(current);
+  if (!target || !photos.some((photo) => photo.url === target))
+    return photos;
+  return photos.map((photo) => ({ ...photo, primary: photo.url === target }));
+}
+function moveOwnerPhoto(current, url2, direction) {
+  const target = cleanUrl(url2);
+  const photos = parseOwnerPhotos(current);
+  const index2 = photos.findIndex((photo) => photo.url === target);
+  if (index2 < 0)
+    return photos;
+  const next = index2 + direction;
+  if (next < 0 || next >= photos.length)
+    return photos;
+  const reordered = [...photos];
+  const a = reordered[index2];
+  const b = reordered[next];
+  reordered[index2] = b;
+  reordered[next] = a;
+  return reordered;
 }
 function serializeOwnerPhotos(photos) {
   if (!photos.length)
     return null;
-  return JSON.stringify(photos.slice(0, MAX_OWNER_PHOTOS));
+  return JSON.stringify(photos.slice(0, MAX_OWNER_PHOTOS).map((photo) => {
+    const { primary, ...rest } = photo;
+    return primary === true ? { ...rest, primary: true } : rest;
+  }));
 }
 function addOwnerPhotos(current, incoming, options = {}) {
   const source = options.source ?? "proprietario";
@@ -50877,7 +50911,8 @@ function promoteToOfficial(current, chosen, options = {}) {
   const wanted = chosen.map((url2) => cleanUrl(url2)).filter(Boolean);
   const approved = wanted.filter((url2) => photos.some((photo) => photo.url === url2));
   const startOrder = options.startOrder ?? 0;
-  const primaryUrl = options.primaryUrl && approved.includes(cleanUrl(options.primaryUrl)) ? cleanUrl(options.primaryUrl) : approved[0] ?? null;
+  const marked = photos.find((photo) => photo.primary)?.url ?? null;
+  const primaryUrl = options.primaryUrl && approved.includes(cleanUrl(options.primaryUrl)) ? cleanUrl(options.primaryUrl) : marked && approved.includes(marked) ? marked : approved[0] ?? null;
   return approved.map((url2, index2) => ({
     url: url2,
     sortOrder: startOrder + index2,
@@ -51206,6 +51241,34 @@ var adminCaptures = {
       return { ok: true, changed: false };
     await context.db.update(propertyCaptures).set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date }).where(eq(propertyCaptures.id, input.id));
     await audit2(context, "capture_photo_removed", input.id, input.url.slice(0, 200));
+    return { ok: true, changed: true };
+  }),
+  setPhotoPrimary: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), url: exports_external.string().min(4).max(1000) })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const photos = setOwnerPhotoPrimary(capture.ownerPhotos, input.url);
+    if (!photos.some((photo) => photo.url === input.url && photo.primary)) {
+      throw new ORPCError("BAD_REQUEST", { message: "Foto não encontrada entre as provisórias desta captação" });
+    }
+    await context.db.update(propertyCaptures).set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date }).where(eq(propertyCaptures.id, input.id));
+    await audit2(context, "capture_photo_primary", input.id, input.url.slice(0, 200));
+    return { ok: true, changed: true };
+  }),
+  movePhoto: adminBase.input(exports_external.object({
+    id: exports_external.number().int().positive(),
+    url: exports_external.string().min(4).max(1000),
+    direction: exports_external.union([exports_external.literal(-1), exports_external.literal(1)])
+  })).handler(async ({ input, context }) => {
+    const [capture] = await context.db.select().from(propertyCaptures).where(eq(propertyCaptures.id, input.id)).limit(1);
+    if (!capture)
+      throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+    const before = parseOwnerPhotos(capture.ownerPhotos);
+    const photos = moveOwnerPhoto(capture.ownerPhotos, input.url, input.direction);
+    if (photos.map((p) => p.url).join("|") === before.map((p) => p.url).join("|")) {
+      return { ok: true, changed: false };
+    }
+    await context.db.update(propertyCaptures).set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date }).where(eq(propertyCaptures.id, input.id));
     return { ok: true, changed: true };
   }),
   markLost: adminBase.input(exports_external.object({ id: exports_external.number().int().positive(), reason: exports_external.string().min(2).max(120), detail: exports_external.string().max(1000).nullable().optional() })).handler(async ({ input, context }) => {

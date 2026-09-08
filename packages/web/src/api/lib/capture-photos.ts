@@ -12,11 +12,15 @@
  *  - `property_images` é a fonte do que o SITE PÚBLICO mostra. Deixar foto de
  *    proprietário entrar ali significaria risco de publicar foto torta, com
  *    pessoa dentro ou sem autorização. A separação é física, não um flag;
- *  - a promoção para foto oficial é sempre um ato explícito do corretor
- *    (`promoteToOfficial`), nunca um efeito colateral da conversão.
+ *  - foto provisória nunca é publicada por efeito colateral: o imóvel criado
+ *    pela captação nasce `published = 0`.
  *
- * Por isso nada em `property_images` mudou: o site continua exibindo
- * exatamente o que já exibia.
+ * O que mudou (pedido do corretor): quando a captação vira imóvel, o Cadastro
+ * Premium já ABRE com as provisórias na galeria, na ordem da captação e com a
+ * capa escolhida no Radar (`primary`). Continua sendo o corretor quem salva o
+ * imóvel — e ele pode trocar capa, reordenar, remover ou substituir antes
+ * disso. A captação mantém as fotos dela: nada é movido nem apagado, é a mesma
+ * URL nas duas pontas, sem duplicar arquivo.
  */
 
 /** Uma foto provisória enviada/registrada pelo proprietário. */
@@ -29,6 +33,13 @@ export interface OwnerPhoto {
   source: "proprietario" | "equipe";
   /** ISO 8601. Guardado como texto para o JSON não depender de Date. */
   addedAt: string;
+  /**
+   * FOTO PRINCIPAL PROVISÓRIA: a que o corretor escolheu como capa provável.
+   * Só uma foto da lista carrega `true`. Continua sendo provisória — marcar
+   * capa aqui não publica nada, só define a ordem/capa que o Cadastro Premium
+   * vai herdar quando a captação virar imóvel.
+   */
+  primary?: boolean;
 }
 
 /** Rótulo fixo de tela — a UI nunca deve inventar outro. */
@@ -70,16 +81,73 @@ export function parseOwnerPhotos(raw: string | null | undefined): OwnerPhoto[] {
       caption: typeof row.caption === "string" && row.caption.trim() ? row.caption.trim().slice(0, 200) : null,
       source: row.source === "equipe" ? "equipe" : "proprietario",
       addedAt: typeof row.addedAt === "string" && row.addedAt ? row.addedAt : new Date(0).toISOString(),
+      ...(row.primary === true ? { primary: true as const } : {}),
     });
     if (photos.length >= MAX_OWNER_PHOTOS) break;
   }
+  /* JSON corrompido/manual pode trazer duas capas: a primeira marcada vence,
+     as demais perdem a marca. Nunca duas principais na mesma captação. E foto
+     comum não carrega a chave: o formato guardado não muda para quem nunca
+     escolheu capa. */
+  let seen = false;
+  for (const photo of photos) {
+    if (photo.primary === true && !seen) seen = true;
+    else delete photo.primary;
+  }
   return photos;
+}
+
+/**
+ * URL da foto principal provisória. Sem marcação explícita a capa é a PRIMEIRA
+ * da lista — mesma convenção da galeria do Cadastro de Imóveis, para o corretor
+ * não ver duas regras diferentes.
+ */
+export function primaryOwnerPhotoUrl(current: string | null | undefined): string | null {
+  const photos = parseOwnerPhotos(current);
+  return photos.find((photo) => photo.primary)?.url ?? photos[0]?.url ?? null;
+}
+
+/** Marca UMA foto como principal provisória. Ordem da lista intacta. */
+export function setOwnerPhotoPrimary(current: string | null | undefined, url: string): OwnerPhoto[] {
+  const target = cleanUrl(url);
+  const photos = parseOwnerPhotos(current);
+  if (!target || !photos.some((photo) => photo.url === target)) return photos;
+  return photos.map((photo) => ({ ...photo, primary: photo.url === target }));
+}
+
+/**
+ * Move uma foto uma posição para cima (-1) ou para baixo (1).
+ * Reordenar não muda quem é a capa: a marca viaja com a foto.
+ */
+export function moveOwnerPhoto(
+  current: string | null | undefined,
+  url: string,
+  direction: -1 | 1,
+): OwnerPhoto[] {
+  const target = cleanUrl(url);
+  const photos = parseOwnerPhotos(current);
+  const index = photos.findIndex((photo) => photo.url === target);
+  if (index < 0) return photos;
+  const next = index + direction;
+  if (next < 0 || next >= photos.length) return photos;
+  const reordered = [...photos];
+  const a = reordered[index]!;
+  const b = reordered[next]!;
+  reordered[index] = b;
+  reordered[next] = a;
+  return reordered;
 }
 
 /** Serializa para a coluna. Lista vazia grava NULL, não "[]". */
 export function serializeOwnerPhotos(photos: OwnerPhoto[]): string | null {
   if (!photos.length) return null;
-  return JSON.stringify(photos.slice(0, MAX_OWNER_PHOTOS));
+  /* `primary` só é gravado na foto que é capa: JSON menor e sem ambiguidade. */
+  return JSON.stringify(
+    photos.slice(0, MAX_OWNER_PHOTOS).map((photo) => {
+      const { primary, ...rest } = photo;
+      return primary === true ? { ...rest, primary: true } : rest;
+    }),
+  );
 }
 
 /**
@@ -139,9 +207,14 @@ export function promoteToOfficial(
   const approved = wanted.filter((url) => photos.some((photo) => photo.url === url));
 
   const startOrder = options.startOrder ?? 0;
+  /* Ordem de preferência da capa: escolha explícita da chamada > foto marcada
+     como PRINCIPAL PROVISÓRIA no Radar > primeira aprovada. */
+  const marked = photos.find((photo) => photo.primary)?.url ?? null;
   const primaryUrl = options.primaryUrl && approved.includes(cleanUrl(options.primaryUrl))
     ? cleanUrl(options.primaryUrl)
-    : approved[0] ?? null;
+    : marked && approved.includes(marked)
+      ? marked
+      : approved[0] ?? null;
 
   return approved.map((url, index) => ({
     url,

@@ -43,6 +43,7 @@ import {
   useSaveProperty,
 } from "../../queries/admin";
 import {
+  galleryFromOwnerPhotos,
   initConversion,
   planConversion,
   type ConversionState,
@@ -277,6 +278,11 @@ export function PropertyForm({
         ? (row.propertyType as FormState["type"])
         : current.type,
       price: current.price || (price === null ? "" : formatMoneyInput(price)),
+      /* CÓDIGO do imóvel = serial que a captação já emitiu (o MESMO impresso na
+         Ficha Técnica e na Autorização). Nada é gerado aqui e nada é
+         renumerado: só evita o copiar/colar manual. Cadastro que não veio do
+         Radar continua com o campo em branco. */
+      code: current.code || String(row.serial ?? "").trim(),
       city: row.city || current.city,
       district: row.district || current.district,
       /* V3 — o endereço da ficha é estruturado (CEP + número + complementos).
@@ -300,6 +306,18 @@ export function PropertyForm({
       /* Imóvel vindo de captação nasce fora do ar: revisão antes da vitrine. */
       published: false,
     }));
+
+    /* FOTOS DO RADAR -> GALERIA DO IMÓVEL.
+       As provisórias entram na galeria já na ORDEM da captação e com a CAPA
+       marcada no Radar. Não há novo upload: é a MESMA URL, então nenhum
+       arquivo é duplicado e a captação continua com as fotos dela. O corretor
+       ainda pode trocar capa, reordenar, remover ou substituir antes de salvar,
+       e o imóvel nasce NÃO PUBLICADO — a foto só chega ao site quando alguém
+       publica o anúncio. */
+    const inherited = galleryFromOwnerPhotos(row.ownerPhotos);
+    if (inherited.length > 0) {
+      setImages((current) => (current.length > 0 ? current : inherited));
+    }
   }, [capture.data, captureId, prefilled, propertyId]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
