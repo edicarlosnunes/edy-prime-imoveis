@@ -135,3 +135,22 @@ describe("escolher a foto principal dentro do Radar", () => {
     expect(radar).toContain("useMoveCapturePhoto");
   });
 });
+
+describe("clique em Tornar principal nao pode morrer em silencio", () => {
+  test("uma foto em salvamento nao desabilita as outras fotos", () => {
+    /* Antes, todos os botões da lista compartilhavam `setPhotoPrimary.isPending`
+       / `movePhoto.isPending`: uma requisição pendurada travava o bloco inteiro
+       e o clique não fazia nada, sem mensagem nenhuma. Agora a trava é por URL. */
+    expect(radar).not.toContain("disabled={setPhotoPrimary.isPending}");
+    expect(radar).not.toContain("movePhoto.isPending");
+    expect(radar).toContain("disabled={photoBusy===p.url}");
+  });
+
+  test("a trava é sempre liberada, mesmo quando a chamada falha", () => {
+    expect(radar).toContain("finally(()=>setPhotoBusy(null))");
+  });
+
+  test("o corretor ve que o clique foi registrado", () => {
+    expect(radar).toContain('photoBusy===p.url?"Salvando…":"Tornar principal"');
+  });
+});
