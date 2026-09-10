@@ -40,7 +40,7 @@ const BROKER_FALLBACK = {
   name: "Edy Prime Imóveis",
   creci: "CRECI 134718-F",
   cnai: "PERITO CNAI 55.918",
-  phone: "(13) 99714-1174",
+  phone: "(13) 99772-6767",
   email: "edyprimeimoveis@gmail.com",
 };
 

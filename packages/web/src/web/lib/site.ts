@@ -10,8 +10,8 @@ export const site = {
   city: "Praia Grande",
   state: "SP",
   /** Somente números, com DDI e DDD. Ex: 5513991234567 */
-  whatsapp: "5513997141174",
-  whatsappLabel: "(13) 99714-1174",
+  whatsapp: "5513997726767",
+  whatsappLabel: "(13) 99772-6767",
   email: "edyprimeimoveis@gmail.com",
   instagram: "https://instagram.com/edy_prime_imoveis",
   instagramHandle: "@edy_prime_imoveis",

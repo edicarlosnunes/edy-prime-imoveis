@@ -4245,6 +4245,7 @@ __export(exports_schema, {
   leadEvents: () => leadEvents,
   integrations: () => integrations,
   integrationEvents: () => integrationEvents,
+  inboundEvents: () => inboundEvents,
   documentFiles: () => documentFiles,
   deals: () => deals,
   crmSerials: () => crmSerials,
@@ -4261,7 +4262,7 @@ __export(exports_schema, {
   adminUsers: () => adminUsers,
   adminSessions: () => adminSessions
 });
-var adminUsers, adminSessions, properties, propertyImages, media, propertyChecklist, documentFiles, propertyDocuments, propertyRevalidations, owners, crmSerials, propertyCaptures, crmDocuments, crmDocumentEvents, clients, clientInteractions, leads, leadNotes, leadProfile, leadEvents, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
+var adminUsers, adminSessions, properties, propertyImages, media, propertyChecklist, documentFiles, propertyDocuments, propertyRevalidations, owners, crmSerials, propertyCaptures, crmDocuments, crmDocumentEvents, clients, clientInteractions, leads, leadNotes, leadProfile, leadEvents, tasks, deals, settings, siteContent, integrations, integrationEvents, propertyChannels, conversations, messages, inboundEvents, chatGuardEvents, aiAgents, automations, automationRuns, watermarkSettings, auditLog;
 var init_schema = __esm(() => {
   init_sqlite_core();
   adminUsers = sqliteTable("admin_users", {
@@ -4700,7 +4701,26 @@ var init_schema = __esm(() => {
     body: text("body").notNull(),
     externalId: text("external_id"),
     createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
-  }, (t) => [index("messages_conversation_idx").on(t.conversationId)]);
+  }, (t) => [
+    index("messages_conversation_idx").on(t.conversationId),
+    uniqueIndex("messages_conversation_external_uk").on(t.conversationId, t.externalId)
+  ]);
+  inboundEvents = sqliteTable("inbound_events", {
+    id: integer2("id").primaryKey({ autoIncrement: true }),
+    channel: text("channel").notNull(),
+    externalId: text("external_id").notNull(),
+    status: text("status").notNull().default("processing"),
+    stage: text("stage").notNull().default("claimed"),
+    attempts: integer2("attempts").notNull().default(1),
+    lastError: text("last_error"),
+    claimedAt: integer2("claimed_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    updatedAt: integer2("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date),
+    createdAt: integer2("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date)
+  }, (t) => [
+    uniqueIndex("inbound_events_channel_external_uk").on(t.channel, t.externalId),
+    index("inbound_events_status_idx").on(t.status, t.claimedAt),
+    index("inbound_events_created_idx").on(t.createdAt)
+  ]);
   chatGuardEvents = sqliteTable("chat_guard_events", {
     id: integer2("id").primaryKey({ autoIncrement: true }),
     channel: text("channel").notNull().default("site"),
@@ -34406,6 +34426,7 @@ async function verifyMetaSignature(appSecret, rawBody, signatureHeader) {
     diff |= digest.charCodeAt(i) ^ expected.charCodeAt(i);
   return diff === 0 ? { ok: true, reason: "" } : { ok: false, reason: "Assinatura inválida" };
 }
+var onlyDigits = (value2) => (value2 ?? "").replace(/\D/g, "");
 function parseWhatsappWebhook(payload) {
   const out = [];
   const body = payload;
@@ -34413,9 +34434,16 @@ function parseWhatsappWebhook(payload) {
     for (const change of entry.changes ?? []) {
       const value2 = change.value;
       const contactName = value2?.contacts?.[0]?.profile?.name ?? null;
+      const selfPhone = onlyDigits(value2?.metadata?.display_phone_number);
+      const selfPhoneId = (value2?.metadata?.phone_number_id ?? "").trim();
       for (const message of value2?.messages ?? []) {
         const isText = message.type ? message.type === "text" : Boolean(message.text?.body);
         if (!isText || !message.from)
+          continue;
+        const from = onlyDigits(message.from);
+        if (selfPhone && from === selfPhone)
+          continue;
+        if (selfPhoneId && message.from.trim() === selfPhoneId)
           continue;
         out.push({
           from: message.from,
@@ -35692,7 +35720,7 @@ function findDuplicateUnit(existing, candidate) {
 }
 
 // packages/web/src/api/lib/owner-intake.ts
-var onlyDigits = (value2) => value2.replace(/\D/g, "");
+var onlyDigits2 = (value2) => value2.replace(/\D/g, "");
 var ownerTaskMarker = (ownerId) => `[owner:${ownerId}]`;
 function buildHistoryLine(input, when) {
   const stamp = when.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
@@ -35791,7 +35819,7 @@ async function ensureCapture(db3, ownerId, ownerName, input, now) {
   };
 }
 async function intakeOwner(db3, input) {
-  const phoneDigits = onlyDigits(input.phone).slice(0, 20);
+  const phoneDigits = onlyDigits2(input.phone).slice(0, 20);
   const email3 = input.email?.trim().toLowerCase() || null;
   const now = new Date;
   const candidates = await db3.select().from(owners).limit(500);
@@ -48570,14 +48598,27 @@ async function ensureConversation(db3, params) {
   return created;
 }
 async function addMessage(db3, conversationId, message) {
-  await db3.insert(messages).values({
-    conversationId,
-    direction: message.direction,
-    author: message.author,
-    authorName: message.authorName ?? null,
-    body: message.body.slice(0, 4000),
-    externalId: message.externalId ?? null
-  });
+  if (message.externalId) {
+    const rows = await db3.insert(messages).values({
+      conversationId,
+      direction: message.direction,
+      author: message.author,
+      authorName: message.authorName ?? null,
+      body: message.body.slice(0, 4000),
+      externalId: message.externalId
+    }).onConflictDoNothing().returning({ id: messages.id });
+    if (rows.length === 0)
+      return { inserted: false };
+  } else {
+    await db3.insert(messages).values({
+      conversationId,
+      direction: message.direction,
+      author: message.author,
+      authorName: message.authorName ?? null,
+      body: message.body.slice(0, 4000),
+      externalId: null
+    });
+  }
   const [conversation] = await db3.select({ unread: conversations.unread, leadId: conversations.leadId }).from(conversations).where(eq(conversations.id, conversationId)).limit(1);
   await db3.update(conversations).set({
     lastMessage: message.body.slice(0, 240),
@@ -48601,6 +48642,7 @@ async function addMessage(db3, conversationId, message) {
       });
     } catch {}
   }
+  return { inserted: true };
 }
 async function conversationTurns(db3, conversationId) {
   const rows = await db3.select().from(messages).where(eq(messages.conversationId, conversationId)).orderBy(asc(messages.id)).limit(60);
@@ -50598,9 +50640,9 @@ var adminClients = {
 init_schema();
 
 // packages/web/src/api/lib/person-doc.ts
-var onlyDigits2 = (value2) => String(value2 ?? "").replace(/\D/g, "");
+var onlyDigits3 = (value2) => String(value2 ?? "").replace(/\D/g, "");
 function docKind(value2) {
-  const digits3 = onlyDigits2(value2);
+  const digits3 = onlyDigits3(value2);
   if (digits3.length === 11)
     return "cpf";
   if (digits3.length === 14)
@@ -50608,7 +50650,7 @@ function docKind(value2) {
   return "desconhecido";
 }
 function isValidCpf(value2) {
-  const d = onlyDigits2(value2);
+  const d = onlyDigits3(value2);
   if (d.length !== 11)
     return false;
   if (/^(\d)\1{10}$/.test(d))
@@ -50623,7 +50665,7 @@ function isValidCpf(value2) {
   return check2(9) === Number(d[9]) && check2(10) === Number(d[10]);
 }
 function isValidCnpj(value2) {
-  const d = onlyDigits2(value2);
+  const d = onlyDigits3(value2);
   if (d.length !== 14)
     return false;
   if (/^(\d)\1{13}$/.test(d))
@@ -50653,7 +50695,7 @@ function normalizeDoc(value2) {
   const kind = docKind(raw2);
   if (kind === "desconhecido")
     return raw2.slice(0, 40);
-  return onlyDigits2(raw2);
+  return onlyDigits3(raw2);
 }
 function normalizeRg(value2) {
   const raw2 = String(value2 ?? "").trim();
@@ -51516,7 +51558,7 @@ var BROKER_FALLBACK = {
   name: "Edy Prime Imóveis",
   creci: "CRECI 134718-F",
   cnai: "PERITO CNAI 55.918",
-  phone: "(13) 99714-1174",
+  phone: "(13) 99772-6767",
   email: "edyprimeimoveis@gmail.com"
 };
 async function brokerOf(context) {
@@ -54111,6 +54153,129 @@ function registerFeedRoutes(app) {
 
 // packages/web/src/api/http/webhook-routes.ts
 init_schema();
+
+// packages/web/src/api/lib/inbound-idempotency.ts
+init_schema();
+var INBOUND_STAGES = ["claimed", "stored", "lead_linked", "replied"];
+var LEASE_MS = 60000;
+function isUniqueViolation(error48) {
+  const message = error48 instanceof Error ? error48.message : String(error48 ?? "");
+  return /unique constraint failed|sqlite_constraint_unique|constraint failed: unique/i.test(message);
+}
+function stageReached(stage, target) {
+  return INBOUND_STAGES.indexOf(stage) >= INBOUND_STAGES.indexOf(target);
+}
+var asStage = (value2) => INBOUND_STAGES.includes(value2 ?? "") ? value2 : "claimed";
+var skip = (reason, stage, attempts) => ({
+  claimed: false,
+  duplicated: true,
+  unidentified: false,
+  eventId: null,
+  stage,
+  attempts,
+  resumed: false,
+  reason
+});
+async function claimInboundEvent(db3, channel, externalId, options) {
+  const key = externalId?.trim();
+  if (!key) {
+    return {
+      claimed: true,
+      duplicated: false,
+      unidentified: true,
+      eventId: null,
+      stage: "claimed",
+      attempts: 1,
+      resumed: false,
+      reason: "unidentified"
+    };
+  }
+  const leaseMs = options?.leaseMs ?? LEASE_MS;
+  const now2 = options?.now ?? new Date;
+  const id = key.slice(0, 200);
+  let inserted = [];
+  try {
+    inserted = await db3.insert(inboundEvents).values({
+      channel,
+      externalId: id,
+      status: "processing",
+      stage: "claimed",
+      attempts: 1,
+      claimedAt: now2,
+      updatedAt: now2
+    }).onConflictDoNothing().returning({ id: inboundEvents.id });
+  } catch (error48) {
+    if (!isUniqueViolation(error48))
+      throw error48;
+  }
+  if (inserted.length > 0) {
+    return {
+      claimed: true,
+      duplicated: false,
+      unidentified: false,
+      eventId: inserted[0].id,
+      stage: "claimed",
+      attempts: 1,
+      resumed: false,
+      reason: "new"
+    };
+  }
+  const [row] = await db3.select({
+    id: inboundEvents.id,
+    status: inboundEvents.status,
+    stage: inboundEvents.stage,
+    attempts: inboundEvents.attempts,
+    claimedAt: inboundEvents.claimedAt
+  }).from(inboundEvents).where(and(eq(inboundEvents.channel, channel), eq(inboundEvents.externalId, id))).limit(1);
+  if (!row)
+    return skip("completed", "claimed", 0);
+  const stage = asStage(row.stage);
+  const attempts = row.attempts ?? 1;
+  if (row.status === "completed")
+    return skip("completed", stage, attempts);
+  const claimedAtMs = row.claimedAt instanceof Date ? row.claimedAt.getTime() : 0;
+  const expired = now2.getTime() - claimedAtMs >= leaseMs;
+  if (row.status === "processing" && !expired)
+    return skip("in_flight", stage, attempts);
+  const taken = await db3.update(inboundEvents).set({
+    status: "processing",
+    attempts: attempts + 1,
+    claimedAt: now2,
+    updatedAt: now2
+  }).where(and(eq(inboundEvents.id, row.id), eq(inboundEvents.attempts, attempts))).returning({ id: inboundEvents.id });
+  if (taken.length === 0)
+    return skip("in_flight", stage, attempts);
+  return {
+    claimed: true,
+    duplicated: false,
+    unidentified: false,
+    eventId: row.id,
+    stage,
+    attempts: attempts + 1,
+    resumed: true,
+    reason: "takeover"
+  };
+}
+async function advanceInboundEvent(db3, eventId, stage) {
+  if (!eventId)
+    return;
+  const now2 = new Date;
+  await db3.update(inboundEvents).set({ stage, claimedAt: now2, updatedAt: now2 }).where(eq(inboundEvents.id, eventId));
+}
+async function completeInboundEvent(db3, eventId) {
+  if (!eventId)
+    return;
+  const now2 = new Date;
+  await db3.update(inboundEvents).set({ status: "completed", stage: "replied", updatedAt: now2, lastError: null }).where(eq(inboundEvents.id, eventId));
+}
+async function failInboundEvent(db3, eventId, error48) {
+  if (!eventId)
+    return;
+  const detail = error48 instanceof Error ? error48.message : String(error48 ?? "erro");
+  await db3.update(inboundEvents).set({ status: "failed", updatedAt: new Date, lastError: detail.slice(0, 500) }).where(eq(inboundEvents.id, eventId));
+}
+
+// packages/web/src/api/http/webhook-routes.ts
 var rateLimited = createRateLimiter(60, 60 * 1000);
 async function config2(db3, key) {
   const [row] = await db3.select().from(integrations).where(eq(integrations.key, key)).limit(1);
@@ -54191,39 +54356,73 @@ function registerWebhookRoutes(app) {
       return c.json({ error: "json inválido" }, 400);
     }
     const baseUrl = siteBaseUrl(c.req.raw.headers);
+    let processed = 0;
+    let duplicated = 0;
+    let resumed = 0;
+    let failed = 0;
     for (const message of parseWhatsappWebhook(payload)) {
-      const conversation = await ensureConversation(db3, {
-        channel: "whatsapp",
-        externalId: message.from,
-        contactName: message.name,
-        contactPhone: message.from
-      });
-      await addMessage(db3, conversation.id, {
-        direction: "in",
-        author: "cliente",
-        authorName: message.name,
-        body: message.text,
-        externalId: message.messageId
-      });
-      const lead = await intakeLead(db3, {
-        name: message.name ?? "Contato WhatsApp",
-        phone: message.from,
-        interest: "Contato por WhatsApp",
-        message: message.text,
-        source: "whatsapp",
-        channel: "whatsapp"
-      });
-      await db3.update(conversations).set({ leadId: conversation.leadId ?? lead.id }).where(eq(conversations.id, conversation.id));
-      const turn = await aiTurn(db3, conversation.id, baseUrl);
-      if (turn.replied && turn.text) {
-        try {
-          await sendWhatsappText(wa, message.from, turn.text);
-        } catch (error48) {
-          await logEvent(db3, "whatsapp_cloud", "error", false, `Falha ao responder: ${error48 instanceof Error ? error48.message : "erro"}`);
+      const claim = await claimInboundEvent(db3, "whatsapp", message.messageId);
+      if (!claim.claimed) {
+        duplicated++;
+        continue;
+      }
+      if (claim.resumed)
+        resumed++;
+      try {
+        const conversation = await ensureConversation(db3, {
+          channel: "whatsapp",
+          externalId: message.from,
+          contactName: message.name,
+          contactPhone: message.from
+        });
+        if (!stageReached(claim.stage, "stored")) {
+          await addMessage(db3, conversation.id, {
+            direction: "in",
+            author: "cliente",
+            authorName: message.name,
+            body: message.text,
+            externalId: message.messageId
+          });
+          await advanceInboundEvent(db3, claim.eventId, "stored");
         }
+        if (!stageReached(claim.stage, "lead_linked")) {
+          const lead = await intakeLead(db3, {
+            name: message.name ?? "Contato WhatsApp",
+            phone: message.from,
+            interest: "Contato por WhatsApp",
+            message: message.text,
+            source: "whatsapp",
+            channel: "whatsapp"
+          });
+          await db3.update(conversations).set({ leadId: conversation.leadId ?? lead.id }).where(eq(conversations.id, conversation.id));
+          await advanceInboundEvent(db3, claim.eventId, "lead_linked");
+        }
+        if (!stageReached(claim.stage, "replied")) {
+          await advanceInboundEvent(db3, claim.eventId, "replied");
+          const turn = await aiTurn(db3, conversation.id, baseUrl);
+          if (turn.replied && turn.text) {
+            try {
+              await sendWhatsappText(wa, message.from, turn.text);
+            } catch (error48) {
+              await logEvent(db3, "whatsapp_cloud", "error", false, `Falha ao responder: ${error48 instanceof Error ? error48.message : "erro"}`);
+            }
+          }
+        }
+        await completeInboundEvent(db3, claim.eventId);
+        processed++;
+      } catch (error48) {
+        await failInboundEvent(db3, claim.eventId, error48);
+        failed++;
+        await logEvent(db3, "whatsapp_cloud", "error", false, `Falha ao processar mensagem (retry liberado): ${error48 instanceof Error ? error48.message : "erro"}`);
       }
     }
-    return c.json({ ok: true }, 200);
+    if (duplicated > 0) {
+      await logEvent(db3, "whatsapp_cloud", "webhook", true, `Reenvio da Meta ignorado: ${duplicated} mensagem(ns) já processada(s)`);
+    }
+    if (failed > 0) {
+      return c.json({ ok: false, processed, duplicated, resumed, failed }, 502);
+    }
+    return c.json({ ok: true, processed, duplicated, resumed }, 200);
   });
   app.get("/api/webhooks/meta", async (c) => {
     const db3 = await getDb();

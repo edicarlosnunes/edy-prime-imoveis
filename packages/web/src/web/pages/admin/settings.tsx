@@ -137,7 +137,7 @@ function Content() {
               <Field label="Nome do corretor">
                 <Input value={form.brokerName} onChange={(e) => set("brokerName", e.target.value)} required />
               </Field>
-              <Field label="WhatsApp" hint="Com DDI e DDD, só números: 5513997141174">
+              <Field label="WhatsApp" hint="Com DDI e DDD, só números: 5513997726767">
                 <Input value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} required />
               </Field>
               <Field label="E-mail">

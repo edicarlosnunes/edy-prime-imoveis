@@ -91,7 +91,7 @@ describe("soldSimilarMessage — dados reais do imóvel, nada hardcoded", () => 
 describe("soldSimilarLink — WhatsApp oficial do projeto", () => {
   test("usa o número configurado, sem número paralelo", () => {
     const link = soldSimilarLink({ code: "CS1000", district: "GUILHERMINIA" });
-    expect(link.startsWith("https://wa.me/5513997141174?text=")).toBe(true);
+    expect(link.startsWith("https://wa.me/5513997726767?text=")).toBe(true);
   });
 
   test("código e bairro chegam codificados no link", () => {
