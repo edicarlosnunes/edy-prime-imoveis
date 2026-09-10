@@ -22,6 +22,7 @@ import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
 import Privacidade from "./pages/privacidade";
 import Termos from "./pages/termos";
+import ExclusaoDeDados from "./pages/exclusao-de-dados";
 import { Provider } from "./components/provider";
 import { AgentFeedback } from "@runablehq/website-runtime";
 
@@ -57,6 +58,8 @@ function App() {
         <Route path="/termos" component={Termos} />
         {/* Rota pública descritiva — mesma página de Termos de Uso. */}
         <Route path="/termos-de-uso" component={Termos} />
+        {/* URL informada no app da Meta — instruções de exclusão de dados. */}
+        <Route path="/exclusao-de-dados" component={ExclusaoDeDados} />
         <Route path="/imovel/:slug" component={PropertyPage} />
       </Switch>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
