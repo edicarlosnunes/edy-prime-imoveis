@@ -65,14 +65,35 @@ export async function addMessage(
     externalId?: string | null;
   },
 ) {
-  await db.insert(schema.messages).values({
-    conversationId,
-    direction: message.direction,
-    author: message.author,
-    authorName: message.authorName ?? null,
-    body: message.body.slice(0, 4000),
-    externalId: message.externalId ?? null,
-  });
+  /* Segunda linha de defesa da idempotência (10/09/2026): mensagem com id
+     externo só entra uma vez por conversa. A trava principal é a reserva em
+     `inbound_events` na rota do webhook; aqui o índice UNIQUE
+     (conversation_id, external_id) garante que nem um caminho novo consiga
+     duplicar histórico. `inserted: false` = já existia, nada foi alterado. */
+  if (message.externalId) {
+    const rows = await db
+      .insert(schema.messages)
+      .values({
+        conversationId,
+        direction: message.direction,
+        author: message.author,
+        authorName: message.authorName ?? null,
+        body: message.body.slice(0, 4000),
+        externalId: message.externalId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.messages.id });
+    if (rows.length === 0) return { inserted: false as const };
+  } else {
+    await db.insert(schema.messages).values({
+      conversationId,
+      direction: message.direction,
+      author: message.author,
+      authorName: message.authorName ?? null,
+      body: message.body.slice(0, 4000),
+      externalId: null,
+    });
+  }
   const [conversation] = await db
     .select({ unread: schema.conversations.unread, leadId: schema.conversations.leadId })
     .from(schema.conversations)
@@ -109,6 +130,7 @@ export async function addMessage(
       /* qualificação nunca pode derrubar o atendimento */
     }
   }
+  return { inserted: true as const };
 }
 
 export async function conversationTurns(db: AdminDb, conversationId: number) {

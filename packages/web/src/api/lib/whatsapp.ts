@@ -88,13 +88,27 @@ export interface IncomingWhatsapp {
   messageId: string | null;
 }
 
-/** Extrai as mensagens de texto do payload do webhook. */
+const onlyDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "");
+
+/**
+ * Extrai as mensagens de texto do payload do webhook.
+ *
+ * O que NUNCA sai daqui (e portanto nunca aciona a IA):
+ * - `value.statuses` (sent/delivered/read/failed): é confirmação de entrega das
+ *   NOSSAS mensagens, não fala do cliente. O campo sequer é lido.
+ * - eco do próprio número: mensagem cujo remetente é o número da conta
+ *   (`value.metadata.display_phone_number` ou `phone_number_id`). Sem isso,
+ *   uma mensagem que o próprio sistema originasse voltaria como se fosse do
+ *   cliente e a IA responderia a si mesma.
+ * - mensagens que não são texto (áudio, imagem, documento, botão).
+ */
 export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
   const out: IncomingWhatsapp[] = [];
   const body = payload as {
     entry?: {
       changes?: {
         value?: {
+          metadata?: { display_phone_number?: string; phone_number_id?: string };
           contacts?: { profile?: { name?: string }; wa_id?: string }[];
           messages?: {
             from?: string;
@@ -110,9 +124,15 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
     for (const change of entry.changes ?? []) {
       const value = change.value;
       const contactName = value?.contacts?.[0]?.profile?.name ?? null;
+      const selfPhone = onlyDigits(value?.metadata?.display_phone_number);
+      const selfPhoneId = (value?.metadata?.phone_number_id ?? "").trim();
       for (const message of value?.messages ?? []) {
         const isText = message.type ? message.type === "text" : Boolean(message.text?.body);
         if (!isText || !message.from) continue;
+        /* Anti-loop: nada que saiu do nosso próprio número volta como cliente. */
+        const from = onlyDigits(message.from);
+        if (selfPhone && from === selfPhone) continue;
+        if (selfPhoneId && message.from.trim() === selfPhoneId) continue;
         out.push({
           from: message.from,
           name: contactName,

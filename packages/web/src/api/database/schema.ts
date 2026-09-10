@@ -829,7 +829,67 @@ export const messages = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  (t) => [index("messages_conversation_idx").on(t.conversationId)],
+  (t) => [
+    index("messages_conversation_idx").on(t.conversationId),
+    /**
+     * Idempotência (10/09/2026): a Meta reenvia o mesmo webhook quando não
+     * recebe 200 rápido. Sem unicidade, a mesma mensagem entrava duas vezes no
+     * inbox e a IA respondia duas vezes ao cliente.
+     * No SQLite NULLs são distintos entre si, então mensagens sem `external_id`
+     * (chat do site, IA, sistema) continuam podendo ser inseridas à vontade.
+     */
+    uniqueIndex("messages_conversation_external_uk").on(t.conversationId, t.externalId),
+  ],
+);
+
+/**
+ * Registro de idempotência dos webhooks de entrada.
+ *
+ * É a trava principal contra reprocessamento: antes de tocar em conversa,
+ * mensagem, lead ou IA, a rota tenta "reservar" o id externo do evento aqui.
+ * O INSERT com unicidade em (channel, external_id) é atômico, então em duas
+ * requisições concorrentes com o mesmo id apenas uma vence — a outra é
+ * descartada como duplicata. O escopo por canal evita colisão entre
+ * WhatsApp (wamid...), Instagram/Messenger (mid...) e Lead Ads.
+ */
+export const inboundEvents = sqliteTable(
+  "inbound_events",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** whatsapp | instagram | facebook | leadgen */
+    channel: text("channel").notNull(),
+    externalId: text("external_id").notNull(),
+    /**
+     * processing = alguém está processando agora (dono do prazo em claimed_at)
+     * completed  = concluído; todo reenvio posterior é descartado
+     * failed     = falhou de forma controlada; retry liberado imediatamente
+     *
+     * Sem esse estado, uma falha depois da reserva deixaria a mensagem presa:
+     * o reenvio da Meta bateria numa reserva órfã e seria descartado para
+     * sempre, perdendo mensagem legítima de cliente.
+     */
+    status: text("status").notNull().default("processing"),
+    /** até onde o processamento chegou: claimed | stored | lead_linked | replied */
+    stage: text("stage").notNull().default("claimed"),
+    /** nº de vezes que a reserva foi assumida; usado como compare-and-swap */
+    attempts: integer("attempts").notNull().default(1),
+    lastError: text("last_error"),
+    /** início do prazo da reserva; expirado, outro processo pode assumir */
+    claimedAt: integer("claimed_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    uniqueIndex("inbound_events_channel_external_uk").on(t.channel, t.externalId),
+    index("inbound_events_status_idx").on(t.status, t.claimedAt),
+    index("inbound_events_created_idx").on(t.createdAt),
+  ],
 );
 
 /* ------------------------------------------- guarda do chat publico */
