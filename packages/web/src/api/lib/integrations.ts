@@ -174,15 +174,37 @@ export const INTEGRATIONS: IntegrationDef[] = [
     mark: "WH",
     purpose:
       "Endereço único para portais/parceiros entregarem leads direto no CRM, com origem, campanha e UTM.",
-    method: "POST JSON em /api/webhooks/leads/:token — token gerado aqui, validado no servidor.",
+    method:
+      "POST JSON em /api/webhooks/leads/:token — um token aleatório por origem, gerado aqui e validado no servidor.",
     pending: ["Informar a URL do webhook no painel de cada portal/parceiro"],
     fields: [
       {
         key: "token",
-        label: "Token do webhook",
+        label: "Token geral (parceiros)",
         type: "password",
         secret: true,
         help: "Gerado automaticamente ao salvar. Faz parte da URL.",
+      },
+      {
+        key: "tokenZap",
+        label: "Token ZAP / VivaReal",
+        type: "password",
+        secret: true,
+        help: "URL exclusiva do Canal Pro. Vazar uma URL não abre a porta das outras.",
+      },
+      {
+        key: "tokenOlx",
+        label: "Token OLX",
+        type: "password",
+        secret: true,
+        help: "URL exclusiva da OLX.",
+      },
+      {
+        key: "tokenImovelweb",
+        label: "Token Imovelweb",
+        type: "password",
+        secret: true,
+        help: "URL exclusiva do Imovelweb.",
       },
     ],
     canTest: true,

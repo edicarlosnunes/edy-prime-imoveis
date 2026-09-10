@@ -15,6 +15,7 @@ import { siteBaseUrl } from "../lib/base-url";
 import { addMessage, aiTurn, ensureConversation } from "../lib/inbox";
 import { intakeLead, normalizeWebhookLead } from "../lib/lead-intake";
 import { logEvent, parseConfig } from "../lib/integrations";
+import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
@@ -26,21 +27,11 @@ import {
 } from "../lib/whatsapp";
 import type { AdminDb } from "../lib/admin-base";
 
-/** Limite simples por IP (best-effort: memória do runtime). */
-const hits = new Map<string, { count: number; until: number }>();
-const LIMIT = 60;
-const WINDOW = 60 * 1000;
-
-function rateLimited(ip: string) {
-  const entry = hits.get(ip);
-  const now = Date.now();
-  if (!entry || now > entry.until) {
-    hits.set(ip, { count: 1, until: now + WINDOW });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > LIMIT;
-}
+/**
+ * Limite simples por IP (best-effort: memória do runtime), compartilhado por
+ * todos os webhooks — mesmo comportamento de sempre, agora testável.
+ */
+const rateLimited = createRateLimiter(60, 60 * 1000);
 
 async function config(db: AdminDb, key: string) {
   const [row] = await db.select().from(schema.integrations).where(eq(schema.integrations.key, key)).limit(1);
@@ -67,10 +58,11 @@ export function registerWebhookRoutes(app: Hono) {
     const db = await getDb();
     const { config: hook } = await config(db, "lead_webhook");
 
-    // tokens fixos por portal (informados no painel do portal) ou o token geral
-    const known = new Set(["imovelweb", "zap", "olx"]);
-    const valid = (hook.token && token === hook.token) || known.has(token);
-    if (!valid) {
+    /* Só tokens fortes gravados no config autenticam. Os literais "zap",
+       "olx" e "imovelweb" foram revogados na correção de segurança de
+       10/09/2026 — ver lib/lead-webhook-token.ts. */
+    const portal = resolveWebhookPortal(hook, token);
+    if (!portal) {
       await logEvent(db, "lead_webhook", "webhook", false, `Token inválido (${ip})`);
       return c.json({ error: "unauthorized" }, 401);
     }
@@ -82,7 +74,7 @@ export function registerWebhookRoutes(app: Hono) {
       return c.json({ error: "json inválido" }, 400);
     }
 
-    const normalized = normalizeWebhookLead(payload, known.has(token) ? token : "webhook");
+    const normalized = normalizeWebhookLead(payload, portal);
     if (!normalized.phone && !normalized.email) {
       await logEvent(db, "lead_webhook", "webhook", false, "Payload sem telefone e sem e-mail");
       return c.json({ error: "informe telefone ou e-mail" }, 400);

@@ -30,14 +30,14 @@ import {
   statusFromConfig,
   type ConfigMap,
 } from "../lib/integrations";
+import {
+  LEAD_WEBHOOK_SLOTS,
+  ensureWebhookTokens,
+  isStrongToken,
+  randomWebhookToken,
+} from "../lib/lead-webhook-token";
 
 const keyInput = z.object({ key: z.string().min(2).max(60) });
-
-function randomToken(bytes = 24) {
-  const array = new Uint8Array(bytes);
-  crypto.getRandomValues(array);
-  return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 function isMasked(value: string) {
   return value.startsWith("••••");
@@ -69,7 +69,10 @@ function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
     case "imovelweb":
       return [
         { label: "XML para o Imovelweb", url: `${baseUrl}/feed/imovelweb.xml` },
-        { label: "Webhook de leads", url: `${baseUrl}/api/webhooks/leads/imovelweb` },
+        {
+          label: "Webhook de leads",
+          url: 'URL própria em "Webhook de leads" (token exclusivo do Imovelweb)',
+        },
       ];
     case "sitemap":
       return [
@@ -77,9 +80,17 @@ function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
         { label: "Robots", url: `${baseUrl}/robots.txt` },
       ];
     case "lead_webhook":
-      return config.token
-        ? [{ label: "Webhook de leads", url: `${baseUrl}/api/webhooks/leads/${config.token}` }]
-        : [{ label: "Webhook de leads", url: "Salve para gerar o token" }];
+      /* Uma URL por origem: cada portal recebe um token exclusivo, para que
+         vazar a URL de um não abra a porta dos outros. */
+      return LEAD_WEBHOOK_SLOTS.map((slot) => {
+        const value = (config[slot.configKey] ?? "").trim();
+        return {
+          label: slot.label,
+          url: isStrongToken(value)
+            ? `${baseUrl}/api/webhooks/leads/${value}`
+            : "Salve para gerar o token",
+        };
+      });
     case "whatsapp_cloud":
       return [{ label: "Webhook (Meta)", url: `${baseUrl}/api/webhooks/whatsapp` }];
     case "meta_lead_ads":
@@ -179,8 +190,15 @@ export const adminIntegrations = {
       const { config: existing } = await readConfig(context.db, input.key);
       const merged = mergeConfig(existing, incoming, secretKeys);
 
-      // token do webhook de leads é gerado pelo servidor
-      if (input.key === "lead_webhook" && !merged.token) merged.token = randomToken();
+      /* Tokens do webhook de leads são gerados pelo servidor: um por origem.
+         Slot vazio, fraco ou herdado dos literais revogados ("zap", "olx",
+         "imovelweb") é substituído por um token aleatório aqui. */
+      let rotatedSlots: string[] = [];
+      if (input.key === "lead_webhook") {
+        const ensured = ensureWebhookTokens(merged);
+        rotatedSlots = ensured.rotated;
+        for (const [field, value] of Object.entries(ensured.config)) merged[field] = value;
+      }
 
       const previousStatus = (await getIntegrationRow(context.db, input.key))?.status ?? "";
       const status =
@@ -194,7 +212,8 @@ export const adminIntegrations = {
         input.key,
         "config",
         true,
-        `Configuração salva (campos: ${Object.keys(incoming).join(", ") || "nenhum"})`,
+        `Configuração salva (campos: ${Object.keys(incoming).join(", ") || "nenhum"})` +
+          (rotatedSlots.length ? ` · tokens gerados: ${rotatedSlots.join(", ")}` : ""),
       );
       await audit(context.db, context.user, "integracao.salvar", {
         entity: "integration",
@@ -314,9 +333,16 @@ export const adminIntegrations = {
       throw new ORPCError("BAD_REQUEST", { message: "Só o webhook de leads tem token." });
     }
     const { config } = await readConfig(context.db, input.key);
-    config.token = randomToken();
+    /* Rotaciona TODOS os slots: o geral e um por portal. */
+    for (const slot of LEAD_WEBHOOK_SLOTS) config[slot.configKey] = randomWebhookToken();
     await saveIntegration(context.db, input.key, { config, status: "conectado" });
-    await logEvent(context.db, input.key, "config", true, "Token do webhook regenerado");
+    await logEvent(
+      context.db,
+      input.key,
+      "config",
+      true,
+      `Tokens do webhook regenerados (${LEAD_WEBHOOK_SLOTS.length} slots)`,
+    );
     await audit(context.db, context.user, "integracao.rotate_token", {
       entity: "integration",
       entityId: input.key,

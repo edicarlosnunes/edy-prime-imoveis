@@ -33967,15 +33967,36 @@ var INTEGRATIONS = [
     name: "Webhook de leads (portais e parceiros)",
     mark: "WH",
     purpose: "Endereço único para portais/parceiros entregarem leads direto no CRM, com origem, campanha e UTM.",
-    method: "POST JSON em /api/webhooks/leads/:token — token gerado aqui, validado no servidor.",
+    method: "POST JSON em /api/webhooks/leads/:token — um token aleatório por origem, gerado aqui e validado no servidor.",
     pending: ["Informar a URL do webhook no painel de cada portal/parceiro"],
     fields: [
       {
         key: "token",
-        label: "Token do webhook",
+        label: "Token geral (parceiros)",
         type: "password",
         secret: true,
         help: "Gerado automaticamente ao salvar. Faz parte da URL."
+      },
+      {
+        key: "tokenZap",
+        label: "Token ZAP / VivaReal",
+        type: "password",
+        secret: true,
+        help: "URL exclusiva do Canal Pro. Vazar uma URL não abre a porta das outras."
+      },
+      {
+        key: "tokenOlx",
+        label: "Token OLX",
+        type: "password",
+        secret: true,
+        help: "URL exclusiva da OLX."
+      },
+      {
+        key: "tokenImovelweb",
+        label: "Token Imovelweb",
+        type: "password",
+        secret: true,
+        help: "URL exclusiva do Imovelweb."
       }
     ],
     canTest: true,
@@ -52943,12 +52964,78 @@ async function runTest(db3, key, config2, baseUrl) {
 
 // packages/web/src/api/routes/admin-integrations.ts
 init_schema();
-var keyInput = exports_external.object({ key: exports_external.string().min(2).max(60) });
-function randomToken(bytes = 24) {
+
+// packages/web/src/api/lib/lead-webhook-token.ts
+var LEAD_WEBHOOK_SLOTS = [
+  { configKey: "token", portal: "webhook", label: "Token geral (parceiros)" },
+  { configKey: "tokenZap", portal: "zap", label: "Token ZAP / VivaReal" },
+  { configKey: "tokenOlx", portal: "olx", label: "Token OLX" },
+  { configKey: "tokenImovelweb", portal: "imovelweb", label: "Token Imovelweb" }
+];
+var REVOKED_TOKENS = ["zap", "olx", "imovelweb"];
+var TOKEN_BYTES = 24;
+var MIN_TOKEN_LENGTH = 32;
+function randomWebhookToken(bytes = TOKEN_BYTES) {
   const array3 = new Uint8Array(bytes);
   crypto.getRandomValues(array3);
-  return Array.from(array3, (b) => b.toString(16).padStart(2, "0")).join("");
+  return Array.from(array3, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+function safeEqual2(a, b) {
+  if (a.length !== b.length)
+    return false;
+  let diff = 0;
+  for (let index2 = 0;index2 < a.length; index2 += 1) {
+    diff |= a.charCodeAt(index2) ^ b.charCodeAt(index2);
+  }
+  return diff === 0;
+}
+function isRevokedToken(token) {
+  const clean = (token ?? "").trim().toLowerCase();
+  return REVOKED_TOKENS.includes(clean);
+}
+function isStrongToken(token) {
+  const clean = (token ?? "").trim();
+  return clean.length >= MIN_TOKEN_LENGTH && !isRevokedToken(clean);
+}
+function resolveWebhookPortal(config2, candidate) {
+  const token = (candidate ?? "").trim();
+  if (!isStrongToken(token))
+    return null;
+  for (const slot of LEAD_WEBHOOK_SLOTS) {
+    const stored = (config2[slot.configKey] ?? "").trim();
+    if (!isStrongToken(stored))
+      continue;
+    if (safeEqual2(stored, token))
+      return slot.portal;
+  }
+  return null;
+}
+function ensureWebhookTokens(config2, generate = randomWebhookToken) {
+  const out = { ...config2 };
+  const rotated = [];
+  for (const slot of LEAD_WEBHOOK_SLOTS) {
+    if (isStrongToken(out[slot.configKey] ?? ""))
+      continue;
+    out[slot.configKey] = generate();
+    rotated.push(slot.configKey);
+  }
+  return { config: out, rotated };
+}
+function createRateLimiter(limit = 60, windowMs = 60000) {
+  const hits = new Map;
+  return function rateLimited(ip, now2 = Date.now()) {
+    const entry = hits.get(ip);
+    if (!entry || now2 > entry.until) {
+      hits.set(ip, { count: 1, until: now2 + windowMs });
+      return false;
+    }
+    entry.count += 1;
+    return entry.count > limit;
+  };
+}
+
+// packages/web/src/api/routes/admin-integrations.ts
+var keyInput = exports_external.object({ key: exports_external.string().min(2).max(60) });
 function isMasked(value2) {
   return value2.startsWith("••••");
 }
@@ -52976,7 +53063,10 @@ function publicUrls(key, baseUrl, config2) {
     case "imovelweb":
       return [
         { label: "XML para o Imovelweb", url: `${baseUrl}/feed/imovelweb.xml` },
-        { label: "Webhook de leads", url: `${baseUrl}/api/webhooks/leads/imovelweb` }
+        {
+          label: "Webhook de leads",
+          url: 'URL própria em "Webhook de leads" (token exclusivo do Imovelweb)'
+        }
       ];
     case "sitemap":
       return [
@@ -52984,7 +53074,13 @@ function publicUrls(key, baseUrl, config2) {
         { label: "Robots", url: `${baseUrl}/robots.txt` }
       ];
     case "lead_webhook":
-      return config2.token ? [{ label: "Webhook de leads", url: `${baseUrl}/api/webhooks/leads/${config2.token}` }] : [{ label: "Webhook de leads", url: "Salve para gerar o token" }];
+      return LEAD_WEBHOOK_SLOTS.map((slot) => {
+        const value2 = (config2[slot.configKey] ?? "").trim();
+        return {
+          label: slot.label,
+          url: isStrongToken(value2) ? `${baseUrl}/api/webhooks/leads/${value2}` : "Salve para gerar o token"
+        };
+      });
     case "whatsapp_cloud":
       return [{ label: "Webhook (Meta)", url: `${baseUrl}/api/webhooks/whatsapp` }];
     case "meta_lead_ads":
@@ -53071,12 +53167,17 @@ var adminIntegrations = {
     }
     const { config: existing } = await readConfig(context.db, input.key);
     const merged = mergeConfig(existing, incoming, secretKeys);
-    if (input.key === "lead_webhook" && !merged.token)
-      merged.token = randomToken();
+    let rotatedSlots = [];
+    if (input.key === "lead_webhook") {
+      const ensured = ensureWebhookTokens(merged);
+      rotatedSlots = ensured.rotated;
+      for (const [field, value2] of Object.entries(ensured.config))
+        merged[field] = value2;
+    }
     const previousStatus = (await getIntegrationRow(context.db, input.key))?.status ?? "";
     const status = previousStatus === "conectado" && !def.selfServed ? "conectado" : statusFromConfig(def, merged);
     await saveIntegration(context.db, input.key, { config: merged, status, lastError: null });
-    await logEvent(context.db, input.key, "config", true, `Configuração salva (campos: ${Object.keys(incoming).join(", ") || "nenhum"})`);
+    await logEvent(context.db, input.key, "config", true, `Configuração salva (campos: ${Object.keys(incoming).join(", ") || "nenhum"})` + (rotatedSlots.length ? ` · tokens gerados: ${rotatedSlots.join(", ")}` : ""));
     await audit(context.db, context.user, "integracao.salvar", {
       entity: "integration",
       entityId: input.key,
@@ -53172,9 +53273,10 @@ var adminIntegrations = {
       throw new ORPCError("BAD_REQUEST", { message: "Só o webhook de leads tem token." });
     }
     const { config: config2 } = await readConfig(context.db, input.key);
-    config2.token = randomToken();
+    for (const slot of LEAD_WEBHOOK_SLOTS)
+      config2[slot.configKey] = randomWebhookToken();
     await saveIntegration(context.db, input.key, { config: config2, status: "conectado" });
-    await logEvent(context.db, input.key, "config", true, "Token do webhook regenerado");
+    await logEvent(context.db, input.key, "config", true, `Tokens do webhook regenerados (${LEAD_WEBHOOK_SLOTS.length} slots)`);
     await audit(context.db, context.user, "integracao.rotate_token", {
       entity: "integration",
       entityId: input.key,
@@ -54009,19 +54111,7 @@ function registerFeedRoutes(app) {
 
 // packages/web/src/api/http/webhook-routes.ts
 init_schema();
-var hits = new Map;
-var LIMIT = 60;
-var WINDOW = 60 * 1000;
-function rateLimited(ip) {
-  const entry = hits.get(ip);
-  const now2 = Date.now();
-  if (!entry || now2 > entry.until) {
-    hits.set(ip, { count: 1, until: now2 + WINDOW });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > LIMIT;
-}
+var rateLimited = createRateLimiter(60, 60 * 1000);
 async function config2(db3, key) {
   const [row] = await db3.select().from(integrations).where(eq(integrations.key, key)).limit(1);
   return { config: parseConfig(row?.config), enabled: row?.enabled === 1 };
@@ -54040,9 +54130,8 @@ function registerWebhookRoutes(app) {
     const token = c.req.param("token");
     const db3 = await getDb();
     const { config: hook } = await config2(db3, "lead_webhook");
-    const known = new Set(["imovelweb", "zap", "olx"]);
-    const valid = hook.token && token === hook.token || known.has(token);
-    if (!valid) {
+    const portal = resolveWebhookPortal(hook, token);
+    if (!portal) {
       await logEvent(db3, "lead_webhook", "webhook", false, `Token inválido (${ip})`);
       return c.json({ error: "unauthorized" }, 401);
     }
@@ -54052,7 +54141,7 @@ function registerWebhookRoutes(app) {
     } catch {
       return c.json({ error: "json inválido" }, 400);
     }
-    const normalized = normalizeWebhookLead(payload, known.has(token) ? token : "webhook");
+    const normalized = normalizeWebhookLead(payload, portal);
     if (!normalized.phone && !normalized.email) {
       await logEvent(db3, "lead_webhook", "webhook", false, "Payload sem telefone e sem e-mail");
       return c.json({ error: "informe telefone ou e-mail" }, 400);
