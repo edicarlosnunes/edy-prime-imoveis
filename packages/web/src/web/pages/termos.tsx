@@ -8,6 +8,14 @@ import { LegalPage, Paragraph, Section } from "../components/site/legal";
 /* Mesmo widget da Home e da página de imóvel — um único ponto por página. */
 const ChatWidget = lazy(() => import("../components/site/chat-widget"));
 
+/* Dados registrais do titular do site. Ficam aqui porque são de uso jurídico
+   exclusivo das páginas legais — o restante do site usa `site` (lib/site.ts). */
+const CONTROLLER = {
+  legalName: "EDY BOA SORTE LTDA",
+  tradeName: "Edy Prime Imóveis",
+  cnpj: "54.312.317/0001-92",
+};
+
 function Termos() {
   return (
     <div className="site-shell min-h-screen bg-paper">
@@ -18,11 +26,24 @@ function Termos() {
           title="Termos de Uso"
           intro="As regras de uso deste site e o alcance das informações publicadas aqui."
         >
+          <Section title="Quem mantém este site">
+            <Paragraph>
+              Este site é mantido pela <strong>{CONTROLLER.legalName}</strong>, que atua sob o nome
+              comercial <strong>{CONTROLLER.tradeName}</strong>, inscrita no CNPJ sob o nº{" "}
+              <strong>{CONTROLLER.cnpj}</strong>, {site.creci}, com atendimento em {site.address}.
+              O contato para dúvidas sobre estes termos é o e-mail{" "}
+              <a href={`mailto:${site.email}`} className="text-brass underline-offset-4 hover:underline">
+                {site.email}
+              </a>
+              .
+            </Paragraph>
+          </Section>
+
           <Section title="Sobre o site">
             <Paragraph>
-              Este site é mantido por {site.broker} {site.brandSuffix} ({site.creci}) e tem
-              finalidade informativa: apresentar imóveis disponíveis, os serviços de consultoria
-              imobiliária e os canais de contato. A navegação implica concordância com estes termos.
+              O site tem finalidade informativa: apresentar imóveis disponíveis, os serviços de
+              consultoria imobiliária e os canais de contato. A navegação implica concordância com
+              estes termos.
             </Paragraph>
           </Section>
 

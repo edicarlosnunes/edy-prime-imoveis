@@ -55,6 +55,8 @@ function App() {
         {/* URL informada no app da Meta — mesma página, rota descritiva. */}
         <Route path="/politica-de-privacidade" component={Privacidade} />
         <Route path="/termos" component={Termos} />
+        {/* Rota pública descritiva — mesma página de Termos de Uso. */}
+        <Route path="/termos-de-uso" component={Termos} />
         <Route path="/imovel/:slug" component={PropertyPage} />
       </Switch>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
