@@ -52,6 +52,8 @@ function App() {
         <Route path="/admin/marca-dagua" component={AdminWatermark} />
         <Route path="/admin/auditoria" component={AdminAudit} />
         <Route path="/privacidade" component={Privacidade} />
+        {/* URL informada no app da Meta — mesma página, rota descritiva. */}
+        <Route path="/politica-de-privacidade" component={Privacidade} />
         <Route path="/termos" component={Termos} />
         <Route path="/imovel/:slug" component={PropertyPage} />
       </Switch>
