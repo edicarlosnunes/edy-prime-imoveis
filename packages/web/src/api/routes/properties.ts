@@ -35,6 +35,11 @@ export interface Property {
   featured: boolean;
   slug: string;
   address?: string | null;
+  /**
+   * Vídeo do YouTube. Só é preenchido em `detail` — `list` (home, vitrine,
+   * busca, cards) nunca recebe o campo, então não há como vazar para lá.
+   */
+  youtubeUrl?: string | null;
 }
 
 const FALLBACK_IMAGE = "/images/imovel-1.jpg";
@@ -135,6 +140,8 @@ export const properties = {
       const toProperty = (
         item: typeof row,
         list: { url: string; isPrimary: number }[],
+        /* só o imóvel da página leva o vídeo; os relacionados são cards */
+        withVideo = false,
       ): Property => {
         const cover = list.find((image) => image.isPrimary === 1) ?? list[0];
         return {
@@ -163,6 +170,7 @@ export const properties = {
           featured: item.featured === 1,
           slug: item.slug ?? propertySlug(item),
           address: item.address,
+          youtubeUrl: withVideo ? item.youtubeUrl : null,
         };
       };
 
@@ -190,7 +198,7 @@ export const properties = {
 
       void primary;
       return {
-        property: toProperty(row, images),
+        property: toProperty(row, images, true),
         related: relatedRows.map((item) =>
           toProperty(
             item,

@@ -294,6 +294,27 @@ function PropertyPage() {
                   </div>
                 )}
 
+                {/* Vídeo do imóvel. Campo opcional: sem URL não renderiza nada.
+                    Fica só aqui, dentro da galeria — nunca na home, nos cards,
+                    na busca ou na vitrine. */}
+                {property.youtubeUrl?.trim() && (
+                  <p data-t="info" className="mt-3 flex items-center gap-2 text-sm text-muted">
+                    <span className="label-xs text-brass">YouTube</span>
+                    <a
+                      href={property.youtubeUrl.trim()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Abrir o vídeo do imóvel no YouTube"
+                      className="flex min-w-0 items-center gap-2 text-deep hover:text-brass"
+                    >
+                      <ArrowUpRight className="h-4 w-4 shrink-0" strokeWidth={1.8} />
+                      <span className="truncate underline underline-offset-2">
+                        {property.youtubeUrl.trim()}
+                      </span>
+                    </a>
+                  </p>
+                )}
+
                 <p data-t="caption" className="label-xs mt-8 text-brass">
                   {typeLabel[property.type] ?? "Imóvel"} · {purposeLabel[property.purpose] ?? property.purpose} ·{" "}
                   {property.code}

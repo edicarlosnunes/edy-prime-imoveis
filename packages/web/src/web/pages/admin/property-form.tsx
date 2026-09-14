@@ -112,6 +112,8 @@ interface FormState {
   ownerId: string;
   /** marca d'água desligada só neste imóvel */
   watermarkOff: boolean;
+  /** vídeo do imóvel no YouTube — opcional */
+  youtubeUrl: string;
 }
 
 const empty: FormState = {
@@ -139,6 +141,7 @@ const empty: FormState = {
   featured: false,
   ownerId: "",
   watermarkOff: false,
+  youtubeUrl: "",
 };
 
 function num(value: string) {
@@ -247,6 +250,7 @@ export function PropertyForm({
       featured: row.featured === 1,
       ownerId: row.ownerId ? String(row.ownerId) : "",
       watermarkOff: row.watermarkOff === 1,
+      youtubeUrl: row.youtubeUrl ?? "",
     });
     setImages(
       row.images.map((image) => ({
@@ -523,6 +527,7 @@ export function PropertyForm({
       featured: form.featured,
       ownerId: form.ownerId ? Number(form.ownerId) : null,
       watermarkOff: form.watermarkOff,
+      youtubeUrl: form.youtubeUrl.trim() || null,
       images: images.map((image) => ({
         url: image.url,
         originalUrl: image.originalUrl ?? null,
@@ -881,14 +886,31 @@ export function PropertyForm({
               )}
 
               {section === "fotos" && (
-                <PropertyGallery
-                  images={images}
-                  uploading={uploading}
-                  onPick={(files) => void pickFiles(files)}
-                  onMove={move}
-                  onSetPrimary={setPrimary}
-                  onRemove={removeImage}
-                />
+                <>
+                  <PropertyGallery
+                    images={images}
+                    uploading={uploading}
+                    onPick={(files) => void pickFiles(files)}
+                    onMove={move}
+                    onSetPrimary={setPrimary}
+                    onRemove={removeImage}
+                  />
+
+                  {/* Opcional. Vazio não renderiza nada no site. Aparece só
+                      dentro da galeria da página do imóvel. */}
+                  <div className="mt-6 border-t border-line pt-6">
+                    <Field
+                      label="YouTube"
+                      hint="Opcional. Aparece somente na galeria de fotos da página do imóvel."
+                    >
+                      <Input
+                        value={form.youtubeUrl}
+                        placeholder="Cole aqui a URL do vídeo do imóvel"
+                        onChange={(e) => set("youtubeUrl", e.target.value)}
+                      />
+                    </Field>
+                  </div>
+                </>
               )}
 
               {section === "documentacao" && <PropertyDocsSection propertyId={propertyId} />}

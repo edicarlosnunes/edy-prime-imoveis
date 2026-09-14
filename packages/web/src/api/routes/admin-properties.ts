@@ -53,6 +53,8 @@ const propertyInput = z.object({
   ownerId: z.number().int().nullable().optional(),
   /** desliga a marca d'água só neste imóvel */
   watermarkOff: z.boolean().default(false),
+  /** vídeo do imóvel no YouTube (opcional) */
+  youtubeUrl: z.string().max(300).nullable().optional(),
   images: z.array(imageInput).max(40).default([]),
 });
 
@@ -82,6 +84,7 @@ function toRow(input: z.infer<typeof propertyInput>) {
     featured: input.featured ? 1 : 0,
     ownerId: input.ownerId ?? null,
     watermarkOff: input.watermarkOff ? 1 : 0,
+    youtubeUrl: input.youtubeUrl?.trim() || null,
     slug: propertySlug({
       code: input.code.trim().toUpperCase(),
       title: input.title.trim(),

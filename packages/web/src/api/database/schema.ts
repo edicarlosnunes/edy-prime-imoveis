@@ -78,6 +78,12 @@ export const properties = sqliteTable(
     slug: text("slug"),
     /** 1 = não aplicar marca d'água nas fotos deste imóvel */
     watermarkOff: integer("watermark_off").notNull().default(0),
+    /**
+     * URL do vídeo do imóvel no YouTube. Campo opcional: NULL/vazio não
+     * renderiza nada no site. Sai só na galeria da página do imóvel —
+     * nunca na home, nos cards, na busca ou na vitrine.
+     */
+    youtubeUrl: text("youtube_url"),
 
     /* ------------------------------------------------ V2: documentação */
     /**
