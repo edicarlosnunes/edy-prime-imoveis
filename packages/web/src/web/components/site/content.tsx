@@ -195,19 +195,28 @@ export function SiteChrome() {
     setMeta('meta[name="robots"]', "name", "robots", seo.noindex ? "noindex,nofollow" : "index,follow");
   }, [seo]);
 
+  /* Favicon publicado no Editor do Site.
+     Trocar apenas o href do <link> que veio do index.html não basta: o
+     navegador mantém o ícone já cacheado. Removemos os links de ícone
+     existentes e inserimos um novo com a URL publicada + marca de versão,
+     para que a troca no Editor apareça de fato na aba. */
   useEffect(() => {
     const url = theme.faviconUrl.trim();
     if (!url) return;
-    let link = document.head.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
-    const previous = link.href;
-    link.href = url;
+    const previous = Array.from(
+      document.head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'),
+    );
+    for (const old of previous) old.remove();
+
+    const version = url.split("/").pop() ?? "";
+    const link = document.createElement("link");
+    link.rel = "icon";
+    link.href = url.includes("?") ? url : `${url}?v=${encodeURIComponent(version)}`;
+    document.head.appendChild(link);
+
     return () => {
-      if (link) link.href = previous;
+      link.remove();
+      for (const old of previous) document.head.appendChild(old);
     };
   }, [theme.faviconUrl]);
 

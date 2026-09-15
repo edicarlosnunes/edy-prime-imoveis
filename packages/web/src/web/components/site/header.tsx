@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Phone } from "lucide-react";
 import { site, whatsappLink } from "../../lib/site";
+import { resolveLogoUrl } from "../../lib/site-content";
 import { useSiteContent } from "./content";
 
 export function Header() {
-  const { menu, theme } = useSiteContent();
+  const content = useSiteContent();
+  const { menu, theme } = content;
   /* Links do editor + as seções novas (Regiões / Vender), sem duplicar. */
   const links = useMemo(() => {
     const base = menu.items
@@ -92,7 +94,7 @@ export function Header() {
   const closeMenu = useCallback(() => setOpen(false), []);
 
   const solid = scrolled || open;
-  const logoUrl = (menu.logoUrl || theme.logoUrl).trim();
+  const logoUrl = resolveLogoUrl(content);
   const fullscreen = menu.mobileStyle === "fullscreen";
 
   const waHref = whatsappLink(

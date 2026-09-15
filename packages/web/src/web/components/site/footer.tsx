@@ -1,13 +1,15 @@
 import { Facebook, Instagram, Mail, MessageCircle } from "lucide-react";
 import { Link } from "wouter";
 import { site, whatsappLink } from "../../lib/site";
+import { resolveLogoUrl } from "../../lib/site-content";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
 import { CNAI } from "./sellers";
 
 export function Footer() {
-  const { footer, menu, theme } = useSiteContent();
-  const logoUrl = (menu.logoUrl || theme.logoUrl).trim();
+  const content = useSiteContent();
+  const { footer, menu, theme } = content;
+  const logoUrl = resolveLogoUrl(content);
 
   return (
     <footer data-sec="footer" className="bg-[#0a0a0a] text-[#c8c5bd]">

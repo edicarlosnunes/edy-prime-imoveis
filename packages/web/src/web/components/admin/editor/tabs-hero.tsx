@@ -179,11 +179,14 @@ export function TabMenu({ content, patch }: TabProps) {
             onChange={(value) => patch((draft) => void (draft.menu.logoSuffix = value))}
           />
         </Row>
+        {/* Mesma logo da aba Identidade visual: os dois controles gravam em
+            theme.logoUrl para que exista uma só fonte de verdade. Antes este
+            campo gravava em menu.logoUrl e a logo antiga vencia a nova. */}
         <ImagePicker
           label="Logo em imagem (opcional)"
-          value={menu.logoUrl}
-          hint="Se preenchida, substitui o nome escrito no menu e no rodapé."
-          onChange={(url) => patch((draft) => void (draft.menu.logoUrl = url))}
+          value={content.theme.logoUrl}
+          hint="Se preenchida, substitui o nome escrito no menu e no rodapé. É a mesma logo da aba Identidade visual."
+          onChange={(url) => patch((draft) => void (draft.theme.logoUrl = url))}
         />
       </Group>
 

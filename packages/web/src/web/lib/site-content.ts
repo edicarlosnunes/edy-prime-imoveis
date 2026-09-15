@@ -568,6 +568,19 @@ export function mergeSiteContent(patch: unknown): SiteContent {
   return deepMerge(defaultSiteContent, patch);
 }
 
+/**
+ * Logo do site público — FONTE ÚNICA.
+ *
+ * O campo oficial é `theme.logoUrl` (Editor do Site → Identidade visual), que é
+ * onde vivem também a altura da logo e o favicon. `menu.logoUrl` existe apenas
+ * por compatibilidade com conteúdo publicado antes desta unificação: só é usado
+ * quando `theme.logoUrl` está vazio. Sem essa precedência, uma logo antiga
+ * gravada em `menu.logoUrl` sobrevivia às trocas feitas no Editor.
+ */
+export function resolveLogoUrl(content: SiteContent): string {
+  return (content.theme.logoUrl || content.menu.logoUrl || "").trim();
+}
+
 export function cloneSiteContent(content: SiteContent): SiteContent {
   return JSON.parse(JSON.stringify(content)) as SiteContent;
 }
