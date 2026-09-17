@@ -1,5 +1,6 @@
 import { Facebook, Instagram, Mail, MessageCircle } from "lucide-react";
 import { Link } from "wouter";
+import { LEGAL_ENTITY_NOTICE } from "../../lib/legal-entity";
 import { site, whatsappLink } from "../../lib/site";
 import { resolveLogoUrl } from "../../lib/site-content";
 import { useSiteContent } from "./content";
@@ -47,6 +48,8 @@ export function Footer() {
               <p className="mt-1.5 pl-8 text-[#c8c5bd]">
                 Atuando no mercado imobiliário desde 2013
               </p>
+              {/* Vínculo entre a marca e a pessoa jurídica que a administra. */}
+              <p className="mt-3 pl-8 text-[#c8c5bd]">{LEGAL_ENTITY_NOTICE}</p>
             </div>
           </div>
 

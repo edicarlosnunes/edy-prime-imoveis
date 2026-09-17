@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import { LEGAL_ENTITY_ABOUT } from "../../lib/legal-entity";
 import { site, whatsappLink } from "../../lib/site";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
@@ -73,6 +74,15 @@ export function About() {
               ))}
             </ul>
           )}
+
+          {/* Identificação institucional: vínculo da marca com a pessoa jurídica. */}
+          <p
+            data-t="info"
+            className="reveal mt-10 border-l border-brass/50 pl-4 text-sm leading-relaxed text-muted"
+            data-reveal-delay="230"
+          >
+            {LEGAL_ENTITY_ABOUT}
+          </p>
 
           {data.ctaLabel.trim() && (
             <a
