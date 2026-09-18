@@ -78,6 +78,13 @@ function Content() {
      ?novo=1 apenas abre a ficha mínima; depois a URL volta ao Radar normal. */
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
+    const captureId = Number(params.get("ficha"));
+    if (Number.isInteger(captureId) && captureId > 0) {
+      setNewOpen(false);
+      setSelected(captureId);
+      navigate("/admin/captacao", { replace: true });
+      return;
+    }
     if (params.get("novo") !== "1") return;
     setNewOpen(true);
     navigate("/admin/captacao", { replace: true });
@@ -168,6 +175,10 @@ function NewCapture({open,onClose,onCreated}:{open:boolean;onClose:()=>void;onCr
           r.id,
           `Ficha já existente encontrada. Abrimos a Captação #${r.id} sem gerar outro código.`,
         );
+        /* URL explícita elimina qualquer disputa entre fechar o modal novo e
+           montar a ficha existente. O effect acima consome e limpa a URL. */
+        window.history.replaceState(null, "", `/admin/captacao?ficha=${r.id}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
         return;
       }
       onCreated(
