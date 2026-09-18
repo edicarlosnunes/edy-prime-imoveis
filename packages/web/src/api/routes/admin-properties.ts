@@ -324,6 +324,21 @@ export const adminProperties = {
     .handler(async ({ input, context }) => {
       const { id, ...rest } = input;
       const row = toRow(rest as z.infer<typeof propertyInput>);
+      /* ARQUIVO MORTO — ficha arquivada não se edita e, principalmente, não
+         volta ao ar por tabela: `published` tem default `true` no input, então
+         salvar um imóvel arquivado o republicaria no site público ainda
+         arquivado. Restaurar primeiro é decisão explícita de quem restaura. */
+      const [existing] = await context.db
+        .select()
+        .from(schema.properties)
+        .where(eq(schema.properties.id, id))
+        .limit(1);
+      if (!existing) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      if (isArchived(existing)) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imóvel está no Arquivo Morto. Restaure antes de editar.",
+        });
+      }
       const [clash] = await context.db
         .select({ id: schema.properties.id })
         .from(schema.properties)
