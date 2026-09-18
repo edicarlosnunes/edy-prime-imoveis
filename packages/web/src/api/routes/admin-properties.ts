@@ -34,7 +34,7 @@ const imageInput = z.object({
 });
 
 const propertyInput = z.object({
-  code: z.string().min(2).max(40),
+  code: z.string().max(40).default(""),
   title: z.string().min(3).max(200),
   purpose: purposeEnum.default("venda"),
   type: typeEnum.default("apartamento"),
@@ -231,12 +231,6 @@ export const adminProperties = {
     .input(propertyInput.extend({ captureId: z.number().int().positive().nullable().optional() }))
     .handler(async ({ input, context }) => {
     const row = toRow(input);
-    const [existing] = await context.db
-      .select({ id: schema.properties.id })
-      .from(schema.properties)
-      .where(eq(schema.properties.code, row.code))
-      .limit(1);
-    if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
 
     /* Cadastro aberto pela captação (`/admin/imoveis/novo?capture_id=`).
        As mesmas regras do Radar valem aqui: sem documentação fechada e sem
@@ -273,6 +267,29 @@ export const adminProperties = {
        nunca ganha um segundo EPI. Ficha legada sem EPI e cadastro direto (sem
        captação) reservam o código agora, na sequência universal atômica. */
     const epiCode = inheritedEpi ?? (await allocateEpiCode(context.db, new Date()));
+
+    /**
+     * O código legado/técnico não é mais digitado pelo usuário.
+     * Para cadastro novo ele é preenchido automaticamente com o serial interno;
+     * o Código Universal visível para a operação continua sendo o EPI.
+     */
+    if (!row.code) {
+      row.code = serial;
+      row.slug = propertySlug({
+        code: row.code,
+        title: row.title,
+        type: row.type,
+        district: row.district,
+        city: row.city,
+      });
+    }
+
+    const [existing] = await context.db
+      .select({ id: schema.properties.id })
+      .from(schema.properties)
+      .where(eq(schema.properties.code, row.code))
+      .limit(1);
+    if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código técnico" });
 
     /* Data de entrada na carteira: todo imóvel novo nasce com ela preenchida,
        no momento da criação, para a revalidação de 4 meses e a regra dos 12
@@ -334,6 +351,17 @@ export const adminProperties = {
         .where(eq(schema.properties.id, id))
         .limit(1);
       if (!existing) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      /* Código antigo é somente leitura. Edição nunca apaga nem troca o código. */
+      if (!row.code) {
+        row.code = existing.code;
+        row.slug = propertySlug({
+          code: row.code,
+          title: row.title,
+          type: row.type,
+          district: row.district,
+          city: row.city,
+        });
+      }
       if (isArchived(existing)) {
         throw new ORPCError("CONFLICT", {
           message: "Imóvel está no Arquivo Morto. Restaure antes de editar.",
