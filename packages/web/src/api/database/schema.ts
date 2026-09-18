@@ -46,6 +46,31 @@ export const properties = sqliteTable(
      * no SQLite, então a unicidade vale só para os seriais realmente emitidos.
      */
     serial: text("serial"),
+    /**
+     * CÓDIGO UNIVERSAL EPI — `EPI-1000/09-26`.
+     *
+     * Código oficial e exibido do imóvel no CRM. `code` e `serial` acima
+     * continuam existindo e NÃO são reescritos: viram identificação interna /
+     * histórica. Gerado no backend por `lib/epi-counter.ts` a partir de uma
+     * sequência atômica única, com `MM-AA` do mês/ano da criação ORIGINAL da
+     * ficha (America/Sao_Paulo). Nunca muda, nunca é reutilizado.
+     *
+     * Nullable de propósito: os imóveis que já existem ficam com NULL
+     * (legado sem EPI) e não são backfillados — a sequência começa em 1000 na
+     * primeira ficha nova, sem consumir números com registros antigos.
+     * Somente leitura na aplicação: não há caminho de edição manual.
+     */
+    epiCode: text("epi_code"),
+
+    /* ------------------------------------------- ARQUIVO MORTO (soft delete)
+       "Excluir" NÃO apaga fisicamente. `archived_at` preenchido = ficha fora
+       das listagens operacionais, com EPI, proprietário, documentos, origem,
+       datas e histórico preservados. A restauração limpa estas três colunas e
+       devolve a ficha ao CRM com exatamente o mesmo EPI.
+       Ver lib/archive-rules.ts. */
+    archivedAt: integer("archived_at", { mode: "timestamp" }),
+    archivedBy: text("archived_by"),
+    archiveReason: text("archive_reason"),
     title: text("title").notNull(),
     /** venda | locacao | venda_locacao */
     purpose: text("purpose").notNull().default("venda"),
@@ -146,6 +171,10 @@ export const properties = sqliteTable(
     /* backstop do serial: o banco recusa duplicata mesmo se alguém gerar
        serial por fora de lib/serial-counter.ts */
     uniqueIndex("properties_serial_idx").on(t.serial),
+    /* backstop do EPI: o banco recusa duplicata mesmo se alguém gerar código
+       por fora de lib/epi-counter.ts. Vários NULL convivem (legado). */
+    uniqueIndex("properties_epi_idx").on(t.epiCode),
+    index("properties_archived_idx").on(t.archivedAt),
   ],
 );
 
@@ -333,6 +362,23 @@ export const crmSerials = sqliteTable("crm_serials", {
   next: integer("next").notNull().default(0),
 });
 
+/**
+ * SEQUÊNCIA DO CÓDIGO UNIVERSAL EPI — `EPI-1000/09-26`.
+ *
+ * Linha única (`id = 1`), separada de `crm_serials` de propósito: o serial
+ * legado continua correndo como sempre e as duas sequências não interferem
+ * uma na outra. Universal: NÃO reinicia por mês, por ano, por tipo nem por
+ * origem, e um número já emitido nunca volta para a fila.
+ *
+ * A semente é 999 para que a primeira reserva devolva 1000. A reserva é um
+ * único statement atômico (`UPDATE ... RETURNING`) — ver `lib/epi-counter.ts`.
+ */
+export const crmEpiSequence = sqliteTable("crm_epi_sequence", {
+  id: integer("id").primaryKey(),
+  /** último número reservado; a próxima reserva devolve `next + 1` */
+  next: integer("next").notNull().default(999),
+});
+
 
 /* ----------------------------------------------- Radar de Captação V1 */
 
@@ -351,6 +397,29 @@ export const propertyCaptures = sqliteTable(
      * número-base, nunca criam sequência nova.
      */
     serial: text("serial"),
+    /**
+     * CÓDIGO UNIVERSAL EPI — `EPI-1000/09-26`. Mesma coluna de `properties`.
+     *
+     * Emitido no instante em que a ficha real nasce, qualquer que seja a
+     * origem (WhatsApp, IA, LINK_CAPTACAO, cadastro manual, CAPTACAO_SITE e
+     * origens futuras). Quando a captação é promovida a imóvel cadastrado, o
+     * imóvel HERDA este código — nunca é gerado um segundo.
+     *
+     * Nullable: captações que já existem ficam com NULL (legado sem EPI) e
+     * nada é renumerado. Somente leitura.
+     */
+    epiCode: text("epi_code"),
+
+    /* ------------------------------------------- ARQUIVO MORTO (soft delete)
+       Eixo NOVO, ortogonal a `registration_status = 'ARQUIVADO'`, que é uma
+       decisão de funil tomada pela equipe e continua intacta. `archived_at` é
+       o soft delete do botão Excluir: a ficha sai das listagens operacionais
+       sem ser apagada, mantendo EPI e histórico, e a deduplicação continua
+       consultando estas linhas para reabrir a ficha antiga em vez de emitir
+       um EPI novo. Ver lib/archive-rules.ts. */
+    archivedAt: integer("archived_at", { mode: "timestamp" }),
+    archivedBy: text("archived_by"),
+    archiveReason: text("archive_reason"),
     /* V3 — endereço estruturado. `address` (texto livre) continua existindo e
        não é reescrito: as colunas abaixo são o caminho novo, preenchidas pela
        consulta de CEP ou pelo preenchimento manual. */
@@ -458,6 +527,9 @@ export const propertyCaptures = sqliteTable(
     index("property_captures_next_action_idx").on(t.nextActionAt),
     /* backstop do serial, igual ao de properties */
     uniqueIndex("property_captures_serial_idx").on(t.serial),
+    /* backstop do EPI, igual ao de properties */
+    uniqueIndex("property_captures_epi_idx").on(t.epiCode),
+    index("property_captures_archived_idx").on(t.archivedAt),
     /* NÃO é único: o mesmo imóvel pode ser recaptado depois de perdido, e
        bloquear isso no banco impediria trabalho legítimo. A verificação de
        duplicidade é feita na aplicação, que avisa em vez de travar. */
