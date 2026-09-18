@@ -283,10 +283,9 @@ export function PropertyForm({
         ? (row.propertyType as FormState["type"])
         : current.type,
       price: current.price || (price === null ? "" : formatMoneyInput(price)),
-      /* CÓDIGO do imóvel = serial que a captação já emitiu (o MESMO impresso na
-         Ficha Técnica e na Autorização). Nada é gerado aqui e nada é
-         renumerado: só evita o copiar/colar manual. Cadastro que não veio do
-         Radar continua com o campo em branco. */
+      /* Código técnico/legado é herdado quando já existe. O usuário nunca
+         precisa digitá-lo: em cadastro novo o backend preenche automaticamente.
+         O código operacional permanente é o EPI da ficha. */
       code: current.code || String(row.serial ?? "").trim(),
       city: row.city || current.city,
       district: row.district || current.district,
@@ -482,7 +481,6 @@ export function PropertyForm({
 
     if (captureBlock) return void fail("basico", captureBlock);
 
-    if (!form.code.trim()) return void fail("basico", "Informe o código do imóvel.");
     if (form.title.trim().length < 3) {
       return void fail("basico", "Informe um título com pelo menos 3 caracteres.");
     }
@@ -642,16 +640,20 @@ export function PropertyForm({
                       {detail.data?.epiCode || capture.data?.epiCode
                         ? "Código permanente do imóvel. Não muda, não é reutilizado e não pode ser editado."
                         : propertyId === null
-                          ? "O código é gerado automaticamente ao salvar este cadastro."
+                          ? "O EPI nasce automaticamente no pré-cadastro mínimo (nome, telefone e endereço) e nunca é digitado."
                           : "Cadastro anterior ao Código Universal: segue válido pelo código legado."}
                     </p>
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Field label="Código (legado)">
+                    <Field label={propertyId ? "Código (legado)" : "Código técnico (automático)"}>
                       <Input
-                        value={form.code}
-                        onChange={(e) => set("code", e.target.value)}
-                        placeholder="EP-1042"
+                        value={
+                          form.code ||
+                          (propertyId === null
+                            ? String(capture.data?.serial ?? "Gerado automaticamente")
+                            : "")
+                        }
+                        readOnly
                       />
                     </Field>
                     <Field label="Finalidade">
