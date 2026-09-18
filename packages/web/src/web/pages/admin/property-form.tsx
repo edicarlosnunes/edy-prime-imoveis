@@ -52,6 +52,7 @@ import { parseChecklist } from "../../../api/lib/capture-checklist";
 import { checkConversionStart } from "../../../api/lib/capture-rules";
 import { formatUnitAddress } from "../../../api/lib/capture-address";
 import { parseComplements } from "../../../api/lib/capture-intake";
+import { epiLabel } from "../../../api/lib/epi-code";
 import { FeaturesPicker } from "../../components/admin/features-picker";
 import {
   PropertyFormNav,
@@ -629,8 +630,24 @@ export function PropertyForm({
                       )}
                     </div>
                   )}
+                  {/* CÓDIGO UNIVERSAL EPI — somente leitura, NUNCA editável.
+                      Em imóvel novo o backend emite no salvamento (ou herda o
+                      da captação); imóvel antigo continua legado, sem EPI. */}
+                  <div className="rounded-[10px] border border-line bg-bone/40 p-3">
+                    <div className="label-xs text-deep">Código Universal (EPI)</div>
+                    <div className="mt-1 font-mono text-sm text-deep">
+                      {epiLabel(detail.data?.epiCode ?? capture.data?.epiCode ?? null)}
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted">
+                      {detail.data?.epiCode || capture.data?.epiCode
+                        ? "Código permanente do imóvel. Não muda, não é reutilizado e não pode ser editado."
+                        : propertyId === null
+                          ? "O código é gerado automaticamente ao salvar este cadastro."
+                          : "Cadastro anterior ao Código Universal: segue válido pelo código legado."}
+                    </p>
+                  </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Field label="Código">
+                    <Field label="Código (legado)">
                       <Input
                         value={form.code}
                         onChange={(e) => set("code", e.target.value)}

@@ -19,6 +19,8 @@ export function useAdminProperties(filters?: {
   search?: string;
   status?: "disponivel" | "reservado" | "vendido" | "alugado";
   published?: boolean;
+  /* ARQUIVO MORTO: `true` lista só o arquivado, `false`/ausente só o ativo. */
+  archived?: boolean;
 }) {
   return useQuery(orpc.adminProperties.list.queryOptions({ input: filters ?? {} }));
 }
@@ -43,9 +45,22 @@ export function useSaveProperty(mode: "create" | "update") {
   return useMutation(options);
 }
 
+/**
+ * ARQUIVO MORTO — "Excluir" arquiva, nunca apaga.
+ *
+ * O nome do hook continua `useRemoveProperty` porque é o botão "Excluir" da
+ * tela; a rota `remove` do backend faz soft delete. Nada sai do banco, o EPI
+ * é preservado e a ficha volta inteira pelo restaurar.
+ */
 export function useRemoveProperty() {
   const invalidate = useInvalidate();
   return useMutation(orpc.adminProperties.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+/** Tira o imóvel do Arquivo Morto, com o MESMO código EPI de sempre. */
+export function useRestoreProperty() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminProperties.restore.mutationOptions({ onSuccess: invalidate }));
 }
 
 export function useGeneratePropertyContent() {
@@ -336,7 +351,7 @@ export function useChangePassword() {
 }
 
 /* --------------------------------------------------------- captação / Radar */
-export function useAdminCaptures(filters?: { search?: string; city?: string; stage?: "novo_contato" | "documentacao" | "validacao" | "captado" | "perdido"; source?: string }) {
+export function useAdminCaptures(filters?: { search?: string; city?: string; stage?: "novo_contato" | "documentacao" | "validacao" | "captado" | "perdido"; source?: string; archived?: boolean }) {
   return useQuery(orpc.adminCaptures.list.queryOptions({ input: filters ?? {} }));
 }
 export function useCapture(id: number | null) {
@@ -357,6 +372,10 @@ export function useMoveCapturePhoto() { const invalidate = useInvalidate(); retu
 export function useMarkCaptureLost() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markLost.mutationOptions({ onSuccess: invalidate })); }
 export function useReopenCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.reopen.mutationOptions({ onSuccess: invalidate })); }
 export function useMarkCaptureConverted() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markConverted.mutationOptions({ onSuccess: invalidate })); }
+/* ARQUIVO MORTO do Radar — arquivar é soft delete, restaurar devolve a ficha
+   com o mesmo EPI. PERDIDO continua sendo outra coisa: é funil, fica no Radar. */
+export function useArchiveCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.archive.mutationOptions({ onSuccess: invalidate })); }
+export function useRestoreCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.restore.mutationOptions({ onSuccess: invalidate })); }
 
 /* ------------------------------------------- documentos da captação (FC/AV) */
 export function useCaptureDocuments(captureId: number | null) {
