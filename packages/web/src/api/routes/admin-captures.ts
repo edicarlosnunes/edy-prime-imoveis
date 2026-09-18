@@ -15,7 +15,9 @@ import {
 } from "../lib/capture-rules";
 import { CHECKLIST_ITEMS, isChecklistKey, toggleChecklistItem } from "../lib/capture-checklist";
 import { COMPLEMENT_FIELDS } from "../lib/capture-address";
-import { buildCapturePayload, findDuplicateUnit } from "../lib/capture-intake";
+import { buildCapturePayload, findDuplicateUnit, parseComplements } from "../lib/capture-intake";
+import { deriveRegistrationStatus, isManualRegistrationStatus, normalizeRegistrationStatus, REGISTRATION_STATUSES } from "../lib/capture-registration";
+import { outsidePriorityArea, parsePriorityCities } from "../lib/priority-area";
 import {
   MAX_OWNER_PHOTOS,
   addOwnerPhotos,
@@ -221,20 +223,71 @@ export const adminCaptures = {
       source: input.source,
     });
 
-    /* Aviso de unidade repetida. Só informa — recaptar é decisão humana. */
+    /* Aviso de unidade repetida. Só informa — recaptar é decisão humana.
+       V4: compara também o ENDEREÇO ESCRITO, então "Rua Guimarães Rosa 492
+       apto 163" e "Av. Guimaraes Rosa, 492, ap 163" são reconhecidos como o
+       mesmo imóvel mesmo quando o CEP foi digitado diferente. */
     const existing = await context.db
       .select({
         id: schema.propertyCaptures.id,
         ownerId: schema.propertyCaptures.ownerId,
         unitKey: schema.propertyCaptures.unitKey,
         stage: schema.propertyCaptures.stage,
+        addressKey: schema.propertyCaptures.addressKey,
+        buildingKey: schema.propertyCaptures.buildingKey,
+        city: schema.propertyCaptures.city,
+        street: schema.propertyCaptures.street,
+        number: schema.propertyCaptures.number,
+        cep: schema.propertyCaptures.cep,
+        complements: schema.propertyCaptures.complements,
       })
       .from(schema.propertyCaptures)
       .limit(1000);
-    const duplicateUnit = findDuplicateUnit(existing, {
-      unitKey: payload.unitKey,
-      ownerId: owner.id,
-    });
+    const duplicateUnit = findDuplicateUnit(
+      existing.map((row) => ({
+        id: row.id,
+        ownerId: row.ownerId,
+        unitKey: row.unitKey,
+        stage: row.stage,
+        addressKey: row.addressKey,
+        buildingKey: row.buildingKey,
+        address: { city: row.city, street: row.street, number: row.number, cep: row.cep },
+        complements: parseComplements(row.complements),
+      })),
+      {
+        unitKey: payload.unitKey,
+        addressKey: payload.addressKey,
+        address: { city: payload.city, street: payload.street, number: payload.number, cep: payload.cep },
+        complements: parseComplements(payload.complements),
+        ownerId: owner.id,
+      },
+    );
+
+    /* Cidade fora da área prioritária SINALIZA, nunca bloqueia (item 7). */
+    const [settingsRow] = await context.db
+      .select({ priorityCities: schema.settings.priorityCities })
+      .from(schema.settings)
+      .limit(1);
+    const outside = outsidePriorityArea(payload.city, parsePriorityCities(settingsRow?.priorityCities));
+
+    /* Endereço de OUTRO proprietário nasce marcado para revisão humana. */
+    const foreignDuplicate = duplicateUnit.duplicate && !duplicateUnit.sameOwner;
+    const registration = deriveRegistrationStatus(
+      {
+        ownerName: input.ownerName,
+        ownerPhone: input.ownerPhone,
+        ownerEmail: input.ownerEmail ?? null,
+        city: payload.city,
+        street: payload.street,
+        number: payload.number,
+        district: payload.district,
+        cep: payload.cep,
+        propertyType: payload.propertyType,
+        askingPrice: payload.askingPrice,
+        intention: payload.intention,
+      },
+      { lastActivityAt: new Date(), possibleDuplicate: foreignDuplicate },
+    );
 
     const now = new Date();
     const due = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -251,6 +304,15 @@ export const adminCaptures = {
       state: payload.state,
       complements: payload.complements,
       unitKey: payload.unitKey || null,
+      addressKey: payload.addressKey || null,
+      buildingKey: payload.buildingKey || null,
+      registrationStatus: registration.status,
+      registrationStatusAt: now,
+      completeness: registration.completeness.percent,
+      lastFieldAt: now,
+      outsidePriorityArea: outside ? 1 : 0,
+      duplicateOfCaptureId: foreignDuplicate ? duplicateUnit.captureId : null,
+      duplicateNote: foreignDuplicate ? duplicateUnit.message : null,
       propertyType: payload.propertyType,
       askingPrice: payload.askingPrice,
       source: payload.source,
@@ -276,7 +338,10 @@ export const adminCaptures = {
     });
     await audit(context, "capture_created", capture.id, ownerCreated ? "Proprietário novo" : "Proprietário existente reutilizado");
     if (duplicateUnit.duplicate) {
-      await audit(context, "capture_duplicate_unit", capture.id, duplicateUnit.message);
+      await audit(context, "capture_duplicate_unit", capture.id, `${duplicateUnit.message} (por ${duplicateUnit.matchedBy})`);
+    }
+    if (outside) {
+      await audit(context, "capture_outside_priority_area", capture.id, `Cidade ${payload.city} fora da área prioritária`);
     }
     return {
       id: capture.id,
@@ -284,6 +349,9 @@ export const adminCaptures = {
       ownerCreated,
       /* Aviso, não bloqueio: a tela mostra e o corretor decide. */
       duplicateUnit: duplicateUnit.duplicate ? duplicateUnit.message : null,
+      registrationStatus: registration.status,
+      completeness: registration.completeness.percent,
+      outsidePriorityArea: outside,
     };
   }),
 
@@ -317,6 +385,58 @@ export const adminCaptures = {
     await audit(context, "capture_stage_changed", input.id, input.stage);
     return { ok: true, changed: true };
   }),
+
+  /**
+   * Status do CADASTRO — eixo paralelo ao funil do Radar (item 8).
+   *
+   * O funil (`novo_contato → documentacao → validacao → captado`) continua
+   * intacto e é outra coisa: ele diz onde a NEGOCIAÇÃO está. Este eixo diz em
+   * que pé está a FICHA. Os dois convivem sem se sobrescrever.
+   *
+   * Status definido aqui é decisão humana e, quando é um dos manuais
+   * (EM_ANALISE, PAUSADO, ARQUIVADO, POSSIVEL_DUPLICIDADE), o cálculo
+   * automático passa a respeitá-lo e não o sobrescreve mais.
+   */
+  setRegistrationStatus: adminBase
+    .input(z.object({
+      id: z.number().int().positive(),
+      status: z.enum(REGISTRATION_STATUSES),
+      note: z.string().max(500).optional(),
+    }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+
+      const current = normalizeRegistrationStatus(capture.registrationStatus);
+      if (current === input.status) return { ok: true, changed: false, status: current };
+
+      const now = new Date();
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({
+          registrationStatus: input.status,
+          registrationStatusAt: now,
+          /* Observação humana é somada ao histórico da ficha, nunca apaga. */
+          notes: input.note?.trim()
+            ? [capture.notes?.trim(), `— ${now.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })} · ${input.status}: ${input.note.trim()}`]
+                .filter(Boolean)
+                .join("\n\n")
+                .slice(0, 4000)
+            : capture.notes,
+          updatedAt: now,
+        })
+        .where(eq(schema.propertyCaptures.id, input.id));
+
+      await audit(
+        context,
+        "capture_registration_status_changed",
+        input.id,
+        [`${current} → ${input.status}`, isManualRegistrationStatus(input.status) ? "(decisão humana, preservada)" : "", input.note?.trim() ?? ""]
+          .filter(Boolean)
+          .join(" "),
+      );
+      return { ok: true, changed: true, status: input.status };
+    }),
 
   setNextAction: adminBase.input(z.object({ id: z.number().int().positive(), title: z.string().max(200).nullable(), dueAt: z.string().max(40).nullable() })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);

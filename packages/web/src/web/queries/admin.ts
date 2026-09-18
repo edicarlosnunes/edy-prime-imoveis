@@ -57,6 +57,45 @@ export function usePatchProperty() {
   return useMutation(orpc.adminProperties.patch.mutationOptions({ onSuccess: invalidate }));
 }
 
+/* Item 9 — status comercial, eixo separado do `status` antigo. */
+export function useSetCommercialStatus() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminProperties.setCommercialStatus.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+/* Item 10 — volta da pausa de 12 meses: a pausa é automática, a volta é humana. */
+export function useResumePropertyPause() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminProperties.resumePause.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* ---------------------------------------------------- logradouros (item 6) */
+
+export function useStreets(filters?: { city?: string; search?: string; limit?: number }) {
+  return useQuery(orpc.adminStreets.list.queryOptions({ input: filters ?? {} }));
+}
+
+export function useResolveStreet() {
+  return useMutation(orpc.adminStreets.resolve.mutationOptions());
+}
+
+export function useRegisterStreet() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminStreets.register.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useUpdateStreet() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminStreets.update.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useBackfillStreets() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminStreets.backfill.mutationOptions({ onSuccess: invalidate }));
+}
+
 /* ----------------------------------------------------------------- leads */
 
 export function useAdminLeads(filters?: { search?: string; status?: "aberto" | "perdido" | "ganho" }) {
@@ -305,6 +344,8 @@ export function useCapture(id: number | null) {
 }
 export function useCreateCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.create.mutationOptions({ onSuccess: invalidate })); }
 export function useSetCaptureStage() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setStage.mutationOptions({ onSuccess: invalidate })); }
+/* Item 8 — status do cadastro, eixo paralelo ao funil do Radar. */
+export function useSetCaptureRegistrationStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setRegistrationStatus.mutationOptions({ onSuccess: invalidate })); }
 export function useSetCaptureNextAction() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setNextAction.mutationOptions({ onSuccess: invalidate })); }
 export function useSaveCaptureAppraisal() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.saveAppraisal.mutationOptions({ onSuccess: invalidate })); }
 export function useSetCaptureDocStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setDocStatus.mutationOptions({ onSuccess: invalidate })); }
