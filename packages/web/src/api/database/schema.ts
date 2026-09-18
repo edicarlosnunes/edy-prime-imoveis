@@ -113,6 +113,26 @@ export const properties = sqliteTable(
     /** último desfecho registrado (ver property-revalidation.ts) */
     revalidationStatus: text("revalidation_status"),
 
+    /* ---------------------------------------------- V4: status comercial
+       Eixo NOVO. A coluna `status` acima (disponivel/reservado/vendido/
+       alugado) NÃO é removida nem reescrita: continua sendo lida por quem já
+       a lê, e este campo, quando NULL, é derivado dela.
+       Ver lib/commercial-status.ts. */
+    /** ATIVO_PARA_VENDA | RESERVADO | VENDIDO | RETIRADO_PELO_PROPRIETARIO */
+    commercialStatus: text("commercial_status"),
+    commercialStatusAt: integer("commercial_status_at", { mode: "timestamp" }),
+
+    /* ------------------------------------------ V4: pausa dos 12 meses
+       12 meses em carteira sem venda = PAUSA AUTOMÁTICA. O imóvel sai da
+       vitrine ativa e NADA é excluído: registro, fotos e histórico
+       permanecem no CRM. `published` de propósito não é tocado — quem
+       esconde é `paused_at`. Ver lib/portfolio-lifecycle.ts. */
+    pausedAt: integer("paused_at", { mode: "timestamp" }),
+    pauseReason: text("pause_reason"),
+
+    /* V4 — cidade fora da área prioritária (destaque visual no CRM). */
+    outsidePriorityArea: integer("outside_priority_area").notNull().default(0),
+
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -379,6 +399,44 @@ export const propertyCaptures = sqliteTable(
     appraisalAt: integer("appraisal_at", { mode: "timestamp" }),
     appraisalNote: text("appraisal_note"),
     docStatus: text("doc_status").notNull().default("nao_iniciado"),
+
+    /* ------------------------------------------ V4: status do cadastro
+       Eixo NOVO, paralelo a `stage`. `stage` é o trabalho comercial (funil do
+       Radar) e continua intacto; estas colunas respondem se a FICHA está
+       completa, abandonada, pausada ou duplicada.
+       Ver lib/capture-registration.ts. */
+    /** NOVO | EM_ANDAMENTO | INCOMPLETO | CONCLUIDO | EM_ANALISE | PAUSADO | ARQUIVADO | POSSIVEL_DUPLICIDADE */
+    registrationStatus: text("registration_status").notNull().default("NOVO"),
+    registrationStatusAt: integer("registration_status_at", { mode: "timestamp" }),
+    /** Percentual de preenchimento da ficha (0-100), recalculado a cada save. */
+    completeness: integer("completeness").notNull().default(0),
+    /**
+     * Última vez que QUALQUER campo desta ficha foi salvo — base do
+     * salvamento progressivo e da regra de abandono. Diferente de
+     * `updated_at`, que também muda em ação administrativa.
+     */
+    lastFieldAt: integer("last_field_at", { mode: "timestamp" }),
+
+    /* ------------------------ V4: identidade por ENDEREÇO ESCRITO
+       Adicional a `unit_key` (CEP + número + complementos), que NÃO muda.
+       Existe para o caso em que o proprietário não sabe o CEP: compara
+       cidade + logradouro normalizado + número + unidade.
+       Ver lib/capture-address.ts#addressKey / #buildingKey. */
+    addressKey: text("address_key"),
+    /** Mesma chave sem a unidade: identifica o PRÉDIO/LOTE. */
+    buildingKey: text("building_key"),
+
+    /* ------------------------------------- V4: área prioritária
+       Prioridade, nunca limite: fora da área o cadastro segue idêntico e só
+       recebe o destaque visual. Ver lib/priority-area.ts. */
+    outsidePriorityArea: integer("outside_priority_area").notNull().default(0),
+
+    /* --------------------------- V4: duplicidade de IMÓVEL (não de dono)
+       Outro proprietário no mesmo endereço NUNCA é excluído: fica marcado
+       para revisão humana, igual ao alerta de `owners`. */
+    duplicateOfCaptureId: integer("duplicate_of_capture_id"),
+    duplicateNote: text("duplicate_note"),
+
     notes: text("notes"),
     lostReason: text("lost_reason"),
     lostDetail: text("lost_detail"),
@@ -404,10 +462,68 @@ export const propertyCaptures = sqliteTable(
        bloquear isso no banco impediria trabalho legítimo. A verificação de
        duplicidade é feita na aplicação, que avisa em vez de travar. */
     index("property_captures_unit_idx").on(t.unitKey),
+    /* V4 — também NÃO únicos, pelo mesmo motivo: a aplicação avisa, o banco
+       não trava. `building_idx` serve a "mesmo prédio, unidade diferente". */
+    index("property_captures_address_idx").on(t.addressKey),
+    index("property_captures_building_idx").on(t.buildingKey),
+    index("property_captures_registration_idx").on(t.registrationStatus),
   ],
 );
 
 export type PropertyCapture = typeof propertyCaptures.$inferSelect;
+
+/* ------------------------------------- V4: central de logradouros */
+
+/**
+ * ENDEREÇO INTELIGENTE — logradouros conhecidos por cidade, com apelidos.
+ *
+ * Existe para que "Rua Guimarães Rosa", "Av. Guimaraes Rosa" e "R Guimarães
+ * Roza" resolvam no MESMO logradouro em vez de virarem três endereços. A
+ * comparação é feita por `lib/street-normalize.ts`; esta tabela só guarda os
+ * candidatos.
+ *
+ * Nada aqui decide sozinho um endereço duvidoso: acima do limiar de
+ * segurança resolve automático, abaixo dele vira sugestão para confirmação
+ * (IA ou humano). Ver `STREET_MATCH_AUTO` / `STREET_MATCH_SUGGEST`.
+ */
+export const streets = sqliteTable(
+  "streets",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    /** Cidade como se escreve. */
+    city: text("city").notNull(),
+    /** Cidade normalizada (sem acento/caixa) — é por aqui que se busca. */
+    cityKey: text("city_key").notNull(),
+    /** Nome do logradouro como se escreve, já sem o tipo de via. */
+    name: text("name").notNull(),
+    /** Nome normalizado (`street-normalize.ts#streetKey`). */
+    streetKey: text("street_key").notNull(),
+    /** Apelidos e grafias alternativas, em JSON: `string[]`. */
+    aliases: text("aliases"),
+    /** Bairro, usado como VALIDAÇÃO ADICIONAL — nunca como chave. */
+    district: text("district"),
+    cep: text("cep"),
+    /** cep | cadastro | manual — de onde o logradouro entrou. */
+    source: text("source").notNull().default("cadastro"),
+    /** 1 = conferido por humano. Sugestão automática entra com 0. */
+    confirmed: integer("confirmed").notNull().default(0),
+    /** Quantas captações já usaram este logradouro (ordena as sugestões). */
+    usageCount: integer("usage_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (t) => [
+    index("streets_city_idx").on(t.cityKey),
+    /* um logradouro por cidade; grafias alternativas moram em `aliases` */
+    uniqueIndex("streets_key_idx").on(t.cityKey, t.streetKey),
+  ],
+);
+
+export type Street = typeof streets.$inferSelect;
 
 /* ------------------------- documentos impressos do CRM (V3): FC / AV */
 
@@ -691,6 +807,13 @@ export const settings = sqliteTable("settings", {
   instagram: text("instagram").notNull().default(""),
   facebook: text("facebook").notNull().default(""),
   commissionRate: real("commission_rate").notNull().default(6),
+  /**
+   * V4 — cidades da ÁREA PRIORITÁRIA, em JSON (`["Santos","Guarujá"]`).
+   *
+   * Vazio = usa a lista padrão de `lib/priority-area.ts`. É prioridade, não
+   * limite: cidade fora da lista cadastra igual e só ganha destaque visual.
+   */
+  priorityCities: text("priority_cities").notNull().default(""),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

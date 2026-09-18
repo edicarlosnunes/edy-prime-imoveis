@@ -13,6 +13,8 @@
  *    Apartamentos diferentes no mesmo prédio são captações diferentes.
  */
 
+import { cityKey, sameStreetKey, streetKey } from "./street-normalize";
+
 /** Só dígitos, para comparar CEP salvo com e sem máscara. */
 const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
 
@@ -168,4 +170,99 @@ export function formatUnitAddress(
     .join(" — ");
 
   return line;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Identidade por ENDEREÇO ESCRITO (adicional ao unitKey)                   */
+/* ------------------------------------------------------------------------ */
+/**
+ * `unitKey` acima continua como está, e de propósito: ela já está gravada em
+ * `property_captures.unit_key` e mudar o formato dela romperia a comparação
+ * com tudo que foi salvo até hoje.
+ *
+ * O que falta nela é o caso que o usuário descreveu: "Rua Guimarães Rosa 492
+ * apto 163" e "Av. Guimaraes Rosa, 492, ap 163" são o MESMO imóvel, mesmo
+ * quando o CEP não foi digitado ou veio diferente e mesmo com o tipo de via
+ * errado. As chaves abaixo resolvem isso por cidade + logradouro normalizado
+ * (sem tipo de via) + número + unidade — e vivem em colunas novas, ao lado.
+ */
+
+export interface WrittenAddress {
+  city?: string | null;
+  street?: string | null;
+  number?: string | null;
+  cep?: string | null;
+}
+
+/**
+ * Chave do PRÉDIO/LOTE: cidade + logradouro normalizado + número, sem unidade.
+ *
+ * Dois apartamentos do mesmo edifício têm a MESMA `buildingKey` e `addressKey`
+ * diferentes — é assim que "mesmo prédio, unidade diferente" continua sendo
+ * imóvel novo sem acusar duplicidade.
+ *
+ * `""` quando não há logradouro nem CEP: sem isso não existe identidade de
+ * endereço, e chave vazia nunca deve ser comparada com chave vazia.
+ */
+export function buildingKey(address: WrittenAddress): string {
+  const street = streetKey(address.street);
+  const number = normalizeComplementValue(address.number);
+  const city = cityKey(address.city);
+  const cep = normalizeCep(address.cep);
+
+  /* Sem logradouro, o CEP é o melhor identificador de via disponível. */
+  const via = street ? `st:${street}` : cep ? `cep:${cep}` : "";
+  if (!via) return "";
+  return [`ct:${city}`, via, `n:${number}`].join("|");
+}
+
+/** Complementos identificadores em ordem fixa, já normalizados. */
+function identityComplements(complements: Complements): string[] {
+  return IDENTIFYING_COMPLEMENTS.map((key) => {
+    const value = normalizeComplementValue(complements[key]);
+    return value ? `${key}=${value}` : "";
+  }).filter(Boolean);
+}
+
+/**
+ * Chave da UNIDADE por endereço escrito: `buildingKey` + complementos
+ * identificadores. Igualdade aqui significa MESMO imóvel.
+ */
+export function addressKey(address: WrittenAddress, complements: Complements = {}): string {
+  const building = buildingKey(address);
+  if (!building) return "";
+  return [building, ...identityComplements(complements)].join("|");
+}
+
+/**
+ * Mesmo imóvel, tolerando erro pequeno de digitação no nome do logradouro.
+ *
+ * Cidade, número e unidade têm que bater EXATAMENTE — errar o número é errar
+ * de imóvel. Só o nome da via tolera um caractere trocado, porque é o campo
+ * que as pessoas digitam de ouvido.
+ */
+export function sameWrittenAddress(
+  a: { address: WrittenAddress; complements?: Complements },
+  b: { address: WrittenAddress; complements?: Complements },
+): boolean {
+  if (!buildingKey(a.address) || !buildingKey(b.address)) return false;
+  if (cityKey(a.address.city) !== cityKey(b.address.city)) return false;
+  if (normalizeComplementValue(a.address.number) !== normalizeComplementValue(b.address.number)) return false;
+  if (identityComplements(a.complements ?? {}).join("|") !== identityComplements(b.complements ?? {}).join("|")) {
+    return false;
+  }
+
+  const streetA = streetKey(a.address.street);
+  const streetB = streetKey(b.address.street);
+  if (streetA && streetB) return sameStreetKey(streetA, streetB);
+
+  /* Um dos lados não tem logradouro escrito: cai no CEP, que é o que sobra. */
+  const cepA = normalizeCep(a.address.cep);
+  const cepB = normalizeCep(b.address.cep);
+  return Boolean(cepA && cepB && cepA === cepB);
+}
+
+/** Mesmo prédio/lote (ignora a unidade), com a mesma tolerância de via. */
+export function sameBuilding(a: WrittenAddress, b: WrittenAddress): boolean {
+  return sameWrittenAddress({ address: a }, { address: b });
 }

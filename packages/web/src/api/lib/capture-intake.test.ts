@@ -160,3 +160,127 @@ describe("complementos na coluna JSON", () => {
     expect(parseComplements(null)).toEqual({});
   });
 });
+
+describe("duplicidade pelo ENDEREÇO ESCRITO, não só pelo CEP", () => {
+  /**
+   * Caso literal do pedido: a mesma unidade escrita de duas formas — tipo de
+   * via trocado, sem acento, "ap" em vez de "apto" — e o CEP digitado
+   * diferente (ou nem digitado). O `unit_key` deixa passar; o `address_key`
+   * pega.
+   */
+  const guimaraes = {
+    ownerName: "Ana",
+    ownerPhone: "13999990000",
+    city: "Praia Grande",
+    street: "Rua Guimarães Rosa",
+    number: "492",
+    complements: { unit: "163" },
+  };
+  const guimaraesAbreviado = {
+    ...guimaraes,
+    street: "Av. Guimaraes Rosa",
+    complements: { unit: "ap 163" },
+  };
+
+  function asExisting(input: Parameters<typeof buildCapturePayload>[0], id = 1, ownerId = 1) {
+    const payload = buildCapturePayload(input);
+    return {
+      id,
+      ownerId,
+      stage: "novo_contato",
+      unitKey: payload.unitKey,
+      addressKey: payload.addressKey,
+      buildingKey: payload.buildingKey,
+      address: { city: payload.city, street: payload.street, number: payload.number, cep: payload.cep },
+      complements: parseComplements(payload.complements),
+    };
+  }
+
+  test("o payload passa a carregar as chaves de endereço escrito", () => {
+    const payload = buildCapturePayload(guimaraes);
+    expect(payload.addressKey).toBeTruthy();
+    expect(payload.buildingKey).toBeTruthy();
+    /* A unidade está na chave da unidade e NÃO na chave do prédio. */
+    expect(payload.addressKey.startsWith(payload.buildingKey)).toBe(true);
+    expect(payload.addressKey).not.toBe(payload.buildingKey);
+  });
+
+  test("mesmo endereço escrito de outra forma é reconhecido como o MESMO imóvel", () => {
+    const existing = [asExisting(guimaraes)];
+    const candidate = buildCapturePayload(guimaraesAbreviado);
+    const hit = findDuplicateUnit(existing, {
+      unitKey: candidate.unitKey,
+      addressKey: candidate.addressKey,
+      ownerId: 1,
+    });
+    expect(hit.duplicate).toBe(true);
+    if (!hit.duplicate) return;
+    expect(hit.captureId).toBe(1);
+    expect(hit.sameOwner).toBe(true);
+  });
+
+  test("MESMO PRÉDIO com UNIDADE DIFERENTE é imóvel novo, sem aviso de duplicidade", () => {
+    const existing = [asExisting(guimaraes)];
+    const vizinho = buildCapturePayload({ ...guimaraes, complements: { unit: "164" } });
+    /* Mesmo prédio: a chave do prédio bate. */
+    expect(vizinho.buildingKey).toBe(existing[0]!.buildingKey);
+    const hit = findDuplicateUnit(existing, {
+      unitKey: vizinho.unitKey,
+      addressKey: vizinho.addressKey,
+      address: { city: vizinho.city, street: vizinho.street, number: vizinho.number, cep: vizinho.cep },
+      complements: parseComplements(vizinho.complements),
+      ownerId: 1,
+    });
+    expect(hit.duplicate).toBe(false);
+  });
+
+  test("erro simples de digitação na via ainda reconhece o imóvel", () => {
+    const existing = [asExisting(guimaraes)];
+    const errado = buildCapturePayload({ ...guimaraes, street: "Rua Guimaraes Roza" });
+    const hit = findDuplicateUnit(existing, {
+      unitKey: errado.unitKey,
+      addressKey: errado.addressKey,
+      address: { city: errado.city, street: errado.street, number: errado.number, cep: errado.cep },
+      complements: parseComplements(errado.complements),
+      ownerId: 1,
+    });
+    expect(hit.duplicate).toBe(true);
+    if (!hit.duplicate) return;
+    expect(hit.matchedBy).toBe("endereco_aproximado");
+  });
+
+  test("número diferente na mesma via NUNCA é o mesmo imóvel", () => {
+    const existing = [asExisting(guimaraes)];
+    const outro = buildCapturePayload({ ...guimaraes, number: "500" });
+    const hit = findDuplicateUnit(existing, {
+      unitKey: outro.unitKey,
+      addressKey: outro.addressKey,
+      address: { city: outro.city, street: outro.street, number: outro.number, cep: outro.cep },
+      complements: parseComplements(outro.complements),
+      ownerId: 1,
+    });
+    expect(hit.duplicate).toBe(false);
+  });
+
+  test("outro proprietário no mesmo endereço vira POSSÍVEL DUPLICADO, nunca exclusão", () => {
+    const existing = [asExisting(guimaraes, 7, 1)];
+    const candidate = buildCapturePayload(guimaraesAbreviado);
+    const hit = findDuplicateUnit(existing, {
+      unitKey: candidate.unitKey,
+      addressKey: candidate.addressKey,
+      ownerId: 42,
+    });
+    expect(hit.duplicate).toBe(true);
+    if (!hit.duplicate) return;
+    expect(hit.sameOwner).toBe(false);
+    expect(hit.message).toContain("POSSÍVEL DUPLICADO");
+  });
+
+  test("uso antigo, só com unitKey, continua funcionando igual", () => {
+    const existing = [{ id: 3, ownerId: 1, unitKey: "cep:11704000|n:1234|unit=101", stage: "documentacao" }];
+    const hit = findDuplicateUnit(existing, { unitKey: "cep:11704000|n:1234|unit=101", ownerId: 1 });
+    expect(hit.duplicate).toBe(true);
+    if (!hit.duplicate) return;
+    expect(hit.matchedBy).toBe("unidade");
+  });
+});
