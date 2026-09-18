@@ -15,11 +15,14 @@
  *     recaptado meses depois; travar no banco impediria trabalho legítimo.
  */
 import {
+  addressKey,
+  buildingKey,
   COMPLEMENT_FIELDS,
   type ComplementKey,
   type Complements,
   formatUnitAddress,
   normalizeCep,
+  sameWrittenAddress,
   unitKey,
 } from "./capture-address";
 
@@ -71,6 +74,10 @@ export interface CapturePayload {
   state: string | null;
   complements: string | null;
   unitKey: string;
+  /** Unidade pelo endereço ESCRITO (cidade+via normalizada+número+unidade). */
+  addressKey: string;
+  /** Prédio/lote pelo endereço escrito, sem a unidade. */
+  buildingKey: string;
   propertyType: string | null;
   askingPrice: number | null;
   intention: string | null;
@@ -136,6 +143,8 @@ export function buildCapturePayload(input: CaptureFichaInput): CapturePayload {
     state,
     complements: serializeComplements(complements),
     unitKey: unitKey({ cep, number, street, city }, complements),
+    addressKey: addressKey({ cep, number, street, city }, complements),
+    buildingKey: buildingKey({ cep, number, street, city }),
     propertyType: text(input.propertyType, 60),
     askingPrice: typeof input.askingPrice === "number" && Number.isFinite(input.askingPrice) && input.askingPrice > 0
       ? input.askingPrice
@@ -151,17 +160,58 @@ export interface ExistingCapture {
   ownerId: number;
   unitKey: string | null;
   stage: string;
+  /** Chave da unidade pelo endereço escrito. Ausente em linhas antigas. */
+  addressKey?: string | null;
+  /** Chave do prédio pelo endereço escrito. Ausente em linhas antigas. */
+  buildingKey?: string | null;
+  /** Endereço escrito, para comparação tolerante a abreviação/erro de digitação. */
+  address?: WrittenAddressish | null;
+  complements?: Complements | null;
 }
+
+/** Endereço escrito de uma captação já gravada. */
+export interface WrittenAddressish {
+  city?: string | null;
+  street?: string | null;
+  number?: string | null;
+  cep?: string | null;
+}
+
+/** Como a duplicidade foi reconhecida — vai para o histórico e para a tela. */
+export type DuplicateMatch = "unidade" | "endereco" | "endereco_aproximado";
 
 export type DuplicateUnitWarning = {
   duplicate: true;
   captureId: number;
   sameOwner: boolean;
   message: string;
+  /** Critério que reconheceu a duplicidade. */
+  matchedBy: DuplicateMatch;
 } | { duplicate: false };
+
+/** Candidato a comparação: aceita só `unitKey` (uso antigo) ou o endereço todo. */
+export interface DuplicateCandidate {
+  unitKey: string;
+  ownerId?: number | null;
+  addressKey?: string | null;
+  address?: WrittenAddressish | null;
+  complements?: Complements | null;
+}
 
 /**
  * Procura uma captação já existente para a MESMA unidade imobiliária.
+ *
+ * Três critérios, do mais forte para o mais tolerante:
+ *
+ *  1. `unitKey` — CEP + número + complementos identificadores.
+ *  2. `addressKey` — cidade + logradouro normalizado + número + unidade. Pega
+ *     "Rua Guimarães Rosa 492 apto 163" == "Av. Guimaraes Rosa, 492, ap 163",
+ *     que o `unitKey` deixa passar quando o CEP foi digitado diferente.
+ *  3. `sameWrittenAddress` — igual ao 2, tolerando um erro de digitação no
+ *     nome da via. Cidade, número e unidade continuam tendo que bater exato.
+ *
+ * MESMO PRÉDIO com UNIDADE DIFERENTE nunca casa em nenhum dos três: a unidade
+ * entra na chave, então apto 163 e apto 164 são imóveis distintos.
  *
  * Só avisa. Nunca impede o cadastro: a decisão de seguir é humana.
  * Captação perdida também é reportada — recaptar é legítimo, mas o corretor
@@ -169,11 +219,11 @@ export type DuplicateUnitWarning = {
  */
 export function findDuplicateUnit(
   existing: ExistingCapture[],
-  candidate: { unitKey: string; ownerId?: number | null },
+  candidate: DuplicateCandidate,
 ): DuplicateUnitWarning {
-  if (!candidate.unitKey) return { duplicate: false };
-  const hit = existing.find((row) => row.unitKey && row.unitKey === candidate.unitKey);
-  if (!hit) return { duplicate: false };
+  const found = matchExisting(existing, candidate);
+  if (!found) return { duplicate: false };
+  const { hit, matchedBy } = found;
 
   const sameOwner = candidate.ownerId != null && hit.ownerId === candidate.ownerId;
   const suffix = hit.stage === "perdido"
@@ -183,8 +233,36 @@ export function findDuplicateUnit(
     duplicate: true,
     captureId: hit.id,
     sameOwner,
+    matchedBy,
     message: sameOwner
       ? `Este mesmo imóvel já tem a captação #${hit.id} para este proprietário${suffix}.`
       : `POSSÍVEL DUPLICADO: já existe a captação #${hit.id} para este endereço, de outro proprietário${suffix}.`,
   };
+}
+
+function matchExisting(
+  existing: ExistingCapture[],
+  candidate: DuplicateCandidate,
+): { hit: ExistingCapture; matchedBy: DuplicateMatch } | null {
+  if (candidate.unitKey) {
+    const hit = existing.find((row) => row.unitKey && row.unitKey === candidate.unitKey);
+    if (hit) return { hit, matchedBy: "unidade" };
+  }
+
+  const key = candidate.addressKey
+    ?? (candidate.address ? addressKey(candidate.address, candidate.complements ?? {}) : "");
+  if (key) {
+    const hit = existing.find((row) => row.addressKey && row.addressKey === key);
+    if (hit) return { hit, matchedBy: "endereco" };
+  }
+
+  if (candidate.address) {
+    const left = { address: candidate.address, complements: candidate.complements ?? {} };
+    const hit = existing.find((row) =>
+      row.address
+      && sameWrittenAddress(left, { address: row.address, complements: row.complements ?? {} }));
+    if (hit) return { hit, matchedBy: "endereco_aproximado" };
+  }
+
+  return null;
 }

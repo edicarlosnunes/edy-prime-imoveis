@@ -433,6 +433,27 @@ const statements = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  /* ------------------------------- V4: central de logradouros (endereço
+     inteligente). Tabela nova: nenhum dado existente é tocado. Guarda os
+     candidatos que lib/street-normalize.ts compara. */
+  `CREATE TABLE IF NOT EXISTS streets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    city TEXT NOT NULL,
+    city_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    street_key TEXT NOT NULL,
+    aliases TEXT,
+    district TEXT,
+    cep TEXT,
+    source TEXT NOT NULL DEFAULT 'cadastro',
+    confirmed INTEGER NOT NULL DEFAULT 0,
+    usage_count INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS streets_city_idx ON streets (city_key)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS streets_key_idx ON streets (city_key, street_key)`,
+
   `CREATE INDEX IF NOT EXISTS property_captures_owner_idx ON property_captures (owner_id)`,
   `CREATE INDEX IF NOT EXISTS property_captures_stage_idx ON property_captures (stage)`,
   `CREATE INDEX IF NOT EXISTS property_captures_next_action_idx ON property_captures (next_action_at)`,
@@ -504,6 +525,17 @@ const propertyColumns: Record<string, string> = {
   /* V3 — serial global TIPO-ANO-SEQUENCIAL. Nullable: os imóveis que já
      existem ficam com NULL e o `code` antigo NÃO é renumerado. */
   serial: "TEXT",
+  /* V4 — STATUS COMERCIAL (eixo novo). Nullable de propósito: NULL significa
+     "derivar da coluna `status`", então os imóveis existentes funcionam sem
+     nenhum backfill e `status` não é reescrito. */
+  commercial_status: "TEXT",
+  commercial_status_at: "INTEGER",
+  /* V4 — pausa automática dos 12 meses. Tira da vitrine, não exclui nada.
+     `published` NÃO é alterado: quem esconde é paused_at. */
+  paused_at: "INTEGER",
+  pause_reason: "TEXT",
+  /* V4 — cidade fora da área prioritária (só destaque visual). */
+  outside_priority_area: "INTEGER NOT NULL DEFAULT 0",
 };
 
 /**
@@ -524,6 +556,9 @@ const ownerColumns: Record<string, string> = {
 /** Registro de perito avaliador impresso nos documentos (V3). */
 const settingsColumns: Record<string, string> = {
   cnai: "TEXT NOT NULL DEFAULT ''",
+  /* V4 — cidades da área prioritária em JSON. Vazio = lista padrão de
+     lib/priority-area.ts, nunca "nenhuma cidade prioritária". */
+  priority_cities: "TEXT NOT NULL DEFAULT ''",
 };
 
 /**
@@ -549,6 +584,21 @@ const propertyCaptureColumns: Record<string, string> = {
   /* FOTOS DO PROPRIETÁRIO / PROVISÓRIAS em JSON — ficam fora de
      property_images de propósito: aquela tabela alimenta o site público. */
   owner_photos: "TEXT",
+  /* V4 — STATUS DO CADASTRO (eixo novo, paralelo a `stage`). Default 'NOVO'
+     nas captações existentes; o funil `stage` delas não é tocado. */
+  registration_status: "TEXT NOT NULL DEFAULT 'NOVO'",
+  registration_status_at: "INTEGER",
+  completeness: "INTEGER NOT NULL DEFAULT 0",
+  /* última vez que um campo da ficha foi salvo (salvamento progressivo) */
+  last_field_at: "INTEGER",
+  /* V4 — identidade por endereço escrito, adicional ao unit_key, que NÃO
+     muda de formato. building_key é a mesma chave sem a unidade. */
+  address_key: "TEXT",
+  building_key: "TEXT",
+  /* V4 — área prioritária e duplicidade de imóvel (revisão humana) */
+  outside_priority_area: "INTEGER NOT NULL DEFAULT 0",
+  duplicate_of_capture_id: "INTEGER",
+  duplicate_note: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */
@@ -623,6 +673,15 @@ const lateIndexes = [
   /* identidade da unidade: NÃO é único, porque um imóvel perdido pode ser
      recaptado depois. A duplicidade é avisada pela aplicação, não travada. */
   "CREATE INDEX IF NOT EXISTS property_captures_unit_idx ON property_captures (unit_key)",
+  /* V4 — mesmos motivos: avisar, não travar. address_key resolve o endereço
+     escrito (sem CEP) e building_key serve a "mesmo prédio, unidade
+     diferente", que é cadastro legítimo. */
+  "CREATE INDEX IF NOT EXISTS property_captures_address_idx ON property_captures (address_key)",
+  "CREATE INDEX IF NOT EXISTS property_captures_building_idx ON property_captures (building_key)",
+  "CREATE INDEX IF NOT EXISTS property_captures_registration_idx ON property_captures (registration_status)",
+  /* V4 — fila da pausa de 12 meses */
+  "CREATE INDEX IF NOT EXISTS properties_paused_idx ON properties (paused_at)",
+  "CREATE INDEX IF NOT EXISTS properties_commercial_status_idx ON properties (commercial_status)",
 ];
 
 /**

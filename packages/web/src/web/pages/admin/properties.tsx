@@ -25,11 +25,27 @@ import {
   useAdminProperties,
   usePatchProperty,
   useRemoveProperty,
+  useResumePropertyPause,
+  useSetCommercialStatus,
 } from "../../queries/admin";
+import {
+  COMMERCIAL_STATUSES,
+  COMMERCIAL_STATUS_LABEL,
+  COMMERCIAL_STATUS_TONE,
+  type CommercialStatus,
+} from "../../../api/lib/commercial-status";
 import { PropertyForm } from "./property-form";
 import { readCaptureId } from "../../lib/capture-conversion-flow";
 
 type StatusFilter = (typeof propertyStatuses)[number] | "";
+
+/* Item 9 — tons do eixo comercial traduzidos para os tons da UI. */
+const COMM_TONE: Record<"ok" | "info" | "neutral" | "warn", "green" | "brass" | "neutral" | "amber"> = {
+  ok: "green",
+  info: "brass",
+  neutral: "neutral",
+  warn: "amber",
+};
 
 export default function AdminProperties() {
   return (
@@ -65,6 +81,8 @@ function Content() {
   const { data, isLoading } = useAdminProperties(filters);
   const patch = usePatchProperty();
   const remove = useRemoveProperty();
+  const commercial = useSetCommercialStatus();
+  const resume = useResumePropertyPause();
 
   async function run(action: Promise<unknown>) {
     setError(null);
@@ -141,7 +159,32 @@ function Content() {
                   <Badge tone={property.published === 1 ? "green" : "red"}>
                     {property.published === 1 ? "publicado" : "oculto"}
                   </Badge>
+                  {/* Item 9 — eixo comercial, ao lado do status antigo. */}
+                  <Badge tone={COMM_TONE[COMMERCIAL_STATUS_TONE[property.commercialStatus]]}>
+                    {COMMERCIAL_STATUS_LABEL[property.commercialStatus]}
+                  </Badge>
+                  {/* Item 11 — o que não aparece na vitrine ativa do site. */}
+                  {!property.showcaseVisible && <Badge tone="red">fora da vitrine</Badge>}
                 </div>
+                {/* Itens 10 e 11 — regra dos 12 meses: pausa automática, volta humana. */}
+                {property.lifecycle.state === "ja_pausado" && (
+                  <div className="mt-2 rounded border border-red-400 bg-red-600 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white">
+                    {property.pauseReason || property.lifecycle.label}
+                  </div>
+                )}
+                {property.lifecycle.state === "pausa_devida" && (
+                  <div className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                    {property.lifecycle.label} — sairá da vitrine na próxima abertura desta lista.
+                  </div>
+                )}
+                {property.lifecycle.state === "pausa_proxima" && (
+                  <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
+                    {property.lifecycle.label}
+                  </div>
+                )}
+                {!property.showcaseVisible && property.showcaseReason && (
+                  <p className="mt-1 text-[11px] text-muted">{property.showcaseReason}</p>
+                )}
                 <p className="mt-2 truncate text-sm font-medium text-deep">{property.title}</p>
                 <p className="text-xs text-muted">
                   {labelOf(propertyTypeLabel, property.type)} ·{" "}
@@ -206,6 +249,44 @@ function Content() {
                       </option>
                     ))}
                   </Select>
+                  {/* Item 9 — status comercial; não toca o status antigo nem `published`. */}
+                  <Select
+                    className="w-auto py-1.5 text-xs"
+                    value={property.commercialStatus}
+                    disabled={commercial.isPending}
+                    onChange={(event) =>
+                      run(
+                        commercial.mutateAsync({
+                          id: property.id,
+                          status: event.target.value as CommercialStatus,
+                        }),
+                      )
+                    }
+                  >
+                    {COMMERCIAL_STATUSES.map((value) => (
+                      <option key={value} value={value}>
+                        {COMMERCIAL_STATUS_LABEL[value]}
+                      </option>
+                    ))}
+                  </Select>
+                  {/* Item 10 — reativar é sempre decisão humana e reinicia a contagem. */}
+                  {property.lifecycle.state === "ja_pausado" && (
+                    <Btn
+                      tone="outline"
+                      disabled={resume.isPending}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Reativar ${property.code}? A contagem dos 12 meses começa de novo hoje.`,
+                          )
+                        )
+                          return;
+                        void run(resume.mutateAsync({ id: property.id }));
+                      }}
+                    >
+                      Reativar na vitrine
+                    </Btn>
+                  )}
                   <Btn
                     tone="danger"
                     onClick={() => {

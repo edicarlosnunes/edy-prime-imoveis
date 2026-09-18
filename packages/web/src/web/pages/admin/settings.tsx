@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
-import { Btn, Card, ErrorNote, Field, Input } from "../../components/admin/ui";
+import { Btn, Card, ErrorNote, Field, Input, Textarea } from "../../components/admin/ui";
+import { DEFAULT_PRIORITY_CITIES } from "../../../api/lib/priority-area";
 import { errorMessage } from "../../lib/admin-session";
-import { useAdminSettings, useChangePassword, useSaveSettings } from "../../queries/admin";
+import {
+  useAdminSettings,
+  useBackfillStreets,
+  useChangePassword,
+  useSaveSettings,
+  useStreets,
+} from "../../queries/admin";
 
 interface FormState {
   companyName: string;
@@ -16,6 +23,8 @@ interface FormState {
   instagram: string;
   facebook: string;
   commissionRate: string;
+  /** Uma cidade por linha. Vazio = lista padrão. */
+  priorityCities: string;
 }
 
 const empty: FormState = {
@@ -29,6 +38,7 @@ const empty: FormState = {
   instagram: "",
   facebook: "",
   commissionRate: "6",
+  priorityCities: DEFAULT_PRIORITY_CITIES.join("\n"),
 };
 
 export default function AdminSettings() {
@@ -68,6 +78,8 @@ function Content() {
       instagram: row.instagram ?? "",
       facebook: row.facebook ?? "",
       commissionRate: String(row.commissionRate ?? 6),
+      /* A API já devolve a lista efetiva (configurada ou a padrão). */
+      priorityCities: (row.priorityCities ?? []).join("\n"),
     });
   }, [settings.data]);
 
@@ -92,6 +104,10 @@ function Content() {
         instagram: form.instagram.trim(),
         facebook: form.facebook.trim(),
         commissionRate: Number(form.commissionRate.replace(",", ".")) || 0,
+        priorityCities: form.priorityCities
+          .split(/[\n,;]/)
+          .map((city) => city.trim())
+          .filter(Boolean),
       });
       setSaved(true);
     } catch (caught) {
@@ -170,6 +186,19 @@ function Content() {
                 <Input value={form.facebook} onChange={(e) => set("facebook", e.target.value)} />
               </Field>
             </div>
+            {/* ÁREA PRIORITÁRIA: prioridade, não limite. Cidade fora da lista
+                é cadastrada pelo mesmo fluxo, sem bloqueio — só recebe o
+                destaque vermelho no Radar. */}
+            <Field
+              label="Cidades da área prioritária"
+              hint="Uma por linha. É prioridade, não limite: imóvel fora da lista é cadastrado igual e só recebe destaque no Radar. Em branco usa a lista padrão."
+            >
+              <Textarea
+                rows={5}
+                value={form.priorityCities}
+                onChange={(e) => set("priorityCities", e.target.value)}
+              />
+            </Field>
             <ErrorNote message={error} />
             {saved && <p className="text-xs text-emerald-700">Configurações salvas.</p>}
             <div className="flex justify-end border-t border-line pt-4">
@@ -179,6 +208,8 @@ function Content() {
             </div>
           </form>
         </Card>
+
+        <StreetsCard />
 
         <Card title="Senha administrativa">
           <form onSubmit={submitPassword} className="space-y-4">
@@ -224,5 +255,62 @@ function Content() {
         </Card>
       </div>
     </AdminLayout>
+  );
+}
+
+/**
+ * Item 6 — ENDEREÇO INTELIGENTE: estrutura central de logradouros por cidade.
+ *
+ * A base é construída a partir do que JÁ existe nas captações (nada é
+ * inventado, nada é sobrescrito) e cresce sozinha a cada cadastro novo. Aqui
+ * o corretor só enxerga o tamanho da base e pode mandar recarregar do
+ * histórico. A comparação/tolerância a abreviação e erro de grafia mora em
+ * `street-normalize.ts` e é usada pelo fluxo de captação.
+ */
+function StreetsCard() {
+  const streets = useStreets({ limit: 500 });
+  const backfill = useBackfillStreets();
+  const [note, setNote] = useState<string | null>(null);
+  const rows = streets.data ?? [];
+  const cities = new Set(rows.map((row) => row.city));
+  async function run() {
+    setNote(null);
+    try {
+      const result = await backfill.mutateAsync({});
+      setNote(
+        `${result.examined} captações lidas · ${result.created} logradouro(s) novo(s) · ${result.touched} confirmação(ões) de uso. Nada foi apagado.`,
+      );
+    } catch (error) {
+      setNote(errorMessage(error, "Não foi possível recarregar os logradouros"));
+    }
+  }
+  return (
+    <Card title="Logradouros (endereço inteligente)">
+      <div className="space-y-3 text-sm text-deep">
+        <p className="text-xs text-muted">
+          Base central usada para reconhecer rua abreviada ou com erro de grafia no cadastro. Em
+          caso de dúvida o cadastro pede confirmação — nunca decide sozinho.
+        </p>
+        <div className="flex flex-wrap gap-4 text-xs text-muted">
+          <span>
+            <b className="text-deep">{rows.length}</b> logradouro(s) na base
+          </span>
+          <span>
+            <b className="text-deep">{cities.size}</b> cidade(s)
+          </span>
+        </div>
+        {rows.length === 0 && (
+          <p className="text-xs text-amber-800">
+            Base vazia. Recarregar do histórico aproveita os endereços já cadastrados.
+          </p>
+        )}
+        {note && <p className="text-xs text-muted">{note}</p>}
+        <div className="flex justify-end border-t border-line pt-4">
+          <Btn tone="outline" disabled={backfill.isPending} onClick={() => void run()}>
+            {backfill.isPending ? "Recarregando…" : "Recarregar do histórico de captações"}
+          </Btn>
+        </div>
+      </div>
+    </Card>
   );
 }

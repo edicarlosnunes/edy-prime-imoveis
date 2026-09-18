@@ -204,3 +204,86 @@ describe("endereço em uma linha", () => {
     expect(linha).toContain("CEP 11700-000");
   });
 });
+
+/* ---------------------------------------------------------------------- */
+/* Identidade por endereço escrito (addressKey / buildingKey)             */
+/* ---------------------------------------------------------------------- */
+import { addressKey, buildingKey, sameBuilding, sameWrittenAddress } from "./capture-address";
+
+describe("identidade por endereço escrito", () => {
+  const A = {
+    address: { city: "Praia Grande", street: "Rua Guimarães Rosa", number: "492" },
+    complements: { unit: "apto 163" },
+  };
+  const B = {
+    address: { city: "Praia Grande", street: "Av. Guimaraes Rosa", number: "492" },
+    complements: { unit: "ap 163" },
+  };
+
+  test("mesmo endereço com tipo de via diferente é o MESMO imóvel", () => {
+    expect(addressKey(A.address, A.complements)).toBe(addressKey(B.address, B.complements));
+    expect(sameWrittenAddress(A, B)).toBe(true);
+  });
+
+  test("mesmo prédio, unidade diferente é imóvel DIFERENTE", () => {
+    const outraUnidade = {
+      address: { city: "Praia Grande", street: "R Guimaraes Rosa", number: "492" },
+      complements: { unit: "164" },
+    };
+    expect(sameWrittenAddress(A, outraUnidade)).toBe(false);
+    expect(addressKey(A.address, A.complements)).not.toBe(
+      addressKey(outraUnidade.address, outraUnidade.complements),
+    );
+    /* ...mas é o mesmo PRÉDIO: é isso que permite captar o vizinho sem alarme. */
+    expect(sameBuilding(A.address, outraUnidade.address)).toBe(true);
+    expect(buildingKey(A.address)).toBe(buildingKey(outraUnidade.address));
+  });
+
+  test("erro simples de digitação no nome da via não cria endereço novo", () => {
+    const comErro = {
+      address: { city: "Praia Grande", street: "Rua Guimaraens Rosa", number: "492" },
+      complements: { unit: "163" },
+    };
+    expect(sameWrittenAddress(A, comErro)).toBe(true);
+  });
+
+  test("número diferente é imóvel diferente, sem tolerância", () => {
+    const outroNumero = {
+      address: { city: "Praia Grande", street: "Rua Guimarães Rosa", number: "493" },
+      complements: { unit: "163" },
+    };
+    expect(sameWrittenAddress(A, outroNumero)).toBe(false);
+  });
+
+  test("cidade diferente é imóvel diferente, ainda que a via tenha o mesmo nome", () => {
+    const outraCidade = {
+      address: { city: "Santos", street: "Rua Guimarães Rosa", number: "492" },
+      complements: { unit: "163" },
+    };
+    expect(sameWrittenAddress(A, outraCidade)).toBe(false);
+  });
+
+  test("sem logradouro e sem CEP não existe identidade de endereço", () => {
+    expect(buildingKey({ city: "Praia Grande", number: "492" })).toBe("");
+    expect(addressKey({ city: "Praia Grande", number: "492" }, { unit: "163" })).toBe("");
+    expect(
+      sameWrittenAddress(
+        { address: { city: "Praia Grande", number: "492" } },
+        { address: { city: "Praia Grande", number: "492" } },
+      ),
+    ).toBe(false);
+  });
+
+  test("sem logradouro escrito, o CEP sustenta a identidade", () => {
+    const porCep = { address: { city: "Praia Grande", cep: "11700-000", number: "492" }, complements: { unit: "163" } };
+    const mesmoCep = { address: { city: "Praia Grande", cep: "11700000", number: "492" }, complements: { unit: "apto 163" } };
+    expect(sameWrittenAddress(porCep, mesmoCep)).toBe(true);
+    expect(buildingKey(porCep.address)).not.toBe("");
+  });
+
+  test("unitKey antigo continua intacto — formato não mudou", () => {
+    expect(unitKey({ cep: "11700-000", number: "492" }, { unit: "apto 163" })).toBe(
+      "cep:11700000|n:492|unit=163",
+    );
+  });
+});

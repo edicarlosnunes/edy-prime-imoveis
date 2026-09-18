@@ -2,6 +2,11 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
+import {
+  normalizePriorityCities,
+  parsePriorityCities,
+  serializePriorityCities,
+} from "../lib/priority-area";
 
 const settingsInput = z.object({
   companyName: z.string().min(2).max(160),
@@ -15,12 +20,22 @@ const settingsInput = z.object({
   instagram: z.string().max(300),
   facebook: z.string().max(300),
   commissionRate: z.number().min(0).max(100),
+  /**
+   * V4 — cidades da ÁREA PRIORITÁRIA. É prioridade, não limite: cidade fora
+   * da lista cadastra pelo mesmo fluxo e só recebe o destaque visual no CRM.
+   * Lista vazia cai na lista padrão de `lib/priority-area.ts`.
+   */
+  priorityCities: z.array(z.string().max(120)).max(60).optional(),
 });
 
 export const adminSettings = {
   get: adminBase.handler(async ({ context }) => {
     const [row] = await context.db.select().from(schema.settings).limit(1);
-    return row ?? null;
+    if (!row) return null;
+    /* A lista sai pronta para a tela: JSON quando configurada, padrão quando
+       o campo está vazio — a ausência de configuração nunca vira "nenhuma
+       cidade é prioritária". */
+    return { ...row, priorityCities: parsePriorityCities(row.priorityCities) };
   }),
 
   update: adminBase.input(settingsInput).handler(async ({ input, context }) => {
@@ -35,6 +50,10 @@ export const adminSettings = {
       instagram: input.instagram.trim(),
       facebook: input.facebook.trim(),
       commissionRate: input.commissionRate,
+      /* Campo não enviado = mantém o que está gravado (não zera). */
+      ...(input.priorityCities
+        ? { priorityCities: serializePriorityCities(normalizePriorityCities(input.priorityCities)) }
+        : {}),
       updatedAt: new Date(),
     };
     const [row] = await context.db.select().from(schema.settings).limit(1);

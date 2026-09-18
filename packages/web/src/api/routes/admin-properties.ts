@@ -4,6 +4,9 @@ import { ORPCError } from "@orpc/server";
 import { adminBase, type AdminDb } from "../lib/admin-base";
 import { propertySlug } from "../lib/slug";
 import * as schema from "../database/schema";
+import { COMMERCIAL_STATUSES, effectiveCommercialStatus, showcaseDecision } from "../lib/commercial-status";
+import { lifecycleView, resumeFromPause } from "../lib/portfolio-lifecycle";
+import { applyDuePauses } from "../lib/portfolio-pause";
 import { allocateSerial } from "../lib/serial-counter";
 import { planPropertyFromCapture } from "../lib/capture-conversion";
 
@@ -154,6 +157,12 @@ export const adminProperties = {
         );
       }
 
+      /* Item 10 — regra dos 12 meses, automática. A varredura roda aqui, ao
+         abrir a lista: idempotente, sem cron e sem processo paralelo. Nenhum
+         imóvel é excluído; o vencido só sai da vitrine e ganha a ação de
+         revisão para o corretor. */
+      await applyDuePauses(context.db);
+
       const rows = await context.db
         .select()
         .from(schema.properties)
@@ -166,12 +175,20 @@ export const adminProperties = {
         .from(schema.propertyImages)
         .orderBy(asc(schema.propertyImages.sortOrder), asc(schema.propertyImages.id));
 
+      const now = new Date();
       return rows.map((row) => {
         const own = images.filter((image) => image.propertyId === row.id);
+        const showcase = showcaseDecision(row);
         return {
           ...row,
           imageCount: own.length,
           cover: (own.find((image) => image.isPrimary === 1) ?? own[0])?.url ?? null,
+          /* Eixos novos, informativos para a tela — o `status` antigo segue
+             existindo e não foi migrado nem substituído. */
+          commercialStatus: effectiveCommercialStatus(row),
+          showcaseVisible: showcase.visible,
+          showcaseReason: showcase.reason,
+          lifecycle: lifecycleView(row, now),
         };
       });
     }),
@@ -225,9 +242,13 @@ export const adminProperties = {
        O sequencial é global e nunca reiniciado. */
     const serial = inherited ?? (await allocateSerial(context.db, input.type));
 
+    /* Data de entrada na carteira: todo imóvel novo nasce com ela preenchida,
+       no momento da criação, para a revalidação de 4 meses e a regra dos 12
+       meses passarem a contar desde já. Ajuste manual posterior (seção de
+       revalidação da ficha) continua mandando: aqui só se define na criação. */
     const [created] = await context.db
       .insert(schema.properties)
-      .values({ ...row, serial })
+      .values({ ...row, serial, portfolioEntryAt: new Date() })
       .returning();
     if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
     await syncImages(context.db, created.id, input.images);
@@ -307,6 +328,104 @@ export const adminProperties = {
       if (input.status) patch.status = input.status;
       await context.db.update(schema.properties).set(patch).where(eq(schema.properties.id, input.id));
       return { ok: true };
+    }),
+
+  /**
+   * Item 9 — STATUS COMERCIAL, eixo próprio.
+   *
+   * Não substitui o `status` antigo (disponivel/reservado/vendido/alugado):
+   * grava o eixo novo ao lado dele. Quando o corretor marca VENDIDO ou
+   * RETIRADO_PELO_PROPRIETARIO o imóvel sai da vitrine ativa por decisão de
+   * `commercial-status.ts#showcaseDecision` — sem excluir nada e sem mexer em
+   * `published`, que continua sendo a decisão editorial dele.
+   */
+  setCommercialStatus: adminBase
+    .input(
+      z.object({
+        id: z.number().int(),
+        status: z.enum(COMMERCIAL_STATUSES),
+        note: z.string().max(400).optional(),
+      }),
+    )
+    .handler(async ({ input, context }) => {
+      const [row] = await context.db
+        .select({
+          id: schema.properties.id,
+          code: schema.properties.code,
+          status: schema.properties.status,
+          commercialStatus: schema.properties.commercialStatus,
+        })
+        .from(schema.properties)
+        .where(eq(schema.properties.id, input.id))
+        .limit(1);
+      if (!row) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+
+      const before = effectiveCommercialStatus(row);
+      const now = new Date();
+      await context.db
+        .update(schema.properties)
+        .set({ commercialStatus: input.status, commercialStatusAt: now, updatedAt: now })
+        .where(eq(schema.properties.id, input.id));
+
+      await context.db.insert(schema.auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "property_commercial_status_changed",
+        entity: "property",
+        entityId: String(input.id),
+        detail: [
+          `${before ?? "(sem status)"} -> ${input.status}`,
+          input.note?.trim() ? `Observação: ${input.note.trim()}` : null,
+        ]
+          .filter(Boolean)
+          .join(" | "),
+      });
+
+      return { ok: true, commercialStatus: input.status };
+    }),
+
+  /**
+   * Item 10 — reativação depois da pausa de 12 meses. SEMPRE humana.
+   *
+   * A pausa é automática, a volta não: aqui a contagem é reiniciada para o
+   * imóvel não ser pausado de novo no dia seguinte. O histórico da pausa
+   * anterior fica no `audit_log`, nada é apagado.
+   */
+  resumePause: adminBase
+    .input(z.object({ id: z.number().int(), note: z.string().max(400).optional() }))
+    .handler(async ({ input, context }) => {
+      const [row] = await context.db
+        .select({ id: schema.properties.id, pausedAt: schema.properties.pausedAt })
+        .from(schema.properties)
+        .where(eq(schema.properties.id, input.id))
+        .limit(1);
+      if (!row) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      if (!row.pausedAt) return { ok: true, alreadyActive: true as const };
+
+      const now = new Date();
+      const effect = resumeFromPause(now, context.user.name);
+      await context.db
+        .update(schema.properties)
+        .set({
+          pausedAt: effect.pausedAt,
+          pauseReason: effect.pauseReason,
+          portfolioEntryAt: effect.portfolioEntryAt,
+          updatedAt: now,
+        })
+        .where(eq(schema.properties.id, input.id));
+
+      await context.db.insert(schema.auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "property_pause_resumed",
+        entity: "property",
+        entityId: String(input.id),
+        detail: [effect.historyNote, input.note?.trim() ? `Observação: ${input.note.trim()}` : null]
+          .filter(Boolean)
+          .join(" | "),
+      });
+
+      return { ok: true, alreadyActive: false as const };
     }),
 
   /** Lista enxuta para os selects de leads, tarefas e propostas. */

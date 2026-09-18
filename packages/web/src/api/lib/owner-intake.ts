@@ -16,7 +16,10 @@ import * as schema from "../database/schema";
 import type { AdminDb } from "./admin-base";
 import { duplicateAlertText, resolveOwnerIdentity } from "./owner-identity";
 import type { Complements } from "./capture-address";
-import { buildCapturePayload, findDuplicateUnit } from "./capture-intake";
+import { buildCapturePayload, findDuplicateUnit, parseComplements } from "./capture-intake";
+import { mergeCaptureFields, mergeHistoryNote } from "./capture-merge";
+import { deriveRegistrationStatus, hasAddressIdentity, resolveResume } from "./capture-registration";
+import { outsidePriorityArea, parsePriorityCities } from "./priority-area";
 
 export interface OwnerIntakeInput {
   name: string;
@@ -54,6 +57,15 @@ export interface OwnerIntakeResult {
   captureId: number | null;
   /** Aviso de unidade repetida. Informativo: nada é bloqueado. */
   duplicateUnit: string | null;
+  /* V4 — eixo de status do cadastro, retomada e área prioritária. */
+  /** `true` quando o cadastro pendente do proprietário foi continuado. */
+  resumed: boolean;
+  /** Status do cadastro (NOVO, EM_ANDAMENTO, INCOMPLETO, CONCLUIDO...). */
+  registrationStatus: string | null;
+  /** Percentual da ficha preenchido. */
+  completeness: number;
+  /** `true` quando a cidade está fora da área prioritária — sinaliza, não barra. */
+  outsidePriorityArea: boolean;
 }
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
@@ -132,13 +144,46 @@ async function ensureFollowUpTask(
  * diferente vira uma captação nova. Unidade repetida AVISA e reaproveita a
  * captação existente em vez de duplicar a ficha.
  */
+/** Resultado interno da captação, já com o eixo de status do cadastro. */
+type CaptureOutcome = {
+  captureId: number | null;
+  duplicateUnit: string | null;
+  resumed: boolean;
+  registrationStatus: string | null;
+  completeness: number;
+  outsidePriorityArea: boolean;
+};
+
+const EMPTY_OUTCOME: CaptureOutcome = {
+  captureId: null,
+  duplicateUnit: null,
+  resumed: false,
+  registrationStatus: null,
+  completeness: 0,
+  outsidePriorityArea: false,
+};
+
+/**
+ * Cidades prioritárias configuradas no painel.
+ *
+ * Configuração ausente ou inválida cai na lista padrão — a área prioritária
+ * nunca fica vazia, senão TODO imóvel apareceria como fora da área.
+ */
+async function loadPriorityCities(db: AdminDb): Promise<string[]> {
+  const [row] = await db
+    .select({ priorityCities: schema.settings.priorityCities })
+    .from(schema.settings)
+    .limit(1);
+  return parsePriorityCities(row?.priorityCities);
+}
+
 async function ensureCapture(
   db: AdminDb,
   ownerId: number,
   ownerName: string,
   input: OwnerIntakeInput,
   now: Date,
-): Promise<{ captureId: number | null; duplicateUnit: string | null }> {
+): Promise<CaptureOutcome> {
   const payload = buildCapturePayload({
     ownerName: input.name,
     ownerPhone: input.phone,
@@ -156,23 +201,103 @@ async function ensureCapture(
     source: input.source ?? "site",
   });
 
-  const existing = await db
-    .select({
-      id: schema.propertyCaptures.id,
-      ownerId: schema.propertyCaptures.ownerId,
-      unitKey: schema.propertyCaptures.unitKey,
-      stage: schema.propertyCaptures.stage,
-    })
-    .from(schema.propertyCaptures)
-    .limit(1000);
+  const priorityCities = await loadPriorityCities(db);
+  const outside = outsidePriorityArea(payload.city, priorityCities);
 
-  const duplicate = findDuplicateUnit(existing, { unitKey: payload.unitKey, ownerId });
+  const rows = await db.select().from(schema.propertyCaptures).limit(1000);
 
-  /* Reenvio do MESMO imóvel pelo MESMO dono não cria ficha nova: o Radar
-     ficaria com duas fichas idênticas a cada vez que a pessoa clica de novo. */
+  /* Ficha como o módulo de status a enxerga — é o que mede a completude. */
+  const ficha = {
+    ownerName: input.name,
+    ownerPhone: input.phone,
+    ownerEmail: input.email ?? null,
+    city: payload.city,
+    street: payload.street,
+    number: payload.number,
+    district: payload.district,
+    cep: payload.cep,
+    propertyType: payload.propertyType,
+    askingPrice: payload.askingPrice,
+    intention: payload.intention,
+  };
+
+  const written = { city: payload.city, street: payload.street, number: payload.number, cep: payload.cep };
+  const complements = parseComplements(payload.complements);
+
+  const duplicate = findDuplicateUnit(
+    rows.map((row) => ({
+      id: row.id,
+      ownerId: row.ownerId,
+      unitKey: row.unitKey,
+      stage: row.stage,
+      addressKey: row.addressKey,
+      buildingKey: row.buildingKey,
+      address: { city: row.city, street: row.street, number: row.number, cep: row.cep },
+      complements: parseComplements(row.complements),
+    })),
+    {
+      unitKey: payload.unitKey,
+      addressKey: payload.addressKey,
+      address: written,
+      complements,
+      ownerId,
+    },
+  );
+
+  /* MESMO imóvel do MESMO dono: nunca cria ficha nova. Se o cadastro ainda
+     está pendente, ele é CONTINUADO campo a campo; se já foi concluído, só
+     devolve a ficha existente. Duas fichas idênticas no Radar a cada clique
+     era o que acontecia antes. */
   if (duplicate.duplicate && duplicate.sameOwner) {
-    return { captureId: duplicate.captureId, duplicateUnit: duplicate.message };
+    const target = rows.find((row) => row.id === duplicate.captureId);
+    if (target) {
+      return await resumeCapture(db, target, { payload, ficha, outside, now, duplicateUnit: duplicate.message });
+    }
+    return { ...EMPTY_OUTCOME, captureId: duplicate.captureId, duplicateUnit: duplicate.message };
   }
+
+  /* Retomada por telefone (item 3): o proprietário abandonou o cadastro e
+     voltou. Sem endereço informado, continua o pendente mais recente; com
+     endereço de OUTRO imóvel, `resolveResume` devolve `new` e o segundo
+     imóvel nasce reaproveitando o mesmo contato (item 4). */
+  const resume = resolveResume(
+    rows
+      .filter((row) => row.ownerId === ownerId)
+      .map((row) => ({
+        id: row.id,
+        ownerId: row.ownerId,
+        registrationStatus: row.registrationStatus,
+        stage: row.stage,
+        unitKey: row.unitKey,
+        addressKey: row.addressKey,
+        updatedAt: row.updatedAt,
+        createdAt: row.createdAt,
+      })),
+    { unitKey: payload.unitKey, addressKey: payload.addressKey },
+  );
+
+  if (resume.action === "resume") {
+    const target = rows.find((row) => row.id === resume.captureId);
+    if (target) {
+      return await resumeCapture(db, target, {
+        payload,
+        ficha,
+        outside,
+        now,
+        duplicateUnit: duplicate.duplicate ? duplicate.message : null,
+        resumeNote: resume.message,
+      });
+    }
+  }
+
+  /* Endereço de outro proprietário: a ficha nasce marcada para revisão
+     humana. Item 5 do pedido — NUNCA excluir automaticamente. */
+  const foreignDuplicate = duplicate.duplicate && !duplicate.sameOwner;
+  const decision = deriveRegistrationStatus(
+    ficha,
+    { lastActivityAt: now, possibleDuplicate: foreignDuplicate },
+    now,
+  );
 
   const due = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const [capture] = await db
@@ -188,6 +313,8 @@ async function ensureCapture(
       state: payload.state,
       complements: payload.complements,
       unitKey: payload.unitKey,
+      addressKey: payload.addressKey || null,
+      buildingKey: payload.buildingKey || null,
       propertyType: payload.propertyType,
       askingPrice: payload.askingPrice,
       intention: payload.intention,
@@ -195,6 +322,13 @@ async function ensureCapture(
       notes: [payload.notes, duplicate.duplicate ? duplicate.message : ""].filter(Boolean).join("\n\n") || null,
       source: payload.source,
       stage: "novo_contato",
+      registrationStatus: decision.status,
+      registrationStatusAt: now,
+      completeness: decision.completeness.percent,
+      lastFieldAt: now,
+      outsidePriorityArea: outside ? 1 : 0,
+      duplicateOfCaptureId: foreignDuplicate ? duplicate.captureId : null,
+      duplicateNote: foreignDuplicate ? duplicate.message : null,
       nextAction: `Retornar proprietário — ${ownerName}`,
       nextActionAt: due,
       stageChangedAt: now,
@@ -205,6 +339,122 @@ async function ensureCapture(
   return {
     captureId: capture?.id ?? null,
     duplicateUnit: duplicate.duplicate ? duplicate.message : null,
+    resumed: false,
+    registrationStatus: decision.status,
+    completeness: decision.completeness.percent,
+    outsidePriorityArea: outside,
+  };
+}
+
+/**
+ * Continua um cadastro que já existe, campo a campo.
+ *
+ * Nada do que o proprietário já informou é perdido: `mergeCaptureFields` só
+ * preenche o que está vazio. Valor divergente é preservado e anotado para
+ * conferência humana — ver lib/capture-merge.ts.
+ */
+async function resumeCapture(
+  db: AdminDb,
+  target: typeof schema.propertyCaptures.$inferSelect,
+  context: {
+    payload: ReturnType<typeof buildCapturePayload>;
+    ficha: Parameters<typeof deriveRegistrationStatus>[0];
+    outside: boolean;
+    now: Date;
+    duplicateUnit: string | null;
+    resumeNote?: string;
+  },
+): Promise<CaptureOutcome> {
+  const { payload, outside, now } = context;
+
+  /**
+   * Ficha aberta sem endereço: as chaves de identidade gravadas nela são
+   * degeneradas (só cidade), e a linha de endereço livre também. Quando o
+   * endereço finalmente chega, essas chaves PODEM ser reescritas — sem isso a
+   * ficha ficaria com a chave do "nenhum endereço" e a duplicidade da unidade
+   * nunca seria reconhecida depois. Nenhum dado informado pelo proprietário
+   * entra nesta lista: `overwrite` cobre só as chaves derivadas e a linha
+   * formatada que elas geram.
+   */
+  const semEndereco = !hasAddressIdentity(target);
+
+  const merged = mergeCaptureFields(
+    {
+      city: target.city,
+      district: target.district,
+      address: target.address,
+      cep: target.cep,
+      street: target.street,
+      number: target.number,
+      state: target.state,
+      complements: target.complements,
+      unitKey: target.unitKey,
+      addressKey: target.addressKey,
+      buildingKey: target.buildingKey,
+      propertyType: target.propertyType,
+      askingPrice: target.askingPrice,
+      intention: target.intention,
+    },
+    {
+      city: payload.city,
+      district: payload.district,
+      address: payload.address,
+      cep: payload.cep,
+      street: payload.street,
+      number: payload.number,
+      state: payload.state,
+      complements: payload.complements,
+      unitKey: payload.unitKey,
+      addressKey: payload.addressKey,
+      buildingKey: payload.buildingKey,
+      propertyType: payload.propertyType,
+      askingPrice: payload.askingPrice,
+      intention: payload.intention,
+    },
+    semEndereco ? { overwrite: ["unitKey", "addressKey", "buildingKey", "address"] } : {},
+  );
+
+  /* A completude é medida sobre a ficha DEPOIS da mesclagem: é o estado real
+     do cadastro, não só o que veio neste envio. */
+  const after = { ...context.ficha, ...merged.patch } as typeof context.ficha;
+  const decision = deriveRegistrationStatus(
+    after,
+    { current: target.registrationStatus, lastActivityAt: now, possibleDuplicate: false },
+    now,
+  );
+
+  const history = [
+    target.notes?.trim(),
+    context.resumeNote ?? "",
+    mergeHistoryNote(merged, target.id) ?? "",
+  ]
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, 4000) || null;
+
+  await db
+    .update(schema.propertyCaptures)
+    .set({
+      /* `capture-merge` é módulo puro e devolve os valores como `unknown`
+         (ele não conhece o schema); aqui eles voltam ao tipo da tabela. */
+      ...(merged.patch as Partial<typeof schema.propertyCaptures.$inferInsert>),
+      notes: history,
+      registrationStatus: decision.status,
+      registrationStatusAt: now,
+      completeness: decision.completeness.percent,
+      lastFieldAt: now,
+      outsidePriorityArea: outside ? 1 : 0,
+      updatedAt: now,
+    })
+    .where(eq(schema.propertyCaptures.id, target.id));
+
+  return {
+    captureId: target.id,
+    duplicateUnit: context.duplicateUnit,
+    resumed: true,
+    registrationStatus: decision.status,
+    completeness: decision.completeness.percent,
+    outsidePriorityArea: outside,
   };
 }
 
@@ -261,11 +511,19 @@ export async function intakeOwner(
       duplicated: true,
       captureId: capture.captureId,
       duplicateUnit: capture.duplicateUnit,
+      resumed: capture.resumed,
+      registrationStatus: capture.registrationStatus,
+      completeness: capture.completeness,
+      outsidePriorityArea: capture.outsidePriorityArea,
       detail: [
         taskCreated
           ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.`
           : `Contato somado ao proprietário #${existing.id}; já havia retorno pendente.`,
-        capture.captureId ? `Captação #${capture.captureId} no Radar.` : "",
+        capture.resumed && capture.captureId
+          ? `Cadastro #${capture.captureId} retomado de onde parou.`
+          : capture.captureId
+            ? `Captação #${capture.captureId} no Radar.`
+            : "",
         capture.duplicateUnit ?? "",
       ]
         .filter(Boolean)
@@ -293,10 +551,7 @@ export async function intakeOwner(
     })
     .returning();
 
-  let capture: { captureId: number | null; duplicateUnit: string | null } = {
-    captureId: null,
-    duplicateUnit: null,
-  };
+  let capture: CaptureOutcome = EMPTY_OUTCOME;
   if (created) {
     capture = await ensureCapture(db, created.id, created.name ?? input.name, input, now);
     await ensureFollowUpTask(db, created.id, input, capture.captureId);
@@ -307,6 +562,10 @@ export async function intakeOwner(
     duplicated: false,
     captureId: capture.captureId,
     duplicateUnit: capture.duplicateUnit,
+    resumed: capture.resumed,
+    registrationStatus: capture.registrationStatus,
+    completeness: capture.completeness,
+    outsidePriorityArea: capture.outsidePriorityArea,
     detail: [
       "Proprietário criado no CRM com tarefa de retorno.",
       capture.captureId ? `Captação #${capture.captureId} no Radar.` : "",

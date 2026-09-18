@@ -4,6 +4,7 @@ import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
 import { codeFromSlug, propertySlug } from "../lib/slug";
+import { showcaseVisible } from "../lib/commercial-status";
 
 /**
  * Vitrine pública — os imóveis vêm do banco (cadastrados no /admin).
@@ -58,12 +59,18 @@ export const properties = {
   /** Imóveis publicados, destaques primeiro. */
   list: base.handler(async (): Promise<Property[]> => {
     const db = await getDb();
-    const rows = await db
+    const published = await db
       .select()
       .from(schema.properties)
       .where(eq(schema.properties.published, 1))
       .orderBy(desc(schema.properties.featured), desc(schema.properties.createdAt))
-      .limit(48);
+      .limit(96);
+
+    /* V4 — item 11: o filtro `published` continua sendo a decisão editorial e
+       NÃO foi removido. Em cima dele, vendido, retirado pelo proprietário,
+       pausado (inclusive pela regra dos 12 meses) e cadastro arquivado saem
+       da vitrine. Nada é excluído: o histórico continua inteiro no CRM. */
+    const rows = published.filter((row) => showcaseVisible(row)).slice(0, 48);
 
     if (rows.length === 0) return [];
 
@@ -116,11 +123,14 @@ export const properties = {
     .input(z.object({ slug: z.string().min(1).max(160) }))
     .handler(async ({ input }): Promise<{ property: Property; related: Property[] } | null> => {
       const db = await getDb();
-      const rows = await db
+      const rows = (await db
         .select()
         .from(schema.properties)
         .where(eq(schema.properties.published, 1))
-        .limit(500);
+        .limit(500))
+        /* Link antigo de imóvel vendido/pausado deixa de abrir a ficha
+           pública — o dado segue no CRM, só não fica na vitrine. */
+        .filter((row) => showcaseVisible(row));
 
       const wanted = input.slug.trim().toLowerCase();
       const code = codeFromSlug(wanted).toUpperCase();
