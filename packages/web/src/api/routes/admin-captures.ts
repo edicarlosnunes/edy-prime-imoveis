@@ -124,6 +124,14 @@ const createInput = z.object({
   number: z.string().max(30).nullable().optional(),
   state: z.string().max(2).nullable().optional(),
   complements: complementsInput,
+}).superRefine((value, ctx) => {
+  if (!value.street?.trim() || !value.number?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["street"],
+      message: "Informe o endereço do imóvel (logradouro e número) para gerar o Código Universal.",
+    });
+  }
 });
 
 export const adminCaptures = {
