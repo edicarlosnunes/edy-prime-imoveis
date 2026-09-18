@@ -150,6 +150,14 @@ export function canFinalize(source: PendingSource): { ok: boolean; message: stri
 export interface DocumentSource {
   captureId: number;
   serial: string;
+  /**
+   * CÓDIGO UNIVERSAL EPI (EPI-1000/09-26) da ficha.
+   *
+   * É o código oficial do imóvel no CRM e vai congelado no papel emitido.
+   * `null` em ficha legada (anterior à ativação do EPI): o documento sai com
+   * o serial-base de sempre e nenhum EPI é criado só para imprimir.
+   */
+  epiCode?: string | null;
   owner: {
     name?: string | null;
     phone?: string | null;
@@ -195,6 +203,8 @@ export interface DocumentSnapshot {
   title: string;
   serial: string;
   baseSerial: string;
+  /** EPI congelado na emissão. `null` para ficha legada sem EPI. */
+  epiCode: string | null;
   captureId: number;
   issuedAt: string;
   owner: DocumentSource["owner"];
@@ -299,6 +309,7 @@ export function buildSnapshot(
     title: DOC_KIND_LABELS[kind],
     serial: serialFor(kind, source.serial),
     baseSerial: source.serial,
+    epiCode: source.epiCode ?? null,
     captureId: source.captureId,
     issuedAt: now.toISOString(),
     owner: source.owner,
