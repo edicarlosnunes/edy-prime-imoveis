@@ -347,6 +347,58 @@ export const adminCaptures = {
       };
     }
 
+    /**
+     * MESMO IMÓVEL + MESMO PROPRIETÁRIO JÁ ATIVO → NÃO QUEIMA OUTRO EPI.
+     *
+     * A deduplicação precisa acontecer ANTES da reserva do código universal.
+     * Se a ficha ainda está em andamento, retomamos a ficha existente. Se já
+     * virou imóvel/captado, bloqueamos o segundo cadastro e orientamos a abrir
+     * a ficha que já existe.
+     */
+    if (duplicateUnit.duplicate && duplicateUnit.sameOwner && !duplicateUnit.archived) {
+      const [existingCapture] = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, duplicateUnit.captureId))
+        .limit(1);
+
+      if (existingCapture) {
+        const alreadyCompleted =
+          normalizeStage(existingCapture.stage) === "captado" ||
+          existingCapture.convertedPropertyId != null;
+
+        if (alreadyCompleted) {
+          throw new ORPCError("CONFLICT", {
+            message: existingCapture.epiCode
+              ? `Este imóvel já está cadastrado em nossa plataforma (${existingCapture.epiCode}). Abra a ficha existente.`
+              : "Este imóvel já está cadastrado em nossa plataforma. Abra a ficha existente.",
+          });
+        }
+
+        await audit(
+          context,
+          "capture_resumed_existing",
+          existingCapture.id,
+          existingCapture.epiCode
+            ? `Ficha existente retomada sem gerar novo EPI: ${existingCapture.epiCode}`
+            : "Ficha legada existente retomada sem gerar novo EPI",
+        );
+
+        return {
+          id: existingCapture.id,
+          ownerId: owner.id,
+          ownerCreated,
+          duplicateUnit: `Ficha existente retomada. ${duplicateUnit.message}`,
+          registrationStatus: existingCapture.registrationStatus ?? null,
+          completeness: existingCapture.completeness ?? 0,
+          outsidePriorityArea: (existingCapture.outsidePriorityArea ?? 0) === 1,
+          epiCode: existingCapture.epiCode ?? null,
+          reopenedFromArchive: false,
+          resumedExisting: true,
+        };
+      }
+    }
+
     /* Cidade fora da área prioritária SINALIZA, nunca bloqueia (item 7). */
     const [settingsRow] = await context.db
       .select({ priorityCities: schema.settings.priorityCities })
