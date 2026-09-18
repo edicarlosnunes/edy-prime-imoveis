@@ -206,10 +206,59 @@ export const adminCaptures = {
       .where(and(eq(schema.auditLog.entity, "capture"), eq(schema.auditLog.entityId, String(input.id))))
       .orderBy(desc(schema.auditLog.createdAt))
       .limit(100);
+
+    /**
+     * AUTO-REPARO SEGURO DO EPI.
+     *
+     * Uma ficha realmente nova pode ter passado por um deployment intermediário
+     * que reservou o EPI (e o gravou no audit capture_created) mas terminou
+     * com epi_code nulo na linha. Não geramos número novo e não tocamos em
+     * legado antigo: só recuperamos o MESMO código documentado no histórico.
+     */
+    let captureView = capture;
+    if (!captureView.epiCode) {
+      const createdAudit = history.find(
+        (row) => row.action === "capture_created" && /\\bEPI-\\d+\\/\\d{2}-\\d{2}\\b/i.test(String(row.detail ?? "")),
+      );
+      const recovered = String(createdAudit?.detail ?? "").match(/\\b(EPI-\\d+\\/\\d{2}-\\d{2})\\b/i)?.[1]?.toUpperCase() ?? null;
+
+      if (recovered) {
+        const [sameCaptureCode] = await context.db
+          .select({ id: schema.propertyCaptures.id })
+          .from(schema.propertyCaptures)
+          .where(eq(schema.propertyCaptures.epiCode, recovered))
+          .limit(1);
+        const [samePropertyCode] = await context.db
+          .select({ id: schema.properties.id })
+          .from(schema.properties)
+          .where(eq(schema.properties.epiCode, recovered))
+          .limit(1);
+
+        const captureCollision = sameCaptureCode && sameCaptureCode.id !== captureView.id;
+        const propertyCollision =
+          samePropertyCode &&
+          samePropertyCode.id !== (captureView.convertedPropertyId ?? -1);
+
+        if (!captureCollision && !propertyCollision) {
+          await context.db
+            .update(schema.propertyCaptures)
+            .set({ epiCode: recovered, updatedAt: new Date() })
+            .where(eq(schema.propertyCaptures.id, captureView.id));
+          await audit(
+            context,
+            "capture_epi_recovered",
+            captureView.id,
+            `EPI recuperado do histórico da própria criação: ${recovered}`,
+          );
+          captureView = { ...captureView, epiCode: recovered };
+        }
+      }
+    }
+
     /* O Radar mostra o código OFICIAL que nasceu no Cadastro Premium: serial
        novo (TIPO-ANO-SEQUENCIAL) ou o `code` legado de imóvel antigo. Leitura
        pura — nada aqui gera, altera ou renumera serial. */
-    const [convertedProperty] = capture.convertedPropertyId
+    const [convertedProperty] = captureView.convertedPropertyId
       ? await context.db
           .select({
             id: schema.properties.id,
@@ -220,10 +269,10 @@ export const adminCaptures = {
             epiCode: schema.properties.epiCode,
           })
           .from(schema.properties)
-          .where(eq(schema.properties.id, capture.convertedPropertyId))
+          .where(eq(schema.properties.id, captureView.convertedPropertyId))
           .limit(1)
       : [];
-    return { ...capture, owner: owner ?? null, convertedProperty: convertedProperty ?? null, tasks, history };
+    return { ...captureView, owner: owner ?? null, convertedProperty: convertedProperty ?? null, tasks, history };
   }),
 
   create: adminBase.input(createInput).handler(async ({ input, context }) => {
@@ -446,7 +495,7 @@ export const adminCaptures = {
      */
     const epiCode = await allocateEpiCode(context.db, now);
 
-    const [capture] = await context.db.insert(schema.propertyCaptures).values({
+    let [capture] = await context.db.insert(schema.propertyCaptures).values({
       ownerId: owner.id,
       epiCode,
       city: payload.city,
@@ -483,6 +532,36 @@ export const adminCaptures = {
       updatedAt: now,
     }).returning();
     if (!capture) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível criar captação" });
+
+    /*
+     * Invariante operacional: ficha NOVA = EPI persistido.
+     * Usa o MESMO número já reservado acima; nunca chama o contador de novo.
+     */
+    const [persistedEpi] = await context.db
+      .select({ epiCode: schema.propertyCaptures.epiCode })
+      .from(schema.propertyCaptures)
+      .where(eq(schema.propertyCaptures.id, capture.id))
+      .limit(1);
+
+    if (persistedEpi?.epiCode !== epiCode) {
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({ epiCode, updatedAt: now })
+        .where(eq(schema.propertyCaptures.id, capture.id));
+
+      const [verifiedEpi] = await context.db
+        .select({ epiCode: schema.propertyCaptures.epiCode })
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, capture.id))
+        .limit(1);
+
+      if (verifiedEpi?.epiCode !== epiCode) {
+        throw new ORPCError("INTERNAL_SERVER_ERROR", {
+          message: "A captação foi criada, mas o Código Universal não foi persistido. Nenhum novo EPI foi gerado.",
+        });
+      }
+      capture = { ...capture, epiCode };
+    }
 
     await context.db.insert(schema.tasks).values({
       title: `Retornar proprietário — ${owner.name}`,
