@@ -103,6 +103,13 @@ function Content() {
     [search, status, archivedView],
   );
   const { data, isLoading } = useAdminProperties(filters);
+  /**
+   * Cinto de segurança da interface: mesmo que uma resposta antiga fique no
+   * cache do cliente, nunca misture ativos e Arquivo Morto visualmente.
+   */
+  const visibleData = (data ?? []).filter((property) =>
+    archivedView ? property.archivedAt != null : property.archivedAt == null,
+  );
   const patch = usePatchProperty();
   const remove = useRemoveProperty();
   const restore = useRestoreProperty();
@@ -180,7 +187,7 @@ function Content() {
         <ErrorNote message={error} />
 
         {isLoading && <Empty>Carregando imóveis…</Empty>}
-        {!isLoading && (data?.length ?? 0) === 0 && (
+        {!isLoading && visibleData.length === 0 && (
           <Empty>
             {archivedView
               ? "O Arquivo Morto está vazio. Nenhum imóvel foi arquivado."
@@ -189,7 +196,7 @@ function Content() {
         )}
 
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          {(data ?? []).map((property) => (
+          {visibleData.map((property) => (
             <Card key={property.id} className="flex gap-4">
               <div className="h-24 w-28 shrink-0 overflow-hidden bg-bone sm:h-28 sm:w-36">
                 {property.cover ? (
