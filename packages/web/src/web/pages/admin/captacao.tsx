@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, Phone, MessageCircle, FileText, Building2, Archive, RotateCcw } from "lucide-react";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import { Badge, Btn, Card, Field, Input, Modal, Select, Stat, Textarea, dateTimeLabel, money, waLink } from "../../components/admin/ui";
@@ -70,6 +70,17 @@ function Content() {
   const [city, setCity] = useState("");
   const [newOpen, setNewOpen] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
+  const searchParams = useSearch();
+  const [, navigate] = useLocation();
+
+  /* Todas as portas manuais convergem no mesmo pré-cadastro universal.
+     ?novo=1 apenas abre a ficha mínima; depois a URL volta ao Radar normal. */
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (params.get("novo") !== "1") return;
+    setNewOpen(true);
+    navigate("/admin/captacao", { replace: true });
+  }, [searchParams, navigate]);
   /* ARQUIVO MORTO do Radar. PERDIDO continua no Radar (é funil); arquivado sai
      da operação e só aparece aqui. As duas visões nunca se misturam. */
   const [archivedView, setArchivedView] = useState(false);
@@ -106,8 +117,41 @@ function NewCapture({open,onClose,onCreated}:{open:boolean;onClose:()=>void;onCr
   const [comp,setComp]=useState<Record<string,string>>({}); const [cepNote,setCepNote]=useState("");
   /* Consulta a ViaCEP. Falha NUNCA bloqueia: cai em preenchimento manual. */
   async function findCep(v:string){const masked=formatCep(v);setF(p=>({...p,cep:masked}));if(!isValidCep(masked)){setCepNote("");return}setCepNote("Buscando endereco...");const r=await lookupCep(masked);if(!r.ok){setCepNote(`${r.reason} Preencha o endereco a mao.`);return}setF(p=>({...p,street:r.address.street||p.street,district:p.district||r.address.district,city:CITIES.includes(r.address.city)?r.address.city:p.city,state:r.address.state||p.state}));setCepNote(CITIES.includes(r.address.city)?"":`CEP de ${r.address.city}/${r.address.state} - fora das cidades da lista.`)}
-  async function save(){setError(null);try{const complements=Object.fromEntries(Object.entries(comp).filter(([,v])=>(v??"").trim().length>0));const r=await create.mutateAsync({ownerName:f.ownerName,ownerPhone:f.ownerPhone,ownerEmail:f.ownerEmail||null,city:f.city,district:f.district||null,address:f.address||null,cep:f.cep||null,street:f.street||null,number:f.number||null,state:f.state||null,complements:Object.keys(complements).length?complements:null,propertyType:f.propertyType,askingPrice:parseMoneyInput(f.askingPrice,"Valor pretendido"),source:f.source,intention:f.intention,notes:f.notes||null});if(r.duplicateUnit)alert(r.duplicateUnit);onCreated(r.id)}catch(e){setError(errorMessage(e,"Não foi possível criar a captação"))}}
-  return <Modal open={open} onClose={onClose} title="Nova captação" wide><div className="grid gap-3 md:grid-cols-2"><Field label="Proprietário"><Input value={f.ownerName} onChange={e=>setF({...f,ownerName:e.target.value})}/></Field><Field label="WhatsApp"><Input value={f.ownerPhone} onChange={e=>setF({...f,ownerPhone:e.target.value})}/></Field><Field label="E-mail"><Input value={f.ownerEmail} onChange={e=>setF({...f,ownerEmail:e.target.value})}/></Field><Field label="Região"><Select value={f.city} onChange={e=>setF({...f,city:e.target.value})}>{CITIES.map(c=><option key={c}>{c}</option>)}</Select></Field><Field label="Bairro"><Input value={f.district} onChange={e=>setF({...f,district:e.target.value})}/></Field><Field label="CEP"><Input inputMode="numeric" value={f.cep} onChange={e=>void findCep(e.target.value)}/></Field><Field label="Número"><Input value={f.number} onChange={e=>setF({...f,number:e.target.value})}/></Field><Field label="Rua / avenida"><Input value={f.street} onChange={e=>setF({...f,street:e.target.value})}/></Field><Field label="UF"><Input value={f.state} onChange={e=>setF({...f,state:e.target.value.toUpperCase().slice(0,2)})}/></Field>{cepNote&&<p className="text-xs text-muted md:col-span-2">{cepNote}</p>}<Field label="Endereço livre (opcional)" className="md:col-span-2"><Input value={f.address} onChange={e=>setF({...f,address:e.target.value})}/></Field><div className="md:col-span-2"><div className="text-xs font-semibold tracking-wide text-muted">COMPLEMENTOS DA UNIDADE (opcionais)</div><div className="mt-2 grid gap-3 md:grid-cols-3">{COMPLEMENT_FIELDS.map(cf=><Field key={cf.key} label={cf.label}><Input value={comp[cf.key]??""} onChange={e=>setComp(p=>({...p,[cf.key]:e.target.value}))}/></Field>)}</div></div><Field label="Tipo"><Input value={f.propertyType} onChange={e=>setF({...f,propertyType:e.target.value})}/></Field><Field label="Valor pretendido"><Input inputMode="numeric" value={f.askingPrice} onChange={e=>setF({...f,askingPrice:e.target.value})}/></Field><Field label="Origem"><Select value={f.source} onChange={e=>setF({...f,source:e.target.value})}><option value="manual">Manual</option><option value="site">Site</option><option value="whatsapp">WhatsApp</option><option value="indicacao">Indicação</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option><option value="placa">Placa</option><option value="portal">Portal</option><option value="outro">Outro</option></Select></Field><Field label="Intenção"><Select value={f.intention} onChange={e=>setF({...f,intention:e.target.value})}><option value="venda">Venda</option><option value="locacao">Locação</option><option value="venda_locacao">Venda ou locação</option></Select></Field><Field label="Observações" className="md:col-span-2"><Textarea value={f.notes} onChange={e=>setF({...f,notes:e.target.value})}/></Field></div>{error&&<p className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-2"><Btn tone="outline" onClick={onClose}>Cancelar</Btn><Btn tone="brass" onClick={save} disabled={create.isPending}>Salvar captação</Btn></div></Modal>
+  async function save(){
+    setError(null);
+    const ownerName=f.ownerName.trim();
+    const phoneDigits=f.ownerPhone.replace(/\D/g,"");
+    if(ownerName.length<2){setError("Informe o nome do proprietário.");return}
+    if(phoneDigits.length<8){setError("Informe o telefone/WhatsApp do proprietário.");return}
+    if(!f.street.trim()||!f.number.trim()){
+      setError("Informe o endereço do imóvel (logradouro e número). Nome, telefone e endereço confirmam o pré-cadastro e geram o EPI.");
+      return;
+    }
+    try{
+      const complements=Object.fromEntries(Object.entries(comp).filter(([,v])=>(v??"").trim().length>0));
+      const r=await create.mutateAsync({
+        ownerName,
+        ownerPhone:f.ownerPhone,
+        ownerEmail:f.ownerEmail||null,
+        city:f.city,
+        district:f.district||null,
+        address:f.address||null,
+        cep:f.cep||null,
+        street:f.street||null,
+        number:f.number||null,
+        state:f.state||null,
+        complements:Object.keys(complements).length?complements:null,
+        propertyType:f.propertyType,
+        askingPrice:parseMoneyInput(f.askingPrice,"Valor pretendido"),
+        source:f.source,
+        intention:f.intention,
+        notes:f.notes||null
+      });
+      if(r.duplicateUnit)alert(r.duplicateUnit);
+      onCreated(r.id);
+    }catch(e){setError(errorMessage(e,"Não foi possível criar a captação"))}
+  }
+  return <Modal open={open} onClose={onClose} title="Nova captação" wide><div className="grid gap-3 md:grid-cols-2"><Field label="Proprietário *"><Input value={f.ownerName} onChange={e=>setF({...f,ownerName:e.target.value})}/></Field><Field label="WhatsApp *"><Input value={f.ownerPhone} onChange={e=>setF({...f,ownerPhone:e.target.value})}/></Field><Field label="E-mail"><Input value={f.ownerEmail} onChange={e=>setF({...f,ownerEmail:e.target.value})}/></Field><Field label="Região"><Select value={f.city} onChange={e=>setF({...f,city:e.target.value})}>{CITIES.map(c=><option key={c}>{c}</option>)}</Select></Field><Field label="Bairro"><Input value={f.district} onChange={e=>setF({...f,district:e.target.value})}/></Field><Field label="CEP"><Input inputMode="numeric" value={f.cep} onChange={e=>void findCep(e.target.value)}/></Field><Field label="Número *"><Input value={f.number} onChange={e=>setF({...f,number:e.target.value})}/></Field><Field label="Rua / avenida *"><Input value={f.street} onChange={e=>setF({...f,street:e.target.value})}/></Field><Field label="UF"><Input value={f.state} onChange={e=>setF({...f,state:e.target.value.toUpperCase().slice(0,2)})}/></Field>{cepNote&&<p className="text-xs text-muted md:col-span-2">{cepNote}</p>}<Field label="Complemento/endereço livre (opcional)" className="md:col-span-2"><Input value={f.address} onChange={e=>setF({...f,address:e.target.value})}/></Field><div className="md:col-span-2"><div className="text-xs font-semibold tracking-wide text-muted">COMPLEMENTOS DA UNIDADE (opcionais)</div><div className="mt-2 grid gap-3 md:grid-cols-3">{COMPLEMENT_FIELDS.map(cf=><Field key={cf.key} label={cf.label}><Input value={comp[cf.key]??""} onChange={e=>setComp(p=>({...p,[cf.key]:e.target.value}))}/></Field>)}</div></div><Field label="Tipo"><Input value={f.propertyType} onChange={e=>setF({...f,propertyType:e.target.value})}/></Field><Field label="Valor pretendido"><Input inputMode="numeric" value={f.askingPrice} onChange={e=>setF({...f,askingPrice:e.target.value})}/></Field><Field label="Origem"><Select value={f.source} onChange={e=>setF({...f,source:e.target.value})}><option value="manual">Manual</option><option value="site">Site</option><option value="whatsapp">WhatsApp</option><option value="indicacao">Indicação</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option><option value="placa">Placa</option><option value="portal">Portal</option><option value="outro">Outro</option></Select></Field><Field label="Intenção"><Select value={f.intention} onChange={e=>setF({...f,intention:e.target.value})}><option value="venda">Venda</option><option value="locacao">Locação</option><option value="venda_locacao">Venda ou locação</option></Select></Field><Field label="Observações" className="md:col-span-2"><Textarea value={f.notes} onChange={e=>setF({...f,notes:e.target.value})}/></Field></div>{error&&<p className="mt-3 text-sm text-red-700">{error}</p>}<div className="mt-5 flex justify-end gap-2"><Btn tone="outline" onClick={onClose}>Cancelar</Btn><Btn tone="brass" onClick={save} disabled={create.isPending}>Salvar captação</Btn></div></Modal>
 }
 
 /**
