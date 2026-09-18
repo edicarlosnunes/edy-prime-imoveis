@@ -456,6 +456,18 @@ export const adminProperties = {
       }),
     )
     .handler(async ({ input, context }) => {
+      const [existing] = await context.db
+        .select({ id: schema.properties.id, archivedAt: schema.properties.archivedAt })
+        .from(schema.properties)
+        .where(eq(schema.properties.id, input.id))
+        .limit(1);
+      if (!existing) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      if (isArchived(existing)) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imóvel está no Arquivo Morto. Restaure antes de alterar publicação, destaque ou status.",
+        });
+      }
+
       const patch: Record<string, unknown> = { updatedAt: new Date() };
       if (input.published !== undefined) patch.published = input.published ? 1 : 0;
       if (input.featured !== undefined) patch.featured = input.featured ? 1 : 0;
@@ -573,6 +585,7 @@ export const adminProperties = {
         district: schema.properties.district,
       })
       .from(schema.properties)
+      .where(isNull(schema.properties.archivedAt))
       .orderBy(asc(schema.properties.code))
       .limit(500);
   }),
