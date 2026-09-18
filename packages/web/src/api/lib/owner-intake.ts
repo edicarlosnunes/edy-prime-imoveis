@@ -18,6 +18,8 @@ import { duplicateAlertText, resolveOwnerIdentity } from "./owner-identity";
 import type { Complements } from "./capture-address";
 import { buildCapturePayload, findDuplicateUnit, parseComplements } from "./capture-intake";
 import { mergeCaptureFields, mergeHistoryNote } from "./capture-merge";
+import { allocateEpiCode } from "./epi-counter";
+import { isArchived, restoreEffect } from "./archive-rules";
 import { deriveRegistrationStatus, hasAddressIdentity, resolveResume } from "./capture-registration";
 import { outsidePriorityArea, parsePriorityCities } from "./priority-area";
 
@@ -66,6 +68,10 @@ export interface OwnerIntakeResult {
   completeness: number;
   /** `true` quando a cidade está fora da área prioritária — sinaliza, não barra. */
   outsidePriorityArea: boolean;
+  /** CÓDIGO UNIVERSAL da ficha (`EPI-1000/09-26`). `null` só em ficha legada. */
+  epiCode: string | null;
+  /** `true` quando a ficha voltou do Arquivo Morto com o MESMO EPI. */
+  reopenedFromArchive: boolean;
 }
 
 const onlyDigits = (value: string) => value.replace(/\D/g, "");
@@ -152,6 +158,10 @@ type CaptureOutcome = {
   registrationStatus: string | null;
   completeness: number;
   outsidePriorityArea: boolean;
+  /** CÓDIGO UNIVERSAL da ficha. `null` só em ficha legada, sem código. */
+  epiCode: string | null;
+  /** `true` quando a ficha voltou do ARQUIVO MORTO, com o MESMO EPI. */
+  reopenedFromArchive: boolean;
 };
 
 const EMPTY_OUTCOME: CaptureOutcome = {
@@ -161,6 +171,8 @@ const EMPTY_OUTCOME: CaptureOutcome = {
   registrationStatus: null,
   completeness: 0,
   outsidePriorityArea: false,
+  epiCode: null,
+  reopenedFromArchive: false,
 };
 
 /**
@@ -230,6 +242,10 @@ async function ensureCapture(
       ownerId: row.ownerId,
       unitKey: row.unitKey,
       stage: row.stage,
+      /* ARQUIVO MORTO também é consultado: o mesmo imóvel arquivado reabre a
+         ficha antiga (com o EPI dela) em vez de nascer de novo. */
+      archivedAt: row.archivedAt,
+      epiCode: row.epiCode,
       addressKey: row.addressKey,
       buildingKey: row.buildingKey,
       address: { city: row.city, street: row.street, number: row.number, cep: row.cep },
@@ -253,7 +269,12 @@ async function ensureCapture(
     if (target) {
       return await resumeCapture(db, target, { payload, ficha, outside, now, duplicateUnit: duplicate.message });
     }
-    return { ...EMPTY_OUTCOME, captureId: duplicate.captureId, duplicateUnit: duplicate.message };
+    return {
+      ...EMPTY_OUTCOME,
+      captureId: duplicate.captureId,
+      duplicateUnit: duplicate.message,
+      epiCode: duplicate.epiCode,
+    };
   }
 
   /* Retomada por telefone (item 3): o proprietário abandonou o cadastro e
@@ -300,10 +321,26 @@ async function ensureCapture(
   );
 
   const due = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+  /**
+   * CÓDIGO UNIVERSAL EPI — emitido no ato da criação da ficha.
+   *
+   * Esta é a porta de entrada de TODAS as origens automáticas: formulário
+   * público (CAPTACAO_SITE), WhatsApp, IA e LINK_CAPTACAO. Todas passam por
+   * aqui, então todas recebem o código pela MESMA sequência universal
+   * atômica. Nada de contador por origem, por mês ou por ano.
+   *
+   * Só chega neste ponto quem realmente vai virar ficha NOVA: imóvel repetido
+   * do mesmo dono e ficha arquivada foram tratados acima, reaproveitando o
+   * código que já existe.
+   */
+  const epiCode = await allocateEpiCode(db, now);
+
   const [capture] = await db
     .insert(schema.propertyCaptures)
     .values({
       ownerId,
+      epiCode,
       city: payload.city,
       district: payload.district,
       address: payload.address,
@@ -343,6 +380,8 @@ async function ensureCapture(
     registrationStatus: decision.status,
     completeness: decision.completeness.percent,
     outsidePriorityArea: outside,
+    epiCode: capture?.epiCode ?? epiCode,
+    reopenedFromArchive: false,
   };
 }
 
@@ -423,9 +462,27 @@ async function resumeCapture(
     now,
   );
 
+  /**
+   * ARQUIVO MORTO: a ficha retomada estava arquivada.
+   *
+   * O mesmo imóvel voltou (o dono reenviou, a IA recebeu de novo, o link foi
+   * usado outra vez) e a ficha antiga é REABERTA — nunca uma segunda ficha,
+   * nunca um segundo EPI. `restoreEffect` não toca no código: ele só limpa as
+   * marcas de arquivamento.
+   */
+  const archived = isArchived(target);
+  const restore = archived
+    ? restoreEffect({
+        now,
+        epiCode: target.epiCode,
+        note: "Reabertura automática: o mesmo imóvel voltou pela captação",
+      })
+    : null;
+
   const history = [
     target.notes?.trim(),
     context.resumeNote ?? "",
+    restore?.historyNote ?? "",
     mergeHistoryNote(merged, target.id) ?? "",
   ]
     .filter(Boolean)
@@ -438,6 +495,7 @@ async function resumeCapture(
       /* `capture-merge` é módulo puro e devolve os valores como `unknown`
          (ele não conhece o schema); aqui eles voltam ao tipo da tabela. */
       ...(merged.patch as Partial<typeof schema.propertyCaptures.$inferInsert>),
+      ...(restore ? restore.patch : {}),
       notes: history,
       registrationStatus: decision.status,
       registrationStatusAt: now,
@@ -455,6 +513,10 @@ async function resumeCapture(
     registrationStatus: decision.status,
     completeness: decision.completeness.percent,
     outsidePriorityArea: outside,
+    /* O MESMO código da ficha retomada. Ficha legada segue sem EPI: o pedido
+       não prevê emitir código para registro antigo. */
+    epiCode: target.epiCode ?? null,
+    reopenedFromArchive: archived,
   };
 }
 
@@ -515,6 +577,8 @@ export async function intakeOwner(
       registrationStatus: capture.registrationStatus,
       completeness: capture.completeness,
       outsidePriorityArea: capture.outsidePriorityArea,
+      epiCode: capture.epiCode,
+      reopenedFromArchive: capture.reopenedFromArchive,
       detail: [
         taskCreated
           ? `Contato somado ao proprietário #${existing.id} e tarefa de retorno criada.`
@@ -524,6 +588,8 @@ export async function intakeOwner(
           : capture.captureId
             ? `Captação #${capture.captureId} no Radar.`
             : "",
+        capture.epiCode ? `Código ${capture.epiCode}.` : "",
+        capture.reopenedFromArchive ? "Ficha reaberta do Arquivo Morto com o mesmo código." : "",
         capture.duplicateUnit ?? "",
       ]
         .filter(Boolean)
@@ -566,9 +632,12 @@ export async function intakeOwner(
     registrationStatus: capture.registrationStatus,
     completeness: capture.completeness,
     outsidePriorityArea: capture.outsidePriorityArea,
+    epiCode: capture.epiCode,
+    reopenedFromArchive: capture.reopenedFromArchive,
     detail: [
       "Proprietário criado no CRM com tarefa de retorno.",
       capture.captureId ? `Captação #${capture.captureId} no Radar.` : "",
+      capture.epiCode ? `Código ${capture.epiCode}.` : "",
       duplicateNote ?? "",
       capture.duplicateUnit ?? "",
     ]
