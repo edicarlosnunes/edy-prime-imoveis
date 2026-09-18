@@ -250,7 +250,12 @@ export async function aiTurn(
   if (turns.length === 0) return { replied: false, skipped: "sem mensagens" };
 
   try {
-    const reply = await agentReply(db, agent, turns, baseUrl);
+    /* O telefone da conversa é o que habilita a captação de proprietário no
+       agente (identidade e retomada da ficha). Nunca é perguntado ao cliente:
+       vem do canal. */
+    const reply = await agentReply(db, agent, turns, baseUrl, {
+      phone: conversation.contactPhone,
+    });
     await addMessage(db, conversationId, {
       direction: "out",
       author: "ia",

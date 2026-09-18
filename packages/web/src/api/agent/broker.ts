@@ -20,6 +20,11 @@ import { searchProperties } from "../lib/property-search";
 import { gateway, gatewayConfigured } from "./gateway";
 import { pickModel } from "./model";
 import { readConfig } from "../lib/integrations";
+import { ownerPhoneKey } from "../lib/owner-identity";
+import { captureFlowPrompt, captureSnapshot, captureTools } from "./owner-capture";
+import { classifyContactIntent, INTENT_QUESTION } from "./capture-intent";
+import { linkCaptacaoReply, linkCaptacaoState } from "./link-captacao";
+import { handoffAllowance, looksLikeHandoffText } from "./handoff-guard";
 
 export interface AgentRow {
   id: number;
@@ -200,12 +205,26 @@ function systemPrompt(agent: AgentRow) {
     .join("\n");
 }
 
+export interface AgentReplyOptions {
+  /**
+   * Telefone do contato, como veio do canal (WhatsApp).
+   *
+   * É a identidade do proprietário: com telefone, o agente também atende
+   * captação (roteiro + gravação progressiva na ficha). Sem telefone — chat do
+   * site, sandbox do painel — o atendimento segue só como comprador, porque
+   * não há como identificar o proprietário nem retomar a ficha dele, e o
+   * telefone nunca é perguntado.
+   */
+  phone?: string | null;
+}
+
 /** Gera a resposta da IA para uma conversa. Lança erro se o gateway não existir. */
 export async function agentReply(
   db: AdminDb,
   agent: AgentRow,
   turns: AgentTurn[],
   baseUrl: string,
+  options: AgentReplyOptions = {},
 ): Promise<AgentReply> {
   if (!gatewayConfigured()) {
     throw new Error("Provedor de IA não configurado no servidor (AI_GATEWAY_BASE_URL / API_KEY).");
@@ -214,11 +233,121 @@ export async function agentReply(
   /* Precedência do modelo: agente > defaultModel da integração > fallback. */
   const { config } = await readConfig(db, "ai_gateway");
   const configured = typeof config.defaultModel === "string" ? config.defaultModel : null;
+
+  /* Captação: o estado da ficha é lido do banco a cada turno, nunca da memória
+     da conversa. É isso que faz a IA retomar de onde parou e não repetir
+     pergunta já respondida. */
+  const phone = ownerPhoneKey(options.phone) ? (options.phone ?? null) : null;
+
+  /**
+   * LINK_CAPTACAO tem precedência sobre tudo o que vem depois.
+   *
+   * Quem entrou pelo link de captação já declarou o que quer: cadastrar um
+   * imóvel para venda. Esse fluxo tem roteiro próprio e texto fixo, então ele
+   * responde o turno inteiro — sem classificação de intenção, sem busca de
+   * imóveis, sem o roteiro do WhatsApp. O atendimento de comprador só é
+   * alcançado quando o fluxo do link não está ativo, exatamente como antes.
+   */
+  if (phone) {
+    const linkState = await linkCaptacaoState(db, phone, turns);
+    if (linkState?.active) {
+      return linkCaptacaoReply(db, agent, turns, phone, linkState, configured);
+    }
+  }
+
+  const snapshot = phone ? await captureSnapshot(db, phone) : null;
+
+  /**
+   * O telefone identifica o contato; ele NÃO define a intenção.
+   *
+   * Comprador e locatário seguem no atendimento normal, sem prompt nem
+   * ferramenta de captação no turno. A captação só é habilitada depois da
+   * intenção de proprietário — declarada pela pessoa, herdada da conversa ou
+   * já materializada numa ficha em andamento. Intenção realmente ambígua não
+   * entra em nenhum dos dois: faz uma única pergunta e espera a resposta.
+   */
+  const intent = snapshot
+    ? classifyContactIntent({
+        userMessages: turns.filter((turn) => turn.role === "user").map((turn) => turn.content),
+        lastAssistant:
+          [...turns].reverse().find((turn) => turn.role === "assistant")?.content ?? null,
+        captureInProgress: snapshot.answered.length > 0 && !snapshot.complete,
+      })
+    : null;
+
+  const lastUserMessage =
+    [...turns].reverse().find((turn) => turn.role === "user")?.content ?? null;
+  const allowance = handoffAllowance(lastUserMessage);
+
+  /* Pedido explícito de humano não é ambiguidade: quem pede corretor tem que
+     ser atendido, não perguntado se quer comprar ou vender. */
+  if (intent?.intent === "ambiguo" && !allowance.allowed) {
+    return {
+      text: INTENT_QUESTION,
+      handoff: false,
+      handoffReason: null,
+      usedProperties: [],
+      toolCalls: [],
+    };
+  }
+
+  const capture = intent?.intent === "proprietario" ? snapshot : null;
+
+  /**
+   * Trava do handoff na captação.
+   *
+   * Querer cadastrar/vender/anunciar o imóvel próprio NÃO é motivo de
+   * transferência, e a pergunta "o imóvel está registrado em seu nome?" também
+   * não. Sem pedido explícito de humano nem assunto jurídico na última
+   * mensagem, a chamada de `pedirAtendimentoHumano` é bloqueada e o roteiro
+   * continua. (Conversa já assumida por humano nem chega aqui: o inbox para
+   * antes de chamar o modelo.)
+   */
+  const handoffLocked = Boolean(capture) && !allowance.allowed;
+
+  let handoffBlocked = false;
+  const lockedHandoffTool = {
+    pedirAtendimentoHumano: tool({
+      description:
+        "Transferência para humano. NÃO use durante o cadastro do imóvel: cadastro, endereço, documentação e registro em nome do proprietário são perguntas normais do roteiro. Use somente se o cliente pedir uma pessoa/corretor ou se houver assunto jurídico (advogado, inventário, ação judicial, assinatura de contrato).",
+      inputSchema: z.object({ motivo: z.string().min(3).max(200) }),
+      async execute() {
+        handoffBlocked = true;
+        return {
+          ok: false,
+          transferencia: "bloqueada",
+          motivo:
+            "Cadastro de imóvel do próprio proprietário não transfere. O cliente não pediu humano e não há assunto jurídico.",
+          orientacao: capture?.nextQuestion
+            ? `Continue a captação agora e faça só esta pergunta: ${capture.nextQuestion}`
+            : "Continue a captação normalmente, sem mencionar transferência.",
+        };
+      },
+    }),
+  };
+
+  const captureHandoffRules = [
+    "",
+    "HANDOFF NA CAPTAÇÃO (prevalece sobre as outras regras de transferência):",
+    "- Querer vender, anunciar ou cadastrar o imóvel próprio NUNCA é motivo de transferência: conduza o roteiro.",
+    "- Perguntar/registrar nome, endereço, documentação ou se o imóvel está registrado em nome do proprietário é parte do roteiro, não é assunto jurídico.",
+    "- Só chame `pedirAtendimentoHumano` se o cliente pedir uma pessoa/corretor/atendente ou se aparecer assunto de fato jurídico (advogado, inventário, ação judicial, assinatura de contrato).",
+    "- Nunca diga que vai encaminhar, transferir ou chamar corretor enquanto estiver conduzindo o cadastro.",
+  ].join("\n");
+
   const result = await generateText({
     model: gateway(pickModel(agent.model, configured)),
-    system: systemPrompt(agent),
+    system: capture
+      ? `${systemPrompt(agent)}\n\n${captureFlowPrompt(capture)}\n${captureHandoffRules}`
+      : systemPrompt(agent),
     messages: turns.slice(-16).map((turn) => ({ role: turn.role, content: turn.content })),
-    tools: propertyTools(db, baseUrl, seen),
+    tools: capture
+      ? {
+          ...propertyTools(db, baseUrl, seen),
+          ...captureTools(db, phone),
+          ...(handoffLocked ? lockedHandoffTool : {}),
+        }
+      : propertyTools(db, baseUrl, seen),
     stopWhen: [stepCountIs(6)],
   });
 
@@ -228,17 +357,33 @@ export async function agentReply(
     for (const call of step.toolCalls) {
       toolCalls.push({ tool: call.toolName, input: JSON.stringify(call.input ?? {}) });
       if (call.toolName === "pedirAtendimentoHumano") {
+        /* Handoff travado: a chamada não vira transferência. */
+        if (handoffLocked) {
+          handoffBlocked = true;
+          continue;
+        }
         const input = call.input as { motivo?: string } | undefined;
         handoffReason = input?.motivo ?? "solicitação de atendimento humano";
       }
     }
   }
 
-  const text =
+  /* Modelo sem texto: em captação já em andamento, o fallback é a própria
+     pergunta pendente do roteiro — nunca a pergunta de comprador. */
+  const captureFallback =
+    capture && capture.answered.length > 0 ? capture.nextQuestion : null;
+
+  let text =
     result.text.trim() ||
     (handoffReason
       ? agent.transferMessage || "Vou chamar um corretor para continuar seu atendimento."
-      : "Pode me contar um pouco mais sobre o que você procura?");
+      : (captureFallback ?? "Pode me contar um pouco mais sobre o que você procura?"));
+
+  /* Tentou transferir com a trava ligada: a fala de transferência não vai para
+     o cliente — o roteiro segue na pergunta pendente. */
+  if (capture && handoffBlocked && !handoffReason && looksLikeHandoffText(text)) {
+    text = capture.nextQuestion ?? "Vamos continuar o cadastro do seu imóvel.";
+  }
 
   return {
     text,
