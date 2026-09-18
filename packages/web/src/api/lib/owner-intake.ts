@@ -216,6 +216,22 @@ async function ensureCapture(
   const priorityCities = await loadPriorityCities(db);
   const outside = outsidePriorityArea(payload.city, priorityCities);
 
+  /**
+   * PRÉ-CADASTRO UNIVERSAL.
+   *
+   * O EPI só nasce quando existem os três dados mínimos definidos pela operação:
+   * nome + telefone + endereço do imóvel. No fluxo automático o endereço é
+   * estruturado em logradouro + número. Antes disso o contato/proprietário pode
+   * existir, mas ainda não existe ficha de imóvel e nenhum número é queimado.
+   */
+  const hasMinimumRegistration =
+    input.name.trim().length >= 2 &&
+    onlyDigits(input.phone).length >= 8 &&
+    Boolean(payload.street?.trim()) &&
+    Boolean(payload.number?.trim());
+
+  if (!hasMinimumRegistration) return EMPTY_OUTCOME;
+
   const rows = await db.select().from(schema.propertyCaptures).limit(1000);
 
   /* Ficha como o módulo de status a enxerga — é o que mede a completude. */
