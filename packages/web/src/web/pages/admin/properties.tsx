@@ -135,7 +135,7 @@ function Content() {
       }
       actions={
         archivedView ? undefined : (
-          <Btn tone="brass" onClick={() => setEditing("new")}>
+          <Btn tone="brass" onClick={() => navigate("/admin/captacao?novo=1")}>
             <Plus className="h-3.5 w-3.5" /> Novo imóvel
           </Btn>
         )
