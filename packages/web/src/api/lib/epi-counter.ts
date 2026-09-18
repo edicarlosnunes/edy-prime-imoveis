@@ -57,14 +57,42 @@ export async function ensureEpiCounter(db: EpiDb): Promise<void> {
  * mais barato que descobrir em produção que apostamos na errada.
  */
 function readNext(rows: unknown): number | null {
-  const list = Array.isArray(rows) ? rows : (rows as { rows?: unknown[] })?.rows;
-  const row = Array.isArray(list) ? list[0] : undefined;
+  /*
+   * Drizzle/libSQL não devolve a mesma forma em todos os transportes:
+   * - driver direto: [{ next: 1000 }]
+   * - ResultSet HTTP: { rows: [{ next: 1000 }] }
+   * - alguns adapters: { rows: [[1000]] }
+   * - wrapper de ResultSet: { rows: { _rows: [...] } }
+   *
+   * O Preview da Vercel usa o cliente /web (HTTP). Aceitar explicitamente
+   * essas formas evita reservar o número no banco e perder a linha do
+   * RETURNING na leitura do contador.
+   */
+  const result = rows as {
+    rows?: unknown[] | { _rows?: unknown[] };
+    _rows?: unknown[];
+  } | null;
+
+  const list =
+    Array.isArray(rows)
+      ? rows
+      : Array.isArray(result?.rows)
+        ? result.rows
+        : Array.isArray((result?.rows as { _rows?: unknown[] } | undefined)?._rows)
+          ? (result?.rows as { _rows: unknown[] })._rows
+          : Array.isArray(result?._rows)
+            ? result._rows
+            : [];
+
+  const row = list[0];
   if (row == null) return null;
 
   const raw = Array.isArray(row)
     ? row[0]
     : typeof row === "object"
-      ? (row as Record<string, unknown>).next
+      ? (row as Record<string, unknown>).next ??
+        (row as Record<string, unknown>).NEXT ??
+        Object.values(row as Record<string, unknown>)[0]
       : row;
 
   const value = Number(raw);
