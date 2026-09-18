@@ -225,29 +225,29 @@ function Content() {
                     {property.published === 1 ? "publicado" : "oculto"}
                   </Badge>
                   {/* Item 9 — eixo comercial, ao lado do status antigo. */}
-                  <Badge tone={COMM_TONE[COMMERCIAL_STATUS_TONE[property.commercialStatus]]}>
-                    {COMMERCIAL_STATUS_LABEL[property.commercialStatus]}
+                  <Badge tone={COMM_TONE[COMMERCIAL_STATUS_TONE[property.commercialStatus ?? "ATIVO_PARA_VENDA"]]}>
+                    {COMMERCIAL_STATUS_LABEL[property.commercialStatus ?? "ATIVO_PARA_VENDA"]}
                   </Badge>
                   {/* Item 11 — o que não aparece na vitrine ativa do site. */}
-                  {!property.showcaseVisible && <Badge tone="red">fora da vitrine</Badge>}
+                  {property.showcaseVisible === false && <Badge tone="red">fora da vitrine</Badge>}
                 </div>
                 {/* Itens 10 e 11 — regra dos 12 meses: pausa automática, volta humana. */}
-                {property.lifecycle.state === "ja_pausado" && (
+                {property.lifecycle?.state === "ja_pausado" && (
                   <div className="mt-2 rounded border border-red-400 bg-red-600 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-white">
-                    {property.pauseReason || property.lifecycle.label}
+                    {property.pauseReason || property.lifecycle?.label || "Imóvel pausado"}
                   </div>
                 )}
-                {property.lifecycle.state === "pausa_devida" && (
+                {property.lifecycle?.state === "pausa_devida" && (
                   <div className="mt-2 rounded border border-amber-400 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-                    {property.lifecycle.label} — sairá da vitrine na próxima abertura desta lista.
+                    {property.lifecycle?.label ?? "Pausa de carteira vencida"} — sairá da vitrine na próxima abertura desta lista.
                   </div>
                 )}
-                {property.lifecycle.state === "pausa_proxima" && (
+                {property.lifecycle?.state === "pausa_proxima" && (
                   <div className="mt-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900">
-                    {property.lifecycle.label}
+                    {property.lifecycle?.label ?? "Pausa próxima"}
                   </div>
                 )}
-                {!property.showcaseVisible && property.showcaseReason && (
+                {property.showcaseVisible === false && property.showcaseReason && (
                   <p className="mt-1 text-[11px] text-muted">{property.showcaseReason}</p>
                 )}
                 <p className="mt-2 truncate text-sm font-medium text-deep">{property.title}</p>
@@ -365,7 +365,7 @@ function Content() {
                     ))}
                   </Select>
                   {/* Item 10 — reativar é sempre decisão humana e reinicia a contagem. */}
-                  {property.lifecycle.state === "ja_pausado" && (
+                  {property.lifecycle?.state === "ja_pausado" && (
                     <Btn
                       tone="outline"
                       disabled={resume.isPending}
