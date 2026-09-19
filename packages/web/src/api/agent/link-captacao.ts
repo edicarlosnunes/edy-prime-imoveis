@@ -54,8 +54,8 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 
 export type LinkPresenter = "proprietario" | "corretor";
 
-const GENERIC_ENTRY_MESSAGE = "Quero iniciar o cadastro de um imóvel";
-const ROLE_QUESTION = "Olá! Vamos cadastrar seu imóvel.\n\nVocê é proprietário ou corretor?";
+const GENERIC_ENTRY_MESSAGE = "Cadastro de imóvel";
+const ROLE_QUESTION = "Olá! Vamos cadastrar seu imóvel?\n\nVocê é proprietário ou corretor?";
 const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário do imóvel ou corretor, pois teremos algumas informações que somente eles poderão confirmar.";
 
 const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
