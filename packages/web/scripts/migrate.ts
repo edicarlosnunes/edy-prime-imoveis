@@ -494,6 +494,16 @@ const statements = [
     created_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS crm_document_events_document_idx ON crm_document_events (document_id)`,
+
+  /* ------------------------------------- Código Universal EPI-1000/09-26 */
+  /* Contador do sequencial ÚNICO do EPI. Linha única id=1, semente next=999,
+     então o primeiro código emitido é EPI-1000/MM-AA. A sequência NUNCA
+     reinicia e nenhum número é reutilizado — por isso `INSERT OR IGNORE` na
+     semente: rodar a migração de novo não pode voltar o contador. */
+  `CREATE TABLE IF NOT EXISTS crm_epi_sequence (
+    id INTEGER PRIMARY KEY NOT NULL,
+    next INTEGER NOT NULL DEFAULT 999
+  )`,
 ];
 
 /** Colunas adicionadas à tabela media (biblioteca de mídia do editor do site). */
@@ -536,6 +546,15 @@ const propertyColumns: Record<string, string> = {
   pause_reason: "TEXT",
   /* V4 — cidade fora da área prioritária (só destaque visual). */
   outside_priority_area: "INTEGER NOT NULL DEFAULT 0",
+  /* EPI — Código Universal EPI-1000/09-26. Nullable: os imóveis que já
+     existem ficam SEM EPI (legado), sem backfill. O `code` e o `serial`
+     antigos NÃO são tocados. */
+  epi_code: "TEXT",
+  /* ARQUIVO MORTO — "Excluir" arquiva, não apaga. archived_at preenchido =
+     fora das telas normais, nada é removido do banco. */
+  archived_at: "INTEGER",
+  archived_by: "TEXT",
+  archive_reason: "TEXT",
 };
 
 /**
@@ -599,6 +618,15 @@ const propertyCaptureColumns: Record<string, string> = {
   outside_priority_area: "INTEGER NOT NULL DEFAULT 0",
   duplicate_of_capture_id: "INTEGER",
   duplicate_note: "TEXT",
+  /* EPI — mesmo código universal do imóvel: a captação nasce com o EPI e o
+     leva consigo ao ser promovida a imóvel. Nullable pelo mesmo motivo: as
+     captações que já existem ficam SEM EPI (legado). */
+  epi_code: "TEXT",
+  /* ARQUIVO MORTO — soft delete da captação. O funil `stage` não é usado
+     para isso: uma ficha PERDIDA continua no Radar; arquivada, não. */
+  archived_at: "INTEGER",
+  archived_by: "TEXT",
+  archive_reason: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */
@@ -682,6 +710,15 @@ const lateIndexes = [
   /* V4 — fila da pausa de 12 meses */
   "CREATE INDEX IF NOT EXISTS properties_paused_idx ON properties (paused_at)",
   "CREATE INDEX IF NOT EXISTS properties_commercial_status_idx ON properties (commercial_status)",
+  /* EPI — backstop do código universal: o banco recusa duplicata mesmo se
+     alguém gravar epi_code por fora de lib/epi-counter.ts. UNIQUE aceita
+     vários NULL no SQLite, então o legado (epi_code NULL) não conflita. */
+  "CREATE UNIQUE INDEX IF NOT EXISTS properties_epi_idx ON properties (epi_code)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS property_captures_epi_idx ON property_captures (epi_code)",
+  /* ARQUIVO MORTO — as telas normais filtram archived_at IS NULL em toda
+     listagem, então o índice serve aos dois lados do filtro. */
+  "CREATE INDEX IF NOT EXISTS properties_archived_idx ON properties (archived_at)",
+  "CREATE INDEX IF NOT EXISTS property_captures_archived_idx ON property_captures (archived_at)",
 ];
 
 /**
@@ -690,7 +727,13 @@ const lateIndexes = [
  * `INSERT OR IGNORE` para que rodar a migração de novo não zere o contador de
  * serial — zerar reemitiria seriais já impressos em documentos assinados.
  */
-const seeds = ["INSERT OR IGNORE INTO crm_serials (id, next) VALUES (1, 0)"];
+const seeds = [
+  "INSERT OR IGNORE INTO crm_serials (id, next) VALUES (1, 0)",
+  /* EPI — next=999 para a primeira reserva devolver 1000. `OR IGNORE` é o que
+     garante que rodar a migração de novo NÃO reinicia a sequência: reiniciar
+     reemitiria códigos já impressos em documentos assinados. */
+  "INSERT OR IGNORE INTO crm_epi_sequence (id, next) VALUES (1, 999)",
+];
 
 const nameOf = (pattern: RegExp, sources: string[]) =>
   sources.map((s) => pattern.exec(s)?.[1]).filter((n): n is string => Boolean(n));
@@ -743,6 +786,13 @@ if (process.argv.includes("--check")) {
     const seeded = await db.execute("SELECT count(*) as n FROM crm_serials WHERE id = 1");
     if (Number(seeded.rows[0]?.n ?? 0) === 0) {
       drift.push("SEMENTE AUSENTE: crm_serials id=1");
+    }
+  }
+
+  if (tables.has("crm_epi_sequence")) {
+    const seeded = await db.execute("SELECT count(*) as n FROM crm_epi_sequence WHERE id = 1");
+    if (Number(seeded.rows[0]?.n ?? 0) === 0) {
+      drift.push("SEMENTE AUSENTE: crm_epi_sequence id=1");
     }
   }
 

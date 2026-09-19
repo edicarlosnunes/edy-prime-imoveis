@@ -20,6 +20,8 @@ export interface ConversionCapture {
   estimatedPrice: number | null | undefined;
   convertedPropertyId: number | null | undefined;
   serial: string | null | undefined;
+  /** Código universal EPI já emitido na ficha, quando existe. */
+  epiCode?: string | null;
   propertyType?: string | null;
 }
 
@@ -35,6 +37,16 @@ export type ConversionPlan =
       serial: string | null;
       /** `true` quando o serial precisa ser gravado de volta na captação */
       writeBackSerial: boolean;
+      /**
+       * EPI a HERDAR da ficha; `null` = a ficha é legada (sem EPI) e o imóvel
+       * reserva um código novo, que volta para a captação.
+       *
+       * Captação promovida a imóvel NUNCA gera um segundo código: ou herda o
+       * da ficha, ou o código emitido agora passa a ser o das duas.
+       */
+      epiCode: string | null;
+      /** `true` quando o EPI precisa ser gravado de volta na captação */
+      writeBackEpi: boolean;
       /** valor gravado em `properties.published` — sempre 0 nesta rota */
       published: 0;
       captureId: number;
@@ -55,10 +67,16 @@ export function planPropertyFromCapture(capture: ConversionCapture): ConversionP
      caso ele volta para a captação, para ficha e imóvel mostrarem o MESMO
      número. Nada é renumerado. */
   const inherited = String(capture.serial ?? "").trim();
+  /* Mesma lógica para o EPI, que é o código OFICIAL: ficha com EPI passa o
+     código ao imóvel; ficha legada sem EPI recebe de volta o que for emitido
+     na criação do imóvel. Em nenhum dos dois casos existem dois códigos. */
+  const inheritedEpi = String(capture.epiCode ?? "").trim();
   return {
     ok: true,
     serial: inherited || null,
     writeBackSerial: inherited.length === 0,
+    epiCode: inheritedEpi || null,
+    writeBackEpi: inheritedEpi.length === 0,
     published: 0,
     captureId: capture.id,
     propertyType: capture.propertyType ?? null,

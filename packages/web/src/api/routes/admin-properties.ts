@@ -1,7 +1,10 @@
 import { z } from "zod";
-import { and, asc, desc, eq, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { adminBase, type AdminDb } from "../lib/admin-base";
+import { allocateEpiCode } from "../lib/epi-counter";
+import { epiSearchTerm } from "../lib/epi-code";
+import { archiveEffect, isArchived, restoreEffect } from "../lib/archive-rules";
 import { propertySlug } from "../lib/slug";
 import * as schema from "../database/schema";
 import { COMMERCIAL_STATUSES, effectiveCommercialStatus, showcaseDecision } from "../lib/commercial-status";
@@ -31,7 +34,7 @@ const imageInput = z.object({
 });
 
 const propertyInput = z.object({
-  code: z.string().min(2).max(40),
+  code: z.string().max(40).default(""),
   title: z.string().min(3).max(200),
   purpose: purposeEnum.default("venda"),
   type: typeEnum.default("apartamento"),
@@ -137,22 +140,41 @@ export const adminProperties = {
           search: z.string().max(120).optional(),
           status: statusEnum.optional(),
           published: z.boolean().optional(),
+          /**
+           * ARQUIVO MORTO. Ausente/false = listagem operacional, que NÃO
+           * mostra arquivados. `true` = só o Arquivo Morto. Não existe modo
+           * "tudo junto" de propósito: arquivado misturado na operação é
+           * exatamente o que o arquivamento veio resolver.
+           */
+          archived: z.boolean().optional(),
         })
         .optional(),
     )
     .handler(async ({ input, context }) => {
       const filters = [];
+      filters.push(
+        input?.archived
+          ? isNotNull(schema.properties.archivedAt)
+          : isNull(schema.properties.archivedAt),
+      );
       if (input?.status) filters.push(eq(schema.properties.status, input.status));
       if (input?.published !== undefined) {
         filters.push(eq(schema.properties.published, input.published ? 1 : 0));
       }
       if (input?.search) {
-        const term = `%${input.search.trim()}%`;
+        const raw = input.search.trim();
+        const term = `%${raw}%`;
+        /* Busca por CÓDIGO UNIVERSAL: `EPI-1042/09-26`, `EPI-104` ou só
+           `1042`. Quando o termo não parece EPI, `epiSearchTerm` devolve null
+           e a busca por título/código legado/bairro segue idêntica. */
+        const epiTerm = epiSearchTerm(raw);
         filters.push(
           or(
             like(schema.properties.title, term),
             like(schema.properties.code, term),
             like(schema.properties.district, term),
+            like(schema.properties.epiCode, term),
+            ...(epiTerm ? [like(schema.properties.epiCode, `${epiTerm}%`)] : []),
           )!,
         );
       }
@@ -209,12 +231,6 @@ export const adminProperties = {
     .input(propertyInput.extend({ captureId: z.number().int().positive().nullable().optional() }))
     .handler(async ({ input, context }) => {
     const row = toRow(input);
-    const [existing] = await context.db
-      .select({ id: schema.properties.id })
-      .from(schema.properties)
-      .where(eq(schema.properties.code, row.code))
-      .limit(1);
-    if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
 
     /* Cadastro aberto pela captação (`/admin/imoveis/novo?capture_id=`).
        As mesmas regras do Radar valem aqui: sem documentação fechada e sem
@@ -222,6 +238,8 @@ export const adminProperties = {
        órfão no banco. */
     let capture: typeof schema.propertyCaptures.$inferSelect | null = null;
     let inherited: string | null = null;
+    let inheritedEpi: string | null = null;
+    let writeBackEpi = true;
     if (input.captureId) {
       const [found] = await context.db
         .select()
@@ -235,6 +253,8 @@ export const adminProperties = {
       if (!plan.ok) throw new ORPCError(plan.code, { message: plan.message });
       capture = found;
       inherited = plan.serial;
+      inheritedEpi = plan.epiCode;
+      writeBackEpi = plan.writeBackEpi;
       row.published = plan.published;
     }
 
@@ -242,13 +262,42 @@ export const adminProperties = {
        O sequencial é global e nunca reiniciado. */
     const serial = inherited ?? (await allocateSerial(context.db, input.type));
 
+    /* CÓDIGO UNIVERSAL EPI.
+       Promoção de captação: HERDA o código da ficha — um imóvel promovido
+       nunca ganha um segundo EPI. Ficha legada sem EPI e cadastro direto (sem
+       captação) reservam o código agora, na sequência universal atômica. */
+    const epiCode = inheritedEpi ?? (await allocateEpiCode(context.db, new Date()));
+
+    /**
+     * O código legado/técnico não é mais digitado pelo usuário.
+     * Para cadastro novo ele é preenchido automaticamente com o serial interno;
+     * o Código Universal visível para a operação continua sendo o EPI.
+     */
+    if (!row.code) {
+      row.code = serial;
+      row.slug = propertySlug({
+        code: row.code,
+        title: row.title,
+        type: row.type,
+        district: row.district,
+        city: row.city,
+      });
+    }
+
+    const [existing] = await context.db
+      .select({ id: schema.properties.id })
+      .from(schema.properties)
+      .where(eq(schema.properties.code, row.code))
+      .limit(1);
+    if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código técnico" });
+
     /* Data de entrada na carteira: todo imóvel novo nasce com ela preenchida,
        no momento da criação, para a revalidação de 4 meses e a regra dos 12
        meses passarem a contar desde já. Ajuste manual posterior (seção de
        revalidação da ficha) continua mandando: aqui só se define na criação. */
     const [created] = await context.db
       .insert(schema.properties)
-      .values({ ...row, serial, portfolioEntryAt: new Date() })
+      .values({ ...row, serial, epiCode, portfolioEntryAt: new Date() })
       .returning();
     if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
     await syncImages(context.db, created.id, input.images);
@@ -261,6 +310,10 @@ export const adminProperties = {
         .update(schema.propertyCaptures)
         .set({
           serial,
+          /* Ficha legada sem EPI recebe de volta o código emitido agora, para
+             ficha e imóvel mostrarem o MESMO EPI. Ficha que já tinha código
+             não é tocada: o EPI nunca é reescrito. */
+          ...(writeBackEpi ? { epiCode } : {}),
           convertedPropertyId: created.id,
           convertedAt: now,
           stage: "captado",
@@ -288,6 +341,32 @@ export const adminProperties = {
     .handler(async ({ input, context }) => {
       const { id, ...rest } = input;
       const row = toRow(rest as z.infer<typeof propertyInput>);
+      /* ARQUIVO MORTO — ficha arquivada não se edita e, principalmente, não
+         volta ao ar por tabela: `published` tem default `true` no input, então
+         salvar um imóvel arquivado o republicaria no site público ainda
+         arquivado. Restaurar primeiro é decisão explícita de quem restaura. */
+      const [existing] = await context.db
+        .select()
+        .from(schema.properties)
+        .where(eq(schema.properties.id, id))
+        .limit(1);
+      if (!existing) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      /* Código antigo é somente leitura. Edição nunca apaga nem troca o código. */
+      if (!row.code) {
+        row.code = existing.code;
+        row.slug = propertySlug({
+          code: row.code,
+          title: row.title,
+          type: row.type,
+          district: row.district,
+          city: row.city,
+        });
+      }
+      if (isArchived(existing)) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imóvel está no Arquivo Morto. Restaure antes de editar.",
+        });
+      }
       const [clash] = await context.db
         .select({ id: schema.properties.id })
         .from(schema.properties)
@@ -301,14 +380,97 @@ export const adminProperties = {
       return { id };
     }),
 
+  /**
+   * ARQUIVO MORTO — o antigo "Excluir".
+   *
+   * Continua chamado `remove` porque é o que a tela chama, mas NÃO apaga mais
+   * nada: arquiva. Nenhuma linha de `properties` nem de `property_images` é
+   * removida do banco. O imóvel sai das listagens operacionais, sai do ar
+   * (`published = 0`, então o site público deixa de mostrá-lo) e mantém EPI,
+   * proprietário, fotos, documentos, origem, datas e histórico.
+   *
+   * Restauração: `restore`, com o MESMO EPI.
+   */
   remove: adminBase
-    .input(z.object({ id: z.number().int() }))
+    .input(z.object({
+      id: z.number().int(),
+      reason: z.string().max(400).nullable().optional(),
+    }))
     .handler(async ({ input, context }) => {
+      const [row] = await context.db
+        .select()
+        .from(schema.properties)
+        .where(eq(schema.properties.id, input.id))
+        .limit(1);
+      if (!row) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      /* Idempotente: rearquivar sobrescreveria a data do arquivamento
+         original, que é informação de histórico. */
+      if (isArchived(row)) {
+        return { ok: true, archived: true, changed: false, epiCode: row.epiCode ?? null };
+      }
+
+      const effect = archiveEffect({
+        now: new Date(),
+        userName: context.user.name,
+        reason: input.reason,
+        epiCode: row.epiCode,
+      });
       await context.db
-        .delete(schema.propertyImages)
-        .where(eq(schema.propertyImages.propertyId, input.id));
-      await context.db.delete(schema.properties).where(eq(schema.properties.id, input.id));
-      return { ok: true };
+        .update(schema.properties)
+        .set(effect.patch)
+        .where(eq(schema.properties.id, input.id));
+      await context.db.insert(schema.auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "property_archived",
+        entity: "property",
+        entityId: String(input.id),
+        detail: effect.historyNote,
+      });
+      return { ok: true, archived: true, changed: true, epiCode: row.epiCode ?? null };
+    }),
+
+  /**
+   * ARQUIVO MORTO — restaurar imóvel.
+   *
+   * Volta ao CRM com exatamente o MESMO EPI e todo o histórico. Volta FORA DO
+   * AR de propósito: republicar é decisão editorial de quem restaurou.
+   */
+  restore: adminBase
+    .input(z.object({
+      id: z.number().int(),
+      note: z.string().max(400).nullable().optional(),
+    }))
+    .handler(async ({ input, context }) => {
+      const [row] = await context.db
+        .select()
+        .from(schema.properties)
+        .where(eq(schema.properties.id, input.id))
+        .limit(1);
+      if (!row) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      if (!isArchived(row)) {
+        return { ok: true, changed: false, epiCode: row.epiCode ?? null };
+      }
+
+      const effect = restoreEffect({
+        now: new Date(),
+        userName: context.user.name,
+        epiCode: row.epiCode,
+        note: input.note,
+      });
+      await context.db
+        .update(schema.properties)
+        .set(effect.patch)
+        .where(eq(schema.properties.id, input.id));
+      await context.db.insert(schema.auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "property_restored",
+        entity: "property",
+        entityId: String(input.id),
+        detail: effect.historyNote,
+      });
+      return { ok: true, changed: true, epiCode: row.epiCode ?? null };
     }),
 
   /** Publicar/despublicar, destacar e mudar status sem abrir o formulário. */
@@ -322,6 +484,18 @@ export const adminProperties = {
       }),
     )
     .handler(async ({ input, context }) => {
+      const [existing] = await context.db
+        .select({ id: schema.properties.id, archivedAt: schema.properties.archivedAt })
+        .from(schema.properties)
+        .where(eq(schema.properties.id, input.id))
+        .limit(1);
+      if (!existing) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+      if (isArchived(existing)) {
+        throw new ORPCError("CONFLICT", {
+          message: "Imóvel está no Arquivo Morto. Restaure antes de alterar publicação, destaque ou status.",
+        });
+      }
+
       const patch: Record<string, unknown> = { updatedAt: new Date() };
       if (input.published !== undefined) patch.published = input.published ? 1 : 0;
       if (input.featured !== undefined) patch.featured = input.featured ? 1 : 0;
@@ -439,6 +613,7 @@ export const adminProperties = {
         district: schema.properties.district,
       })
       .from(schema.properties)
+      .where(isNull(schema.properties.archivedAt))
       .orderBy(asc(schema.properties.code))
       .limit(500);
   }),

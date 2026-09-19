@@ -28,6 +28,9 @@ type Snapshot = {
   title: string;
   serial: string;
   baseSerial: string;
+  /* Documento antigo, emitido antes do EPI, não tem o campo no snapshot:
+     opcional de propósito, para o papel histórico continuar abrindo. */
+  epiCode?: string | null;
   captureId: number;
   issuedAt: string;
   owner: { name?: string | null; phone?: string | null; email?: string | null; document?: string | null; rg?: string | null };
@@ -138,7 +141,12 @@ function DocumentBody() {
             </p>
           </div>
           <div className="text-right">
-            <p className="font-mono text-[15px] font-bold text-neutral-900">{snapshot.serial}</p>
+            {/* CÓDIGO UNIVERSAL EPI: código oficial do imóvel, congelado na
+                emissão. Ficha legada (sem EPI) imprime só o serial. */}
+            {snapshot.epiCode ? (
+              <p className="font-mono text-[15px] font-bold text-neutral-900">{snapshot.epiCode}</p>
+            ) : null}
+            <p className={`font-mono font-bold text-neutral-900 ${snapshot.epiCode ? "text-[12px]" : "text-[15px]"}`}>{snapshot.serial}</p>
             <p className="text-[11px] text-neutral-700">Emitida em {dateTimeLabel(snapshot.issuedAt)}</p>
             <p className="text-[11px] text-neutral-700">Captação #{snapshot.captureId}</p>
           </div>
@@ -247,7 +255,7 @@ function DocumentBody() {
 
       <footer className="mt-5 border-t border-neutral-300 pt-2 text-[10px] leading-tight text-neutral-600">
         <p>
-          Documento {snapshot.serial} · ficha interna: {qr}
+          Documento {snapshot.serial}{snapshot.epiCode ? ` · imóvel ${snapshot.epiCode}` : ""} · ficha interna: {qr}
         </p>
         <p>
           O endereço acima abre a ficha da captação no CRM e exige login. Nenhum dado do proprietário

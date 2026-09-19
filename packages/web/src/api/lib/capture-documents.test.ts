@@ -201,6 +201,29 @@ describe("snapshot imprimível", () => {
     expect(snap.issuedAt).toBe(now.toISOString());
   });
 
+  /* CÓDIGO UNIVERSAL EPI no papel emitido. O documento só COPIA o código da
+     ficha: nunca gera, nunca renumera, e ficha legada imprime sem EPI. */
+  test("EPI da ficha vai congelado no documento", () => {
+    const snap = buildSnapshot("ficha_tecnica", { ...fullSource, epiCode: "EPI-1000/09-26" }, { now });
+    expect(snap.epiCode).toBe("EPI-1000/09-26");
+    /* o serial legado continua no papel, os dois convivem */
+    expect(snap.serial).toBe("FC-AP-2026-000124");
+    expect(snap.baseSerial).toBe("AP-2026-000124");
+  });
+
+  test("ficha legada sem EPI imprime sem inventar código", () => {
+    const snap = buildSnapshot("ficha_tecnica", fullSource, { now });
+    expect(snap.epiCode).toBeNull();
+    expect(snap.serial).toBe("FC-AP-2026-000124");
+  });
+
+  test("EPI não muda entre a ficha técnica e a autorização da mesma ficha", () => {
+    const source = { ...fullSource, epiCode: "EPI-1042/09-26" };
+    expect(buildSnapshot("ficha_tecnica", source, { now }).epiCode).toBe(
+      buildSnapshot("autorizacao", source, { now }).epiCode,
+    );
+  });
+
   test("o complemento entra no endereço impresso", () => {
     const snap = buildSnapshot("ficha_tecnica", fullSource, { now });
     expect(snap.addressLine.toLowerCase()).toContain("101");

@@ -55,7 +55,6 @@ function hasAmount(value: string) {
 
 export function propertyProgress(input: PropertyProgressInput): PropertyProgress {
   const items: ProgressItem[] = [
-    { key: "code", label: "Código", section: "basico", weight: 10, done: filled(input.code) },
     { key: "title", label: "Título", section: "basico", weight: 10, done: filled(input.title) },
     {
       key: "highlight",
