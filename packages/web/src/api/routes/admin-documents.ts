@@ -219,6 +219,9 @@ export const adminDocuments = {
         {
           captureId: capture.id,
           serial: baseSerial,
+          /* EPI da ficha, congelado no papel. Leitura pura: emitir documento
+             NUNCA gera nem altera EPI — ficha legada imprime sem ele. */
+          epiCode: capture.epiCode ?? null,
           owner: {
             name: owner?.name ?? null,
             phone: owner?.phone ?? null,

@@ -1,54 +1,41 @@
-# CRM de Captação — ajuste estrutural (etapa atual)
+# EPI — Código Universal + Arquivo Morto básico
 
-Escopo: SOMENTE CRM de captação. Sem tocar no Agente IA, WhatsApp Cloud API,
-webhook, tokens, layout do site público nem serial. Alterações ADITIVAS.
+Branch: `feature/codigo-universal-epi` (criada de `origin/main` 5f1a2fd, já pushada).
+Regras: não publicar, não fazer merge. Checkpoints com commit + push.
+Não alterar: site público, capa, layout, WhatsApp, IA, LINK_CAPTACAO, Radar, funis, regras comerciais.
 
 ## Decisões fechadas com o usuário
-- Área prioritária: Praia Grande, Mongaguá, Itanhaém, Peruíbe, São Vicente,
-  Santos, Guarujá, Cubatão, Bertioga. Fora dela: cadastra normal + faixa vermelha.
-- 12 meses sem venda: AUTOMÁTICO — sai da vitrine sozinho e gera ação de revisão.
-- Status de cadastro e status comercial são EIXOS NOVOS, paralelos ao funil
-  atual do Radar (novo_contato → documentacao → validacao → captado). Funil intacto.
-- Entrega: preview local primeiro; deploy só com autorização.
+- Formato: `EPI-1000/09-26` — sequência universal global desde 1000, nunca reinicia; `MM-AA` = mês/ano
+  da criação ORIGINAL da ficha, timezone America/Sao_Paulo. Código nunca muda, nunca é reutilizado.
+- Serial legado (`AP-2026-000001`) e `code` continuam existindo, só interno/histórico. EPI é o código exibido.
+- Sem backfill: as fichas/imóveis que já existem ficam sem EPI (legado). Sequência começa na 1ª ficha nova.
+- Dedup: mesma unidade = retoma ficha e mantém EPI; mesmo proprietário/outro imóvel = novo EPI;
+  mesmo prédio/unidade diferente = novo EPI; captação promovida a imóvel = mesmo EPI.
+- Arquivo Morto = soft delete. Excluir nunca apaga. Preserva tudo + EPI. Restauração básica.
+  Dedup consulta arquivados: mesmo imóvel arquivado = restaurar/reabrir, sem novo EPI.
+- EPI aparece: lista admin, ficha, busca do CRM, Arquivo Morto, documentos do sistema.
+  NÃO aparece no site público nem em portais. Somente leitura.
 
-## Reuso (já existe — não recriar)
-- Telefone = identidade do proprietário: `lib/owner-identity.ts`
-- Unidade = CEP + número + complementos: `lib/capture-address.ts#unitKey`
-- Vários imóveis por dono + aviso de duplicidade: `lib/capture-intake.ts`
-- Radar de captação: `property_captures` + `routes/admin-captures.ts`
-- Revalidação 4 meses: `web/lib/property-revalidation.ts` + `property_revalidations`
-- Histórico: `audit_log` (entity=capture) + `property_revalidations` + notes
+## Etapas
+- [x] 1. Branch + push
+- [x] 2. Schema: `crm_epi_sequence`, `properties.epi_code/archived_*`, `property_captures.epi_code/archived_*`
+- [x] 3. Lib pura `epi-code.ts` + testes (formato, parse, período SP, imutabilidade)
+- [x] 4. Lib `epi-counter.ts` + testes de concorrência (UPDATE ... RETURNING atômico)
+- [x] 5. Lib pura `archive-rules.ts` + testes (arquivar/restaurar preservando EPI)
+- [x] 6. API: EPI na criação de captação (admin-captures.create, owner-intake, link-captacao, IA)
+      e de imóvel (admin-properties.create herda o EPI da captação promovida)
+- [x] 7. API: arquivar/restaurar imóvel + captação; listagens operacionais excluem arquivados;
+      `update` de imóvel arquivado é recusado (não volta ao ar por tabela)
+- [x] 8. API: busca do CRM por EPI; dedup consulta arquivados e reabre sem novo EPI
+- [x] 9. UI: lista de imóveis (badge EPI, busca, Arquivo Morto, restaurar), ficha (EPI read-only),
+      Radar (badge EPI, Arquivo Morto, arquivar/restaurar), documentos emitidos (EPI congelado)
+- [x] 10. DDL aplicada no banco Turso (DDL direta — `db:push` do drizzle-kit segue quebrado por
+      drift pré-existente em `admin_sessions_token_hash_unique`, não causado por esta tarefa);
+      `bun test` 880 pass / 0 fail; `bun run typecheck` limpo; `bun run build` ok
+- [x] 11. Commits + pushes na branch (sem merge, sem publish)
 
-## A implementar
-- [ ] lib/street-normalize.ts — Rua/R./Av./Travessa, acentos, abreviações, similaridade
-- [ ] lib/capture-address.ts — `addrKey` (identidade sem CEP) SEM mexer em unitKey
-- [ ] lib/capture-registration.ts — status do cadastro + completude + retomada
-- [ ] lib/priority-area.ts — cidades prioritárias + flag FORA_DA_AREA_PRIORITARIA
-- [ ] lib/commercial-status.ts — status comercial + visibilidade na vitrine
-- [ ] web/lib/property-revalidation.ts — regra dos 12 meses (pausa automática)
-- [ ] schema.ts — colunas aditivas + tabela `streets`
-- [ ] scripts/migrate.ts — idempotente, só ADD COLUMN / CREATE IF NOT EXISTS
-- [ ] wiring: capture-intake, owner-intake, admin-captures, properties (vitrine)
-- [ ] routes/admin-streets.ts — resolver/sugerir logradouro
-- [ ] UI: faixa vermelha + badges + retomada (captacao.tsx, property-form.tsx)
-- [ ] testes bun test (cenários da lista do usuário)
-- [ ] tsc --noEmit + bun test + preview local
-
-## Invariantes
-- Nunca criar 2º contato para o mesmo telefone
-- Nunca criar 2º imóvel se o anterior do mesmo dono está incompleto
-- Mesmo prédio + unidade diferente = imóvel novo permitido
-- Outro telefone no mesmo imóvel = POSSIVEL_DUPLICIDADE, nunca exclusão
-- Fora da área prioritária = alerta, nunca bloqueio
-- 12 meses = pausa + histórico preservado, nunca exclusão
-
-## Fase — Agente IA de captação (conversa)
-- [x] `api/agent/owner-capture.ts` — roteiro, estado lido da ficha, tools `salvarCadastroImovel`/`pedirAtendimentoHumano`
-- [x] `api/agent/broker.ts` — prompt + tools de captação só quando há telefone do canal
-- [x] `api/lib/inbox.ts` — passa `conversation.contactPhone` ao agente (telefone nunca perguntado)
-- [x] correção: tipo/valor/nome sem endereço no envio não passam mais pela entrada única
-      (chaves degeneradas abriam uma 2ª ficha do mesmo imóvel) — gravam direto na ficha
-- [x] `owner-capture.e2e.test.ts` — 3 cenários (cadastro novo, abandono+retomada, humano): 7/7
-- [x] tsc --noEmit limpo + 800 testes do pacote passando + preview 4200 de pé
-- [ ] gaps a confirmar com o dono: agente único condicional por telefone, qualificação
-      no bloco `[captacao-ia]` das observações, `source` caindo em `manual`
+## Fora do escopo desta entrega (não feito, de propósito)
+- Backfill de EPI nas fichas legadas (decisão do usuário: ficam sem EPI).
+- EPI no site público e em portais.
+- Merge para `main`, deploy/publish.
+- Correção do drift do drizzle-kit (`admin_sessions_token_hash_unique`).

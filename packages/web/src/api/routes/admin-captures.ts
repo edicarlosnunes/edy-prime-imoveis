@@ -1,8 +1,11 @@
 import { z } from "zod";
-import { and, asc, desc, eq, isNull, like, or } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, like, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
+import { allocateEpiCode } from "../lib/epi-counter";
+import { epiSearchTerm } from "../lib/epi-code";
+import { archiveEffect, isArchived, restoreEffect } from "../lib/archive-rules";
 import {
   type CaptureStage,
   DOC_STATUSES,
@@ -121,6 +124,14 @@ const createInput = z.object({
   number: z.string().max(30).nullable().optional(),
   state: z.string().max(2).nullable().optional(),
   complements: complementsInput,
+}).superRefine((value, ctx) => {
+  if (!value.street?.trim() || !value.number?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["street"],
+      message: "Informe o endereço do imóvel (logradouro e número) para gerar o Código Universal.",
+    });
+  }
 });
 
 export const adminCaptures = {
@@ -131,10 +142,26 @@ export const adminCaptures = {
         city: z.string().optional(),
         stage: z.enum(STAGES).optional(),
         source: z.string().optional(),
+        /**
+         * ARQUIVO MORTO. Ausente/false = Radar operacional, que NÃO mostra
+         * fichas arquivadas. `true` = só o Arquivo Morto. Não existe modo
+         * "tudo junto": arquivado misturado na operação é justamente o que o
+         * arquivamento veio resolver.
+         */
+        archived: z.boolean().optional(),
       }).optional(),
     )
     .handler(async ({ input, context }) => {
-      const captures = await context.db.select().from(schema.propertyCaptures).orderBy(desc(schema.propertyCaptures.updatedAt)).limit(500);
+      const captures = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(
+          input?.archived
+            ? isNotNull(schema.propertyCaptures.archivedAt)
+            : isNull(schema.propertyCaptures.archivedAt),
+        )
+        .orderBy(desc(schema.propertyCaptures.updatedAt))
+        .limit(500);
       const owners = await context.db.select().from(schema.owners).limit(1000);
       const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
       const q = input?.search?.trim().toLowerCase();
@@ -147,11 +174,18 @@ export const adminCaptures = {
           if (input?.stage && normalizeStage(row.stage) !== normalizeStage(input.stage)) return false;
           if (input?.source && row.source !== input.source) return false;
           if (q) {
-            const hay = [row.owner?.name, row.owner?.phone, row.city, row.district, row.address, row.propertyType]
+            /* Busca pelo CÓDIGO UNIVERSAL junto com o resto: `EPI-1042/09-26`,
+               `epi-1042` ou só `1042` encontram a ficha. `epiSearchTerm`
+               normaliza o que o corretor digitou; termo que não parece EPI
+               volta null e a busca segue exatamente como era. */
+            const epi = String(row.epiCode ?? "").toLowerCase();
+            const epiQuery = epiSearchTerm(q)?.toLowerCase() ?? null;
+            const hay = [row.owner?.name, row.owner?.phone, row.city, row.district, row.address, row.propertyType, row.epiCode]
               .filter(Boolean)
               .join(" ")
               .toLowerCase();
-            if (!hay.includes(q)) return false;
+            const epiHit = Boolean(epi) && (epi.includes(q) || (epiQuery ? epi.startsWith(epiQuery) : false));
+            if (!epiHit && !hay.includes(q)) return false;
           }
           return true;
         });
@@ -172,17 +206,73 @@ export const adminCaptures = {
       .where(and(eq(schema.auditLog.entity, "capture"), eq(schema.auditLog.entityId, String(input.id))))
       .orderBy(desc(schema.auditLog.createdAt))
       .limit(100);
+
+    /**
+     * AUTO-REPARO SEGURO DO EPI.
+     *
+     * Uma ficha realmente nova pode ter passado por um deployment intermediário
+     * que reservou o EPI (e o gravou no audit capture_created) mas terminou
+     * com epi_code nulo na linha. Não geramos número novo e não tocamos em
+     * legado antigo: só recuperamos o MESMO código documentado no histórico.
+     */
+    let captureView = capture;
+    if (!captureView.epiCode) {
+      const createdAudit = history.find(
+        (row) => row.action === "capture_created" && /\bEPI-\d+\/\d{2}-\d{2}\b/i.test(String(row.detail ?? "")),
+      );
+      const recovered = String(createdAudit?.detail ?? "").match(/\b(EPI-\d+\/\d{2}-\d{2})\b/i)?.[1]?.toUpperCase() ?? null;
+
+      if (recovered) {
+        const [sameCaptureCode] = await context.db
+          .select({ id: schema.propertyCaptures.id })
+          .from(schema.propertyCaptures)
+          .where(eq(schema.propertyCaptures.epiCode, recovered))
+          .limit(1);
+        const [samePropertyCode] = await context.db
+          .select({ id: schema.properties.id })
+          .from(schema.properties)
+          .where(eq(schema.properties.epiCode, recovered))
+          .limit(1);
+
+        const captureCollision = sameCaptureCode && sameCaptureCode.id !== captureView.id;
+        const propertyCollision =
+          samePropertyCode &&
+          samePropertyCode.id !== (captureView.convertedPropertyId ?? -1);
+
+        if (!captureCollision && !propertyCollision) {
+          await context.db
+            .update(schema.propertyCaptures)
+            .set({ epiCode: recovered, updatedAt: new Date() })
+            .where(eq(schema.propertyCaptures.id, captureView.id));
+          await audit(
+            context,
+            "capture_epi_recovered",
+            captureView.id,
+            `EPI recuperado do histórico da própria criação: ${recovered}`,
+          );
+          captureView = { ...captureView, epiCode: recovered };
+        }
+      }
+    }
+
     /* O Radar mostra o código OFICIAL que nasceu no Cadastro Premium: serial
        novo (TIPO-ANO-SEQUENCIAL) ou o `code` legado de imóvel antigo. Leitura
        pura — nada aqui gera, altera ou renumera serial. */
-    const [convertedProperty] = capture.convertedPropertyId
+    const [convertedProperty] = captureView.convertedPropertyId
       ? await context.db
-          .select({ id: schema.properties.id, serial: schema.properties.serial, code: schema.properties.code })
+          .select({
+            id: schema.properties.id,
+            serial: schema.properties.serial,
+            code: schema.properties.code,
+            /* EPI do imóvel promovido: é o MESMO da ficha, exibido para a
+               equipe conferir que nenhum segundo código foi criado. */
+            epiCode: schema.properties.epiCode,
+          })
           .from(schema.properties)
-          .where(eq(schema.properties.id, capture.convertedPropertyId))
+          .where(eq(schema.properties.id, captureView.convertedPropertyId))
           .limit(1)
       : [];
-    return { ...capture, owner: owner ?? null, convertedProperty: convertedProperty ?? null, tasks, history };
+    return { ...captureView, owner: owner ?? null, convertedProperty: convertedProperty ?? null, tasks, history };
   }),
 
   create: adminBase.input(createInput).handler(async ({ input, context }) => {
@@ -240,6 +330,11 @@ export const adminCaptures = {
         number: schema.propertyCaptures.number,
         cep: schema.propertyCaptures.cep,
         complements: schema.propertyCaptures.complements,
+        /* ARQUIVO MORTO entra na comparação: a ficha arquivada é candidata
+           como qualquer outra. Sem isso, arquivar um imóvel faria ele voltar
+           a ser cadastrado do zero e queimar um EPI novo. */
+        archivedAt: schema.propertyCaptures.archivedAt,
+        epiCode: schema.propertyCaptures.epiCode,
       })
       .from(schema.propertyCaptures)
       .limit(1000);
@@ -249,6 +344,8 @@ export const adminCaptures = {
         ownerId: row.ownerId,
         unitKey: row.unitKey,
         stage: row.stage,
+        archivedAt: row.archivedAt,
+        epiCode: row.epiCode,
         addressKey: row.addressKey,
         buildingKey: row.buildingKey,
         address: { city: row.city, street: row.street, number: row.number, cep: row.cep },
@@ -262,6 +359,102 @@ export const adminCaptures = {
         ownerId: owner.id,
       },
     );
+
+    /**
+     * MESMO IMÓVEL JÁ NO ARQUIVO MORTO → REABRE A FICHA ANTIGA.
+     *
+     * Regra do pedido: se o imóvel estiver arquivado, a ficha antiga é
+     * restaurada e NENHUM EPI novo é gerado. O código permanente, o
+     * proprietário, os documentos, a origem, as datas e o histórico voltam
+     * exatamente como estavam.
+     *
+     * Só vale quando é o MESMO proprietário. Endereço arquivado de OUTRO
+     * proprietário continua seguindo a regra comercial que já existia: ficha
+     * nova marcada como POSSÍVEL DUPLICIDADE para revisão humana — nada de
+     * devolver a um corretor a ficha de outro dono.
+     */
+    if (duplicateUnit.duplicate && duplicateUnit.sameOwner && duplicateUnit.archived) {
+      const restore = restoreEffect({
+        now: new Date(),
+        userName: context.user.name,
+        epiCode: duplicateUnit.epiCode,
+        note: "Reabertura automática: mesmo imóvel recebido novamente no CRM",
+      });
+      await context.db
+        .update(schema.propertyCaptures)
+        .set(restore.patch)
+        .where(eq(schema.propertyCaptures.id, duplicateUnit.captureId));
+      await audit(context, "capture_restored", duplicateUnit.captureId, restore.historyNote);
+      const [reopened] = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, duplicateUnit.captureId))
+        .limit(1);
+      return {
+        id: duplicateUnit.captureId,
+        ownerId: owner.id,
+        ownerCreated,
+        duplicateUnit: duplicateUnit.message,
+        registrationStatus: reopened?.registrationStatus ?? null,
+        completeness: reopened?.completeness ?? 0,
+        outsidePriorityArea: (reopened?.outsidePriorityArea ?? 0) === 1,
+        /* O mesmo código de sempre. Nunca um segundo. */
+        epiCode: reopened?.epiCode ?? duplicateUnit.epiCode,
+        reopenedFromArchive: true,
+      };
+    }
+
+    /**
+     * MESMO IMÓVEL + MESMO PROPRIETÁRIO JÁ ATIVO → NÃO QUEIMA OUTRO EPI.
+     *
+     * A deduplicação precisa acontecer ANTES da reserva do código universal.
+     * Se a ficha ainda está em andamento, retomamos a ficha existente. Se já
+     * virou imóvel/captado, bloqueamos o segundo cadastro e orientamos a abrir
+     * a ficha que já existe.
+     */
+    if (duplicateUnit.duplicate && duplicateUnit.sameOwner && !duplicateUnit.archived) {
+      const [existingCapture] = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, duplicateUnit.captureId))
+        .limit(1);
+
+      if (existingCapture) {
+        const alreadyCompleted =
+          normalizeStage(existingCapture.stage) === "captado" ||
+          existingCapture.convertedPropertyId != null;
+
+        if (alreadyCompleted) {
+          throw new ORPCError("CONFLICT", {
+            message: existingCapture.epiCode
+              ? `Este imóvel já está cadastrado em nossa plataforma (${existingCapture.epiCode}). Abra a ficha existente.`
+              : "Este imóvel já está cadastrado em nossa plataforma. Abra a ficha existente.",
+          });
+        }
+
+        await audit(
+          context,
+          "capture_resumed_existing",
+          existingCapture.id,
+          existingCapture.epiCode
+            ? `Ficha existente retomada sem gerar novo EPI: ${existingCapture.epiCode}`
+            : "Ficha legada existente retomada sem gerar novo EPI",
+        );
+
+        return {
+          id: existingCapture.id,
+          ownerId: owner.id,
+          ownerCreated,
+          duplicateUnit: `Ficha existente retomada. ${duplicateUnit.message}`,
+          registrationStatus: existingCapture.registrationStatus ?? null,
+          completeness: existingCapture.completeness ?? 0,
+          outsidePriorityArea: (existingCapture.outsidePriorityArea ?? 0) === 1,
+          epiCode: existingCapture.epiCode ?? null,
+          reopenedFromArchive: false,
+          resumedExisting: true,
+        };
+      }
+    }
 
     /* Cidade fora da área prioritária SINALIZA, nunca bloqueia (item 7). */
     const [settingsRow] = await context.db
@@ -291,8 +484,20 @@ export const adminCaptures = {
 
     const now = new Date();
     const due = new Date(now.getTime() + 2 * 60 * 60 * 1000);
-    const [capture] = await context.db.insert(schema.propertyCaptures).values({
+
+    /**
+     * CÓDIGO UNIVERSAL EPI — emitido AQUI, no ato da criação da ficha.
+     *
+     * Cadastro manual do CRM é uma das origens previstas, e vale a mesma
+     * regra de todas: o código nasce com a ficha, na sequência universal
+     * atômica do banco, com o mês/ano de AGORA (America/São_Paulo). Depois
+     * disso ele nunca muda, nunca é reemitido e nunca é reutilizado.
+     */
+    const epiCode = await allocateEpiCode(context.db, now);
+
+    let [capture] = await context.db.insert(schema.propertyCaptures).values({
       ownerId: owner.id,
+      epiCode,
       city: payload.city,
       district: payload.district,
       /* `address` (texto livre) segue preenchido: telas e documentos antigos
@@ -328,6 +533,36 @@ export const adminCaptures = {
     }).returning();
     if (!capture) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível criar captação" });
 
+    /*
+     * Invariante operacional: ficha NOVA = EPI persistido.
+     * Usa o MESMO número já reservado acima; nunca chama o contador de novo.
+     */
+    const [persistedEpi] = await context.db
+      .select({ epiCode: schema.propertyCaptures.epiCode })
+      .from(schema.propertyCaptures)
+      .where(eq(schema.propertyCaptures.id, capture.id))
+      .limit(1);
+
+    if (persistedEpi?.epiCode !== epiCode) {
+      await context.db
+        .update(schema.propertyCaptures)
+        .set({ epiCode, updatedAt: now })
+        .where(eq(schema.propertyCaptures.id, capture.id));
+
+      const [verifiedEpi] = await context.db
+        .select({ epiCode: schema.propertyCaptures.epiCode })
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, capture.id))
+        .limit(1);
+
+      if (verifiedEpi?.epiCode !== epiCode) {
+        throw new ORPCError("INTERNAL_SERVER_ERROR", {
+          message: "A captação foi criada, mas o Código Universal não foi persistido. Nenhum novo EPI foi gerado.",
+        });
+      }
+      capture = { ...capture, epiCode };
+    }
+
     await context.db.insert(schema.tasks).values({
       title: `Retornar proprietário — ${owner.name}`,
       type: "retorno",
@@ -336,7 +571,12 @@ export const adminCaptures = {
       captureId: capture.id,
       notes: `[capture:${capture.id}] Retorno automático criado pelo Radar de Captação`,
     });
-    await audit(context, "capture_created", capture.id, ownerCreated ? "Proprietário novo" : "Proprietário existente reutilizado");
+    await audit(
+      context,
+      "capture_created",
+      capture.id,
+      [`EPI ${epiCode}`, ownerCreated ? "Proprietário novo" : "Proprietário existente reutilizado"].join(" · "),
+    );
     if (duplicateUnit.duplicate) {
       await audit(context, "capture_duplicate_unit", capture.id, `${duplicateUnit.message} (por ${duplicateUnit.matchedBy})`);
     }
@@ -352,8 +592,87 @@ export const adminCaptures = {
       registrationStatus: registration.status,
       completeness: registration.completeness.percent,
       outsidePriorityArea: outside,
+      epiCode,
+      reopenedFromArchive: false,
     };
   }),
+
+  /**
+   * ARQUIVO MORTO — arquivar ficha de captação (soft delete).
+   *
+   * Excluir NÃO apaga. A ficha sai do Radar operacional e fica guardada com
+   * EPI, proprietário, imóvel, documentos, origem, datas e histórico intactos.
+   * Nenhuma linha é removida do banco: só ganham as marcas de arquivamento.
+   */
+  archive: adminBase
+    .input(z.object({
+      id: z.number().int().positive(),
+      reason: z.string().max(400).nullable().optional(),
+    }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, input.id))
+        .limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      /* Idempotente: rearquivar sobrescreveria a data do arquivamento
+         original, que é informação de histórico. */
+      if (isArchived(capture)) return { ok: true, changed: false, epiCode: capture.epiCode ?? null };
+
+      const effect = archiveEffect({
+        now: new Date(),
+        userName: context.user.name,
+        reason: input.reason,
+        epiCode: capture.epiCode,
+      });
+      /* `published` é coluna de imóvel, não de captação: o patch aqui usa só
+         as marcas de arquivamento. */
+      const { published: _ignored, ...patch } = effect.patch;
+      await context.db
+        .update(schema.propertyCaptures)
+        .set(patch)
+        .where(eq(schema.propertyCaptures.id, input.id));
+      /* Tarefa pendente de uma ficha arquivada não deve continuar cobrando a
+         equipe. O histórico da tarefa permanece. */
+      await closePendingTasks(context, input.id);
+      await audit(context, "capture_archived", input.id, effect.historyNote);
+      return { ok: true, changed: true, epiCode: capture.epiCode ?? null };
+    }),
+
+  /**
+   * ARQUIVO MORTO — restaurar.
+   *
+   * Volta ao CRM com exatamente o MESMO EPI e todo o histórico. O código não
+   * é tocado nem reemitido: `restoreEffect` não inclui `epiCode` no patch.
+   */
+  restore: adminBase
+    .input(z.object({
+      id: z.number().int().positive(),
+      note: z.string().max(400).nullable().optional(),
+    }))
+    .handler(async ({ input, context }) => {
+      const [capture] = await context.db
+        .select()
+        .from(schema.propertyCaptures)
+        .where(eq(schema.propertyCaptures.id, input.id))
+        .limit(1);
+      if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+      if (!isArchived(capture)) return { ok: true, changed: false, epiCode: capture.epiCode ?? null };
+
+      const effect = restoreEffect({
+        now: new Date(),
+        userName: context.user.name,
+        epiCode: capture.epiCode,
+        note: input.note,
+      });
+      await context.db
+        .update(schema.propertyCaptures)
+        .set(effect.patch)
+        .where(eq(schema.propertyCaptures.id, input.id));
+      await audit(context, "capture_restored", input.id, effect.historyNote);
+      return { ok: true, changed: true, epiCode: capture.epiCode ?? null };
+    }),
 
   setStage: adminBase.input(z.object({ id: z.number().int().positive(), stage: z.enum(STAGES) })).handler(async ({ input, context }) => {
     const [capture] = await context.db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, input.id)).limit(1);

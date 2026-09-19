@@ -160,6 +160,16 @@ export interface ExistingCapture {
   ownerId: number;
   unitKey: string | null;
   stage: string;
+  /**
+   * ARQUIVO MORTO: fichas arquivadas CONTINUAM entrando na comparação.
+   *
+   * É o ponto do pedido "a deduplicação também deve consultar arquivados":
+   * sem isso, arquivar uma ficha faria o mesmo imóvel voltar a ser cadastrado
+   * do zero e queimar um EPI novo. Ausente/NULL = ficha na operação normal.
+   */
+  archivedAt?: Date | null;
+  /** Código universal da ficha encontrada, para reabrir com o MESMO código. */
+  epiCode?: string | null;
   /** Chave da unidade pelo endereço escrito. Ausente em linhas antigas. */
   addressKey?: string | null;
   /** Chave do prédio pelo endereço escrito. Ausente em linhas antigas. */
@@ -187,6 +197,10 @@ export type DuplicateUnitWarning = {
   message: string;
   /** Critério que reconheceu a duplicidade. */
   matchedBy: DuplicateMatch;
+  /** `true` quando a ficha encontrada está no Arquivo Morto. */
+  archived: boolean;
+  /** EPI da ficha encontrada (`null` em ficha legada sem código). */
+  epiCode: string | null;
 } | { duplicate: false };
 
 /** Candidato a comparação: aceita só `unitKey` (uso antigo) ou o endereço todo. */
@@ -226,14 +240,20 @@ export function findDuplicateUnit(
   const { hit, matchedBy } = found;
 
   const sameOwner = candidate.ownerId != null && hit.ownerId === candidate.ownerId;
-  const suffix = hit.stage === "perdido"
-    ? " (marcada como PERDIDA — recaptar é permitido)"
-    : "";
+  const archived = hit.archivedAt != null;
+  const suffix = [
+    hit.stage === "perdido" ? " (marcada como PERDIDA — recaptar é permitido)" : "",
+    /* Arquivada é dito em voz alta: quem cadastrou precisa saber que a ficha
+       existe no Arquivo Morto e vai ser reaberta com o código dela. */
+    archived ? " (está no ARQUIVO MORTO)" : "",
+  ].join("");
   return {
     duplicate: true,
     captureId: hit.id,
     sameOwner,
     matchedBy,
+    archived,
+    epiCode: String(hit.epiCode ?? "").trim() || null,
     message: sameOwner
       ? `Este mesmo imóvel já tem a captação #${hit.id} para este proprietário${suffix}.`
       : `POSSÍVEL DUPLICADO: já existe a captação #${hit.id} para este endereço, de outro proprietário${suffix}.`,

@@ -6,7 +6,7 @@
     ".": "./src/api/index.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit && vite build",
+    "build": "bun vercel-api/build.ts && tsc --noEmit && vite build",
     "dev": "vite",
     "start": "bun src/__server.ts",
     "typecheck": "tsc --noEmit",

@@ -8,10 +8,19 @@ type Config = Parameters<typeof createWebClient>[0];
 
 export function createClient(config: Config) {
   const url = String(config.url ?? "");
-  return createWebClient({
+  const client = createWebClient({
     ...config,
     url: url.startsWith("libsql://") ? url.replace("libsql://", "https://") : url,
   });
+
+  /*
+   * O Drizzle usa `client.execute()` para `db.all(sql`...`)`.
+   * No transporte HTTP da Vercel, UPDATE ... RETURNING precisa preservar
+   * explicitamente as linhas devolvidas. Expor executeMultiple/transaction
+   * não resolve o contador EPI; o que importa aqui é manter o resultado de
+   * execute intacto para o readNext() receber { rows: [...] }.
+   */
+  return client;
 }
 
 export * from "@libsql/client/web";

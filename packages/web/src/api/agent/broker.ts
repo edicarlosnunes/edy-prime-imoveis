@@ -226,9 +226,6 @@ export async function agentReply(
   baseUrl: string,
   options: AgentReplyOptions = {},
 ): Promise<AgentReply> {
-  if (!gatewayConfigured()) {
-    throw new Error("Provedor de IA não configurado no servidor (AI_GATEWAY_BASE_URL / API_KEY).");
-  }
   const seen = new Set<string>();
   /* Precedência do modelo: agente > defaultModel da integração > fallback. */
   const { config } = await readConfig(db, "ai_gateway");
@@ -253,6 +250,14 @@ export async function agentReply(
     if (linkState?.active) {
       return linkCaptacaoReply(db, agent, turns, phone, linkState, configured);
     }
+  }
+
+  /* O Link de Captação tem perguntas determinísticas que não dependem do
+     provedor de IA. Só exigimos gateway daqui para baixo, no atendimento que
+     realmente chama o modelo. Assim o gatilho do WhatsApp sempre consegue
+     abrir o roteiro e fazer a primeira pergunta do ED. */
+  if (!gatewayConfigured()) {
+    throw new Error("Provedor de IA não configurado no servidor (AI_GATEWAY_BASE_URL / API_KEY).");
   }
 
   const snapshot = phone ? await captureSnapshot(db, phone) : null;
