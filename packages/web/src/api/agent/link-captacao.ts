@@ -54,8 +54,16 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 
 export type LinkPresenter = "proprietario" | "corretor";
 
-const hasBrokerToken = (text: string | null | undefined) =>
-  fold(text).includes(fold(LINK_CAPTACAO_BROKER_TOKEN));
+const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
+const BROKER_ENTRY_MESSAGE = "Sou corretor e quero apresentar um imóvel";
+
+const hasBrokerToken = (text: string | null | undefined) => {
+  const value = fold(text);
+  return (
+    value.includes(fold(LINK_CAPTACAO_BROKER_TOKEN)) ||
+    value === fold(BROKER_ENTRY_MESSAGE)
+  );
+};
 
 const brokerUserReplies = (turns: readonly AgentTurn[]) => {
   let start = -1;
@@ -94,8 +102,14 @@ const fold = (value: string | null | undefined) =>
     .trim();
 
 /** A mensagem carrega a marca do link? */
-export const hasLinkToken = (text: string | null | undefined) =>
-  fold(text).includes(fold(LINK_CAPTACAO_TOKEN));
+export const hasLinkToken = (text: string | null | undefined) => {
+  const value = fold(text);
+  return (
+    value.includes(fold(LINK_CAPTACAO_TOKEN)) ||
+    value === fold(OWNER_ENTRY_MESSAGE) ||
+    value === fold(BROKER_ENTRY_MESSAGE)
+  );
+};
 
 /* ------------------------------------------------------------- roteiro */
 
