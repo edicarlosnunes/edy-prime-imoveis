@@ -1,7 +1,7 @@
 import { BadgeCheck, ArrowRight, MessageCircle } from "lucide-react";
 import { useSiteContent } from "../components/site/content";
 
-const START_MESSAGE = "Cadastro de imóvel";
+const START_MESSAGE = "Quero cadastrar meu imóvel";
 
 function whatsappUrl(phone: string, message: string) {
   const digits = String(phone ?? "").replace(/\D/g, "");
