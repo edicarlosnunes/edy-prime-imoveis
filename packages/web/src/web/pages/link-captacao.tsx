@@ -26,7 +26,7 @@ export default function LinkCaptacao() {
             <div className="label-xs mb-4 text-brass-soft">EDY PRIME · CAPTAÇÃO</div>
             <h1 className="display max-w-3xl text-4xl sm:text-5xl">Olá! Vamos cadastrar seu imóvel.</h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75">
-              Para direcionar o cadastro corretamente, escolha abaixo como você está apresentando o imóvel.
+              Você é proprietário ou corretor?
             </p>
           </div>
 
@@ -38,7 +38,7 @@ export default function LinkCaptacao() {
             >
               <UserRound className="mb-8 h-8 w-8 text-brass" />
               <div className="label-xs text-muted">Opção 1</div>
-              <h2 className="mt-2 text-2xl font-medium text-deep">Sou proprietário</h2>
+              <h2 className="mt-2 text-2xl font-medium text-deep">Proprietário</h2>
               <p className="mt-3 text-sm leading-6 text-muted">
                 Quero cadastrar meu próprio imóvel para venda.
               </p>
@@ -54,7 +54,7 @@ export default function LinkCaptacao() {
             >
               <Building2 className="mb-8 h-8 w-8 text-brass" />
               <div className="label-xs text-muted">Opção 2</div>
-              <h2 className="mt-2 text-2xl font-medium text-deep">Sou corretor</h2>
+              <h2 className="mt-2 text-2xl font-medium text-deep">Corretor</h2>
               <p className="mt-3 text-sm leading-6 text-muted">
                 Quero apresentar um imóvel. O atendimento solicitará seu CRECI antes dos demais dados.
               </p>
