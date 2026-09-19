@@ -8,7 +8,6 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
 import { agentReply, type AgentRow } from "../agent/broker";
-import { gatewayConfigured } from "../agent/gateway";
 import { hasLinkToken } from "../agent/link-captacao";
 import { fireTrigger } from "./automations";
 import { logLeadEvent, qualifyLeadFromText } from "./lead-profile";
