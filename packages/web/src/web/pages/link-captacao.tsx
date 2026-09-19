@@ -1,8 +1,8 @@
 import { Building2, UserRound, BadgeCheck, ArrowRight } from "lucide-react";
 import { useSiteContent } from "../components/site/content";
 
-const OWNER_MESSAGE = "Quero cadastrar meu imóvel para venda (LINK_CAPTACAO_PROPRIETARIO)";
-const BROKER_MESSAGE = "Sou corretor e quero apresentar um imóvel (LINK_CAPTACAO_CORRETOR)";
+const OWNER_MESSAGE = "Quero cadastrar meu imóvel para venda";
+const BROKER_MESSAGE = "Sou corretor e quero apresentar um imóvel";
 
 function whatsappUrl(phone: string, message: string) {
   const digits = String(phone ?? "").replace(/\D/g, "");
