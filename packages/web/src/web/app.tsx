@@ -20,6 +20,7 @@ import AdminAutomations from "./pages/admin/automations";
 import AdminWatermark from "./pages/admin/watermark";
 import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
+import LinkCaptacao from "./pages/link-captacao";
 import Privacidade from "./pages/privacidade";
 import Termos from "./pages/termos";
 import ExclusaoDeDados from "./pages/exclusao-de-dados";
@@ -52,6 +53,7 @@ function App() {
         <Route path="/admin/automacoes" component={AdminAutomations} />
         <Route path="/admin/marca-dagua" component={AdminWatermark} />
         <Route path="/admin/auditoria" component={AdminAudit} />
+        <Route path="/link-captacao" component={LinkCaptacao} />
         <Route path="/privacidade" component={Privacidade} />
         {/* URL informada no app da Meta — mesma página, rota descritiva. */}
         <Route path="/politica-de-privacidade" component={Privacidade} />
