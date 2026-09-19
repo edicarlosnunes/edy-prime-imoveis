@@ -263,8 +263,11 @@ export async function aiTurn(
       .where(eq(schema.conversations.id, conversationId));
   }
   if (conversation.status !== "aberta") return { replied: false, skipped: "conversa fechada" };
-  if (!gatewayConfigured()) return { replied: false, skipped: "provedor de IA não configurado" };
 
+  /* Não bloqueie o Link de Captação aqui por ausência de gateway: a abertura
+     do roteiro e suas perguntas determinísticas são resolvidas antes de
+     qualquer chamada ao modelo. O broker continua exigindo gateway para os
+     demais atendimentos. */
   const agent = await activeAgentFor(db, conversation.channel);
   if (!agent) return { replied: false, skipped: "nenhum agente ativo neste canal" };
 
