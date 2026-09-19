@@ -58,9 +58,10 @@ const hasBrokerToken = (text: string | null | undefined) =>
   fold(text).includes(fold(LINK_CAPTACAO_BROKER_TOKEN));
 
 const brokerUserReplies = (turns: readonly AgentTurn[]) => {
-  const start = turns.findIndex(
-    (turn) => turn.role === "user" && hasBrokerToken(turn.content),
-  );
+  let start = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && hasBrokerToken(turn.content)) start = index;
+  });
   if (start < 0) return [] as string[];
   return turns
     .slice(start + 1)
@@ -326,8 +327,16 @@ async function brokerLinkState(
   const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
+  let lastLink = -1;
+  let lastClosing = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && hasBrokerToken(turn.content)) lastLink = index;
+    if (turn.role === "assistant" && turn.content.includes(CLOSING_MESSAGE)) lastClosing = index;
+  });
+  const currentEntry = lastLink > lastClosing;
+
   return {
-    active: true,
+    active: currentEntry && !snapshot.complete,
     presenter: "corretor",
     ownerPhone,
     broker: creci && brokerName ? { creci, name: brokerName, phone } : null,
