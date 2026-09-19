@@ -9,6 +9,7 @@ import { and, asc, desc, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
 import { agentReply, type AgentRow } from "../agent/broker";
 import { gatewayConfigured } from "../agent/gateway";
+import { hasLinkToken } from "../agent/link-captacao";
 import { fireTrigger } from "./automations";
 import { logLeadEvent, qualifyLeadFromText } from "./lead-profile";
 import type { AdminDb } from "./admin-base";
@@ -239,7 +240,28 @@ export async function aiTurn(
     .where(eq(schema.conversations.id, conversationId))
     .limit(1);
   if (!conversation) return { replied: false, skipped: "conversa inexistente" };
-  if (conversation.mode !== "ia") return { replied: false, skipped: "humano no controle" };
+
+  /* Um clique deliberado na porta LINK_CAPTACAO inicia um novo atendimento da
+     captação mesmo quando uma transferência ANTIGA deixou a conversa em modo
+     humano. A marca só é aceita na última mensagem recebida; não reabre por
+     histórico. Depois disso a proteção normal volta a valer: se um humano
+     assumir novamente, a IA para como antes. */
+  if (conversation.mode !== "ia") {
+    const latestTurns = await conversationTurns(db, conversationId);
+    const latestUser = [...latestTurns].reverse().find((turn) => turn.role === "user")?.content ?? "";
+    if (!hasLinkToken(latestUser)) {
+      return { replied: false, skipped: "humano no controle" };
+    }
+    await db
+      .update(schema.conversations)
+      .set({
+        mode: "ia",
+        status: "aberta",
+        transferReason: null,
+        transferredAt: null,
+      })
+      .where(eq(schema.conversations.id, conversationId));
+  }
   if (conversation.status !== "aberta") return { replied: false, skipped: "conversa fechada" };
   if (!gatewayConfigured()) return { replied: false, skipped: "provedor de IA não configurado" };
 
