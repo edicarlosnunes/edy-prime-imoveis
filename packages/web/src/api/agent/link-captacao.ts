@@ -54,6 +54,10 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 
 export type LinkPresenter = "proprietario" | "corretor";
 
+const GENERIC_ENTRY_MESSAGE = "Quero iniciar o cadastro de um imóvel";
+const ROLE_QUESTION = "Olá! Vamos cadastrar seu imóvel.\n\nVocê é proprietário ou corretor?";
+const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário do imóvel ou corretor, pois teremos algumas informações que somente eles poderão confirmar.";
+
 const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
 const BROKER_ENTRY_MESSAGE = "Sou corretor e quero apresentar um imóvel";
 
@@ -61,7 +65,8 @@ const hasBrokerToken = (text: string | null | undefined) => {
   const value = fold(text);
   return (
     value.includes(fold(LINK_CAPTACAO_BROKER_TOKEN)) ||
-    value === fold(BROKER_ENTRY_MESSAGE)
+    value === fold(BROKER_ENTRY_MESSAGE) ||
+    value === fold(GENERIC_ENTRY_MESSAGE)
   );
 };
 
@@ -84,7 +89,7 @@ const phoneFromText = (text: string | null | undefined) => {
 };
 
 /** Texto pré-preenchido do link. */
-export const LINK_CAPTACAO_MESSAGE = `Quero cadastrar meu imóvel para venda (${LINK_CAPTACAO_TOKEN})`;
+export const LINK_CAPTACAO_MESSAGE = GENERIC_ENTRY_MESSAGE;
 
 /** O link pronto, a partir do WhatsApp da imobiliária. Não altera nada. */
 export function linkCaptacaoUrl(whatsapp: string): string {
@@ -107,7 +112,8 @@ export const hasLinkToken = (text: string | null | undefined) => {
   return (
     value.includes(fold(LINK_CAPTACAO_TOKEN)) ||
     value === fold(OWNER_ENTRY_MESSAGE) ||
-    value === fold(BROKER_ENTRY_MESSAGE)
+    value === fold(BROKER_ENTRY_MESSAGE) ||
+    value === fold(GENERIC_ENTRY_MESSAGE)
   );
 };
 
@@ -120,62 +126,20 @@ export const hasLinkToken = (text: string | null | undefined) => {
  * demais são perguntas objetivas de qualificação, uma por vez.
  */
 export const LINK_STEPS = [
-  {
-    key: "nome",
-    label: "Nome completo",
-    verbatim: true,
-    question: "Olá! Vamos cadastrar seu imóvel.\n\nQual é o seu nome completo?",
-  },
-  {
-    key: "endereco",
-    label: "Endereço do imóvel",
-    verbatim: true,
-    question: "Nos informe o endereço do imóvel que deseja vender.",
-  },
-  {
-    key: "condominio",
-    label: "Condomínio e unidade",
-    verbatim: true,
-    question:
-      "O imóvel faz parte de algum condomínio? Se sim, informe o nome e a unidade: ap., bloco, torre, casa ou lote.",
-  },
-  {
-    key: "documentacao",
-    label: "Documentação",
-    verbatim: true,
-    question: "E a documentação do seu imóvel, como está? Está em seu nome?",
-  },
-  {
-    key: "tipo",
-    label: "Tipo de imóvel",
-    question: "Qual é o tipo do imóvel? (apartamento, casa, terreno, sala comercial ou outro)",
-  },
-  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios o imóvel tem?" },
-  { key: "suites", label: "Suítes", question: "Desses dormitórios, quantos são suítes?" },
-  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros no total?" },
-  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem?" },
-  {
-    key: "metragem",
-    label: "Metragem",
-    question: "Qual é a metragem do imóvel (área útil em m²)?",
-  },
-  {
-    key: "custos",
-    label: "Condomínio e IPTU",
-    question: "Quais são os valores de condomínio e de IPTU?",
-  },
-  { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido para a venda?" },
-  {
-    key: "caracteristicas",
-    label: "Características",
-    question: "Quais são as principais características e diferenciais do imóvel?",
-  },
-  {
-    key: "fotoFrente",
-    label: "Foto da frente",
-    verbatim: true,
-    question: "Pra finalizar, nos manda uma foto da frente do seu imóvel.",
-  },
+  { key: "nome", label: "Nome completo", verbatim: true, question: "Qual é o seu nome completo?" },
+  { key: "endereco", label: "Endereço do imóvel", verbatim: true, question: "Qual é o endereço completo do imóvel?" },
+  { key: "documentacao", label: "Documentação", verbatim: true, question: "Qual é a situação da documentação do imóvel?" },
+  { key: "tipo", label: "Tipo de imóvel", question: "Qual é o tipo do imóvel? Ex.: apartamento, casa, terreno, sítio ou outro." },
+  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? Se não se aplicar, pode pular." },
+  { key: "suites", label: "Suítes", question: "Quantas suítes? Se não se aplicar, pode pular." },
+  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros? Se não se aplicar, pode pular." },
+  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem? Se não se aplicar, pode pular." },
+  { key: "metragem", label: "Área útil ou construída", question: "Qual é a área útil ou construída? Ex.: 75 m²." },
+  { key: "caracteristicas", label: "Metragem do terreno", question: "Qual é a metragem do terreno? Ex.: 10 x 40 metros." },
+  { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel?" },
+  { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? Se não houver, pode pular." },
+  { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? Se não souber, pode pular." },
+  { key: "fotoFrente", label: "Foto da frente", verbatim: true, question: "Para finalizar, envie uma foto da frente ou fachada do imóvel." },
 ] as const;
 
 export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
@@ -186,7 +150,7 @@ export const OFF_SCRIPT_REPLY =
 
 /** Fechamento, depois da foto. */
 export const CLOSING_MESSAGE =
-  "Pronto, seu cadastro foi concluído. As informações ficaram registradas e em breve entraremos em contato.";
+  "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
 
 /** Imóvel sem condomínio: a pergunta de custos vira só IPTU. */
 const NO_CONDO = ["terreno", "casa", "chacara", "sitio", "galpao", "area", "lote"];
@@ -198,12 +162,7 @@ export function linkQuestion(
   context: { propertyType?: string | null; condominio?: string | null } = {},
 ): string {
   const step = LINK_STEPS.find((item) => item.key === key)!;
-  if (key !== "custos") return step.question;
-  const type = fold(context.propertyType);
-  const condo = fold(context.condominio);
-  const withoutCondo =
-    NO_CONDO.some((word) => type.includes(word)) || NO_CONDO_ANSWER.test(condo);
-  return withoutCondo ? "Qual é o valor do IPTU do imóvel?" : step.question;
+  return step.question;
 }
 
 /* --------------------------------------------------------------- estado */
@@ -331,11 +290,12 @@ async function brokerLinkState(
   turns: readonly AgentTurn[],
 ): Promise<LinkCaptacaoState> {
   const replies = brokerUserReplies(turns);
-  const creci = replies[0]?.slice(0, 80) ?? "";
-  const brokerName = replies[1]?.slice(0, 120) ?? "";
-  const ownerName = replies[2]?.slice(0, 120) ?? "";
-  const ownerPhone = phoneFromText(replies[3]);
-  const snapshot = ownerPhone ? await captureSnapshot(db, ownerPhone) : await captureSnapshot(db, null);
+  const generic = replies[0] && /propriet|corretor/i.test(replies[0]);
+  const offset = generic ? 1 : 0;
+  const creci = replies[offset]?.slice(0, 80) ?? "";
+  const brokerName = replies[offset + 1]?.slice(0, 120) ?? "";
+  const ownerPhone = phone;
+  const snapshot = await captureSnapshot(db, phone);
 
   const answered = linkAnswered(snapshot);
   const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
@@ -371,10 +331,10 @@ async function brokerLinkState(
 
 function brokerPendingQuestion(turns: readonly AgentTurn[]): string | null {
   const replies = brokerUserReplies(turns);
-  if (replies.length === 0) return "Qual é o seu CRECI?";
-  if (replies.length === 1) return "Qual é o seu nome completo?";
-  if (replies.length === 2) return "Qual é o nome completo do proprietário do imóvel?";
-  if (replies.length === 3) return "Qual é o WhatsApp do proprietário do imóvel?";
+  const generic = replies[0] && /propriet|corretor/i.test(replies[0]);
+  const count = replies.length - (generic ? 1 : 0);
+  if (count === 0) return "Qual é o seu CRECI?";
+  if (count === 1) return "Qual é o seu nome completo?";
   return null;
 }
 
@@ -384,11 +344,15 @@ export async function linkCaptacaoState(
   turns: readonly AgentTurn[],
 ): Promise<LinkCaptacaoState | null> {
   if (!ownerPhoneKey(phone)) return null;
-  const brokerEntry = turns.some(
-    (turn) => turn.role === "user" && hasBrokerToken(turn.content),
-  );
-  if (brokerEntry) return brokerLinkState(db, phone!, turns);
   const userMessages = turns.filter((turn) => turn.role === "user");
+  let latestGeneric = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) latestGeneric = index;
+  });
+  const afterGeneric = latestGeneric >= 0 ? turns.slice(latestGeneric + 1).filter((turn) => turn.role === "user") : [];
+  const roleAnswer = afterGeneric[0]?.content ?? "";
+  const brokerEntry = /\bcorretor\b/i.test(fold(roleAnswer)) || turns.some((turn) => turn.role === "user" && fold(turn.content) === fold(BROKER_ENTRY_MESSAGE));
+  if (brokerEntry) return brokerLinkState(db, phone!, turns);
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const freshEntry = hasLinkToken(lastUser);
   const fromLink = userMessages.some((turn) => hasLinkToken(turn.content));
@@ -493,11 +457,7 @@ const SAVE_SCHEMA = z.object({
   bairro: z.string().max(120).optional(),
   cidade: z.string().max(120).optional(),
   estado: z.string().max(2).optional().describe("UF, ex: SP"),
-  condominio: z
-    .string()
-    .max(300)
-    .optional()
-    .describe("resposta completa sobre condomínio: nome do condomínio e unidade"),
+  condominio: z.string().max(300).optional().describe("valor do condomínio"),
   unidade: z.string().max(60).optional().describe("apartamento, casa ou lote"),
   bloco: z.string().max(60).optional(),
   torre: z.string().max(60).optional(),
@@ -511,7 +471,7 @@ const SAVE_SCHEMA = z.object({
   metragem: z.string().max(300).optional(),
   custos: z.string().max(300).optional().describe("condomínio e IPTU"),
   valorPretendido: z.number().min(0).optional().describe("valor pretendido, só números"),
-  caracteristicas: z.string().max(300).optional(),
+  caracteristicas: z.string().max(300).optional().describe("metragem do terreno, ex.: 10 x 40 metros"),
   observacao: z
     .string()
     .max(500)
@@ -568,6 +528,28 @@ export async function linkCaptacaoReply(
     [...turns].reverse().find((turn) => turn.role === "user")?.content ?? null;
   const spokeBefore = turns.some((turn) => turn.role === "assistant");
 
+  /* Entrada genérica: o ED primeiro identifica proprietário ou corretor. */
+  let genericIndex = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) genericIndex = index;
+  });
+  if (genericIndex >= 0) {
+    const roleReplies = turns.slice(genericIndex + 1).filter((turn) => turn.role === "user");
+    if (roleReplies.length === 0) {
+      return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+    const role = fold(roleReplies[0]!.content);
+    const isOwner = /propriet|dono|dona/.test(role);
+    const isBroker = /corretor/.test(role);
+    if (!isOwner && !isBroker) {
+      return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+    /* A resposta de identificação de perfil não é resposta de cadastro. */
+    if (roleReplies.length === 1 && state.presenter === "proprietario") {
+      return finish(state, { offScript: false, toolCalls });
+    }
+  }
+
   if (state.presenter === "corretor") {
     const pendingBroker = brokerPendingQuestion(turns);
     if (pendingBroker) {
@@ -580,23 +562,14 @@ export async function linkCaptacaoReply(
       };
     }
     if (!state.ownerPhone || !state.broker) {
-      return {
-        text: "Não consegui confirmar os dados do apresentante e do proprietário. Por favor, informe novamente o CRECI, seu nome e o WhatsApp do proprietário.",
-        handoff: false,
-        handoffReason: null,
-        usedProperties: [],
-        toolCalls,
-      };
+      return { text: "Qual é o seu nome completo?", handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
 
-    /* Primeiro turno após identificar proprietário: grava a relação do
-       apresentante como observação, sem transformar o corretor em proprietário. */
+    /* O cadastro do imóvel apresentado fica identificado pelo próprio corretor. */
     if (state.answered.length === 0) {
-      const replies = brokerUserReplies(turns);
-      const ownerName = replies[2]?.slice(0, 120) ?? "";
       await saveCaptureAnswer(db, {
         phone: state.ownerPhone,
-        nome: ownerName,
+        nome: state.broker.name,
         negociacao: "venda",
         origem: LINK_CAPTACAO_ORIGIN,
         observacao: `Apresentado por corretor: ${state.broker.name} · CRECI ${state.broker.creci} · WhatsApp ${state.broker.phone}`,
