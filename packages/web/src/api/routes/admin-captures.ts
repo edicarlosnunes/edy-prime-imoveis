@@ -218,9 +218,9 @@ export const adminCaptures = {
     let captureView = capture;
     if (!captureView.epiCode) {
       const createdAudit = history.find(
-        (row) => row.action === "capture_created" && /\\bEPI-\\d+\\/\\d{2}-\\d{2}\\b/i.test(String(row.detail ?? "")),
+        (row) => row.action === "capture_created" && /\bEPI-\d+\/\d{2}-\d{2}\b/i.test(String(row.detail ?? "")),
       );
-      const recovered = String(createdAudit?.detail ?? "").match(/\\b(EPI-\\d+\\/\\d{2}-\\d{2})\\b/i)?.[1]?.toUpperCase() ?? null;
+      const recovered = String(createdAudit?.detail ?? "").match(/\b(EPI-\d+\/\d{2}-\d{2})\b/i)?.[1]?.toUpperCase() ?? null;
 
       if (recovered) {
         const [sameCaptureCode] = await context.db
