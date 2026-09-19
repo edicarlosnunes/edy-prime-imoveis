@@ -49,6 +49,30 @@ export const LINK_CAPTACAO_ORIGIN = "LINK_CAPTACAO";
  * reconhecer a entrada sem tocar em webhook, token ou WhatsApp Cloud API.
  */
 export const LINK_CAPTACAO_TOKEN = "LINK_CAPTACAO";
+export const LINK_CAPTACAO_OWNER_TOKEN = "LINK_CAPTACAO_PROPRIETARIO";
+export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
+
+export type LinkPresenter = "proprietario" | "corretor";
+
+const hasBrokerToken = (text: string | null | undefined) =>
+  fold(text).includes(fold(LINK_CAPTACAO_BROKER_TOKEN));
+
+const brokerUserReplies = (turns: readonly AgentTurn[]) => {
+  const start = turns.findIndex(
+    (turn) => turn.role === "user" && hasBrokerToken(turn.content),
+  );
+  if (start < 0) return [] as string[];
+  return turns
+    .slice(start + 1)
+    .filter((turn) => turn.role === "user")
+    .map((turn) => turn.content.trim())
+    .filter(Boolean);
+};
+
+const phoneFromText = (text: string | null | undefined) => {
+  const digits = String(text ?? "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits : null;
+};
 
 /** Texto pré-preenchido do link. */
 export const LINK_CAPTACAO_MESSAGE = `Quero cadastrar meu imóvel para venda (${LINK_CAPTACAO_TOKEN})`;
@@ -172,6 +196,12 @@ export function linkQuestion(
 export interface LinkCaptacaoState {
   /** O fluxo do link responde este turno? */
   active: boolean;
+  /** Quem apresentou o imóvel pelo link. Corretor nunca vira proprietário. */
+  presenter: LinkPresenter;
+  /** Telefone do proprietário usado pela ficha; no fluxo do corretor vem da resposta do proprietário. */
+  ownerPhone: string | null;
+  /** Identificação do corretor apresentante, quando houver. */
+  broker?: { creci: string; name: string; phone: string } | null;
   /** Clique no link agora (a última mensagem do contato traz a marca). */
   freshEntry: boolean;
   /** A marca do link aparece em alguma mensagem desta conversa. */
@@ -240,6 +270,9 @@ function buildState(input: {
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
   return {
+    presenter: "proprietario",
+    ownerPhone: snapshot.phone,
+    broker: null,
     /* Atende o turno quando: clicou no link agora; ou está cadastrando outro
        imóvel depois de um cadastro concluído; ou o roteiro está em andamento e
        a conversa veio do link (marca no histórico) ou a ficha já está marcada
@@ -277,12 +310,61 @@ function buildState(input: {
  *    segundo imóvel do mesmo proprietário, que só deixa de ser "o anterior já
  *    concluído" quando o endereço novo abre a segunda ficha.
  */
+async function brokerLinkState(
+  db: AdminDb,
+  phone: string,
+  turns: readonly AgentTurn[],
+): Promise<LinkCaptacaoState> {
+  const replies = brokerUserReplies(turns);
+  const creci = replies[0]?.slice(0, 80) ?? "";
+  const brokerName = replies[1]?.slice(0, 120) ?? "";
+  const ownerName = replies[2]?.slice(0, 120) ?? "";
+  const ownerPhone = phoneFromText(replies[3]);
+  const snapshot = ownerPhone ? await captureSnapshot(db, ownerPhone) : await captureSnapshot(db, null);
+
+  const answered = linkAnswered(snapshot);
+  const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
+  const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
+
+  return {
+    active: true,
+    presenter: "corretor",
+    ownerPhone,
+    broker: creci && brokerName ? { creci, name: brokerName, phone } : null,
+    freshEntry: turns.some(
+      (turn) => turn.role === "user" && hasBrokerToken(turn.content),
+    ) && replies.length === 0,
+    fromLink: true,
+    startNewProperty: false,
+    snapshot,
+    answered,
+    nextStep,
+    nextQuestion: nextStep
+      ? linkQuestion(nextStep, { propertyType: snapshot.propertyType, condominio })
+      : null,
+    complete: nextStep === null,
+  };
+}
+
+function brokerPendingQuestion(turns: readonly AgentTurn[]): string | null {
+  const replies = brokerUserReplies(turns);
+  if (replies.length === 0) return "Qual é o seu CRECI?";
+  if (replies.length === 1) return "Qual é o seu nome completo?";
+  if (replies.length === 2) return "Qual é o nome completo do proprietário do imóvel?";
+  if (replies.length === 3) return "Qual é o WhatsApp do proprietário do imóvel?";
+  return null;
+}
+
 export async function linkCaptacaoState(
   db: AdminDb,
   phone: string | null,
   turns: readonly AgentTurn[],
 ): Promise<LinkCaptacaoState | null> {
   if (!ownerPhoneKey(phone)) return null;
+  const brokerEntry = turns.some(
+    (turn) => turn.role === "user" && hasBrokerToken(turn.content),
+  );
+  if (brokerEntry) return brokerLinkState(db, phone!, turns);
   const userMessages = turns.filter((turn) => turn.role === "user");
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const freshEntry = hasLinkToken(lastUser);
@@ -463,6 +545,44 @@ export async function linkCaptacaoReply(
     [...turns].reverse().find((turn) => turn.role === "user")?.content ?? null;
   const spokeBefore = turns.some((turn) => turn.role === "assistant");
 
+  if (state.presenter === "corretor") {
+    const pendingBroker = brokerPendingQuestion(turns);
+    if (pendingBroker) {
+      return {
+        text: pendingBroker,
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
+    }
+    if (!state.ownerPhone || !state.broker) {
+      return {
+        text: "Não consegui confirmar os dados do apresentante e do proprietário. Por favor, informe novamente o CRECI, seu nome e o WhatsApp do proprietário.",
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
+    }
+
+    /* Primeiro turno após identificar proprietário: grava a relação do
+       apresentante como observação, sem transformar o corretor em proprietário. */
+    if (state.answered.length === 0) {
+      const replies = brokerUserReplies(turns);
+      const ownerName = replies[2]?.slice(0, 120) ?? "";
+      await saveCaptureAnswer(db, {
+        phone: state.ownerPhone,
+        nome: ownerName,
+        negociacao: "venda",
+        origem: LINK_CAPTACAO_ORIGIN,
+        observacao: `Apresentado por corretor: ${state.broker.name} · CRECI ${state.broker.creci} · WhatsApp ${state.broker.phone}`,
+      });
+      const refreshed = await brokerLinkState(db, phone, turns);
+      return finish(refreshed, { offScript: false, toolCalls });
+    }
+  }
+
   /* Clique no link, ou primeiro contato deste telefone: não há resposta para
      extrair, só a abertura do roteiro. O modelo não é chamado.
      Atenção: "conversa nova" NÃO basta para pular a extração. Quem volta dias
@@ -480,7 +600,7 @@ export async function linkCaptacaoReply(
     const when = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
     await saveCaptureAnswer(
       db,
-      saveInput(state, phone, {
+      saveInput(state, state.ownerPhone ?? phone, {
         fotoFrente:
           photo === "media"
             ? `imagem recebida pelo WhatsApp em ${when}`
@@ -491,7 +611,7 @@ export async function linkCaptacaoReply(
       tool: "salvarCadastroVenda",
       input: JSON.stringify({ fotoFrente: photo }),
     });
-    return finish(await reload(db, phone, state.startNewProperty), { offScript: false, toolCalls });
+    return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
   }
 
   if (!gatewayConfigured()) {
@@ -511,7 +631,7 @@ export async function linkCaptacaoReply(
       inputSchema: SAVE_SCHEMA,
       async execute(input: SaveToolInput) {
         if (input.observacao) offScript = true;
-        const result = await saveCaptureAnswer(db, saveInput(state, phone, input));
+        const result = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
         return result.saved
           ? { salvo: true, cadastroId: result.captureId, aviso: result.duplicateUnit }
           : { salvo: false, motivo: result.reason };
@@ -558,7 +678,7 @@ export async function linkCaptacaoReply(
     };
   }
 
-  return finish(await reload(db, phone, state.startNewProperty), { offScript, toolCalls });
+  return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript, toolCalls });
 }
 
 /**
