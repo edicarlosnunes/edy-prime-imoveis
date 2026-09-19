@@ -19,7 +19,8 @@
  * NÚMERO USADO NUNCA VOLTA. Se a ficha for abandonada, cancelada, arquivada no
  * Arquivo Morto ou perdida, o número morre com ela — nunca é reciclado.
  */
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import * as schema from "../database/schema";
 import { EPI_FIRST_SEQUENCE, buildEpi } from "./epi-code";
 
 /**
@@ -50,65 +51,22 @@ export async function ensureEpiCounter(db: EpiDb): Promise<void> {
 }
 
 /**
- * Lê o `next` devolvido pelo RETURNING.
+ * Reserva o próximo número pela API nativa do Drizzle.
  *
- * O driver entrega a linha como objeto (`{ next: 1000 }`) ou como array
- * (`[1000]`) dependendo da versão e de ser SQL cru. Aceitar as duas formas é
- * mais barato que descobrir em produção que apostamos na errada.
+ * Evita interpretar manualmente o ResultSet HTTP do libSQL/Turso: o próprio
+ * Drizzle normaliza o RETURNING e entrega { next }.
  */
-function readNext(rows: unknown): number | null {
-  /*
-   * Drizzle/libSQL não devolve a mesma forma em todos os transportes:
-   * - driver direto: [{ next: 1000 }]
-   * - ResultSet HTTP: { rows: [{ next: 1000 }] }
-   * - alguns adapters: { rows: [[1000]] }
-   * - wrapper de ResultSet: { rows: { _rows: [...] } }
-   *
-   * O Preview da Vercel usa o cliente /web (HTTP). Aceitar explicitamente
-   * essas formas evita reservar o número no banco e perder a linha do
-   * RETURNING na leitura do contador.
-   */
-  const result = rows as {
-    rows?: unknown[] | { _rows?: unknown[] };
-    _rows?: unknown[];
-  } | null;
-
-  const list =
-    Array.isArray(rows)
-      ? rows
-      : Array.isArray(result?.rows)
-        ? result.rows
-        : Array.isArray((result?.rows as { _rows?: unknown[] } | undefined)?._rows)
-          ? (result?.rows as { _rows: unknown[] })._rows
-          : Array.isArray(result?._rows)
-            ? result._rows
-            : [];
-
-  const row = list[0];
-  if (row == null) return null;
-
-  const raw = Array.isArray(row)
-    ? row[0]
-    : typeof row === "object"
-      ? (row as Record<string, unknown>).next ??
-        (row as Record<string, unknown>).NEXT ??
-        Object.values(row as Record<string, unknown>)[0]
-      : row;
-
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= EPI_FIRST_SEQUENCE ? value : null;
-}
-
-/** Reserva o próximo número da sequência universal e devolve o número reservado. */
-export async function allocateEpiSequence(db: EpiDb): Promise<number> {
+export async function allocateEpiSequence(db: any): Promise<number> {
   await ensureEpiCounter(db);
 
-  const rows = await db.all(
-    sql`UPDATE crm_epi_sequence SET next = next + 1 WHERE id = ${EPI_COUNTER_ID} RETURNING next`,
-  );
+  const [row] = await db
+    .update(schema.crmEpiSequence)
+    .set({ next: sql`${schema.crmEpiSequence.next} + 1` })
+    .where(eq(schema.crmEpiSequence.id, EPI_COUNTER_ID))
+    .returning({ next: schema.crmEpiSequence.next });
 
-  const next = readNext(rows);
-  if (next == null) {
+  const next = Number(row?.next);
+  if (!Number.isInteger(next) || next < EPI_FIRST_SEQUENCE) {
     throw new Error("Não foi possível reservar a sequência do código EPI");
   }
   return next;
