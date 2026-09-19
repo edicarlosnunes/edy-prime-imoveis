@@ -8,7 +8,14 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "dist-electron/**", ".expo/**"]
+      "outputs": ["dist/**", "dist-electron/**", ".expo/**"],
+      "passThroughEnv": [
+        "DATABASE_URL",
+        "DATABASE_AUTH_TOKEN",
+        "SITE_CHAT_HASH_SECRET",
+        "AI_GATEWAY_BASE_URL",
+        "AI_GATEWAY_API_KEY"
+      ]
     },
     "lint": {
       "outputs": []
