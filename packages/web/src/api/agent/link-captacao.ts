@@ -54,7 +54,7 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 
 export type LinkPresenter = "proprietario" | "corretor";
 
-const GENERIC_ENTRY_MESSAGE = "Quero cadastrar meu imóvel";
+const GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
 const CONFIRM_QUESTION = "Olá! Vamos cadastrar um imóvel agora?\n\nResponda Sim ou Não.";
 const ROLE_QUESTION = "Olá! Claro. Você é proprietário ou corretor?";
 const DECLINED_MESSAGE = "Tudo bem. Quando quiser cadastrar um imóvel, é só acessar o Link de Captação novamente.";
