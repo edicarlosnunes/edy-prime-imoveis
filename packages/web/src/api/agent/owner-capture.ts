@@ -176,6 +176,8 @@ const EXTRA_BLOCK_FIELDS = [
   { key: "origem", label: "Origem do cadastro" },
   { key: "condominio", label: "Condomínio e unidade" },
   { key: "fotoFrente", label: "Foto da frente" },
+  { key: "observacaoFinal", label: "Informação adicional do proprietário" },
+  { key: "confirmacaoFinal", label: "Confirmação final" },
 ] as const;
 
 /** Vocabulário completo do bloco: roteiro do WhatsApp + campos do link. */
@@ -451,6 +453,8 @@ export interface CaptureAnswerInput {
   origem?: string | null;
   condominio?: string | null;
   fotoFrente?: string | null;
+  observacaoFinal?: string | null;
+  confirmacaoFinal?: string | null;
   /** informação espontânea, fora da pergunta atual */
   observacao?: string | null;
   /** proprietário quer cadastrar OUTRO imóvel */
@@ -618,6 +622,8 @@ export async function saveCaptureAnswer(
       origem: clean(input.origem, 300),
       condominio: clean(input.condominio, 300),
       fotoFrente: clean(input.fotoFrente, 300),
+      observacaoFinal: clean(input.observacaoFinal, 500),
+      confirmacaoFinal: clean(input.confirmacaoFinal, 40),
     },
     observation: clean(input.observacao, 500),
     firstContact: before.captureId === null,
