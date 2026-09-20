@@ -628,14 +628,23 @@ export async function linkCaptacaoReply(
       return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
 
-    const role = fold(replies[0]!.content);
-    const isOwner = /propriet|dono|dona/.test(role);
-    const isBroker = /corretor/.test(role);
-    if (!isOwner && !isBroker) {
+    /* Enquanto o contato não informar um perfil válido, cada nova resposta
+       precisa ter chance de corrigir a anterior. Antes olhávamos somente
+       replies[0], então um primeiro erro deixava a conversa presa para sempre. */
+    const roleReply = [...replies].reverse().find((turn) => {
+      const value = fold(turn.content);
+      return /propriet|dono|dona/.test(value) || /corretor/.test(value);
+    });
+    if (!roleReply) {
       return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
-    /* A identificação de perfil é controle do fluxo, não dado do imóvel. */
-    if (replies.length === 1 && state.presenter === "proprietario") {
+    const role = fold(roleReply.content);
+    const isOwner = /propriet|dono|dona/.test(role);
+    const isBroker = /corretor/.test(role);
+    /* A identificação de perfil é controle do fluxo, não dado do imóvel.
+       Assim que "proprietário" é informado corretamente, mesmo depois de
+       respostas inválidas, o roteiro avança para o nome. */
+    if (isOwner && state.presenter === "proprietario") {
       return finish(state, { offScript: false, toolCalls });
     }
   }
