@@ -56,7 +56,7 @@ export async function storeWhatsappCaptureImage(
   /* ID determinístico pelo media_id: reenvio da Meta não cria cópia. */
   const id = await mediaHex(mediaId);
   const url = `/api/media/${id}`;
-  await db
+  const inserted = await db
     .insert(schema.media)
     .values({
       id,
@@ -67,7 +67,8 @@ export async function storeWhatsappCaptureImage(
       variant: "original",
       originalId: null,
     })
-    .onConflictDoNothing();
+    .onConflictDoNothing()
+    .returning({ id: schema.media.id });
 
   try {
     const [capture] = await db
@@ -93,7 +94,9 @@ export async function storeWhatsappCaptureImage(
 
     return { url, captureId: snapshot.captureId, mime: file.mime, size: file.size };
   } catch (error) {
-    await db.delete(schema.media).where(eq(schema.media.id, id));
+    if (inserted.length > 0) {
+      await db.delete(schema.media).where(eq(schema.media.id, id));
+    }
     throw error;
   }
 }
