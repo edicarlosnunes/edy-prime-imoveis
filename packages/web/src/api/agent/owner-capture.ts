@@ -176,6 +176,7 @@ const EXTRA_BLOCK_FIELDS = [
   { key: "origem", label: "Origem do cadastro" },
   { key: "condominio", label: "Condomínio e unidade" },
   { key: "fotoFrente", label: "Foto da frente" },
+  { key: "valorPretendidoStatus", label: "Valor pretendido - situação" },
   { key: "observacaoFinal", label: "Informação adicional do proprietário" },
   { key: "confirmacaoFinal", label: "Confirmação final" },
 ] as const;
@@ -453,6 +454,7 @@ export interface CaptureAnswerInput {
   origem?: string | null;
   condominio?: string | null;
   fotoFrente?: string | null;
+  valorPretendidoStatus?: string | null;
   observacaoFinal?: string | null;
   confirmacaoFinal?: string | null;
   /** informação espontânea, fora da pergunta atual */
@@ -622,6 +624,7 @@ export async function saveCaptureAnswer(
       origem: clean(input.origem, 300),
       condominio: clean(input.condominio, 300),
       fotoFrente: clean(input.fotoFrente, 300),
+      valorPretendidoStatus: clean(input.valorPretendidoStatus, 300),
       observacaoFinal: clean(input.observacaoFinal, 500),
       confirmacaoFinal: clean(input.confirmacaoFinal, 40),
     },
