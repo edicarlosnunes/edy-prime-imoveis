@@ -29,6 +29,36 @@ export async function sendWhatsappText(config: ConfigMap, to: string, body: stri
   return payload.messages?.[0]?.id ?? null;
 }
 
+export async function downloadWhatsappImage(config: ConfigMap, mediaId: string) {
+  const token = config.accessToken;
+  if (!token) throw new Error("WhatsApp Cloud API sem access token");
+  const id = mediaId.trim();
+  if (!id) throw new Error("Imagem do WhatsApp sem media_id");
+
+  const metadataResponse = await fetch(`${GRAPH}/${encodeURIComponent(id)}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const metadata = (await metadataResponse.json().catch(() => ({}))) as {
+    url?: string;
+    mime_type?: string;
+    file_size?: number;
+    error?: { message?: string };
+  };
+  if (!metadataResponse.ok || !metadata.url) {
+    throw new Error(metadata.error?.message ?? `Falha ao localizar mídia do WhatsApp (HTTP ${metadataResponse.status})`);
+  }
+
+  const fileResponse = await fetch(metadata.url, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  if (!fileResponse.ok) {
+    throw new Error(`Falha ao baixar mídia do WhatsApp (HTTP ${fileResponse.status})`);
+  }
+  const bytes = new Uint8Array(await fileResponse.arrayBuffer());
+  const mime = (metadata.mime_type || fileResponse.headers.get("content-type") || "").split(";")[0]!.trim();
+  return { bytes, mime, size: bytes.byteLength };
+}
+
 /** Resposta em Instagram Direct / Messenger (Graph API). */
 export async function sendMetaMessage(
   config: ConfigMap,
@@ -86,12 +116,14 @@ export interface IncomingWhatsapp {
   name: string | null;
   text: string;
   messageId: string | null;
+  kind: "text" | "image";
+  mediaId: string | null;
 }
 
 const onlyDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "");
 
 /**
- * Extrai as mensagens de texto do payload do webhook.
+ * Extrai mensagens de texto e imagens do payload do webhook.
  *
  * O que NUNCA sai daqui (e portanto nunca aciona a IA):
  * - `value.statuses` (sent/delivered/read/failed): é confirmação de entrega das
@@ -100,7 +132,7 @@ const onlyDigits = (value: string | null | undefined) => (value ?? "").replace(/
  *   (`value.metadata.display_phone_number` ou `phone_number_id`). Sem isso,
  *   uma mensagem que o próprio sistema originasse voltaria como se fosse do
  *   cliente e a IA responderia a si mesma.
- * - mensagens que não são texto (áudio, imagem, documento, botão).
+ * - mensagens que não são texto nem imagem (áudio, documento, botão).
  */
 export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
   const out: IncomingWhatsapp[] = [];
@@ -115,6 +147,7 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
             id?: string;
             type?: string;
             text?: { body?: string };
+            image?: { id?: string; mime_type?: string; caption?: string };
           }[];
         };
       }[];
@@ -128,7 +161,8 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
       const selfPhoneId = (value?.metadata?.phone_number_id ?? "").trim();
       for (const message of value?.messages ?? []) {
         const isText = message.type ? message.type === "text" : Boolean(message.text?.body);
-        if (!isText || !message.from) continue;
+        const isImage = message.type === "image" && Boolean(message.image?.id);
+        if ((!isText && !isImage) || !message.from) continue;
         /* Anti-loop: nada que saiu do nosso próprio número volta como cliente. */
         const from = onlyDigits(message.from);
         if (selfPhone && from === selfPhone) continue;
@@ -136,8 +170,12 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
         out.push({
           from: message.from,
           name: contactName,
-          text: message.text?.body ?? "",
+          text: isImage
+            ? `[foto] ${message.image?.caption?.trim() ?? ""}`.trim()
+            : (message.text?.body ?? ""),
           messageId: message.id ?? null,
+          kind: isImage ? "image" : "text",
+          mediaId: isImage ? (message.image?.id ?? null) : null,
         });
       }
     }
