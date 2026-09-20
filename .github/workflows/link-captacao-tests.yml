@@ -1,0 +1,27 @@
+name: Link Captacao Internal Tests
+
+on:
+  pull_request:
+    paths:
+      - "packages/web/src/api/agent/link-captacao.ts"
+      - "packages/web/src/api/agent/link-captacao.e2e.test.ts"
+      - "packages/web/src/api/lib/whatsapp.ts"
+      - "packages/web/src/api/lib/whatsapp-image.test.ts"
+      - "packages/web/src/api/http/webhook-routes.ts"
+      - ".github/workflows/link-captacao-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Link de Captacao
+        run: bun test packages/web/src/api/agent/link-captacao.e2e.test.ts packages/web/src/api/lib/whatsapp-image.test.ts
+      - name: Typecheck web
+        run: cd packages/web && bun run typecheck
