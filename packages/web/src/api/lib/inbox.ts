@@ -266,9 +266,9 @@ export async function aiTurn(
       .update(schema.conversations)
       .set({ agentId: agent.id })
       .where(eq(schema.conversations.id, conversationId));
-    if (reply.handoff) {
-      await transferToHuman(db, conversationId, reply.handoffReason ?? "regra do agente");
-    }
+    /* O modo da conversa é controle manual do CRM. A IA pode sinalizar que
+       seria apropriado atendimento humano, mas nunca muda sozinha de IA para
+       Humano. Somente a ação manual "Humano" no painel altera o modo. */
     return {
       replied: true,
       text: reply.text,
