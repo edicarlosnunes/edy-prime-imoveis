@@ -111,8 +111,16 @@ const fold = (value: string | null | undefined) =>
  * Captação abre o fluxo. Palavras isoladas ou frases parecidas não abrem.
  * A normalização tolera apenas caixa, acento e espaços; não faz busca parcial.
  */
-const isGenericLinkStart = (text: string | null | undefined) =>
-  fold(text) === fold(GENERIC_ENTRY_MESSAGE);
+const isGenericLinkStart = (text: string | null | undefined) => {
+  const value = fold(text);
+  const start = fold(GENERIC_ENTRY_MESSAGE);
+  if (!value || !start || !value.includes(start)) return false;
+
+  /* Alguns clientes do WhatsApp podem duplicar o texto pré-preenchido quando
+     o link é aberto mais de uma vez antes do envio. Aceitamos apenas repetições
+     exatas da frase completa, com ou sem espaços entre elas. */
+  return value.split(start).join("").trim() === "";
+};
 
 /** A mensagem carrega a marca do link? */
 export const hasLinkToken = (text: string | null | undefined) => {
