@@ -66,7 +66,7 @@ const hasBrokerToken = (text: string | null | undefined) => {
   return (
     value.includes(fold(LINK_CAPTACAO_BROKER_TOKEN)) ||
     value === fold(BROKER_ENTRY_MESSAGE) ||
-    value === fold(GENERIC_ENTRY_MESSAGE)
+    isGenericLinkStart(text)
   );
 };
 
@@ -106,6 +106,14 @@ const fold = (value: string | null | undefined) =>
     .replace(/\s+/g, " ")
     .trim();
 
+/**
+ * Porta do START público: só a frase completa pré-preenchida pelo Link de
+ * Captação abre o fluxo. Palavras isoladas ou frases parecidas não abrem.
+ * A normalização tolera apenas caixa, acento e espaços; não faz busca parcial.
+ */
+const isGenericLinkStart = (text: string | null | undefined) =>
+  fold(text) === fold(GENERIC_ENTRY_MESSAGE);
+
 /** A mensagem carrega a marca do link? */
 export const hasLinkToken = (text: string | null | undefined) => {
   const value = fold(text);
@@ -113,7 +121,7 @@ export const hasLinkToken = (text: string | null | undefined) => {
     value.includes(fold(LINK_CAPTACAO_TOKEN)) ||
     value === fold(OWNER_ENTRY_MESSAGE) ||
     value === fold(BROKER_ENTRY_MESSAGE) ||
-    value === fold(GENERIC_ENTRY_MESSAGE)
+    isGenericLinkStart(text)
   );
 };
 
@@ -358,7 +366,7 @@ export async function linkCaptacaoState(
   const userMessages = turns.filter((turn) => turn.role === "user");
   let latestGeneric = -1;
   turns.forEach((turn, index) => {
-    if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) latestGeneric = index;
+    if (turn.role === "user" && isGenericLinkStart(turn.content)) latestGeneric = index;
   });
   const afterGeneric = latestGeneric >= 0 ? turns.slice(latestGeneric + 1).filter((turn) => turn.role === "user") : [];
   /* O envio da mensagem pré-preenchida já é a confirmação de entrada.
@@ -544,7 +552,7 @@ export async function linkCaptacaoReply(
   /* Entrada genérica: o ED primeiro identifica proprietário ou corretor. */
   let genericIndex = -1;
   turns.forEach((turn, index) => {
-    if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) genericIndex = index;
+    if (turn.role === "user" && isGenericLinkStart(turn.content)) genericIndex = index;
   });
   if (genericIndex >= 0) {
     const replies = turns.slice(genericIndex + 1).filter((turn) => turn.role === "user");
