@@ -48,6 +48,16 @@ async function config(db: AdminDb, key: string) {
   return { config: parseConfig(row?.config), enabled: row?.enabled === 1 };
 }
 
+async function whatsappMediaHex(mediaId: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`whatsapp:${mediaId}`),
+  );
+  return Array.from(new Uint8Array(digest).slice(0, 12), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
 async function propertyIdFromCode(db: AdminDb, code: string | null) {
   if (!code) return null;
   const [row] = await db
@@ -182,8 +192,21 @@ export function registerWebhookRoutes(app: Hono) {
         });
 
         if (message.mediaId) {
+          const snapshot = await captureSnapshot(db, message.from);
+          const origin = String(
+            (snapshot.answers as Record<string, string | undefined>).origem ?? "",
+          ).trim().toUpperCase();
+
+          /* Imagem fora do LINK_CAPTACAO continua sendo ignorada pelo canal,
+             como antes desta funcionalidade. */
+          if (!snapshot.captureId || origin !== "LINK_CAPTACAO") {
+            await completeInboundEvent(db, claim.eventId);
+            processed++;
+            continue;
+          }
+
           const media = await downloadWhatsappMedia(wa, message.mediaId);
-          const mediaKey = `wa_${message.mediaId}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+          const mediaKey = await whatsappMediaHex(message.mediaId);
           await db.insert(schema.media).values({
             id: mediaKey,
             mime: media.mime,
@@ -195,15 +218,21 @@ export function registerWebhookRoutes(app: Hono) {
           const url = `/api/media/${mediaKey}`;
           message.text = `[imagem:${url}]`;
 
-          const snapshot = await captureSnapshot(db, message.from);
-          if (snapshot.captureId) {
-            const [capture] = await db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, snapshot.captureId)).limit(1);
-            if (capture) {
-              const photos = addOwnerPhotos(capture.ownerPhotos, [{ url, caption: "Fachada" }], { source: "proprietario" });
-              await db.update(schema.propertyCaptures)
-                .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
-                .where(eq(schema.propertyCaptures.id, snapshot.captureId));
-            }
+          const [capture] = await db
+            .select()
+            .from(schema.propertyCaptures)
+            .where(eq(schema.propertyCaptures.id, snapshot.captureId))
+            .limit(1);
+          if (capture) {
+            const photos = addOwnerPhotos(
+              capture.ownerPhotos,
+              [{ url, caption: "Fachada" }],
+              { source: "proprietario" },
+            );
+            await db
+              .update(schema.propertyCaptures)
+              .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+              .where(eq(schema.propertyCaptures.id, snapshot.captureId));
           }
         }
 
