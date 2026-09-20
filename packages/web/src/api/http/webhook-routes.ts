@@ -25,10 +25,12 @@ import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
 import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
 import { captureSnapshot } from "../agent/owner-capture";
+import { LINK_CAPTACAO_MESSAGE, linkCaptacaoState } from "../agent/link-captacao";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
   parseMetaMessaging,
+  basicWhatsappImageGate,
   downloadWhatsappMedia,
   parseWhatsappWebhook,
   sendMetaMessage,
@@ -206,6 +208,15 @@ export function registerWebhookRoutes(app: Hono) {
           }
 
           const media = await downloadWhatsappMedia(wa, message.mediaId);
+          const imageGate = basicWhatsappImageGate(media.mime, media.size);
+          const linkState = await linkCaptacaoState(db, message.from, [
+            { role: "user", content: LINK_CAPTACAO_MESSAGE },
+          ]);
+          if (!imageGate.ok || linkState?.nextStep !== "fotoFrente") {
+            message.text = imageGate.ok
+              ? "Recebi a imagem, mas ainda não chegamos à etapa da foto. Vamos continuar o cadastro."
+              : imageGate.customerMessage;
+          } else {
           const mediaKey = await whatsappMediaHex(message.mediaId);
           await db.insert(schema.media).values({
             id: mediaKey,
@@ -233,6 +244,7 @@ export function registerWebhookRoutes(app: Hono) {
               .update(schema.propertyCaptures)
               .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
               .where(eq(schema.propertyCaptures.id, snapshot.captureId));
+          }
           }
         }
 
