@@ -186,7 +186,8 @@ function ConversationsPage() {
                       tone={conversation.mode === "ia" ? "primary" : "ghost"}
                       className={cn(
                         "px-3 py-1.5",
-                        conversation.mode === "ia" && "shadow-sm",
+                        conversation.mode === "ia" &&
+                          "!border-emerald-400 !bg-emerald-500 !text-white shadow-[0_0_14px_rgba(16,185,129,0.55)]",
                       )}
                       disabled={conversation.mode === "ia" || returnToAi.isPending}
                       onClick={() =>
@@ -202,7 +203,8 @@ function ConversationsPage() {
                       tone={conversation.mode === "humano" ? "primary" : "ghost"}
                       className={cn(
                         "px-3 py-1.5",
-                        conversation.mode === "humano" && "shadow-sm",
+                        conversation.mode === "humano" &&
+                          "!border-emerald-400 !bg-emerald-500 !text-white shadow-[0_0_14px_rgba(16,185,129,0.55)]",
                       )}
                       disabled={conversation.mode === "humano" || takeOver.isPending}
                       onClick={() =>
