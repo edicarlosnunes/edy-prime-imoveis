@@ -181,33 +181,40 @@ function ConversationsPage() {
               }`}
               action={
                 <div className="flex flex-wrap gap-2">
-                  {conversation.mode === "ia" ? (
+                  <div className="flex items-center gap-1 rounded-[4px] border border-line bg-bone/40 p-1">
                     <Btn
-                      tone="brass"
-                      disabled={takeOver.isPending}
-                      onClick={() =>
-                        guard(async () => {
-                          await takeOver.mutateAsync({ id: conversation.id });
-                          return "Você assumiu a conversa. A IA não responde mais aqui.";
-                        })
-                      }
-                    >
-                      <User className="h-3.5 w-3.5" /> Assumir
-                    </Btn>
-                  ) : (
-                    <Btn
-                      tone="outline"
-                      disabled={returnToAi.isPending}
+                      tone={conversation.mode === "ia" ? "primary" : "ghost"}
+                      className={cn(
+                        "px-3 py-1.5",
+                        conversation.mode === "ia" && "shadow-sm",
+                      )}
+                      disabled={conversation.mode === "ia" || returnToAi.isPending}
                       onClick={() =>
                         guard(async () => {
                           await returnToAi.mutateAsync({ id: conversation.id });
-                          return "Atendimento devolvido para a IA.";
+                          return "Agente IA ativado.";
                         })
                       }
                     >
-                      <Bot className="h-3.5 w-3.5" /> Devolver à IA
+                      <Bot className="h-3.5 w-3.5" /> Agente IA
                     </Btn>
-                  )}
+                    <Btn
+                      tone={conversation.mode === "humano" ? "primary" : "ghost"}
+                      className={cn(
+                        "px-3 py-1.5",
+                        conversation.mode === "humano" && "shadow-sm",
+                      )}
+                      disabled={conversation.mode === "humano" || takeOver.isPending}
+                      onClick={() =>
+                        guard(async () => {
+                          await takeOver.mutateAsync({ id: conversation.id });
+                          return "Atendimento humano ativado.";
+                        })
+                      }
+                    >
+                      <User className="h-3.5 w-3.5" /> Humano
+                    </Btn>
+                  </div>
                   {conversation.status === "fechada" ? (
                     <Btn
                       tone="outline"
@@ -276,20 +283,6 @@ function ConversationsPage() {
               </div>
 
               <div className="mt-4 space-y-2">
-                {conversation.mode === "humano" && (
-                  <Btn
-                    tone="outline"
-                    disabled={returnToAi.isPending}
-                    onClick={() =>
-                      guard(async () => {
-                        await returnToAi.mutateAsync({ id: conversation.id });
-                        return "Atendimento devolvido para a IA.";
-                      })
-                    }
-                  >
-                    <Bot className="h-3.5 w-3.5" /> Devolver à IA
-                  </Btn>
-                )}
                 <Textarea
                   placeholder="Escrever como corretor (assume a conversa automaticamente)"
                   value={draft}
