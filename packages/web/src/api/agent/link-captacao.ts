@@ -424,11 +424,22 @@ export async function linkCaptacaoState(
   const relink = lastLink >= 0 && lastLink > lastClosing;
 
   let snapshot = await captureSnapshot(db, phone);
+  const afterLatestGeneric = latestGeneric >= 0 ? turns.slice(latestGeneric + 1) : [];
+  const latestGenericHasFreshName = afterLatestGeneric.some(
+    (turn) =>
+      turn.role === "assistant" &&
+      turn.content === linkQuestion("nome"),
+  );
+  const cleanGenericSession =
+    latestGeneric >= 0 &&
+    lastLink > lastClosing &&
+    !latestGenericHasFreshName;
+
   /* Um novo clique no START genérico abre uma sessão de cadastro limpa.
      A ficha antiga só volta a ser considerada depois que a identidade e o
      endereço do novo cadastro forem informados; isso impede pular direto para
      a última etapa de uma tentativa anterior. */
-  if (freshEntry) {
+  if (freshEntry || cleanGenericSession) {
     snapshot = {
       ...snapshot,
       ownerName: null,
