@@ -134,13 +134,18 @@ export async function addMessage(
 }
 
 export async function conversationTurns(db: AdminDb, conversationId: number) {
+  /* A IA precisa sempre enxergar o turno atual. Buscamos primeiro as 60
+     mensagens MAIS RECENTES e só então devolvemos em ordem cronológica.
+     Buscar ASC + LIMIT 60 prendia conversas longas nas primeiras mensagens e
+     fazia o START recém-enviado ficar fora do contexto. */
   const rows = await db
     .select()
     .from(schema.messages)
     .where(eq(schema.messages.conversationId, conversationId))
-    .orderBy(asc(schema.messages.id))
+    .orderBy(desc(schema.messages.id))
     .limit(60);
-  return rows
+  return [...rows]
+    .reverse()
     .filter((row) => row.author !== "sistema")
     .map((row) => ({
       role: (row.direction === "in" ? "user" : "assistant") as "user" | "assistant",
