@@ -36,6 +36,7 @@ import { adminAudit } from "./routes/admin-audit";
 import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
 import * as schema from "./database/schema";
+import { verifyGithubActionsOidc } from "./lib/github-actions-oidc";
 import { sweepLinkCaptacaoHelp } from "./lib/link-captacao-help";
 import { readConfig } from "./lib/integrations";
 import {
@@ -101,10 +102,11 @@ registerFeedRoutes(app);
 registerWebhookRoutes(app);
 
 app.get("/api/cron/link-captacao-help", async (c) => {
-  const secret = process.env.CRON_SECRET?.trim() ?? "";
   const auth = c.req.header("authorization") ?? "";
-  if (!secret) return c.json({ ok: false, error: "CRON_SECRET não configurado" }, 503);
-  if (auth !== `Bearer ${secret}`) return c.json({ ok: false, error: "unauthorized" }, 401);
+  const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length) : "";
+  if (!(await verifyGithubActionsOidc(token))) {
+    return c.json({ ok: false, error: "unauthorized" }, 401);
+  }
 
   const db = await getDb();
   const { row, config } = await readConfig(db, "whatsapp_cloud");
