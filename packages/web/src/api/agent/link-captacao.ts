@@ -146,16 +146,18 @@ export const LINK_STEPS = [
   { key: "endereco", label: "Endereço do imóvel", verbatim: true, question: "Qual é o endereço completo do imóvel?" },
   { key: "documentacao", label: "Documentação", verbatim: true, question: "Qual é a situação da documentação do imóvel?" },
   { key: "tipo", label: "Tipo de imóvel", question: "Qual é o tipo do imóvel? Ex.: apartamento, casa, terreno, sítio ou outro." },
-  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? Se não se aplicar, pode pular." },
-  { key: "suites", label: "Suítes", question: "Quantas suítes? Se não se aplicar, pode pular." },
-  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros? Se não se aplicar, pode pular." },
-  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem? Se não se aplicar, pode pular." },
-  { key: "metragem", label: "Área útil ou construída", question: "Qual é a área útil ou construída? Ex.: 75 m²." },
-  { key: "caracteristicas", label: "Metragem do terreno", question: "Qual é a metragem do terreno? Ex.: 10 x 40 metros." },
+  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "suites", label: "Suítes", question: "Quantas suítes? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "metragem", label: "Área útil ou construída", question: "Qual é a área útil ou construída? Ex.: 75 m². Se não souber, digite NÃO SEI." },
+  { key: "caracteristicas", label: "Metragem do terreno", question: "Qual é a metragem do terreno? Ex.: 10 x 40 metros. Se não souber ou não se aplicar, digite NÃO SEI." },
   { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel?" },
-  { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? Se não houver, pode pular." },
-  { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? Se não souber, pode pular." },
-  { key: "fotoFrente", label: "Foto da frente", verbatim: true, question: "Para finalizar, envie uma foto da frente ou fachada do imóvel." },
+  { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)" },
+  { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? Se não souber, digite NÃO SEI." },
+  { key: "fotoFrente", label: "Foto da frente", verbatim: true, question: "Envie uma foto da frente ou fachada do imóvel." },
+  { key: "observacaoFinal", label: "Informação adicional", verbatim: true, question: "Antes de finalizar: tem algo importante sobre o imóvel que gostaria de informar? Se não tiver mais nada a acrescentar, digite OK." },
+  { key: "confirmacaoFinal", label: "Confirmação final", verbatim: true, question: "Anotado. Digite OK para finalizar." },
 ] as const;
 
 export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
@@ -229,10 +231,27 @@ function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
     "custos",
     "caracteristicas",
     "fotoFrente",
+    "observacaoFinal",
+    "confirmacaoFinal",
   ] as const) {
     if (filled(answers[key])) done.add(key);
   }
   return LINK_STEPS.filter((step) => done.has(step.key)).map((step) => step.key);
+}
+
+function applicableLinkSteps(propertyType: string | null | undefined) {
+  const type = fold(propertyType);
+  if (!type) return [...LINK_STEPS];
+  const skip = new Set<LinkStepKey>();
+  if (/apartamento|apto|studio|flat|kitnet/.test(type)) skip.add("caracteristicas");
+  if (/terreno|lote/.test(type)) {
+    ["dormitorios", "suites", "banheiros", "vagas", "metragem", "condominio"].forEach((key) => skip.add(key as LinkStepKey));
+  }
+  if (/sala|loja|galpao|comercial/.test(type)) {
+    ["dormitorios", "suites", "caracteristicas"].forEach((key) => skip.add(key as LinkStepKey));
+  }
+  if (/sitio|chacara|fazenda/.test(type)) skip.add("condominio");
+  return LINK_STEPS.filter((step) => !skip.has(step.key));
 }
 
 function buildState(input: {
@@ -256,7 +275,8 @@ function buildState(input: {
     ? answersAll.filter((key) => key === "nome")
     : answersAll;
 
-  const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
+  const nextStep = applicableLinkSteps(startNewProperty ? null : snapshot.propertyType)
+    .find((step) => !answered.includes(step.key))?.key ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
   return {
@@ -319,7 +339,8 @@ async function brokerLinkState(
   const snapshot = await captureSnapshot(db, phone);
 
   const answered = linkAnswered(snapshot);
-  const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
+  const nextStep = applicableLinkSteps(snapshot.propertyType)
+    .find((step) => !answered.includes(step.key))?.key ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
   let lastLink = -1;
@@ -531,6 +552,8 @@ const SAVE_SCHEMA = z.object({
   custos: z.string().max(300).optional().describe("condomínio e IPTU"),
   valorPretendido: z.number().min(0).optional().describe("valor pretendido, só números"),
   caracteristicas: z.string().max(300).optional().describe("metragem do terreno, ex.: 10 x 40 metros"),
+  observacaoFinal: z.string().max(500).optional(),
+  confirmacaoFinal: z.string().max(40).optional(),
   observacao: z
     .string()
     .max(500)
@@ -673,6 +696,51 @@ export async function linkCaptacaoReply(
     }
   }
 
+  const skipValue = fold(lastUser);
+  const skipRequested = /^(nao sei|não sei|pular|pula|nao se aplica|não se aplica|nao tenho|não tenho)$/.test(skipValue);
+  const noneRequested = /^(nenhum|nenhuma|nao tem|não tem|zero|0)$/.test(skipValue);
+  const optionalMap: Partial<Record<LinkStepKey, keyof SaveToolInput>> = {
+    dormitorios: "dormitorios",
+    suites: "suites",
+    banheiros: "banheiros",
+    vagas: "vagas",
+    metragem: "metragem",
+    caracteristicas: "caracteristicas",
+    condominio: "condominio",
+    custos: "custos",
+  };
+  const optionalField = state.nextStep ? optionalMap[state.nextStep] : undefined;
+  if (optionalField && (skipRequested || noneRequested)) {
+    const value = noneRequested ? "0" : "não informado";
+    const input = { [optionalField]: value } as SaveToolInput;
+    await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+    toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
+    return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+  }
+
+  if (state.nextStep === "observacaoFinal") {
+    if (/^ok$/i.test(String(lastUser ?? "").trim())) {
+      const input = { observacaoFinal: "sem observações adicionais", confirmacaoFinal: "OK" };
+      await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
+      return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+    }
+    const note = String(lastUser ?? "").trim().slice(0, 500);
+    if (note) {
+      const input = { observacaoFinal: note };
+      await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
+      return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+    }
+  }
+
+  if (state.nextStep === "confirmacaoFinal" && /^ok$/i.test(String(lastUser ?? "").trim())) {
+    const input = { confirmacaoFinal: "OK" };
+    await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+    toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
+    return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+  }
+
   /* Foto da frente: o reconhecimento é determinístico e a gravação não passa
      pelo modelo — é o último passo do roteiro e não pode depender de extração. */
   const photo = state.nextStep === "fotoFrente" ? photoEvidence(lastUser) : null;
@@ -710,7 +778,8 @@ export async function linkCaptacaoReply(
         "Grava AGORA na ficha de captação o que o proprietário acabou de responder. Use só com os campos que a resposta informou.",
       inputSchema: SAVE_SCHEMA,
       async execute(input: SaveToolInput) {
-        if (input.observacao) offScript = true;
+        const substantive = Object.keys(input).some((key) => key !== "observacao" && input[key as keyof SaveToolInput] !== undefined);
+        if (input.observacao && !substantive) offScript = true;
         const result = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
         return result.saved
           ? { salvo: true, cadastroId: result.captureId, aviso: result.duplicateUnit }
