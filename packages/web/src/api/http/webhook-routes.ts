@@ -23,6 +23,7 @@ import {
 import { intakeLead, normalizeWebhookLead } from "../lib/lead-intake";
 import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
+import { storeWhatsappCaptureImage } from "../lib/whatsapp-capture-media";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
@@ -177,6 +178,21 @@ export function registerWebhookRoutes(app: Hono) {
           contactName: message.name,
           contactPhone: message.from,
         });
+
+        /* Imagem: só entra no fluxo se pertencer a uma ficha LINK_CAPTACAO.
+           Fora dele preservamos o comportamento anterior: mídia não-textual não
+           aciona lead nem IA. A foto válida é salva como PROVISÓRIA, nunca
+           publicada automaticamente. */
+        if (message.kind === "image" && !stageReached(claim.stage, "stored")) {
+          const stored = message.mediaId
+            ? await storeWhatsappCaptureImage(db, wa, message.from, message.mediaId)
+            : null;
+          if (!stored) {
+            await completeInboundEvent(db, claim.eventId);
+            processed++;
+            continue;
+          }
+        }
 
         /* Etapa 1 — histórico. Segunda linha de defesa: o índice UNIQUE em
            (conversation_id, external_id) impede segunda inserção; nesse caso
