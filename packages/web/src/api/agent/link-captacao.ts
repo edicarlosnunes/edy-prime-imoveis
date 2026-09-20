@@ -248,7 +248,12 @@ function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
   if (filled(snapshot.ownerName)) done.add("nome");
   if (snapshot.answered.includes("endereco")) done.add("endereco");
   if (filled(snapshot.propertyType)) done.add("tipo");
-  if (typeof snapshot.askingPrice === "number" && snapshot.askingPrice > 0) done.add("valor");
+  if (
+    (typeof snapshot.askingPrice === "number" && snapshot.askingPrice > 0) ||
+    filled(answers.valorPretendidoStatus)
+  ) {
+    done.add("valor");
+  }
   for (const key of [
     "condominio",
     "documentacao",
@@ -260,6 +265,8 @@ function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
     "custos",
     "caracteristicas",
     "fotoFrente",
+    "observacaoFinal",
+    "confirmacaoFinal",
   ] as const) {
     if (filled(answers[key])) done.add(key);
   }
@@ -276,7 +283,8 @@ function buildState(input: {
 }): LinkCaptacaoState {
   const { snapshot, freshEntry } = input;
   const answersAll = linkAnswered(snapshot);
-  const completeBefore = answersAll.length === LINK_STEPS.length;
+  const previousSteps = applicableSteps(snapshot.propertyType);
+  const completeBefore = previousSteps.every((key) => answersAll.includes(key));
 
   /* Clique no link com o cadastro anterior concluído: o proprietário quer
      cadastrar OUTRO imóvel. O nome já é conhecido, o resto começa do zero.
@@ -287,7 +295,8 @@ function buildState(input: {
     ? answersAll.filter((key) => key === "nome")
     : answersAll;
 
-  const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
+  const route = applicableSteps(startNewProperty ? null : snapshot.propertyType);
+  const nextStep = route.find((key) => !answered.includes(key)) ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
   return {
@@ -350,7 +359,8 @@ async function brokerLinkState(
   const snapshot = await captureSnapshot(db, phone);
 
   const answered = linkAnswered(snapshot);
-  const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
+  const route = applicableSteps(snapshot.propertyType);
+  const nextStep = route.find((key) => !answered.includes(key)) ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
   let lastLink = -1;
@@ -362,7 +372,7 @@ async function brokerLinkState(
   const currentEntry = lastLink > lastClosing;
 
   return {
-    active: currentEntry && !snapshot.complete,
+    active: currentEntry && nextStep !== null,
     presenter: "corretor",
     ownerPhone,
     broker: creci && brokerName ? { creci, name: brokerName, phone } : null,
