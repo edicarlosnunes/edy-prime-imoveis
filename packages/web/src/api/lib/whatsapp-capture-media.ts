@@ -33,9 +33,12 @@ export async function storeWhatsappCaptureImage(
   mediaId: string,
 ) {
   const snapshot = await captureSnapshot(db, phone);
-  if (!snapshot.captureId) {
-    throw new Error("Imagem recebida sem captação em andamento para este telefone");
-  }
+  const origin = String(
+    (snapshot.answers as Record<string, string | undefined>).origem ?? "",
+  ).trim().toUpperCase();
+  /* Imagem fora de uma ficha LINK_CAPTACAO continua com o comportamento
+     antigo do canal: não é tratada por este fluxo. */
+  if (!snapshot.captureId || origin !== "LINK_CAPTACAO") return null;
 
   const file = await downloadWhatsappImage(config, mediaId);
   if (!ALLOWED_CAPTURE_IMAGE_MIME.has(file.mime)) {
