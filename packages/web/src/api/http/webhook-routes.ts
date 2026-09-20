@@ -23,10 +23,13 @@ import {
 import { intakeLead, normalizeWebhookLead } from "../lib/lead-intake";
 import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
+import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
+import { captureSnapshot } from "../agent/owner-capture";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
   parseMetaMessaging,
+  downloadWhatsappMedia,
   parseWhatsappWebhook,
   sendMetaMessage,
   sendWhatsappText,
@@ -177,6 +180,32 @@ export function registerWebhookRoutes(app: Hono) {
           contactName: message.name,
           contactPhone: message.from,
         });
+
+        if (message.mediaId) {
+          const media = await downloadWhatsappMedia(wa, message.mediaId);
+          const mediaKey = `wa_${message.mediaId}`.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+          await db.insert(schema.media).values({
+            id: mediaKey,
+            mime: media.mime,
+            size: media.size,
+            data: media.data,
+            name: "fachada-whatsapp",
+            alt: "Foto provisória enviada pelo proprietário via WhatsApp",
+          }).onConflictDoNothing();
+          const url = `/api/media/${mediaKey}`;
+          message.text = `[imagem:${url}]`;
+
+          const snapshot = await captureSnapshot(db, message.from);
+          if (snapshot.captureId) {
+            const [capture] = await db.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, snapshot.captureId)).limit(1);
+            if (capture) {
+              const photos = addOwnerPhotos(capture.ownerPhotos, [{ url, caption: "Fachada" }], { source: "proprietario" });
+              await db.update(schema.propertyCaptures)
+                .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+                .where(eq(schema.propertyCaptures.id, snapshot.captureId));
+            }
+          }
+        }
 
         /* Etapa 1 — histórico. Segunda linha de defesa: o índice UNIQUE em
            (conversation_id, external_id) impede segunda inserção; nesse caso
