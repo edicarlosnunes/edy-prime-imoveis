@@ -55,9 +55,7 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 export type LinkPresenter = "proprietario" | "corretor";
 
 const GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
-const CONFIRM_QUESTION = "Olá! Vamos cadastrar um imóvel agora?\n\nResponda Sim ou Não.";
-const ROLE_QUESTION = "Olá! Claro. Você é proprietário ou corretor?";
-const DECLINED_MESSAGE = "Tudo bem. Quando quiser cadastrar um imóvel, é só acessar o Link de Captação novamente.";
+const ROLE_QUESTION = "Você é o proprietário do imóvel ou corretor?";
 const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário do imóvel ou corretor, pois teremos algumas informações que somente eles poderão confirmar.";
 
 const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
@@ -363,15 +361,11 @@ export async function linkCaptacaoState(
     if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) latestGeneric = index;
   });
   const afterGeneric = latestGeneric >= 0 ? turns.slice(latestGeneric + 1).filter((turn) => turn.role === "user") : [];
-  const confirmation = fold(afterGeneric[0]?.content ?? "");
-  const confirmed = /^(sim|s|claro|vamos|quero)\b/.test(confirmation);
-  const declined = /^(nao|não|n)\b/.test(confirmation);
-  const roleAnswer = confirmed ? (afterGeneric[1]?.content ?? "") : "";
+  /* O envio da mensagem pré-preenchida já é a confirmação de entrada.
+     A primeira resposta do contato é diretamente o perfil: proprietário ou corretor. */
+  const roleAnswer = afterGeneric[0]?.content ?? "";
   const brokerEntry = /\bcorretor\b/i.test(fold(roleAnswer)) || turns.some((turn) => turn.role === "user" && fold(turn.content) === fold(BROKER_ENTRY_MESSAGE));
   if (brokerEntry) return brokerLinkState(db, phone!, turns);
-  /* "Não" encerra esta entrada. No próprio turno ainda deixamos o fluxo ativo
-     para enviar a despedida; mensagens posteriores voltam ao atendimento normal. */
-  if (declined && afterGeneric.length > 1) return null;
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const freshEntry = hasLinkToken(lastUser);
   const fromLink = userMessages.some((turn) => hasLinkToken(turn.content));
@@ -555,31 +549,17 @@ export async function linkCaptacaoReply(
   if (genericIndex >= 0) {
     const replies = turns.slice(genericIndex + 1).filter((turn) => turn.role === "user");
     if (replies.length === 0) {
-      return { text: CONFIRM_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
-    }
-
-    const confirmation = fold(replies[0]!.content);
-    const confirmed = /^(sim|s|claro|vamos|quero)\b/.test(confirmation);
-    const declined = /^(nao|não|n)\b/.test(confirmation);
-
-    if (declined) {
-      return { text: DECLINED_MESSAGE, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
-    }
-    if (!confirmed) {
-      return { text: CONFIRM_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
-    }
-    if (replies.length === 1) {
       return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
 
-    const role = fold(replies[1]!.content);
+    const role = fold(replies[0]!.content);
     const isOwner = /propriet|dono|dona/.test(role);
     const isBroker = /corretor/.test(role);
     if (!isOwner && !isBroker) {
       return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
-    /* Sim + identificação de perfil são controle do fluxo, não dados do imóvel. */
-    if (replies.length === 2 && state.presenter === "proprietario") {
+    /* A identificação de perfil é controle do fluxo, não dado do imóvel. */
+    if (replies.length === 1 && state.presenter === "proprietario") {
       return finish(state, { offScript: false, toolCalls });
     }
   }
