@@ -25,5 +25,11 @@
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/link-captacao-help",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }
