@@ -81,11 +81,29 @@ export async function verifyMetaSignature(
   return diff === 0 ? { ok: true, reason: "" } : { ok: false, reason: "Assinatura inválida" };
 }
 
+export async function downloadWhatsappMedia(config: ConfigMap, mediaId: string) {
+  const token = config.accessToken;
+  if (!token || !mediaId) throw new Error("WhatsApp Cloud API sem credenciais de mídia");
+  const metaResponse = await fetch(`${GRAPH}/${mediaId}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const meta = (await metaResponse.json().catch(() => ({}))) as { url?: string; mime_type?: string; file_size?: number; error?: { message?: string } };
+  if (!metaResponse.ok || !meta.url) throw new Error(meta.error?.message ?? `Falha ao localizar mídia HTTP ${metaResponse.status}`);
+  const fileResponse = await fetch(meta.url, { headers: { authorization: `Bearer ${token}` } });
+  if (!fileResponse.ok) throw new Error(`Falha ao baixar mídia HTTP ${fileResponse.status}`);
+  const bytes = new Uint8Array(await fileResponse.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { data: btoa(binary), mime: meta.mime_type ?? fileResponse.headers.get("content-type") ?? "image/jpeg", size: bytes.length };
+}
+
 export interface IncomingWhatsapp {
   from: string;
   name: string | null;
   text: string;
   messageId: string | null;
+  mediaId?: string | null;
+  mediaMime?: string | null;
 }
 
 const onlyDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "");
@@ -115,6 +133,7 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
             id?: string;
             type?: string;
             text?: { body?: string };
+            image?: { id?: string; mime_type?: string; caption?: string };
           }[];
         };
       }[];
@@ -128,7 +147,8 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
       const selfPhoneId = (value?.metadata?.phone_number_id ?? "").trim();
       for (const message of value?.messages ?? []) {
         const isText = message.type ? message.type === "text" : Boolean(message.text?.body);
-        if (!isText || !message.from) continue;
+        const isImage = message.type === "image" && Boolean(message.image?.id);
+        if ((!isText && !isImage) || !message.from) continue;
         /* Anti-loop: nada que saiu do nosso próprio número volta como cliente. */
         const from = onlyDigits(message.from);
         if (selfPhone && from === selfPhone) continue;
@@ -136,8 +156,10 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
         out.push({
           from: message.from,
           name: contactName,
-          text: message.text?.body ?? "",
+          text: isImage ? "[imagem]" : (message.text?.body ?? ""),
           messageId: message.id ?? null,
+          mediaId: isImage ? (message.image?.id ?? null) : null,
+          mediaMime: isImage ? (message.image?.mime_type ?? null) : null,
         });
       }
     }
