@@ -246,7 +246,7 @@ function ConversationsPage() {
               )}
 
               <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
-                {(detail.data?.messages ?? []).map((message) => (
+                {[...(detail.data?.messages ?? [])].reverse().map((message) => (
                   <div
                     key={message.id}
                     className={cn(
@@ -276,6 +276,20 @@ function ConversationsPage() {
               </div>
 
               <div className="mt-4 space-y-2">
+                {conversation.mode === "humano" && (
+                  <Btn
+                    tone="outline"
+                    disabled={returnToAi.isPending}
+                    onClick={() =>
+                      guard(async () => {
+                        await returnToAi.mutateAsync({ id: conversation.id });
+                        return "Atendimento devolvido para a IA.";
+                      })
+                    }
+                  >
+                    <Bot className="h-3.5 w-3.5" /> Devolver à IA
+                  </Btn>
+                )}
                 <Textarea
                   placeholder="Escrever como corretor (assume a conversa automaticamente)"
                   value={draft}
