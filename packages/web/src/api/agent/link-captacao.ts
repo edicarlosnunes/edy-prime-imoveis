@@ -423,7 +423,26 @@ export async function linkCaptacaoState(
   });
   const relink = lastLink >= 0 && lastLink > lastClosing;
 
-  const snapshot = await captureSnapshot(db, phone);
+  let snapshot = await captureSnapshot(db, phone);
+  /* Um novo clique no START genérico abre uma sessão de cadastro limpa.
+     A ficha antiga só volta a ser considerada depois que a identidade e o
+     endereço do novo cadastro forem informados; isso impede pular direto para
+     a última etapa de uma tentativa anterior. */
+  if (freshEntry) {
+    snapshot = {
+      ...snapshot,
+      captureId: null,
+      pending: false,
+      address: null,
+      propertyType: null,
+      askingPrice: null,
+      answers: {},
+      answered: snapshot.ownerName ? ["nome"] : [],
+      nextStep: snapshot.ownerName ? "endereco" : "nome",
+      nextQuestion: snapshot.ownerName ? linkQuestion("endereco") : linkQuestion("nome"),
+      complete: false,
+    };
+  }
   const origin = (snapshot.answers as Record<string, string | undefined>).origem ?? null;
   const sticky = fold(origin) === fold(LINK_CAPTACAO_ORIGIN);
   if (!freshEntry && !fromLink && !sticky) return null;
@@ -633,14 +652,14 @@ export async function linkCaptacaoReply(
        replies[0], então um primeiro erro deixava a conversa presa para sempre. */
     const roleReply = [...replies].reverse().find((turn) => {
       const value = fold(turn.content);
-      return /propriet|dono|dona/.test(value) || /corretor/.test(value);
+      return /^(proprietario|proprietaria|corretor|corretora)$/.test(value);
     });
     if (!roleReply) {
       return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
     const role = fold(roleReply.content);
-    const isOwner = /propriet|dono|dona/.test(role);
-    const isBroker = /corretor/.test(role);
+    const isOwner = /^(proprietario|proprietaria)$/.test(role);
+    const isBroker = /^(corretor|corretora)$/.test(role);
     /* A identificação de perfil é controle do fluxo, não dado do imóvel.
        Assim que "proprietário" é informado corretamente, mesmo depois de
        respostas inválidas, o roteiro avança para o nome. */
