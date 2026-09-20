@@ -566,6 +566,29 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
+  test.each([
+    ["Apto", "apartamento"],
+    ["Apartamento", "apartamento"],
+  ])("tipo curto %s é gravado sem repetir a pergunta", async (answer, expectedType) => {
+    const conversa = await conversation("5513997141174");
+    await entrarPeloLink(conversa.id);
+
+    /* Avança até a pergunta de tipo usando o extrator já coberto pelo roteiro. */
+    for (const item of SCRIPT.slice(0, 4)) {
+      await linkTurn(conversa.id, item.body, item.save);
+    }
+
+    const callsBefore = modelCalls;
+    const turn = await linkTurn(conversa.id, answer);
+
+    expect(turn.replied).toBe(true);
+    expect(turn.reply).toBe(linkQuestion("dormitorios"));
+    expect(modelCalls).toBe(callsBefore);
+
+    const ficha = await onlyCapture();
+    expect(ficha.property_type).toBe(expectedType);
+  });
+
   test("cada resposta é gravada na hora, sem esperar o fim do roteiro", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);

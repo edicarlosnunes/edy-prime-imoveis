@@ -431,6 +431,36 @@ function photoEvidence(text: string | null | undefined): "media" | "mencao" | nu
   return PHOTO_MENTION.test(value) ? "mencao" : null;
 }
 
+/**
+ * Respostas curtas e inequívocas para o passo "tipo do imóvel".
+ *
+ * Esse passo é simples o bastante para não depender do extrator de IA. Além
+ * de ser mais rápido, evita o roteiro ficar repetindo a pergunta quando o
+ * proprietário responde apenas "Apto" ou "Apartamento".
+ *
+ * Frases maiores/ambíguas continuam indo para o extrator normal.
+ */
+function shortPropertyType(text: string | null | undefined): string | null {
+  const value = fold(text);
+  const types: Record<string, string> = {
+    apto: "apartamento",
+    apartamento: "apartamento",
+    casa: "casa",
+    terreno: "terreno",
+    lote: "terreno",
+    sitio: "sitio",
+    chacara: "chacara",
+    sobrado: "sobrado",
+    studio: "studio",
+    flat: "flat",
+    kitnet: "kitnet",
+    galpao: "galpao",
+    loja: "loja",
+    "sala comercial": "sala comercial",
+  };
+  return types[value] ?? null;
+}
+
 /** Tudo que o fluxo do link grava. Intenção e origem são fixas. */
 function saveInput(
   state: LinkCaptacaoState,
@@ -617,6 +647,30 @@ export async function linkCaptacaoReply(
      que está GRAVADO (`answered`), não o histórico da conversa. */
   if (state.freshEntry || (!spokeBefore && state.answered.length === 0)) {
     return finish(state, { offScript: false, toolCalls });
+  }
+
+  /* Tipo do imóvel: respostas curtas e inequívocas são gravadas de forma
+     determinística. Isso evita depender do extrator para "Apto"/"Apartamento"
+     e impede a repetição da mesma pergunta. */
+  if (state.nextStep === "tipo") {
+    const tipoImovel = shortPropertyType(lastUser);
+    if (tipoImovel) {
+      const saved = await saveCaptureAnswer(
+        db,
+        saveInput(state, state.ownerPhone ?? phone, { tipoImovel }),
+      );
+      toolCalls.push({
+        tool: "salvarCadastroVenda",
+        input: JSON.stringify({ tipoImovel }),
+      });
+      if (saved.saved) {
+        return finish(
+          await reload(db, state.ownerPhone ?? phone, state.startNewProperty),
+          { offScript: false, toolCalls },
+        );
+      }
+      return finish(state, { offScript: false, toolCalls });
+    }
   }
 
   /* Foto da frente: o reconhecimento é determinístico e a gravação não passa
