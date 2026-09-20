@@ -144,18 +144,20 @@ export const hasLinkToken = (text: string | null | undefined) => {
 export const LINK_STEPS = [
   { key: "nome", label: "Nome completo", verbatim: true, question: "Qual é o seu nome completo?" },
   { key: "endereco", label: "Endereço do imóvel", verbatim: true, question: "Qual é o endereço completo do imóvel?" },
-  { key: "documentacao", label: "Documentação", verbatim: true, question: "Qual é a situação da documentação do imóvel?" },
+  { key: "documentacao", label: "Documentação", verbatim: true, question: "Qual é a situação da documentação do imóvel? Se não souber, digite NÃO SEI." },
   { key: "tipo", label: "Tipo de imóvel", question: "Qual é o tipo do imóvel? Ex.: apartamento, casa, terreno, sítio ou outro." },
-  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? Se não se aplicar, pode pular." },
-  { key: "suites", label: "Suítes", question: "Quantas suítes? Se não se aplicar, pode pular." },
-  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros? Se não se aplicar, pode pular." },
-  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem? Se não se aplicar, pode pular." },
-  { key: "metragem", label: "Área útil ou construída", question: "Qual é a área útil ou construída? Ex.: 75 m²." },
-  { key: "caracteristicas", label: "Metragem do terreno", question: "Qual é a metragem do terreno? Ex.: 10 x 40 metros." },
-  { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel?" },
-  { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? Se não houver, pode pular." },
-  { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? Se não souber, pode pular." },
+  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "suites", label: "Suítes", question: "Quantas suítes? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem? (0 se não tiver • NÃO SEI se não souber)" },
+  { key: "metragem", label: "Área útil ou construída", question: "Qual é a área útil ou construída? Ex.: 75 m². Se não souber, digite NÃO SEI." },
+  { key: "caracteristicas", label: "Metragem do terreno", question: "Qual é a metragem do terreno? Ex.: 10 x 40 m. Se não souber, digite NÃO SEI." },
+  { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel? Se ainda não souber, digite NÃO SEI." },
+  { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)" },
+  { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? (0 se não houver/isento • NÃO SEI se não souber)" },
   { key: "fotoFrente", label: "Foto da frente", verbatim: true, question: "Para finalizar, envie uma foto da frente ou fachada do imóvel." },
+  { key: "observacaoFinal", label: "Informação adicional", verbatim: true, question: "Antes de finalizar: tem algo importante sobre o imóvel que gostaria de informar? Se não tiver mais nada a acrescentar, digite OK." },
+  { key: "confirmacaoFinal", label: "Confirmação final", verbatim: true, question: "Anotado. Digite OK para finalizar." },
 ] as const;
 
 export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
@@ -168,15 +170,44 @@ export const OFF_SCRIPT_REPLY =
 export const CLOSING_MESSAGE =
   "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
 
-/** Imóvel sem condomínio: a pergunta de custos vira só IPTU. */
-const NO_CONDO = ["terreno", "casa", "chacara", "sitio", "galpao", "area", "lote"];
-const NO_CONDO_ANSWER = /^(nao|nenhum|sem condominio|n)\b/;
+type PropertyFlow = "apartamento" | "casa" | "terreno" | "comercial" | "rural" | "generico";
 
-/** Texto exato da pergunta. Só `custos` se adapta, porque pode não haver condomínio. */
+function propertyFlow(type: string | null | undefined): PropertyFlow {
+  const value = fold(type);
+  if (/apartamento|apto|flat|studio|kitnet|kitchenette/.test(value)) return "apartamento";
+  if (/casa|sobrado/.test(value)) return "casa";
+  if (/terreno|lote|area/.test(value)) return "terreno";
+  if (/sala|loja|galpao|comercial/.test(value)) return "comercial";
+  if (/sitio|chacara|fazenda/.test(value)) return "rural";
+  return "generico";
+}
+
+const BASE_STEPS: LinkStepKey[] = ["nome", "endereco", "documentacao", "tipo"];
+const FINAL_STEPS: LinkStepKey[] = ["fotoFrente", "observacaoFinal", "confirmacaoFinal"];
+
+function applicableSteps(type: string | null | undefined): LinkStepKey[] {
+  const flow = propertyFlow(type);
+  const qualification: Record<PropertyFlow, LinkStepKey[]> = {
+    apartamento: ["dormitorios", "suites", "banheiros", "vagas", "metragem", "valor", "condominio", "custos"],
+    casa: ["dormitorios", "suites", "banheiros", "vagas", "metragem", "caracteristicas", "valor", "condominio", "custos"],
+    terreno: ["caracteristicas", "valor", "condominio", "custos"],
+    comercial: ["banheiros", "vagas", "metragem", "valor", "condominio", "custos"],
+    rural: ["caracteristicas", "dormitorios", "suites", "banheiros", "vagas", "metragem", "valor", "custos"],
+    generico: ["dormitorios", "suites", "banheiros", "vagas", "metragem", "caracteristicas", "valor", "condominio", "custos"],
+  };
+  return [...BASE_STEPS, ...qualification[flow], ...FINAL_STEPS];
+}
+
 export function linkQuestion(
   key: LinkStepKey,
   context: { propertyType?: string | null; condominio?: string | null } = {},
 ): string {
+  const flow = propertyFlow(context.propertyType);
+  if (key === "metragem") {
+    if (flow === "apartamento") return "Qual é a área útil? Ex.: 75 m². Se não souber, digite NÃO SEI.";
+    if (flow === "casa") return "Qual é a área construída? Ex.: 120 m². Se não souber, digite NÃO SEI.";
+    if (flow === "rural") return "Qual é a área construída da casa, se houver? (0 se não houver • NÃO SEI se não souber)";
+  }
   const step = LINK_STEPS.find((item) => item.key === key)!;
   return step.question;
 }
