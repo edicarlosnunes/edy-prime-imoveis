@@ -25,7 +25,6 @@ import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
 import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
 import { captureSnapshot } from "../agent/owner-capture";
-import { LINK_CAPTACAO_MESSAGE, linkCaptacaoState } from "../agent/link-captacao";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
@@ -209,10 +208,12 @@ export function registerWebhookRoutes(app: Hono) {
 
           const media = await downloadWhatsappMedia(wa, message.mediaId);
           const imageGate = basicWhatsappImageGate(media.mime, media.size);
-          const linkState = await linkCaptacaoState(db, message.from, [
-            { role: "user", content: LINK_CAPTACAO_MESSAGE },
-          ]);
-          if (!imageGate.ok || linkState?.nextStep !== "fotoFrente") {
+          const imageState = await captureSnapshot(db, message.from);
+          const imageAnswers = imageState.answers as Record<string, string | undefined>;
+          const photoPending =
+            String(imageAnswers.origem ?? "").trim().toUpperCase() === "LINK_CAPTACAO" &&
+            !String(imageAnswers.fotoFrente ?? "").trim();
+          if (!imageGate.ok || !photoPending) {
             message.text = imageGate.ok
               ? "Recebi a imagem, mas ainda não chegamos à etapa da foto. Vamos continuar o cadastro."
               : imageGate.customerMessage;
