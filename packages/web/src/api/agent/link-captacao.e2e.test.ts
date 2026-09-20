@@ -910,3 +910,46 @@ describe("6. ausência de duplicidade", () => {
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 });
+
+
+/* ---------------- hardening 20/09: erros reais encontrados no teste externo */
+
+describe("hardening do LINK_CAPTACAO", () => {
+  test("resposta inválida e depois proprietário não pode saltar para foto de ficha antiga", async () => {
+    const conversa = await conversation("hardening-role-retry");
+    await entrarPeloLink(conversa.id);
+    const errado = await linkTurn(conversa.id, "prorr");
+    expect(errado.reply).toMatch(/proprietário|corretor/i);
+    const corrigido = await linkTurn(conversa.id, "proprietário");
+    expect(corrigido.reply).toBe(linkQuestion("nome"));
+    expect(corrigido.reply).not.toMatch(/foto/i);
+  });
+
+  test.each(["não sei", "nao sei", "pular", "não se aplica"])(
+    "%s avança campo opcional sem frase neutra",
+    async (answer) => {
+      const conversa = await conversation("skip-" + answer);
+      await entrarPeloLink(conversa.id);
+      await linkTurn(conversa.id, "proprietário");
+      await linkTurn(conversa.id, "Maria Souza", { nome: "Maria Souza" });
+      await linkTurn(conversa.id, "Rua A, 10, Praia Grande", { rua: "Rua A", numero: "10", cidade: "Praia Grande" });
+      await linkTurn(conversa.id, "não sei");
+      await linkTurn(conversa.id, "Apartamento");
+      const turn = await linkTurn(conversa.id, answer);
+      expect(turn.reply).not.toContain(OFF_SCRIPT_REPLY);
+    },
+  );
+
+  test("0 em dormitórios significa nenhum e avança", async () => {
+    const conversa = await conversation("zero-dormitorios");
+    await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
+    await linkTurn(conversa.id, "Maria Souza", { nome: "Maria Souza" });
+    await linkTurn(conversa.id, "Rua A, 10, Praia Grande", { rua: "Rua A", numero: "10", cidade: "Praia Grande" });
+    await linkTurn(conversa.id, "não sei");
+    await linkTurn(conversa.id, "Apartamento");
+    const turn = await linkTurn(conversa.id, "0");
+    expect(turn.reply).toBe(linkQuestion("suites"));
+    expect(turn.reply).not.toContain(OFF_SCRIPT_REPLY);
+  });
+});
