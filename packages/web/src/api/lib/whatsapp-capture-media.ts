@@ -9,9 +9,14 @@ import { downloadWhatsappImage } from "./whatsapp";
 const MAX_CAPTURE_IMAGE_BYTES = 3 * 1024 * 1024;
 const ALLOWED_CAPTURE_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 
-function randomHex(bytes = 12) {
-  const data = crypto.getRandomValues(new Uint8Array(bytes));
-  return Array.from(data, (byte) => byte.toString(16).padStart(2, "0")).join("");
+async function mediaHex(mediaId: string) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`whatsapp:${mediaId}`),
+  );
+  return Array.from(new Uint8Array(digest).slice(0, 12), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
 }
 
 function toBase64(bytes: Uint8Array) {
@@ -48,17 +53,21 @@ export async function storeWhatsappCaptureImage(
     throw new Error("Imagem acima do limite de 3 MB");
   }
 
-  const id = randomHex(12);
+  /* ID determinístico pelo media_id: reenvio da Meta não cria cópia. */
+  const id = await mediaHex(mediaId);
   const url = `/api/media/${id}`;
-  await db.insert(schema.media).values({
-    id,
-    mime: file.mime,
-    size: file.size,
-    data: toBase64(file.bytes),
-    name: `whatsapp-${mediaId.slice(-12)}`,
-    variant: "original",
-    originalId: null,
-  });
+  await db
+    .insert(schema.media)
+    .values({
+      id,
+      mime: file.mime,
+      size: file.size,
+      data: toBase64(file.bytes),
+      name: `whatsapp-${mediaId.slice(-12)}`,
+      variant: "original",
+      originalId: null,
+    })
+    .onConflictDoNothing();
 
   try {
     const [capture] = await db
