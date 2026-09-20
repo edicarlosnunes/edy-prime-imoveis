@@ -502,6 +502,63 @@ function shortPropertyType(text: string | null | undefined): string | null {
   return types[value] ?? null;
 }
 
+const OK_REPLY = /^(ok|okay|certo|pronto|finalizar|concluir)$/;
+const UNKNOWN_REPLY =
+  /^(nao sei|nao lembro|nao conheco|nao tenho certeza|desconheco|pular|pula|passar|skip)$/;
+const NONE_REPLY =
+  /^(0|zero|nao|nenhum|nenhuma|nao tenho|nao possui|sem|nao se aplica|na)$/;
+
+const isOkReply = (text: string | null | undefined) => OK_REPLY.test(fold(text));
+
+function skipPatch(
+  step: LinkStepKey | null,
+  text: string | null | undefined,
+): Omit<CaptureAnswerInput, "phone"> | null {
+  if (!step) return null;
+  const value = fold(text);
+  const unknown = UNKNOWN_REPLY.test(value);
+  const none = NONE_REPLY.test(value);
+  if (!unknown && !none) return null;
+
+  const notInformed = "Não informado pelo proprietário";
+  if (step === "documentacao") return { documentacao: notInformed };
+  if (step === "dormitorios") return { dormitorios: none ? "0" : notInformed };
+  if (step === "suites") return { suites: none ? "0" : notInformed };
+  if (step === "banheiros") return { banheiros: none ? "0" : notInformed };
+  if (step === "vagas") return { vagas: none ? "0" : notInformed };
+  if (step === "metragem") return { metragem: notInformed };
+  if (step === "caracteristicas") return { caracteristicas: notInformed };
+  if (step === "valor") return { valorPretendidoStatus: notInformed };
+  if (step === "condominio") {
+    return { condominio: none ? "Não possui condomínio" : notInformed };
+  }
+  if (step === "custos") return { custos: none ? "0" : notInformed };
+  return null;
+}
+
+function inputAnswersStep(step: LinkStepKey | null, input: SaveToolInput): boolean {
+  if (!step) return false;
+  const has = (value: unknown) =>
+    (typeof value === "string" && value.trim().length > 0) ||
+    (typeof value === "number" && Number.isFinite(value));
+  if (step === "nome") return has(input.nome);
+  if (step === "endereco") {
+    return [input.cep, input.rua, input.numero, input.bairro, input.cidade, input.estado].some(has);
+  }
+  if (step === "documentacao") return has(input.documentacao);
+  if (step === "tipo") return has(input.tipoImovel);
+  if (step === "dormitorios") return has(input.dormitorios);
+  if (step === "suites") return has(input.suites);
+  if (step === "banheiros") return has(input.banheiros);
+  if (step === "vagas") return has(input.vagas);
+  if (step === "metragem") return has(input.metragem);
+  if (step === "caracteristicas") return has(input.caracteristicas);
+  if (step === "valor") return has(input.valorPretendido);
+  if (step === "condominio") return has(input.condominio);
+  if (step === "custos") return has(input.custos);
+  return false;
+}
+
 /** Tudo que o fluxo do link grava. Intenção e origem são fixas. */
 function saveInput(
   state: LinkCaptacaoState,
@@ -714,6 +771,62 @@ export async function linkCaptacaoReply(
     }
   }
 
+  /* "0", "NÃO SEI", "não tenho", "pular" e equivalentes: nunca deixam o
+     proprietário preso numa pergunta opcional. A resposta é registrada na
+     ficha com a diferença entre inexistente (0) e não informado. */
+  const skip = skipPatch(state.nextStep, lastUser);
+  if (skip) {
+    const saved = await saveCaptureAnswer(
+      db,
+      saveInput(state, state.ownerPhone ?? phone, skip),
+    );
+    toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(skip) });
+    if (saved.saved) {
+      return finish(
+        await reload(db, state.ownerPhone ?? phone, state.startNewProperty),
+        { offScript: false, toolCalls },
+      );
+    }
+    return finish(state, { offScript: false, toolCalls });
+  }
+
+  /* Depois da foto, todos os tipos de imóvel passam pela informação adicional
+     e pela confirmação final. */
+  if (state.nextStep === "observacaoFinal") {
+    const value = String(lastUser ?? "").trim();
+    if (value) {
+      const patch = isOkReply(value)
+        ? { observacaoFinal: "Sem informação adicional.", confirmacaoFinal: "OK" }
+        : { observacaoFinal: value.slice(0, 500) };
+      await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, patch));
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(patch) });
+      return finish(
+        await reload(db, state.ownerPhone ?? phone, state.startNewProperty),
+        { offScript: false, toolCalls },
+      );
+    }
+  }
+
+  if (state.nextStep === "confirmacaoFinal") {
+    if (isOkReply(lastUser)) {
+      const patch = { confirmacaoFinal: "OK" };
+      await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, patch));
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(patch) });
+      return finish(
+        await reload(db, state.ownerPhone ?? phone, state.startNewProperty),
+        { offScript: false, toolCalls },
+      );
+    }
+    const extra = String(lastUser ?? "").trim();
+    if (extra) {
+      await saveCaptureAnswer(
+        db,
+        saveInput(state, state.ownerPhone ?? phone, { observacao: extra.slice(0, 500) }),
+      );
+      return finish(state, { offScript: false, toolCalls });
+    }
+  }
+
   /* Foto da frente: o reconhecimento é determinístico e a gravação não passa
      pelo modelo — é o último passo do roteiro e não pode depender de extração. */
   const photo = state.nextStep === "fotoFrente" ? photoEvidence(lastUser) : null;
@@ -751,7 +864,9 @@ export async function linkCaptacaoReply(
         "Grava AGORA na ficha de captação o que o proprietário acabou de responder. Use só com os campos que a resposta informou.",
       inputSchema: SAVE_SCHEMA,
       async execute(input: SaveToolInput) {
-        if (input.observacao) offScript = true;
+        /* Se a resposta preencheu a pergunta pendente, ela é válida e não pode
+           ganhar a frase neutra só porque o extrator também devolveu uma nota. */
+        if (input.observacao && !inputAnswersStep(state.nextStep, input)) offScript = true;
         const result = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
         return result.saved
           ? { salvo: true, cadastroId: result.captureId, aviso: result.duplicateUnit }
