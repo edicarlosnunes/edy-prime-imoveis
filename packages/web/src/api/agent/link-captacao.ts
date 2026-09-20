@@ -49,9 +49,49 @@ export const LINK_CAPTACAO_ORIGIN = "LINK_CAPTACAO";
  * reconhecer a entrada sem tocar em webhook, token ou WhatsApp Cloud API.
  */
 export const LINK_CAPTACAO_TOKEN = "LINK_CAPTACAO";
+export const LINK_CAPTACAO_OWNER_TOKEN = "LINK_CAPTACAO_PROPRIETARIO";
+export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
+
+export type LinkPresenter = "proprietario" | "corretor";
+
+const GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
+const CONFIRM_QUESTION = "Olá! Vamos cadastrar um imóvel agora?\n\nResponda Sim ou Não.";
+const ROLE_QUESTION = "Olá! Claro. Você é proprietário ou corretor?";
+const DECLINED_MESSAGE = "Tudo bem. Quando quiser cadastrar um imóvel, é só acessar o Link de Captação novamente.";
+const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário do imóvel ou corretor, pois teremos algumas informações que somente eles poderão confirmar.";
+
+const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
+const BROKER_ENTRY_MESSAGE = "Sou corretor e quero apresentar um imóvel";
+
+const hasBrokerToken = (text: string | null | undefined) => {
+  const value = fold(text);
+  return (
+    value.includes(fold(LINK_CAPTACAO_BROKER_TOKEN)) ||
+    value === fold(BROKER_ENTRY_MESSAGE) ||
+    value === fold(GENERIC_ENTRY_MESSAGE)
+  );
+};
+
+const brokerUserReplies = (turns: readonly AgentTurn[]) => {
+  let start = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && hasBrokerToken(turn.content)) start = index;
+  });
+  if (start < 0) return [] as string[];
+  return turns
+    .slice(start + 1)
+    .filter((turn) => turn.role === "user")
+    .map((turn) => turn.content.trim())
+    .filter(Boolean);
+};
+
+const phoneFromText = (text: string | null | undefined) => {
+  const digits = String(text ?? "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits : null;
+};
 
 /** Texto pré-preenchido do link. */
-export const LINK_CAPTACAO_MESSAGE = `Quero cadastrar meu imóvel para venda (${LINK_CAPTACAO_TOKEN})`;
+export const LINK_CAPTACAO_MESSAGE = GENERIC_ENTRY_MESSAGE;
 
 /** O link pronto, a partir do WhatsApp da imobiliária. Não altera nada. */
 export function linkCaptacaoUrl(whatsapp: string): string {
@@ -69,8 +109,15 @@ const fold = (value: string | null | undefined) =>
     .trim();
 
 /** A mensagem carrega a marca do link? */
-export const hasLinkToken = (text: string | null | undefined) =>
-  fold(text).includes(fold(LINK_CAPTACAO_TOKEN));
+export const hasLinkToken = (text: string | null | undefined) => {
+  const value = fold(text);
+  return (
+    value.includes(fold(LINK_CAPTACAO_TOKEN)) ||
+    value === fold(OWNER_ENTRY_MESSAGE) ||
+    value === fold(BROKER_ENTRY_MESSAGE) ||
+    value === fold(GENERIC_ENTRY_MESSAGE)
+  );
+};
 
 /* ------------------------------------------------------------- roteiro */
 
@@ -81,62 +128,20 @@ export const hasLinkToken = (text: string | null | undefined) =>
  * demais são perguntas objetivas de qualificação, uma por vez.
  */
 export const LINK_STEPS = [
-  {
-    key: "nome",
-    label: "Nome completo",
-    verbatim: true,
-    question: "Olá! Vamos cadastrar seu imóvel.\n\nQual é o seu nome completo?",
-  },
-  {
-    key: "endereco",
-    label: "Endereço do imóvel",
-    verbatim: true,
-    question: "Nos informe o endereço do imóvel que deseja vender.",
-  },
-  {
-    key: "condominio",
-    label: "Condomínio e unidade",
-    verbatim: true,
-    question:
-      "O imóvel faz parte de algum condomínio? Se sim, informe o nome e a unidade: ap., bloco, torre, casa ou lote.",
-  },
-  {
-    key: "documentacao",
-    label: "Documentação",
-    verbatim: true,
-    question: "E a documentação do seu imóvel, como está? Está em seu nome?",
-  },
-  {
-    key: "tipo",
-    label: "Tipo de imóvel",
-    question: "Qual é o tipo do imóvel? (apartamento, casa, terreno, sala comercial ou outro)",
-  },
-  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios o imóvel tem?" },
-  { key: "suites", label: "Suítes", question: "Desses dormitórios, quantos são suítes?" },
-  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros no total?" },
-  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem?" },
-  {
-    key: "metragem",
-    label: "Metragem",
-    question: "Qual é a metragem do imóvel (área útil em m²)?",
-  },
-  {
-    key: "custos",
-    label: "Condomínio e IPTU",
-    question: "Quais são os valores de condomínio e de IPTU?",
-  },
-  { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido para a venda?" },
-  {
-    key: "caracteristicas",
-    label: "Características",
-    question: "Quais são as principais características e diferenciais do imóvel?",
-  },
-  {
-    key: "fotoFrente",
-    label: "Foto da frente",
-    verbatim: true,
-    question: "Pra finalizar, nos manda uma foto da frente do seu imóvel.",
-  },
+  { key: "nome", label: "Nome completo", verbatim: true, question: "Qual é o seu nome completo?" },
+  { key: "endereco", label: "Endereço do imóvel", verbatim: true, question: "Qual é o endereço completo do imóvel?" },
+  { key: "documentacao", label: "Documentação", verbatim: true, question: "Qual é a situação da documentação do imóvel?" },
+  { key: "tipo", label: "Tipo de imóvel", question: "Qual é o tipo do imóvel? Ex.: apartamento, casa, terreno, sítio ou outro." },
+  { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? Se não se aplicar, pode pular." },
+  { key: "suites", label: "Suítes", question: "Quantas suítes? Se não se aplicar, pode pular." },
+  { key: "banheiros", label: "Banheiros", question: "Quantos banheiros? Se não se aplicar, pode pular." },
+  { key: "vagas", label: "Vagas de garagem", question: "Quantas vagas de garagem? Se não se aplicar, pode pular." },
+  { key: "metragem", label: "Área útil ou construída", question: "Qual é a área útil ou construída? Ex.: 75 m²." },
+  { key: "caracteristicas", label: "Metragem do terreno", question: "Qual é a metragem do terreno? Ex.: 10 x 40 metros." },
+  { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel?" },
+  { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? Se não houver, pode pular." },
+  { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? Se não souber, pode pular." },
+  { key: "fotoFrente", label: "Foto da frente", verbatim: true, question: "Para finalizar, envie uma foto da frente ou fachada do imóvel." },
 ] as const;
 
 export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
@@ -147,7 +152,7 @@ export const OFF_SCRIPT_REPLY =
 
 /** Fechamento, depois da foto. */
 export const CLOSING_MESSAGE =
-  "Pronto, seu cadastro foi concluído. As informações ficaram registradas e em breve entraremos em contato.";
+  "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
 
 /** Imóvel sem condomínio: a pergunta de custos vira só IPTU. */
 const NO_CONDO = ["terreno", "casa", "chacara", "sitio", "galpao", "area", "lote"];
@@ -159,12 +164,7 @@ export function linkQuestion(
   context: { propertyType?: string | null; condominio?: string | null } = {},
 ): string {
   const step = LINK_STEPS.find((item) => item.key === key)!;
-  if (key !== "custos") return step.question;
-  const type = fold(context.propertyType);
-  const condo = fold(context.condominio);
-  const withoutCondo =
-    NO_CONDO.some((word) => type.includes(word)) || NO_CONDO_ANSWER.test(condo);
-  return withoutCondo ? "Qual é o valor do IPTU do imóvel?" : step.question;
+  return step.question;
 }
 
 /* --------------------------------------------------------------- estado */
@@ -172,6 +172,12 @@ export function linkQuestion(
 export interface LinkCaptacaoState {
   /** O fluxo do link responde este turno? */
   active: boolean;
+  /** Quem apresentou o imóvel pelo link. Corretor nunca vira proprietário. */
+  presenter: LinkPresenter;
+  /** Telefone do proprietário usado pela ficha; no fluxo do corretor vem da resposta do proprietário. */
+  ownerPhone: string | null;
+  /** Identificação do corretor apresentante, quando houver. */
+  broker?: { creci: string; name: string; phone: string } | null;
   /** Clique no link agora (a última mensagem do contato traz a marca). */
   freshEntry: boolean;
   /** A marca do link aparece em alguma mensagem desta conversa. */
@@ -240,6 +246,9 @@ function buildState(input: {
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
 
   return {
+    presenter: "proprietario",
+    ownerPhone: snapshot.phone,
+    broker: null,
     /* Atende o turno quando: clicou no link agora; ou está cadastrando outro
        imóvel depois de um cadastro concluído; ou o roteiro está em andamento e
        a conversa veio do link (marca no histórico) ou a ficha já está marcada
@@ -277,6 +286,71 @@ function buildState(input: {
  *    segundo imóvel do mesmo proprietário, que só deixa de ser "o anterior já
  *    concluído" quando o endereço novo abre a segunda ficha.
  */
+async function brokerLinkState(
+  db: AdminDb,
+  phone: string,
+  turns: readonly AgentTurn[],
+): Promise<LinkCaptacaoState> {
+  const replies = brokerUserReplies(turns);
+  const genericFlow = Boolean(
+    replies[0] &&
+      /^(sim|s|claro|vamos|quero|nao|não|n)\b/i.test(fold(replies[0])) &&
+      replies[1] &&
+      /propriet|corretor/i.test(fold(replies[1])),
+  );
+  const offset = genericFlow ? 2 : (replies[0] && /propriet|corretor/i.test(replies[0]) ? 1 : 0);
+  const creci = replies[offset]?.slice(0, 80) ?? "";
+  const brokerName = replies[offset + 1]?.slice(0, 120) ?? "";
+  const ownerPhone = phone;
+  const snapshot = await captureSnapshot(db, phone);
+
+  const answered = linkAnswered(snapshot);
+  const nextStep = LINK_STEPS.find((step) => !answered.includes(step.key))?.key ?? null;
+  const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
+
+  let lastLink = -1;
+  let lastClosing = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && hasBrokerToken(turn.content)) lastLink = index;
+    if (turn.role === "assistant" && turn.content.includes(CLOSING_MESSAGE)) lastClosing = index;
+  });
+  const currentEntry = lastLink > lastClosing;
+
+  return {
+    active: currentEntry && !snapshot.complete,
+    presenter: "corretor",
+    ownerPhone,
+    broker: creci && brokerName ? { creci, name: brokerName, phone } : null,
+    freshEntry: turns.some(
+      (turn) => turn.role === "user" && hasBrokerToken(turn.content),
+    ) && replies.length === 0,
+    fromLink: true,
+    startNewProperty: false,
+    snapshot,
+    answered,
+    nextStep,
+    nextQuestion: nextStep
+      ? linkQuestion(nextStep, { propertyType: snapshot.propertyType, condominio })
+      : null,
+    complete: nextStep === null,
+  };
+}
+
+function brokerPendingQuestion(turns: readonly AgentTurn[]): string | null {
+  const replies = brokerUserReplies(turns);
+  const genericFlow = Boolean(
+    replies[0] &&
+      /^(sim|s|claro|vamos|quero)\b/i.test(fold(replies[0])) &&
+      replies[1] &&
+      /corretor/i.test(fold(replies[1])),
+  );
+  const offset = genericFlow ? 2 : (replies[0] && /corretor/i.test(fold(replies[0])) ? 1 : 0);
+  const count = replies.length - offset;
+  if (count === 0) return "Qual é o seu CRECI?";
+  if (count === 1) return "Qual é o seu nome completo?";
+  return null;
+}
+
 export async function linkCaptacaoState(
   db: AdminDb,
   phone: string | null,
@@ -284,6 +358,20 @@ export async function linkCaptacaoState(
 ): Promise<LinkCaptacaoState | null> {
   if (!ownerPhoneKey(phone)) return null;
   const userMessages = turns.filter((turn) => turn.role === "user");
+  let latestGeneric = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) latestGeneric = index;
+  });
+  const afterGeneric = latestGeneric >= 0 ? turns.slice(latestGeneric + 1).filter((turn) => turn.role === "user") : [];
+  const confirmation = fold(afterGeneric[0]?.content ?? "");
+  const confirmed = /^(sim|s|claro|vamos|quero)\b/.test(confirmation);
+  const declined = /^(nao|não|n)\b/.test(confirmation);
+  const roleAnswer = confirmed ? (afterGeneric[1]?.content ?? "") : "";
+  const brokerEntry = /\bcorretor\b/i.test(fold(roleAnswer)) || turns.some((turn) => turn.role === "user" && fold(turn.content) === fold(BROKER_ENTRY_MESSAGE));
+  if (brokerEntry) return brokerLinkState(db, phone!, turns);
+  /* "Não" encerra esta entrada. No próprio turno ainda deixamos o fluxo ativo
+     para enviar a despedida; mensagens posteriores voltam ao atendimento normal. */
+  if (declined && afterGeneric.length > 1) return null;
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const freshEntry = hasLinkToken(lastUser);
   const fromLink = userMessages.some((turn) => hasLinkToken(turn.content));
@@ -388,11 +476,7 @@ const SAVE_SCHEMA = z.object({
   bairro: z.string().max(120).optional(),
   cidade: z.string().max(120).optional(),
   estado: z.string().max(2).optional().describe("UF, ex: SP"),
-  condominio: z
-    .string()
-    .max(300)
-    .optional()
-    .describe("resposta completa sobre condomínio: nome do condomínio e unidade"),
+  condominio: z.string().max(300).optional().describe("valor do condomínio"),
   unidade: z.string().max(60).optional().describe("apartamento, casa ou lote"),
   bloco: z.string().max(60).optional(),
   torre: z.string().max(60).optional(),
@@ -406,7 +490,7 @@ const SAVE_SCHEMA = z.object({
   metragem: z.string().max(300).optional(),
   custos: z.string().max(300).optional().describe("condomínio e IPTU"),
   valorPretendido: z.number().min(0).optional().describe("valor pretendido, só números"),
-  caracteristicas: z.string().max(300).optional(),
+  caracteristicas: z.string().max(300).optional().describe("metragem do terreno, ex.: 10 x 40 metros"),
   observacao: z
     .string()
     .max(500)
@@ -463,6 +547,72 @@ export async function linkCaptacaoReply(
     [...turns].reverse().find((turn) => turn.role === "user")?.content ?? null;
   const spokeBefore = turns.some((turn) => turn.role === "assistant");
 
+  /* Entrada genérica: o ED primeiro identifica proprietário ou corretor. */
+  let genericIndex = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "user" && fold(turn.content) === fold(GENERIC_ENTRY_MESSAGE)) genericIndex = index;
+  });
+  if (genericIndex >= 0) {
+    const replies = turns.slice(genericIndex + 1).filter((turn) => turn.role === "user");
+    if (replies.length === 0) {
+      return { text: CONFIRM_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+
+    const confirmation = fold(replies[0]!.content);
+    const confirmed = /^(sim|s|claro|vamos|quero)\b/.test(confirmation);
+    const declined = /^(nao|não|n)\b/.test(confirmation);
+
+    if (declined) {
+      return { text: DECLINED_MESSAGE, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+    if (!confirmed) {
+      return { text: CONFIRM_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+    if (replies.length === 1) {
+      return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+
+    const role = fold(replies[1]!.content);
+    const isOwner = /propriet|dono|dona/.test(role);
+    const isBroker = /corretor/.test(role);
+    if (!isOwner && !isBroker) {
+      return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+    /* Sim + identificação de perfil são controle do fluxo, não dados do imóvel. */
+    if (replies.length === 2 && state.presenter === "proprietario") {
+      return finish(state, { offScript: false, toolCalls });
+    }
+  }
+
+  if (state.presenter === "corretor") {
+    const pendingBroker = brokerPendingQuestion(turns);
+    if (pendingBroker) {
+      return {
+        text: pendingBroker,
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
+    }
+    if (!state.ownerPhone || !state.broker) {
+      return { text: "Qual é o seu nome completo?", handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    }
+
+    /* O cadastro do imóvel apresentado fica identificado pelo próprio corretor. */
+    if (state.answered.length === 0) {
+      await saveCaptureAnswer(db, {
+        phone: state.ownerPhone,
+        nome: state.broker.name,
+        negociacao: "venda",
+        origem: LINK_CAPTACAO_ORIGIN,
+        observacao: `Apresentado por corretor: ${state.broker.name} · CRECI ${state.broker.creci} · WhatsApp ${state.broker.phone}`,
+      });
+      const refreshed = await brokerLinkState(db, phone, turns);
+      return finish(refreshed, { offScript: false, toolCalls });
+    }
+  }
+
   /* Clique no link, ou primeiro contato deste telefone: não há resposta para
      extrair, só a abertura do roteiro. O modelo não é chamado.
      Atenção: "conversa nova" NÃO basta para pular a extração. Quem volta dias
@@ -480,7 +630,7 @@ export async function linkCaptacaoReply(
     const when = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
     await saveCaptureAnswer(
       db,
-      saveInput(state, phone, {
+      saveInput(state, state.ownerPhone ?? phone, {
         fotoFrente:
           photo === "media"
             ? `imagem recebida pelo WhatsApp em ${when}`
@@ -491,7 +641,7 @@ export async function linkCaptacaoReply(
       tool: "salvarCadastroVenda",
       input: JSON.stringify({ fotoFrente: photo }),
     });
-    return finish(await reload(db, phone, state.startNewProperty), { offScript: false, toolCalls });
+    return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
   }
 
   if (!gatewayConfigured()) {
@@ -511,7 +661,7 @@ export async function linkCaptacaoReply(
       inputSchema: SAVE_SCHEMA,
       async execute(input: SaveToolInput) {
         if (input.observacao) offScript = true;
-        const result = await saveCaptureAnswer(db, saveInput(state, phone, input));
+        const result = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
         return result.saved
           ? { salvo: true, cadastroId: result.captureId, aviso: result.duplicateUnit }
           : { salvo: false, motivo: result.reason };
@@ -558,7 +708,7 @@ export async function linkCaptacaoReply(
     };
   }
 
-  return finish(await reload(db, phone, state.startNewProperty), { offScript, toolCalls });
+  return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript, toolCalls });
 }
 
 /**
