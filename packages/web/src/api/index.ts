@@ -36,6 +36,8 @@ import { adminAudit } from "./routes/admin-audit";
 import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
 import * as schema from "./database/schema";
+import { sweepLinkCaptacaoHelp } from "./lib/link-captacao-help";
+import { readConfig } from "./lib/integrations";
 import {
   clearedSessionCookie,
   createSession,
@@ -97,6 +99,22 @@ const app = createApp(router);
 /* Arquivos públicos (feed/sitemap/robots/prerender) e webhooks de entrada. */
 registerFeedRoutes(app);
 registerWebhookRoutes(app);
+
+app.get("/api/cron/link-captacao-help", async (c) => {
+  const secret = process.env.CRON_SECRET?.trim() ?? "";
+  const auth = c.req.header("authorization") ?? "";
+  if (!secret) return c.json({ ok: false, error: "CRON_SECRET não configurado" }, 503);
+  if (auth !== `Bearer ${secret}`) return c.json({ ok: false, error: "unauthorized" }, 401);
+
+  const db = await getDb();
+  const { row, config } = await readConfig(db, "whatsapp_cloud");
+  if (!row || row.enabled !== 1) {
+    return c.json({ ok: true, skipped: "WhatsApp Cloud desativado" }, 200);
+  }
+
+  const result = await sweepLinkCaptacaoHelp(db, config);
+  return c.json({ ok: true, ...result }, 200);
+});
 
 /* ------------------------------------------------------------------ *
  * Rotas HTTP simples: só o que precisa mexer em cookie/binário.      *
