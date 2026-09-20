@@ -36,7 +36,21 @@ export async function ensureConversation(
       ),
     )
     .limit(1);
-  if (existing) return existing;
+  if (existing) {
+    /* Conversas antigas podem ter sido criadas antes de o telefone do canal
+       ficar persistido em contactPhone. O LINK_CAPTACAO depende dessa identidade
+       para vincular e retomar a ficha; por isso, quando o próprio WhatsApp
+       entrega o telefone e o campo ainda está vazio, completamos o registro
+       antes de chamar a IA. Nunca sobrescrevemos um telefone já salvo. */
+    if (!existing.contactPhone && params.contactPhone) {
+      await db
+        .update(schema.conversations)
+        .set({ contactPhone: params.contactPhone })
+        .where(eq(schema.conversations.id, existing.id));
+      return { ...existing, contactPhone: params.contactPhone };
+    }
+    return existing;
+  }
 
   const [created] = await db
     .insert(schema.conversations)
