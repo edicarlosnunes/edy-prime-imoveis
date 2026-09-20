@@ -431,15 +431,16 @@ export async function linkCaptacaoState(
   if (freshEntry) {
     snapshot = {
       ...snapshot,
+      ownerName: null,
       captureId: null,
       pending: false,
       address: null,
       propertyType: null,
       askingPrice: null,
       answers: {},
-      answered: snapshot.ownerName ? ["nome"] : [],
-      nextStep: snapshot.ownerName ? "endereco" : "nome",
-      nextQuestion: snapshot.ownerName ? linkQuestion("endereco") : linkQuestion("nome"),
+      answered: [],
+      nextStep: "nome",
+      nextQuestion: linkQuestion("nome"),
       complete: false,
     };
   }
