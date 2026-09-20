@@ -953,3 +953,29 @@ describe("hardening do LINK_CAPTACAO", () => {
     expect(turn.reply).not.toContain(OFF_SCRIPT_REPLY);
   });
 });
+
+
+describe("entrada resistente a respostas bagunçadas", () => {
+  test.each(["kkkk", "👍", "...", "prorr"])("entrada inválida %s não avança", async (answer) => {
+    const conversa = await conversation("invalid-role-" + answer);
+    await entrarPeloLink(conversa.id);
+    const turn = await linkTurn(conversa.id, answer);
+    expect(turn.reply).toMatch(/proprietário|corretor/i);
+    expect(await counts()).toEqual({ owners: 0, captures: 0 });
+  });
+
+  test.each(["proprietário", "proprietaria"])("%s válido avança para nome", async (answer) => {
+    const conversa = await conversation("valid-role-" + answer);
+    await entrarPeloLink(conversa.id);
+    const turn = await linkTurn(conversa.id, answer);
+    expect(turn.reply).toBe(linkQuestion("nome"));
+  });
+
+  test("erro e correção na mesma entrada nunca reaproveitam etapa antiga", async () => {
+    const conversa = await conversation("retry-clean-start");
+    await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "prorr");
+    const turn = await linkTurn(conversa.id, "proprietário");
+    expect(turn.reply).toBe(linkQuestion("nome"));
+  });
+});
