@@ -439,7 +439,9 @@ export async function linkCaptacaoState(
   const cleanExplicitEntry =
     latestGeneric >= 0 &&
     validOwnerRoleIndex >= 0 &&
-    ownerDataReplies.length === 0;
+    /* Mantém a fronteira também no turno em que o nome chega. Só depois
+       que esse nome cria a nova ficha a sessão deixa de depender desta trava. */
+    ownerDataReplies.length <= 1;
 
   if (cleanExplicitEntry) {
     const cleanSnapshot: CaptureSnapshot = {
