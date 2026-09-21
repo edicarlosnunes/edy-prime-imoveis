@@ -97,6 +97,21 @@ export async function downloadWhatsappMedia(config: ConfigMap, mediaId: string) 
   return { data: btoa(binary), mime: meta.mime_type ?? fileResponse.headers.get("content-type") ?? "image/jpeg", size: bytes.length };
 }
 
+export type WhatsappImageGate =
+  | { ok: true }
+  | { ok: false; reason: "tipo" | "tamanho" | "conteudo"; customerMessage: string };
+
+export function basicWhatsappImageGate(mime: string | null | undefined, size: number): WhatsappImageGate {
+  const normalized = String(mime ?? "").toLowerCase();
+  if (!["image/jpeg", "image/png", "image/webp"].includes(normalized)) {
+    return { ok: false, reason: "tipo", customerMessage: "Esse arquivo não é uma foto válida. Envie uma foto da frente, fachada ou terreno do imóvel." };
+  }
+  if (size <= 0 || size > 10 * 1024 * 1024) {
+    return { ok: false, reason: "tamanho", customerMessage: "Não consegui validar essa foto. Envie outra foto da frente, fachada ou terreno do imóvel." };
+  }
+  return { ok: true };
+}
+
 export interface IncomingWhatsapp {
   from: string;
   name: string | null;

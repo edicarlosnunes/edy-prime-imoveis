@@ -490,6 +490,9 @@ const SCRIPT: { step: string; body: string; save: Record<string, unknown>; next:
 /** Percorre o roteiro até a pergunta da foto (exclusive). */
 async function percorrerRoteiro(conversationId: number, steps = SCRIPT) {
   const perguntas: (string | undefined)[] = [];
+  if (steps[0]?.step === "nome") {
+    await linkTurn(conversationId, "proprietário");
+  }
   for (const item of steps) {
     const turn = await linkTurn(conversationId, item.body, item.save);
     expect(turn.saved?.salvo, `passo ${item.step}`).toBe(true);
@@ -526,6 +529,7 @@ describe("1. entrada pelo link de captação", () => {
   test("o fluxo do link tem precedência: nenhuma ferramenta de comprador no turno", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
 
     await linkTurn(conversa.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
 
@@ -538,6 +542,7 @@ describe("1. entrada pelo link de captação", () => {
   test("o telefone nunca é perguntado: vem do canal e já fica na ficha", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
     await linkTurn(conversa.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
 
     const [owner] = await db.all<{ name: string; phone: string | null }>(
@@ -572,6 +577,7 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
   ])("tipo curto %s é gravado sem repetir a pergunta", async (answer, expectedType) => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
 
     /* Avança até a pergunta de tipo usando o extrator já coberto pelo roteiro. */
     for (const item of SCRIPT.slice(0, 4)) {
@@ -592,6 +598,7 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
   test("cada resposta é gravada na hora, sem esperar o fim do roteiro", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
 
     /* Nome: a ficha nasce aqui, já marcada como venda e com a origem do link. */
     await linkTurn(conversa.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
@@ -660,6 +667,7 @@ describe("3. retomada pelo mesmo telefone", () => {
   test("volta dias depois, em outra conversa e sem clicar no link, na pergunta pendente", async () => {
     const primeira = await conversation("5513997141174");
     await entrarPeloLink(primeira.id);
+    await linkTurn(primeira.id, "proprietário");
     await linkTurn(primeira.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
     await linkTurn(primeira.id, SCRIPT[1]!.body, SCRIPT[1]!.save);
 
@@ -677,6 +685,7 @@ describe("3. retomada pelo mesmo telefone", () => {
   test("termina o roteiro depois da volta, sem duplicar proprietário nem ficha", async () => {
     const primeira = await conversation("5513997141174");
     await entrarPeloLink(primeira.id);
+    await linkTurn(primeira.id, "proprietário");
     await percorrerRoteiro(primeira.id, SCRIPT.slice(0, 3));
 
     const volta = await conversation("5513997141174:retorno");
@@ -692,6 +701,7 @@ describe("3. retomada pelo mesmo telefone", () => {
   test("resposta que não informa nada mantém a mesma pergunta, sem avançar", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
     await linkTurn(conversa.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
 
     /* O extrator não grava nada: a pergunta pendente continua sendo a mesma. */
@@ -710,6 +720,7 @@ describe("4. pergunta fora do roteiro", () => {
   test("responde a frase neutra exata, volta à pergunta pendente e registra nas observações", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
     await linkTurn(conversa.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
     await linkTurn(conversa.id, SCRIPT[1]!.body, SCRIPT[1]!.save);
 
@@ -830,8 +841,9 @@ describe("6. ausência de duplicidade", () => {
 
     const novo = await entrarPeloLink(volta.id);
 
-    /* O nome já é conhecido: o roteiro do segundo imóvel começa no endereço. */
-    expect(novo.reply).toBe(Q_ENDERECO);
+    expect(novo.reply).toBe(ABERTURA);
+    const perfil = await linkTurn(volta.id, "proprietário");
+    expect(perfil.reply).toBe(linkQuestion("nome"));
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
@@ -839,13 +851,14 @@ describe("6. ausência de duplicidade", () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
     await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "proprietário");
 
     /* Turno seguinte ao clique, sem nada aproveitável: a ficha lida do banco
        ainda é a anterior (concluída). O fluxo NÃO pode repetir o fechamento
        do cadastro antigo — a pergunta pendente é o endereço do novo imóvel. */
     const conversa = await linkTurn(volta.id, "Oi, tudo bem?");
 
-    expect(conversa.reply).toBe(Q_ENDERECO);
+    expect(conversa.reply).toBe(linkQuestion("nome"));
     expect(conversa.reply).not.toBe(FECHAMENTO);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
@@ -854,6 +867,8 @@ describe("6. ausência de duplicidade", () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
     await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "proprietário");
+    await linkTurn(volta.id, "Maria Souza", { nome: "Maria Souza" });
 
     const endereco = await linkTurn(
       volta.id,
@@ -884,6 +899,8 @@ describe("6. ausência de duplicidade", () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
     await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "proprietário");
+    await linkTurn(volta.id, "Maria Souza", { nome: "Maria Souza" });
 
     /* Mesmo endereço e mesma unidade do cadastro que já existe. */
     const repetido = await linkTurn(volta.id, SCRIPT[1]!.body, {
@@ -899,6 +916,7 @@ describe("6. ausência de duplicidade", () => {
   test("não abre um segundo imóvel enquanto o primeiro está incompleto", async () => {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
     await percorrerRoteiro(conversa.id, SCRIPT.slice(0, 2));
 
     /* Cadastro em andamento: o roteiro continua no imóvel atual. */
@@ -908,5 +926,74 @@ describe("6. ausência de duplicidade", () => {
 
     expect(turn.reply).toBe(`${NEUTRA}\n\n${Q_CONDOMINIO}`);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
+  });
+});
+
+
+/* ---------------- hardening 20/09: erros reais encontrados no teste externo */
+
+describe("hardening do LINK_CAPTACAO", () => {
+  test("resposta inválida e depois proprietário não pode saltar para foto de ficha antiga", async () => {
+    const conversa = await conversation("hardening-role-retry");
+    await entrarPeloLink(conversa.id);
+    const errado = await linkTurn(conversa.id, "prorr");
+    expect(errado.reply).toMatch(/proprietário|corretor/i);
+    const corrigido = await linkTurn(conversa.id, "proprietário");
+    expect(corrigido.reply).toBe(linkQuestion("nome"));
+    expect(corrigido.reply).not.toMatch(/foto/i);
+  });
+
+  test.each(["não sei", "nao sei", "pular", "não se aplica"])(
+    "%s avança campo opcional sem frase neutra",
+    async (answer) => {
+      const conversa = await conversation("skip-" + answer);
+      await entrarPeloLink(conversa.id);
+      await linkTurn(conversa.id, "proprietário");
+      await linkTurn(conversa.id, "Maria Souza", { nome: "Maria Souza" });
+      await linkTurn(conversa.id, "Rua A, 10, Praia Grande", { rua: "Rua A", numero: "10", cidade: "Praia Grande" });
+      await linkTurn(conversa.id, "não sei");
+      await linkTurn(conversa.id, "Apartamento");
+      const turn = await linkTurn(conversa.id, answer);
+      expect(turn.reply).not.toContain(OFF_SCRIPT_REPLY);
+    },
+  );
+
+  test("0 em dormitórios significa nenhum e avança", async () => {
+    const conversa = await conversation("zero-dormitorios");
+    await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "proprietário");
+    await linkTurn(conversa.id, "Maria Souza", { nome: "Maria Souza" });
+    await linkTurn(conversa.id, "Rua A, 10, Praia Grande", { rua: "Rua A", numero: "10", cidade: "Praia Grande" });
+    await linkTurn(conversa.id, "não sei");
+    await linkTurn(conversa.id, "Apartamento");
+    const turn = await linkTurn(conversa.id, "0");
+    expect(turn.reply).toBe(linkQuestion("suites"));
+    expect(turn.reply).not.toContain(OFF_SCRIPT_REPLY);
+  });
+});
+
+
+describe("entrada resistente a respostas bagunçadas", () => {
+  test.each(["kkkk", "👍", "...", "prorr"])("entrada inválida %s não avança", async (answer) => {
+    const conversa = await conversation("invalid-role-" + answer);
+    await entrarPeloLink(conversa.id);
+    const turn = await linkTurn(conversa.id, answer);
+    expect(turn.reply).toMatch(/proprietário|corretor/i);
+    expect(await counts()).toEqual({ owners: 0, captures: 0 });
+  });
+
+  test.each(["proprietário", "proprietaria"])("%s válido avança para nome", async (answer) => {
+    const conversa = await conversation("valid-role-" + answer);
+    await entrarPeloLink(conversa.id);
+    const turn = await linkTurn(conversa.id, answer);
+    expect(turn.reply).toBe(linkQuestion("nome"));
+  });
+
+  test("erro e correção na mesma entrada nunca reaproveitam etapa antiga", async () => {
+    const conversa = await conversation("retry-clean-start");
+    await entrarPeloLink(conversa.id);
+    await linkTurn(conversa.id, "prorr");
+    const turn = await linkTurn(conversa.id, "proprietário");
+    expect(turn.reply).toBe(linkQuestion("nome"));
   });
 });

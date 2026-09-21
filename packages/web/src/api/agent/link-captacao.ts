@@ -422,7 +422,44 @@ export async function linkCaptacaoState(
   });
   const relink = lastLink >= 0 && lastLink > lastClosing;
 
-  const snapshot = await captureSnapshot(db, phone);
+  let snapshot = await captureSnapshot(db, phone);
+  const afterLatestGeneric = latestGeneric >= 0 ? turns.slice(latestGeneric + 1) : [];
+  const latestGenericHasFreshName = afterLatestGeneric.some(
+    (turn) =>
+      turn.role === "assistant" &&
+      turn.content === linkQuestion("nome"),
+  );
+  const latestValidOwnerRole = [...afterGeneric].reverse().find((turn) =>
+    /^(proprietario|proprietaria)$/.test(fold(turn.content)),
+  );
+  const dataRepliesAfterOwnerRole = latestValidOwnerRole
+    ? afterGeneric.slice(afterGeneric.indexOf(latestValidOwnerRole) + 1)
+    : [];
+  const cleanGenericSession =
+    latestGeneric >= 0 &&
+    lastLink > lastClosing &&
+    Boolean(latestValidOwnerRole) &&
+    dataRepliesAfterOwnerRole.length === 0;
+
+  /* Uma nova ENTRADA_LINK_CAPTACAO permanece limpa no turno do perfil.
+     A existência de uma pergunta de nome antiga no histórico não pode liberar
+     a ficha pendente anterior (por exemplo, uma ficha parada em fotoFrente). */
+  if (freshEntry || cleanGenericSession) {
+    snapshot = {
+      ...snapshot,
+      ownerName: null,
+      captureId: null,
+      pending: false,
+      address: null,
+      propertyType: null,
+      askingPrice: null,
+      answers: {},
+      answered: [],
+      nextStep: "nome",
+      nextQuestion: linkQuestion("nome"),
+      complete: false,
+    };
+  }
   const origin = (snapshot.answers as Record<string, string | undefined>).origem ?? null;
   const sticky = fold(origin) === fold(LINK_CAPTACAO_ORIGIN);
   if (!freshEntry && !fromLink && !sticky) return null;
@@ -664,14 +701,14 @@ export async function linkCaptacaoReply(
        replies[0], então um primeiro erro deixava a conversa presa para sempre. */
     const roleReply = [...replies].reverse().find((turn) => {
       const value = fold(turn.content);
-      return /propriet|dono|dona/.test(value) || /corretor/.test(value);
+      return /^(proprietario|proprietaria|corretor|corretora)$/.test(value);
     });
     if (!roleReply) {
       return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
     const role = fold(roleReply.content);
-    const isOwner = /propriet|dono|dona/.test(role);
-    const isBroker = /corretor/.test(role);
+    const isOwner = /^(proprietario|proprietaria)$/.test(role);
+    const isBroker = /^(corretor|corretora)$/.test(role);
     /* A identificação de perfil é controle do fluxo, não dado do imóvel.
        Assim que "proprietário" é informado corretamente, mesmo depois de
        respostas inválidas, o roteiro avança para o nome. */
