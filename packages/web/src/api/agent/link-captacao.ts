@@ -172,8 +172,9 @@ const isUnknown = (text: string) => /^(nao sei|não sei)$/i.test(text.trim());
 const isZero = (text: string) => /^(0|zero|nao tem|não tem|nenhum|nenhuma|isento|isenta)$/i.test(text.trim());
 
 async function bindNewCapture(db: AdminDb, state: LinkCaptacaoState, phone: string, name: string) {
+  const normalizedName = name.trim().replace(/\s+/g, " ");
   const saved = await saveCaptureAnswer(db, {
-    phone, nome:name, negociacao:"venda", origem:LINK_CAPTACAO_ORIGIN, novaSessaoLink:true,
+    phone, nome:normalizedName, negociacao:"venda", origem:LINK_CAPTACAO_ORIGIN, novaSessaoLink:true,
   });
   if (!saved.saved || !saved.captureId || !state.sessionId) return saved;
   const now = new Date();
@@ -236,8 +237,13 @@ export async function linkCaptacaoReply(
 
   let ok=false;
   if (state.nextStep==="endereco") {
-    const saved=await saveCaptureAnswer(db,{phone,nome:undefined,rua:last,negociacao:"venda",origem:LINK_CAPTACAO_ORIGIN});
-    ok=saved.saved;
+    const endereco=last.trim().replace(/\s+/g," ").slice(0,300);
+    if (endereco) {
+      await db.update(schema.propertyCaptures).set({
+        address:endereco, street:endereco, updatedAt:new Date(), lastFieldAt:new Date(),
+      }).where(eq(schema.propertyCaptures.id,state.captureId));
+      ok=true;
+    }
   } else if (state.nextStep==="emCondominio") {
     const v=fold(last); if (/^(sim|s|nao|não|n)$/.test(v)) ok=await saveBlockDirect(db,state.captureId,"emCondominio",/^s/.test(v)?"SIM":"NÃO");
   } else if (state.nextStep==="documentacao") {
