@@ -174,6 +174,7 @@ const BLOCK_KEYS = BLOCK_STEPS.map((step) => step.key) as readonly string[];
  */
 const EXTRA_BLOCK_FIELDS = [
   { key: "origem", label: "Origem do cadastro" },
+  { key: "emCondominio", label: "Imóvel em condomínio" },
   { key: "condominio", label: "Condomínio e unidade" },
   { key: "fotoFrente", label: "Foto da frente" },
   { key: "valorPretendidoStatus", label: "Valor pretendido - situação" },
