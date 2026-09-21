@@ -427,6 +427,49 @@ export async function linkCaptacaoState(
   const sticky = fold(origin) === fold(LINK_CAPTACAO_ORIGIN);
   if (!freshEntry && !fromLink && !sticky) return null;
 
+  /* Uma ENTRADA_LINK_CAPTACAO explícita abre uma nova sessão lógica.
+     Até o nome ser informado, a ficha pendente anterior deste telefone não
+     pode escolher a próxima pergunta. A ficha antiga continua preservada no
+     banco; ela apenas deixa de comandar esta nova entrada. */
+  const validOwnerRoleIndex = afterGeneric.findIndex((turn) =>
+    /^(proprietario|proprietaria|dono|dona)$/.test(fold(turn.content)),
+  );
+  const ownerDataReplies =
+    validOwnerRoleIndex >= 0 ? afterGeneric.slice(validOwnerRoleIndex + 1) : [];
+  const cleanExplicitEntry =
+    latestGeneric >= 0 &&
+    validOwnerRoleIndex >= 0 &&
+    ownerDataReplies.length === 0;
+
+  if (cleanExplicitEntry) {
+    const cleanSnapshot: CaptureSnapshot = {
+      ...snapshot,
+      ownerName: null,
+      captureId: null,
+      pending: false,
+      registrationStatus: null,
+      completeness: 0,
+      address: null,
+      propertyType: null,
+      intention: null,
+      askingPrice: null,
+      answers: {},
+      answered: [],
+      nextStep: "nome",
+      nextQuestion: linkQuestion("nome"),
+      complete: false,
+      duplicateNote: null,
+      outsidePriorityArea: false,
+    };
+    return buildState({
+      snapshot: cleanSnapshot,
+      freshEntry: false,
+      fromLink: true,
+      sticky: false,
+      relink: false,
+    });
+  }
+
   return buildState({ snapshot, freshEntry, fromLink, sticky, relink });
 }
 
