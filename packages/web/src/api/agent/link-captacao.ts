@@ -430,15 +430,21 @@ export async function linkCaptacaoState(
       turn.role === "assistant" &&
       turn.content === linkQuestion("nome"),
   );
+  const latestValidOwnerRole = [...afterGeneric].reverse().find((turn) =>
+    /^(proprietario|proprietaria)$/.test(fold(turn.content)),
+  );
+  const dataRepliesAfterOwnerRole = latestValidOwnerRole
+    ? afterGeneric.slice(afterGeneric.indexOf(latestValidOwnerRole) + 1)
+    : [];
   const cleanGenericSession =
     latestGeneric >= 0 &&
     lastLink > lastClosing &&
-    !latestGenericHasFreshName;
+    Boolean(latestValidOwnerRole) &&
+    dataRepliesAfterOwnerRole.length === 0;
 
-  /* Um novo clique no START genérico abre uma sessão de cadastro limpa.
-     A ficha antiga só volta a ser considerada depois que a identidade e o
-     endereço do novo cadastro forem informados; isso impede pular direto para
-     a última etapa de uma tentativa anterior. */
+  /* Uma nova ENTRADA_LINK_CAPTACAO permanece limpa no turno do perfil.
+     A existência de uma pergunta de nome antiga no histórico não pode liberar
+     a ficha pendente anterior (por exemplo, uma ficha parada em fotoFrente). */
   if (freshEntry || cleanGenericSession) {
     snapshot = {
       ...snapshot,
