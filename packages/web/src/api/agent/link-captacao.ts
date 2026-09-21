@@ -674,6 +674,8 @@ export async function linkCaptacaoReply(
        Assim que "proprietário" é informado corretamente, mesmo depois de
        respostas inválidas, o roteiro avança para o nome. */
     if (isOwner && state.presenter === "proprietario") {
+      /* No turno imediatamente após o perfil, só perguntamos o nome.
+         Quando o usuário responder o nome, a gravação abaixo cria a nova ficha. */
       return finish(state, { offScript: false, toolCalls });
     }
   }
@@ -715,6 +717,35 @@ export async function linkCaptacaoReply(
      que está GRAVADO (`answered`), não o histórico da conversa. */
   if (state.freshEntry || (!spokeBefore && state.answered.length === 0)) {
     return finish(state, { offScript: false, toolCalls });
+  }
+
+  /* Nome da nova ENTRADA_LINK_CAPTACAO: grava de forma determinística e
+     cria a ficha nova antes de qualquer releitura por telefone. */
+  if (state.nextStep === "nome" && state.answered.length === 0 && lastUser) {
+    const nome = String(lastUser).trim();
+    if (nome && !isGenericLinkStart(nome) && !/^(proprietario|proprietaria|dono|dona)$/i.test(fold(nome))) {
+      const saved = await saveCaptureAnswer(db, {
+        phone: state.ownerPhone ?? phone,
+        nome,
+        negociacao: "venda",
+        origem: LINK_CAPTACAO_ORIGIN,
+        novaSessaoLink: true,
+      });
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify({ nome }) });
+      if (saved.saved) {
+        const nextState: LinkCaptacaoState = {
+          ...state,
+          freshEntry: false,
+          startNewProperty: false,
+          snapshot: saved.snapshot,
+          answered: ["nome"],
+          nextStep: "endereco",
+          nextQuestion: linkQuestion("endereco"),
+          complete: false,
+        };
+        return finish(nextState, { offScript: false, toolCalls });
+      }
+    }
   }
 
   /* Tipo do imóvel: respostas curtas e inequívocas são gravadas de forma
