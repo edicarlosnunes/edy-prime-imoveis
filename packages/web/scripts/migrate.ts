@@ -251,6 +251,26 @@ const statements = [
     updated_at INTEGER NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS property_channels_property_idx ON property_channels (property_id)`,
+  /* -------------------------------------- LINK_CAPTACAO V2: sessões */
+  `CREATE TABLE IF NOT EXISTS link_captacao_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    session_key TEXT NOT NULL UNIQUE,
+    conversation_id INTEGER,
+    contact_phone TEXT NOT NULL,
+    profile TEXT,
+    broker_creci TEXT,
+    broker_name TEXT,
+    owner_id INTEGER,
+    capture_id INTEGER,
+    current_step TEXT NOT NULL DEFAULT 'perfil',
+    status TEXT NOT NULL DEFAULT 'ativa',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    completed_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS link_captacao_sessions_phone_idx ON link_captacao_sessions (contact_phone)`,
+  `CREATE INDEX IF NOT EXISTS link_captacao_sessions_capture_idx ON link_captacao_sessions (capture_id)`,
+  `CREATE INDEX IF NOT EXISTS link_captacao_sessions_status_idx ON link_captacao_sessions (status)`,
   `CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     channel TEXT NOT NULL DEFAULT 'site',
