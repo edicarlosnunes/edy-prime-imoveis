@@ -461,6 +461,8 @@ export interface CaptureAnswerInput {
   observacao?: string | null;
   /** proprietário quer cadastrar OUTRO imóvel */
   novoImovel?: boolean;
+  /** Entrada explícita do Link: cria ficha nova sem reutilizar a pendente antiga. */
+  novaSessaoLink?: boolean;
 }
 
 export type CaptureSaveResult =
@@ -525,7 +527,7 @@ export async function saveCaptureAnswer(
 
   /* Um imóvel por vez: enquanto a ficha atual estiver incompleta, não se abre
      outra. Continuar a pendente é o comportamento correto. */
-  if (input.novoImovel && before.pending && !before.complete) {
+  if (input.novoImovel && !input.novaSessaoLink && before.pending && !before.complete) {
     return {
       saved: false,
       reason: `O cadastro #${before.captureId} deste proprietário ainda está incompleto. Continue este imóvel antes de iniciar outro.`,
@@ -573,7 +575,30 @@ export async function saveCaptureAnswer(
   let duplicateUnit: string | null = null;
   let detail = "";
 
-  if (addressCore || input.novoImovel || before.ownerId === null || captureId === null) {
+  /* ENTRADA_LINK_CAPTACAO explícita: o telefone identifica a pessoa, mas não
+     autoriza reutilizar a ficha pendente anterior como se fosse este imóvel. */
+  if (input.novaSessaoLink === true && before.ownerId !== null) {
+    const now = new Date();
+    if (clean(input.nome, 120)) {
+      await db.update(schema.owners).set({ name: clean(input.nome, 120)! }).where(eq(schema.owners.id, before.ownerId));
+    }
+    const [created] = await db.insert(schema.propertyCaptures).values({
+      ownerId: before.ownerId,
+      source: "manual",
+      stage: "novo_contato",
+      intention: "venda",
+      registrationStatus: "EM_ANDAMENTO",
+      registrationStatusAt: now,
+      completeness: 0,
+      lastFieldAt: now,
+      notes: serializeCaptureBlock("", { origem: "LINK_CAPTACAO" }),
+      stageChangedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).returning({ id: schema.propertyCaptures.id });
+    captureId = created?.id ?? null;
+    detail = captureId ? `Nova captação LINK_CAPTACAO #${captureId} criada.` : "";
+  } else if (addressCore || input.novoImovel || before.ownerId === null || captureId === null) {
     const result = await intakeOwner(db, {
       name,
       phone: input.phone!,
