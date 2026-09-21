@@ -906,6 +906,42 @@ export const propertyChannels = sqliteTable(
   (t) => [index("property_channels_property_idx").on(t.propertyId)],
 );
 
+/* -------------------------------------- LINK_CAPTACAO V2: sessões */
+
+/**
+ * Sessão explícita e independente do LINK_CAPTACAO.
+ * Telefone identifica o contato; sessionKey identifica esta entrada;
+ * captureId, quando existir, fixa a ficha do imóvel desta sessão.
+ */
+export const linkCaptacaoSessions = sqliteTable(
+  "link_captacao_sessions",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    sessionKey: text("session_key").notNull().unique(),
+    conversationId: integer("conversation_id"),
+    contactPhone: text("contact_phone").notNull(),
+    profile: text("profile"), // proprietario | corretor
+    brokerCreci: text("broker_creci"),
+    brokerName: text("broker_name"),
+    ownerId: integer("owner_id"),
+    captureId: integer("capture_id"),
+    currentStep: text("current_step").notNull().default("perfil"),
+    status: text("status").notNull().default("ativa"), // ativa | concluida | cancelada
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+  },
+  (t) => [
+    index("link_captacao_sessions_phone_idx").on(t.contactPhone),
+    index("link_captacao_sessions_capture_idx").on(t.captureId),
+    index("link_captacao_sessions_status_idx").on(t.status),
+  ],
+);
+
 /* -------------------------------------------------- conversas / inbox */
 
 export const conversations = sqliteTable(
