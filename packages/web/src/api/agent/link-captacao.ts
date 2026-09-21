@@ -155,7 +155,6 @@ export const LINK_STEPS = [
   { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel? Se ainda não souber, digite NÃO SEI." },
   { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)" },
   { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? (0 se não houver/isento • NÃO SEI se não souber)" },
-  { key: "fotoFrente", label: "Foto da frente", verbatim: true, question: "Envie uma foto da frente ou fachada do imóvel." },
   { key: "observacaoFinal", label: "Informação adicional", verbatim: true, question: "Antes de finalizar: tem algo importante sobre o imóvel que gostaria de informar? Se não tiver mais nada a acrescentar, digite OK." },
   { key: "confirmacaoFinal", label: "Confirmação final", verbatim: true, question: "Anotado. Digite OK para finalizar." },
 ] as const;
@@ -166,7 +165,7 @@ export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
 export const OFF_SCRIPT_REPLY =
   "Certo, vamos verificar essa informação e, se necessário, nossa equipe te dá um retorno.";
 
-/** Fechamento, depois da foto. */
+/** Fechamento do cadastro. */
 export const CLOSING_MESSAGE =
   "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
 
@@ -482,19 +481,6 @@ export async function linkCaptacaoState(
  * O que vai gravado na ficha diz qual dos dois foi — a ficha não afirma que
  * recebeu imagem quando só houve texto.
  */
-const PHOTO_MEDIA = /\[(foto|fotos|imagem|imagens|image|photo|midia|media)[^\]]*\]/;
-const PHOTO_MENTION =
-  /\b(foto|fotos|imagem|imagens) (em anexo|anexad[ao]s?|enviad[ao]s?|ai|ai esta)\b|\b(enviei|mandei|segue|seguem|estou enviando|vou enviar|ta ai|esta ai|ai esta)\b|^(pronto|ok|feito|enviada|enviado|mandada|mandado)\b/;
-
-function photoEvidence(text: string | null | undefined): "media" | "mencao" | null {
-  const value = fold(text);
-  if (!value) return null;
-  if (PHOTO_MEDIA.test(value)) return "media";
-  /* Fora do roteiro (pergunta, pedido) não conta como foto. */
-  if (value.includes("?")) return null;
-  return PHOTO_MENTION.test(value) ? "mencao" : null;
-}
-
 /**
  * Respostas curtas e inequívocas para o passo "tipo do imóvel".
  *
@@ -806,27 +792,6 @@ export async function linkCaptacaoReply(
     const input = { confirmacaoFinal: "OK" };
     await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
-    return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
-  }
-
-  /* Foto da frente: o reconhecimento é determinístico e a gravação não passa
-     pelo modelo — é o último passo do roteiro e não pode depender de extração. */
-  const photo = state.nextStep === "fotoFrente" ? photoEvidence(lastUser) : null;
-  if (photo) {
-    const when = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
-    await saveCaptureAnswer(
-      db,
-      saveInput(state, state.ownerPhone ?? phone, {
-        fotoFrente:
-          photo === "media"
-            ? `imagem recebida pelo WhatsApp em ${when}`
-            : `proprietário informou o envio da foto em ${when}`,
-      }),
-    );
-    toolCalls.push({
-      tool: "salvarCadastroVenda",
-      input: JSON.stringify({ fotoFrente: photo }),
-    });
     return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
   }
 
