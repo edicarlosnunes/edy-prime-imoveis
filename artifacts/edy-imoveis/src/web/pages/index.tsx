@@ -1,0 +1,91 @@
+import { Fragment, lazy, Suspense, type ReactNode } from "react";
+import { useReveal } from "../hooks/use-reveal";
+import { Header } from "../components/site/header";
+import { Hero } from "../components/site/hero";
+import { Proof } from "../components/site/proof";
+import { Showcase } from "../components/site/showcase";
+import { Process } from "../components/site/process";
+import { About } from "../components/site/about";
+import { Faq } from "../components/site/faq";
+import { FinalCta } from "../components/site/final-cta";
+import { Footer } from "../components/site/footer";
+import { Regions } from "../components/site/regions";
+import { Sellers } from "../components/site/sellers";
+import { SearchProvider } from "../components/site/search-store";
+
+/* Chat com IA: carregado sob demanda para não pesar o carregamento do site. */
+const ChatWidget = lazy(() => import("../components/site/chat-widget"));
+import { PreviewBanner, SiteChrome, useSiteContent } from "../components/site/content";
+import { JsonLd } from "../components/site/json-ld";
+import { orderedSections, type SectionKey } from "../lib/site-content";
+
+const sectionComponents: Record<SectionKey, () => ReactNode> = {
+  diferenciais: Proof,
+  imoveis: Showcase,
+  /* CTA final claro desativado na Home: o CTA oficial é a seção "contato"
+     (escura, antes do rodapé). Continua editável no painel. */
+  ctaFinal: () => null,
+  comoFunciona: Process,
+  sobre: About,
+  faq: Faq,
+  contato: FinalCta,
+};
+
+function Index() {
+  useReveal();
+  const content = useSiteContent();
+  const order = orderedSections(content);
+
+  const company = content.company;
+  const agentSchema = {
+    "@context": "https://schema.org",
+    "@type": "RealEstateAgent",
+    name: `${company.name} ${company.brandSuffix}`.trim(),
+    description: company.role,
+    telephone: `+${company.whatsapp}`,
+    email: company.email,
+    url: typeof window === "undefined" ? undefined : window.location.origin,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: company.address,
+      addressLocality: company.city,
+      addressRegion: company.state,
+      addressCountry: "BR",
+    },
+    areaServed: [company.city, ...company.districts].map((name) => ({ "@type": "Place", name })),
+    sameAs: [company.instagram, company.facebook].filter(Boolean),
+    openingHours: company.hours,
+    identifier: company.creci,
+  };
+
+  return (
+    <SearchProvider>
+      <div className="site-shell min-h-screen bg-paper">
+        <SiteChrome />
+        <JsonLd id="agente" data={agentSchema} />
+        <Header />
+        <main>
+          <Hero />
+          {order.map((key) => {
+            const Section = sectionComponents[key];
+            return (
+              <Fragment key={key}>
+                <Section />
+                {/* Seções fora do editor: entram ancoradas às do CMS. */}
+                {key === "imoveis" && <Regions />}
+                {key === "sobre" && <Sellers />}
+              </Fragment>
+            );
+          })}
+        </main>
+        <Footer />
+        <Suspense fallback={null}>
+          <ChatWidget />
+        </Suspense>
+        <PreviewBanner />
+      </div>
+    </SearchProvider>
+  );
+}
+
+export default Index;

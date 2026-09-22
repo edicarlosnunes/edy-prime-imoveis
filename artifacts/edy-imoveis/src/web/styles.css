@@ -1,0 +1,630 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --color-paper: #f4f1ea;
+  --color-bone: #dcd8cd;
+  --color-deep: #17231f;
+  --color-ink: #12140f;
+  --color-muted: #6b6a62;
+  --color-brass: #a9834b;
+  --color-brass-soft: #c9a46a;
+  --color-line: rgba(18, 20, 15, 0.12);
+
+  --font-display: "Cormorant Garamond", ui-serif, Georgia, serif;
+  --font-sans: "Jost", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Compensa o header fixo ao navegar pelos links do menu */
+  section[id] {
+    scroll-margin-top: 68px;
+  }
+
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 300;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--color-brass);
+    color: #fff;
+  }
+}
+
+@utility label-xs {
+  font-size: 0.6875rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  font-weight: 400;
+}
+
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 300;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+}
+
+/* ------------------------------------------------------------------ *
+ * Site editável (Editor do Site): os tokens acima são sobrescritos     *
+ * por um <style> escopado em `.site-shell`, então o painel /admin      *
+ * mantém o visual padrão.                                             *
+ * ------------------------------------------------------------------ */
+
+@layer base {
+  .site-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid var(--color-deep);
+    background-color: var(--color-deep);
+    color: #fff;
+    padding: 1rem 2rem;
+    border-radius: var(--btn-radius, 0px);
+    font-size: 0.6875rem;
+    letter-spacing: 0.24em;
+    font-weight: 400;
+    text-transform: var(--btn-transform, uppercase);
+    transition:
+      background-color 0.3s,
+      border-color 0.3s,
+      color 0.3s;
+  }
+
+  .site-btn:hover {
+    background-color: var(--color-brass);
+    border-color: var(--color-brass);
+    color: #fff;
+  }
+
+  .site-btn[data-btn="outline"] {
+    background-color: transparent;
+    color: var(--color-deep);
+  }
+
+  .site-btn[data-btn="outline"]:hover {
+    background-color: var(--color-deep);
+    color: #fff;
+  }
+
+  /* Variante para fundos escuros */
+  .site-btn-dark {
+    border-color: var(--color-brass);
+    background-color: var(--color-brass);
+  }
+
+  .site-btn-dark:hover {
+    background-color: var(--color-brass-soft);
+    border-color: var(--color-brass-soft);
+  }
+
+  .site-btn-dark[data-btn="outline"] {
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.4);
+    color: #fff;
+  }
+
+  .site-btn-dark[data-btn="outline"]:hover {
+    background-color: #fff;
+    color: var(--color-deep);
+    border-color: #fff;
+  }
+}
+
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.9s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* Grain overlay for premium paper feel */
+.grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ================================================================== *
+ * PAINEL ADMINISTRATIVO (/admin) — tema escuro CRM/SaaS               *
+ * Tudo escopado em `.admin-shell`. O site público (`.site-shell`)      *
+ * continua claro e NÃO é afetado por nada deste bloco.                 *
+ * ================================================================== */
+
+.admin-shell {
+  /* Superfícies: azul-marinho quase preto */
+  --adm-bg: #0a111e;
+  --adm-sidebar: #070d18;
+  --adm-surface: #111c2e;
+  --adm-surface-2: #16233a;
+  --adm-hover: rgba(255, 255, 255, 0.06);
+
+  /* Texto */
+  --adm-title: #f5f8fb;
+  --adm-text: #e6edf5;
+  --adm-secondary: #9fb0c4;
+
+  /* Identidade Edy Prime no escuro */
+  --adm-brass: #d3a55a;
+  --adm-green: #1d4b3c;
+
+  color-scheme: dark;
+  background-color: var(--adm-bg);
+  color: var(--adm-text);
+  font-weight: 400;
+
+  /* Tokens do tema (Tailwind) redefinidos só aqui dentro */
+  --color-paper: var(--adm-bg);
+  --color-bone: #1e2d45;
+  --color-ink: #05090f;
+  --color-deep: var(--adm-green);
+  --color-muted: var(--adm-secondary);
+  --color-brass: #d3a55a;
+  --color-brass-soft: #e6c98f;
+  --color-line: rgba(255, 255, 255, 0.1);
+}
+
+/* ---------------------------------------------------------- tipografia */
+
+.admin-shell .display {
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--adm-title);
+}
+
+.admin-shell .label-xs {
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--adm-secondary);
+}
+
+.admin-shell .text-deep,
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3 {
+  color: var(--adm-title);
+}
+
+.admin-shell .text-ink {
+  color: var(--adm-text);
+}
+
+.admin-shell .text-muted {
+  color: var(--adm-secondary);
+}
+
+/* Números de indicadores: grandes, fortes, dourado suave */
+.admin-shell .admin-stat {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--adm-title);
+}
+
+/* ------------------------------------------------------------ layout */
+
+.admin-shell .admin-sidebar {
+  background-color: var(--adm-sidebar);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.admin-shell .admin-topbar {
+  background-color: rgba(10, 17, 30, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-shell .admin-auth {
+  background:
+    radial-gradient(1200px 600px at 50% -10%, #12243c 0%, transparent 60%),
+    var(--adm-sidebar);
+}
+
+/* --------------------------------------------------- cards e superfícies */
+
+.admin-shell .bg-white,
+.admin-shell .bg-white\/80 {
+  background-color: var(--adm-surface);
+}
+
+.admin-shell .bg-paper {
+  background-color: var(--adm-bg);
+}
+
+/* Cantos arredondados modernos (o projeto usa 3px/4px) */
+.admin-shell .rounded-\[4px\] {
+  border-radius: 14px;
+}
+
+.admin-shell .rounded-\[3px\] {
+  border-radius: 10px;
+}
+
+.admin-shell .admin-card {
+  border-color: rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 12px 28px -20px rgba(0, 0, 0, 0.9);
+}
+
+/* ------------------------------------------------------------ formulários */
+
+.admin-shell input,
+.admin-shell select,
+.admin-shell textarea,
+.admin-shell .bg-white:is(input, select, textarea),
+.admin-shell .bg-white\/80:is(input, select, textarea) {
+  background-color: #0d1828;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--adm-text);
+}
+
+.admin-shell input:focus,
+.admin-shell select:focus,
+.admin-shell textarea:focus {
+  border-color: var(--adm-brass);
+  box-shadow: 0 0 0 3px rgba(211, 165, 90, 0.16);
+}
+
+.admin-shell input::placeholder,
+.admin-shell textarea::placeholder {
+  color: #7d8ea3;
+  opacity: 1;
+}
+
+.admin-shell select option {
+  background-color: #0d1828;
+  color: var(--adm-text);
+}
+
+/* --------------------------------------------------------------- tabelas */
+
+.admin-shell th {
+  color: var(--adm-secondary);
+  font-weight: 500;
+}
+
+.admin-shell td {
+  color: var(--adm-text);
+}
+
+.admin-shell tbody tr:hover {
+  background-color: var(--adm-hover);
+}
+
+/* ------------------------------------------------------- estados/badges */
+
+.admin-shell .bg-emerald-50,
+.admin-shell .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.14);
+}
+
+.admin-shell .text-emerald-600,
+.admin-shell .text-emerald-700,
+.admin-shell .text-emerald-800 {
+  color: #6ee7b7;
+}
+
+.admin-shell .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.32);
+}
+
+.admin-shell .bg-amber-50,
+.admin-shell .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.14);
+}
+
+.admin-shell .text-amber-800,
+.admin-shell .text-amber-900 {
+  color: #fcd34d;
+}
+
+.admin-shell .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.admin-shell .bg-red-50,
+.admin-shell .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.14);
+}
+
+.admin-shell .text-red-500,
+.admin-shell .text-red-600,
+.admin-shell .text-red-700 {
+  color: #fca5a5;
+}
+
+.admin-shell .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.32);
+}
+
+/* Dourado: usado em destaques, estados ativos e detalhes */
+.admin-shell .text-brass {
+  color: #e0b768;
+}
+
+.admin-shell .bg-brass {
+  background-color: #c39a4f;
+}
+
+/* Barra de rolagem discreta */
+.admin-shell *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.admin-shell *::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+
+.admin-shell *::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+/* ---------------------------------------------- indicadores com cor (KPI) *
+ * Cada card de indicador recebe um tom próprio (rotativo), no espírito de   *
+ * um CRM moderno, mas dentro da identidade Edy Prime (dourado + verde).     */
+
+.admin-shell .admin-card:has(.admin-stat) {
+  --tone: 211, 165, 90;
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--tone), 0.16) 0%,
+    rgba(var(--tone), 0.04) 45%,
+    rgba(255, 255, 255, 0) 75%
+  );
+  border-color: rgba(var(--tone), 0.26);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.admin-shell .admin-card:has(.admin-stat)::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(var(--tone), 0.95), rgba(var(--tone), 0.15));
+}
+
+.admin-shell .admin-card:has(.admin-stat)::after {
+  content: "";
+  position: absolute;
+  right: -38px;
+  bottom: -52px;
+  width: 130px;
+  height: 130px;
+  border-radius: 999px;
+  background: rgba(var(--tone), 0.1);
+  pointer-events: none;
+}
+
+.admin-shell .admin-card:has(.admin-stat):hover {
+  transform: translateY(-2px);
+  border-color: rgba(var(--tone), 0.42);
+}
+
+.admin-shell .admin-card:has(.admin-stat) .admin-stat {
+  position: relative;
+  z-index: 1;
+}
+
+/* Rotação de tons: verde · dourado · azul-petróleo · bronze */
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 1) {
+  --tone: 45, 122, 98;
+}
+
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 2) {
+  --tone: 211, 165, 90;
+}
+
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 3) {
+  --tone: 63, 132, 168;
+}
+
+.admin-shell .admin-card:has(.admin-stat):nth-child(4n + 4) {
+  --tone: 178, 118, 74;
+}
+
+/* Modais: fundo mais escuro e desfocado, para o card ganhar destaque */
+.admin-shell .bg-ink\/50 {
+  background-color: rgba(3, 7, 14, 0.74);
+  backdrop-filter: blur(4px);
+}
+
+/* ------------------------------------------- KPI: tons vivos + ícone       *
+ * Tons explícitos por card (mais saturados que a rotação automática) e um   *
+ * bloco de ícone com contraste. Só nos cards de indicador.                  */
+
+.admin-shell .admin-card:has(.admin-stat) {
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--tone), 0.28) 0%,
+    rgba(var(--tone), 0.1) 48%,
+    rgba(255, 255, 255, 0) 78%
+  );
+  border-color: rgba(var(--tone), 0.38);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 14px 30px -22px rgba(0, 0, 0, 0.95);
+}
+
+.admin-shell .admin-card:has(.admin-stat)::after {
+  background: rgba(var(--tone), 0.18);
+}
+
+.admin-shell .admin-card:has(.admin-stat):hover {
+  border-color: rgba(var(--tone), 0.62);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 18px 34px -20px rgba(0, 0, 0, 0.95);
+}
+
+.admin-shell .admin-stat-icon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 999px;
+  background-color: rgba(var(--tone), 0.28);
+  border: 1px solid rgba(var(--tone), 0.5);
+  color: rgb(var(--tone-ink, 255 255 255));
+  box-shadow: 0 6px 14px -10px rgba(0, 0, 0, 0.9);
+}
+
+/* Tons explícitos (vencem a rotação por nth-child) */
+.admin-shell .admin-card:has(.admin-stat).admin-stat-green:nth-child(n) {
+  --tone: 34, 148, 111;
+  --tone-ink: 134 231 190;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-brass:nth-child(n) {
+  --tone: 214, 163, 74;
+  --tone-ink: 245 214 152;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-blue:nth-child(n) {
+  --tone: 56, 141, 196;
+  --tone-ink: 158 213 250;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-teal:nth-child(n) {
+  --tone: 32, 156, 160;
+  --tone-ink: 141 231 232;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-bronze:nth-child(n) {
+  --tone: 190, 118, 66;
+  --tone-ink: 245 195 156;
+}
+
+.admin-shell .admin-card:has(.admin-stat).admin-stat-rose:nth-child(n) {
+  --tone: 196, 76, 88;
+  --tone-ink: 250 172 180;
+}
+
+/* Brilho de canto sem borda dura (substitui o círculo sólido) */
+.admin-shell .admin-card:has(.admin-stat)::after {
+  right: -60px;
+  bottom: -70px;
+  width: 190px;
+  height: 190px;
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--tone), 0.3) 0%,
+    rgba(var(--tone), 0.12) 45%,
+    rgba(var(--tone), 0) 72%
+  );
+}
+
+/* Cards de indicador sem tom explícito (outras telas): saturação discreta */
+.admin-shell .admin-card:has(.admin-stat):not([class*="admin-stat-"]) {
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--tone), 0.14) 0%,
+    rgba(var(--tone), 0.04) 45%,
+    rgba(255, 255, 255, 0) 75%
+  );
+  border-color: rgba(var(--tone), 0.24);
+}
+
+.admin-shell .admin-card:has(.admin-stat):not([class*="admin-stat-"])::after {
+  background: radial-gradient(
+    circle at center,
+    rgba(var(--tone), 0.14) 0%,
+    rgba(var(--tone), 0) 70%
+  );
+}
+
+/* ==========================================================================
+   Impressão dos documentos (Ficha Técnica e Autorização de Venda)
+   Só o papel: sem barra de trabalho, sem botões, sem fundo de tela.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .doc-screen {
+    background: #fff !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .doc-sheet {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    font-size: 10.5pt;
+    line-height: 1.35;
+  }
+
+  .doc-screen button,
+  .doc-screen [data-print="hide"] {
+    display: none !important;
+  }
+
+  .doc-sheet section,
+  .doc-sheet header,
+  .doc-sheet footer {
+    break-inside: avoid;
+  }
+
+  .doc-sheet .doc-sign {
+    break-inside: avoid;
+    break-before: avoid;
+  }
+}

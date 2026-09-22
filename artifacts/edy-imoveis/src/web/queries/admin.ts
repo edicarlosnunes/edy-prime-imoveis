@@ -1,0 +1,379 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { orpc } from "../lib/api";
+
+/** Hooks do painel administrativo (todos passam pelo cliente tipado). */
+
+export function useAdminMe() {
+  return useQuery(orpc.adminAuth.me.queryOptions({ retry: false, staleTime: 30_000 }));
+}
+
+/* ------------------------------------------------------------- dashboard */
+
+export function useDashboard() {
+  return useQuery(orpc.adminDashboard.summary.queryOptions({ staleTime: 30_000 }));
+}
+
+/* --------------------------------------------------------------- imóveis */
+
+export function useAdminProperties(filters?: {
+  search?: string;
+  status?: "disponivel" | "reservado" | "vendido" | "alugado";
+  published?: boolean;
+}) {
+  return useQuery(orpc.adminProperties.list.queryOptions({ input: filters ?? {} }));
+}
+
+export function usePropertyOptions() {
+  return useQuery(orpc.adminProperties.options.queryOptions({ staleTime: 60_000 }));
+}
+
+function useInvalidate() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries();
+  };
+}
+
+export function useSaveProperty(mode: "create" | "update") {
+  const invalidate = useInvalidate();
+  const options =
+    mode === "create"
+      ? orpc.adminProperties.create.mutationOptions({ onSuccess: invalidate })
+      : orpc.adminProperties.update.mutationOptions({ onSuccess: invalidate });
+  return useMutation(options);
+}
+
+export function useRemoveProperty() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminProperties.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useGeneratePropertyContent() {
+  return useMutation(orpc.adminPropertyContent.generate.mutationOptions());
+}
+
+export function usePatchProperty() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminProperties.patch.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* Item 9 — status comercial, eixo separado do `status` antigo. */
+export function useSetCommercialStatus() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminProperties.setCommercialStatus.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+/* Item 10 — volta da pausa de 12 meses: a pausa é automática, a volta é humana. */
+export function useResumePropertyPause() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminProperties.resumePause.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* ---------------------------------------------------- logradouros (item 6) */
+
+export function useStreets(filters?: { city?: string; search?: string; limit?: number }) {
+  return useQuery(orpc.adminStreets.list.queryOptions({ input: filters ?? {} }));
+}
+
+export function useResolveStreet() {
+  return useMutation(orpc.adminStreets.resolve.mutationOptions());
+}
+
+export function useRegisterStreet() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminStreets.register.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useUpdateStreet() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminStreets.update.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useBackfillStreets() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminStreets.backfill.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* ----------------------------------------------------------------- leads */
+
+export function useAdminLeads(filters?: { search?: string; status?: "aberto" | "perdido" | "ganho" }) {
+  return useQuery(orpc.adminLeads.list.queryOptions({ input: filters ?? {} }));
+}
+
+export function useLead(id: number | null) {
+  return useQuery({
+    ...orpc.adminLeads.get.queryOptions({ input: { id: id ?? 0 } }),
+    enabled: id !== null,
+  });
+}
+
+export function useCreateLead() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.create.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useUpdateLead() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.update.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useSetLeadStage() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.setStage.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useMarkLeadLost() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.markLost.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useReopenLead() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.reopen.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useAddLeadNote() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.addNote.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useRemoveLead() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminLeads.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* -------------------------------------------------------------- clientes */
+
+export function useAdminClients(search?: string) {
+  return useQuery(orpc.adminClients.list.queryOptions({ input: { search } }));
+}
+
+export function useClient(id: number | null) {
+  return useQuery({
+    ...orpc.adminClients.get.queryOptions({ input: { id: id ?? 0 } }),
+    enabled: id !== null,
+  });
+}
+
+export function useClientOptions() {
+  return useQuery(orpc.adminClients.options.queryOptions({ staleTime: 60_000 }));
+}
+
+export function useSaveClient(mode: "create" | "update") {
+  const invalidate = useInvalidate();
+  const options =
+    mode === "create"
+      ? orpc.adminClients.create.mutationOptions({ onSuccess: invalidate })
+      : orpc.adminClients.update.mutationOptions({ onSuccess: invalidate });
+  return useMutation(options);
+}
+
+export function useRemoveClient() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminClients.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useAddClientInteraction() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminClients.addInteraction.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* --------------------------------------------------------- proprietários */
+
+export function useAdminOwners() {
+  return useQuery(orpc.adminOwners.list.queryOptions());
+}
+
+export function useOwnerOptions() {
+  return useQuery(orpc.adminOwners.options.queryOptions({ staleTime: 60_000 }));
+}
+
+export function useSaveOwner(mode: "create" | "update") {
+  const invalidate = useInvalidate();
+  const options =
+    mode === "create"
+      ? orpc.adminOwners.create.mutationOptions({ onSuccess: invalidate })
+      : orpc.adminOwners.update.mutationOptions({ onSuccess: invalidate });
+  return useMutation(options);
+}
+
+export function useRemoveOwner() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminOwners.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* CPF/CNPJ + RG direto da ficha da captação. Documento com dígito verificador
+   errado é aceito e volta com `warning` — a equipe registra e confere depois. */
+export function useSetOwnerIdentity() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminOwners.setIdentity.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* Baixa o alerta de POSSÍVEL DUPLICADO. Não faz merge: nada é apagado. */
+export function useClearOwnerDuplicate() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminOwners.clearDuplicate.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* --------------------------------------------------------------- agenda */
+
+export function useAdminTasks() {
+  return useQuery(orpc.adminTasks.list.queryOptions({ input: {} }));
+}
+
+export function useSaveTask(mode: "create" | "update") {
+  const invalidate = useInvalidate();
+  const options =
+    mode === "create"
+      ? orpc.adminTasks.create.mutationOptions({ onSuccess: invalidate })
+      : orpc.adminTasks.update.mutationOptions({ onSuccess: invalidate });
+  return useMutation(options);
+}
+
+export function useSetTaskStatus() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminTasks.setStatus.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useRemoveTask() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminTasks.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* ------------------------------------------------------------- propostas */
+
+export function useAdminDeals() {
+  return useQuery(orpc.adminDeals.list.queryOptions());
+}
+
+export function useSaveDeal(mode: "create" | "update") {
+  const invalidate = useInvalidate();
+  const options =
+    mode === "create"
+      ? orpc.adminDeals.create.mutationOptions({ onSuccess: invalidate })
+      : orpc.adminDeals.update.mutationOptions({ onSuccess: invalidate });
+  return useMutation(options);
+}
+
+export function useRemoveDeal() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminDeals.remove.mutationOptions({ onSuccess: invalidate }));
+}
+
+/* -------------------------------- documentação + revalidação (V2) */
+
+export function usePropertyDocs(propertyId: number | null) {
+  return useQuery({
+    ...orpc.adminPropertyDocs.get.queryOptions({ input: { propertyId: propertyId ?? 0 } }),
+    enabled: propertyId !== null && propertyId > 0,
+  });
+}
+
+export function useSaveDocConditions() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.saveConditions.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useSaveChecklistItem() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.saveChecklistItem.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useCreatePropertyDocument() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.createDocument.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useUpdateDocumentStatus() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.updateDocumentStatus.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useDeletePropertyDocument() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.deleteDocument.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useSetPortfolioEntry() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.setPortfolioEntry.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+export function useRegisterRevalidation() {
+  const invalidate = useInvalidate();
+  return useMutation(
+    orpc.adminPropertyDocs.registerRevalidation.mutationOptions({ onSuccess: invalidate }),
+  );
+}
+
+/* --------------------------------------------------------- configurações */
+
+export function useAdminSettings() {
+  return useQuery(orpc.adminSettings.get.queryOptions());
+}
+
+export function useSaveSettings() {
+  const invalidate = useInvalidate();
+  return useMutation(orpc.adminSettings.update.mutationOptions({ onSuccess: invalidate }));
+}
+
+export function useChangePassword() {
+  return useMutation(orpc.adminAuth.changePassword.mutationOptions());
+}
+
+/* --------------------------------------------------------- captação / Radar */
+export function useAdminCaptures(filters?: { search?: string; city?: string; stage?: "novo_contato" | "documentacao" | "validacao" | "captado" | "perdido"; source?: string }) {
+  return useQuery(orpc.adminCaptures.list.queryOptions({ input: filters ?? {} }));
+}
+export function useCapture(id: number | null) {
+  return useQuery({ ...orpc.adminCaptures.get.queryOptions({ input: { id: id ?? 0 } }), enabled: id !== null });
+}
+export function useCreateCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.create.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureStage() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setStage.mutationOptions({ onSuccess: invalidate })); }
+/* Item 8 — status do cadastro, eixo paralelo ao funil do Radar. */
+export function useSetCaptureRegistrationStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setRegistrationStatus.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureNextAction() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setNextAction.mutationOptions({ onSuccess: invalidate })); }
+export function useSaveCaptureAppraisal() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.saveAppraisal.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureDocStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setDocStatus.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureChecklist() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setChecklist.mutationOptions({ onSuccess: invalidate })); }
+export function useAddCapturePhotos() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.addPhotos.mutationOptions({ onSuccess: invalidate })); }
+export function useRemoveCapturePhoto() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.removePhoto.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCapturePhotoPrimary() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setPhotoPrimary.mutationOptions({ onSuccess: invalidate })); }
+export function useMoveCapturePhoto() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.movePhoto.mutationOptions({ onSuccess: invalidate })); }
+export function useMarkCaptureLost() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markLost.mutationOptions({ onSuccess: invalidate })); }
+export function useReopenCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.reopen.mutationOptions({ onSuccess: invalidate })); }
+export function useMarkCaptureConverted() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.markConverted.mutationOptions({ onSuccess: invalidate })); }
+
+/* ------------------------------------------- documentos da captação (FC/AV) */
+export function useCaptureDocuments(captureId: number | null) {
+  return useQuery({ ...orpc.adminDocuments.list.queryOptions({ input: { captureId: captureId ?? 0 } }), enabled: captureId !== null });
+}
+export function useCaptureDocument(id: number | null) {
+  return useQuery({ ...orpc.adminDocuments.get.queryOptions({ input: { id: id ?? 0 } }), enabled: id !== null });
+}
+export function useCaptureDocumentStatusPanel(captureId: number | null) {
+  return useQuery({ ...orpc.adminDocuments.status.queryOptions({ input: { captureId: captureId ?? 0 } }), enabled: captureId !== null });
+}
+/* ------------------------------- fotos provisórias -> fotos oficiais do anúncio */
+export function useCapturePromotedPhotos(captureId: number | null) {
+  return useQuery({ ...orpc.adminCapturePhotos.promoted.queryOptions({ input: { id: captureId ?? 0 } }), enabled: captureId !== null });
+}
+export function usePromoteCapturePhoto() { const invalidate = useInvalidate(); return useMutation(orpc.adminCapturePhotos.promote.mutationOptions({ onSuccess: invalidate })); }
+export function useDemoteCapturePhoto() { const invalidate = useInvalidate(); return useMutation(orpc.adminCapturePhotos.demote.mutationOptions({ onSuccess: invalidate })); }
+
+export function useGenerateCaptureDocument() { const invalidate = useInvalidate(); return useMutation(orpc.adminDocuments.generate.mutationOptions({ onSuccess: invalidate })); }
+export function useSetCaptureDocumentStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminDocuments.setStatus.mutationOptions({ onSuccess: invalidate })); }

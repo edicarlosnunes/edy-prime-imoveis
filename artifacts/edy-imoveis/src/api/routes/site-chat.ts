@@ -1,0 +1,508 @@
+import { and, asc, eq, ne } from "drizzle-orm";
+import { z } from "zod";
+import { base } from "../__core/app";
+import * as schema from "../database/schema";
+import { getDb } from "../lib/auth";
+import { clientIp, siteBaseUrl } from "../lib/base-url";
+import { gatewayConfigured } from "../agent/gateway";
+import {
+  activeAgentFor,
+  addMessage,
+  aiTurn,
+  ensureConversation,
+  transferToHuman,
+} from "../lib/inbox";
+import { intakeLead } from "../lib/lead-intake";
+import {
+  GUARD_NOTICE,
+  guardSiteChat,
+  pruneGuardEvents,
+  recordGuardEvent,
+  visitorFingerprint,
+} from "../lib/chat-guard";
+import { codeFromSlug, propertySlug as buildSlug } from "../lib/slug";
+import {
+  CHAT_FALLBACK_NAME,
+  MAX_MESSAGE_CHARS,
+  extractContactName,
+  SITE_CHAT_CHANNEL,
+  conversationRateLimited,
+  externalIdFor,
+  ipRateLimited,
+  newVisitorToken,
+  normalizePhone,
+  normalizeVisitorToken,
+  publicCards,
+  registerIpHit,
+  sanitizeContactName,
+  sanitizeMessage,
+  sanitizeShort,
+  toPublicMessage,
+  toPublicState,
+  type PublicChatCard,
+  type PublicChatMessage,
+  type PublicChatState,
+} from "../lib/site-chat";
+
+/**
+ * Chat público do site (canal `site`).
+ *
+ * É a mesma central de conversas do painel: o visitante fala com o agente de IA
+ * já configurado em /admin/ia e, quando pede uma pessoa, a conversa vira
+ * atendimento humano em /admin/conversas — a IA cala pela trava do inbox.
+ *
+ * Rota pública, sem sessão. Por isso: token opaco no lugar de id, entrada
+ * saneada, limites de uso e whitelist de saída (lib/site-chat.ts).
+ */
+
+const FALLBACK_UNAVAILABLE =
+  "Nosso atendimento por chat está indisponível agora. Chame no WhatsApp ou deixe seus dados no formulário e um corretor responde em seguida.";
+
+interface ChatTurn {
+  state: PublicChatState;
+  messages: PublicChatMessage[];
+  properties: PublicChatCard[];
+  notice: string | null;
+}
+
+async function loadMessages(db: Awaited<ReturnType<typeof getDb>>, conversationId: number) {
+  const rows = await db
+    .select({
+      id: schema.messages.id,
+      author: schema.messages.author,
+      body: schema.messages.body,
+      createdAt: schema.messages.createdAt,
+    })
+    .from(schema.messages)
+    .where(
+      and(
+        eq(schema.messages.conversationId, conversationId),
+        ne(schema.messages.author, "sistema"),
+      ),
+    )
+    .orderBy(asc(schema.messages.id))
+    .limit(80);
+  /* Mensagens internas ("sistema") nunca vão para o visitante: podem carregar
+     motivo de transferência e outros textos administrativos. */
+  return rows.map(toPublicMessage);
+}
+
+function countClientMessages(messages: PublicChatMessage[]) {
+  return messages.filter((message) => message.author === "cliente").length;
+}
+
+/** Conversa do visitante pelo token. Não cria nada. */
+async function findConversation(db: Awaited<ReturnType<typeof getDb>>, token: string) {
+  const [row] = await db
+    .select()
+    .from(schema.conversations)
+    .where(
+      and(
+        eq(schema.conversations.channel, SITE_CHAT_CHANNEL),
+        eq(schema.conversations.externalId, externalIdFor(token)),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+async function propertyIdFromSlug(db: Awaited<ReturnType<typeof getDb>>, slug: string) {
+  const wanted = slug.trim().toLowerCase();
+  if (!wanted) return null;
+  const rows = await db
+    .select()
+    .from(schema.properties)
+    .where(eq(schema.properties.published, 1))
+    .limit(500);
+  const code = codeFromSlug(wanted).toUpperCase();
+  const row =
+    rows.find((item) => (item.slug ?? buildSlug(item)).toLowerCase() === wanted) ??
+    rows.find((item) => item.code.toUpperCase() === code);
+  return row?.id ?? null;
+}
+
+const tokenInput = z.string().min(8).max(120);
+
+export const siteChat = {
+  /**
+   * Abre (ou retoma) o chat. Não grava nada no banco enquanto o visitante não
+   * escrever — só devolve token, saudação do agente e histórico, se houver.
+   */
+  start: base
+    .input(
+      z.object({
+        token: z.string().max(120).optional(),
+        propertySlug: z.string().max(160).optional(),
+      }),
+    )
+    .handler(async ({ input }) => {
+      const db = await getDb();
+      const agent = await activeAgentFor(db, SITE_CHAT_CHANNEL);
+      const available = Boolean(agent) && gatewayConfigured();
+
+      const token = normalizeVisitorToken(input.token) ?? newVisitorToken();
+      const conversation = await findConversation(db, token);
+      const messages = conversation ? await loadMessages(db, conversation.id) : [];
+
+      const state = toPublicState(
+        token,
+        conversation ?? { mode: "ia", status: "aberta", contactName: null, contactPhone: null },
+        countClientMessages(messages),
+      );
+
+      return {
+        available,
+        greeting:
+          agent?.greeting?.trim() ||
+          "Olá! Sou o atendimento da Edy Prime. Me conte o que você procura em Praia Grande.",
+        notice: available ? null : FALLBACK_UNAVAILABLE,
+        state,
+        messages,
+      };
+    }),
+
+  /** Histórico da conversa do visitante (usado no polling enquanto a janela está aberta). */
+  history: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
+    const db = await getDb();
+    const token = normalizeVisitorToken(input.token);
+    if (!token) return { state: null, messages: [] as PublicChatMessage[] };
+    const conversation = await findConversation(db, token);
+    if (!conversation) return { state: null, messages: [] as PublicChatMessage[] };
+    const messages = await loadMessages(db, conversation.id);
+    return {
+      state: toPublicState(token, conversation, countClientMessages(messages)),
+      messages,
+    };
+  }),
+
+  /** Mensagem do visitante + turno da IA (quando a conversa está no modo IA). */
+  send: base
+    .input(
+      z.object({
+        token: tokenInput,
+        body: z.string().min(1).max(MAX_MESSAGE_CHARS + 200),
+        propertySlug: z.string().max(160).optional(),
+      }),
+    )
+    .handler(async ({ input, context }): Promise<ChatTurn> => {
+      const db = await getDb();
+      const token = normalizeVisitorToken(input.token);
+      const body = sanitizeMessage(input.body);
+
+      const emptyState: PublicChatState = {
+        token: token ?? "",
+        mode: "ia",
+        status: "aberta",
+        identified: false,
+        askName: false,
+        askPhone: false,
+      };
+      if (!token) {
+        return {
+          state: emptyState,
+          messages: [],
+          properties: [],
+          notice: "Sessão do chat inválida. Recarregue a página.",
+        };
+      }
+      if (!body) {
+        return { state: emptyState, messages: [], properties: [], notice: "Escreva uma mensagem." };
+      }
+
+      const ip = clientIp(context.headers);
+      if (ipRateLimited(ip)) {
+        return {
+          state: emptyState,
+          messages: [],
+          properties: [],
+          notice: "Muitas mensagens em pouco tempo. Aguarde um instante.",
+        };
+      }
+      registerIpHit(ip);
+
+      /* Guarda persistente (banco): sobrevive a cold start da Vercel e limita
+         conversas novas, chamadas de IA por visitante e o teto diário do chat.
+         Bloqueio aqui NUNCA chega a chamar o modelo. */
+      const fingerprint = await visitorFingerprint(ip);
+      const existing = await findConversation(db, token);
+      const guard = await guardSiteChat(db, fingerprint, { newConversation: !existing });
+      if (!guard.allowed) {
+        const messages = existing ? await loadMessages(db, existing.id) : [];
+        return {
+          state: existing
+            ? toPublicState(token, existing, countClientMessages(messages))
+            : emptyState,
+          messages,
+          properties: [],
+          notice: guard.notice ?? GUARD_NOTICE,
+        };
+      }
+
+      const conversation = await ensureConversation(db, {
+        channel: SITE_CHAT_CHANNEL,
+        externalId: externalIdFor(token),
+      });
+      if (!existing) {
+        const counted = await recordGuardEvent(db, fingerprint, "conversation");
+        if (!counted) {
+          /* Falha fechada: sem contador confiável não chamamos o modelo. */
+          return { state: emptyState, messages: [], properties: [], notice: GUARD_NOTICE };
+        }
+        await pruneGuardEvents(db);
+      }
+
+      const limited = await conversationRateLimited(db, conversation.id);
+      if (limited) {
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+          messages,
+          properties: [],
+          notice: limited,
+        };
+      }
+
+      /* Contexto de página: chat aberto dentro de um imóvel. */
+      if (!conversation.propertyId && input.propertySlug) {
+        const propertyId = await propertyIdFromSlug(db, input.propertySlug);
+        if (propertyId) {
+          await db
+            .update(schema.conversations)
+            .set({ propertyId })
+            .where(eq(schema.conversations.id, conversation.id));
+        }
+      }
+
+      /* Visitante voltou a escrever numa conversa fechada: reabre sem mexer no modo. */
+      if (conversation.status !== "aberta") {
+        await db
+          .update(schema.conversations)
+          .set({ status: "aberta" })
+          .where(eq(schema.conversations.id, conversation.id));
+      }
+
+      await addMessage(db, conversation.id, {
+        direction: "in",
+        author: "cliente",
+        authorName: conversation.contactName ?? null,
+        body,
+      });
+
+      /* Nome dito na conversa, não no formulário. O visitante responde
+         "Meu nome é Edy" no chat e antes nada lia esse texto: `contactName`
+         ficava nulo, `askName` nunca saía e o pedido do WhatsApp não chegava
+         — sobretudo em atendimento humano, onde a IA não roda para reconduzir
+         ao formulário. Só grava quando o passo do nome está ativo e o texto é
+         claramente uma apresentação; na dúvida, segue o fluxo antigo. */
+      if (!conversation.contactName) {
+        const pending = await loadMessages(db, conversation.id);
+        const step = toPublicState(token, conversation, countClientMessages(pending));
+        const guessed = step.askName ? extractContactName(body) : null;
+        if (guessed) {
+          await db
+            .update(schema.conversations)
+            .set({ contactName: guessed })
+            .where(eq(schema.conversations.id, conversation.id));
+        }
+      }
+
+      const aiCounted = await recordGuardEvent(db, fingerprint, "ai");
+      if (!aiCounted) {
+        /* Falha fechada: o turno da IA não acontece sem o contador gravado. */
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+          messages,
+          properties: [],
+          notice: GUARD_NOTICE,
+        };
+      }
+      const turn = await aiTurn(db, conversation.id, siteBaseUrl(context.headers));
+
+      const [fresh] = await db
+        .select()
+        .from(schema.conversations)
+        .where(eq(schema.conversations.id, conversation.id))
+        .limit(1);
+      const messages = await loadMessages(db, conversation.id);
+      const clientCount = countClientMessages(messages);
+
+      let notice: string | null = null;
+      if (!turn.replied) {
+        if (turn.skipped === "humano no controle") {
+          notice = "Um corretor está acompanhando esta conversa e responde em seguida.";
+        } else if (turn.skipped === "nenhum agente ativo neste canal" || turn.skipped === "provedor de IA não configurado") {
+          notice = FALLBACK_UNAVAILABLE;
+        } else {
+          notice = "Não consegui responder agora. Um corretor vai continuar seu atendimento.";
+        }
+      }
+
+      return {
+        state: toPublicState(
+          token,
+          fresh ?? conversation,
+          clientCount,
+        ),
+        messages,
+        properties: await publicCards(db, turn.usedProperties ?? []),
+        notice,
+      };
+    }),
+
+  /**
+   * Captação progressiva: nome primeiro, WhatsApp depois. Quando os dois
+   * existem, o contato entra no CRM pela entrada única (com deduplicação).
+   */
+  identify: base
+    .input(
+      z.object({
+        token: tokenInput,
+        name: z.string().max(120).optional(),
+        phone: z.string().max(30).optional(),
+        interest: z.string().max(160).optional(),
+      }),
+    )
+    .handler(async ({ input }) => {
+      const db = await getDb();
+      const token = normalizeVisitorToken(input.token);
+      if (!token) {
+        return { ok: false, saved: false, crm: false, reason: "sessao_invalida" as const, state: null };
+      }
+      const conversation = await findConversation(db, token);
+      if (!conversation) {
+        return { ok: false, saved: false, crm: false, reason: "sessao_invalida" as const, state: null };
+      }
+
+      /* Nome do formulário passa por checagem de plausibilidade: "sim"/"ok"
+         não podem virar nome do contato nem do lead. */
+      const rawName = input.name ? sanitizeShort(input.name, 120) : "";
+      const name = sanitizeContactName(rawName) ?? "";
+      const nameRejected = Boolean(rawName) && !name;
+      const phoneSent = Boolean(input.phone?.trim());
+      const phone = normalizePhone(input.phone);
+
+      /* Telefone digitado errado agora volta com motivo: antes o servidor
+         respondia ok e descartava o número em silêncio, então o visitante via
+         o campo esvaziar sem nenhuma explicação. */
+      if (phoneSent && !phone) {
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          ok: false,
+          saved: false,
+          crm: false,
+          reason: "telefone_invalido" as const,
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+        };
+      }
+
+      if (nameRejected && !phone) {
+        const messages = await loadMessages(db, conversation.id);
+        return {
+          ok: false,
+          saved: false,
+          crm: false,
+          reason: "nome_invalido" as const,
+          state: toPublicState(token, conversation, countClientMessages(messages)),
+        };
+      }
+
+      const nextName = name || conversation.contactName;
+      const nextPhone = phone ?? conversation.contactPhone;
+
+      await db
+        .update(schema.conversations)
+        .set({ contactName: nextName ?? null, contactPhone: nextPhone ?? null })
+        .where(eq(schema.conversations.id, conversation.id));
+
+      /* O telefone é o que o corretor precisa: basta ele para o lead entrar no
+         CRM. Sem nome, entra com nome provisório — antes o lead só era criado
+         quando nome E telefone existiam, então quem digitava só o WhatsApp
+         ficava fora do CRM. Nada aqui depende da Meta/WhatsApp Cloud API. */
+      let leadId = conversation.leadId;
+      let crm = Boolean(leadId);
+      let crmFailed = false;
+      if (nextPhone && !leadId) {
+        const interest = input.interest ? sanitizeShort(input.interest, 160) : "";
+        try {
+          const result = await intakeLead(db, {
+            name: nextName || CHAT_FALLBACK_NAME,
+            phone: nextPhone,
+            interest: interest || "Contato pelo chat do site",
+            message: conversation.lastMessage ?? null,
+            source: "site_chat",
+            channel: "site",
+            propertyId: conversation.propertyId ?? null,
+          });
+          leadId = result.id;
+          crm = true;
+        } catch (error) {
+          /* Automação/integração externa falhando não pode apagar o contato:
+             o telefone já está salvo na conversa e o corretor vê o aviso.
+             O erro precisa aparecer no log do servidor — engolir em silêncio
+             foi o que escondeu a falha de schema que travou o CRM. */
+          console.error("[site-chat] intakeLead falhou", {
+            conversationId: conversation.id,
+            hasPhone: Boolean(nextPhone),
+            error: error instanceof Error ? error.message : String(error),
+          });
+          crm = false;
+          crmFailed = true;
+        }
+        if (leadId) {
+          await db
+            .update(schema.conversations)
+            .set({ leadId })
+            .where(eq(schema.conversations.id, conversation.id));
+          await addMessage(db, conversation.id, {
+            direction: "out",
+            author: "sistema",
+            body: `Contato informado no chat do site: ${nextName || CHAT_FALLBACK_NAME} · ${nextPhone}`,
+          });
+        }
+      }
+
+      const messages = await loadMessages(db, conversation.id);
+      return {
+        ok: true,
+        saved: phoneSent ? Boolean(nextPhone) : Boolean(nextName),
+        crm,
+        reason: crmFailed ? ("crm_indisponivel" as const) : null,
+        state: toPublicState(
+          token,
+          { ...conversation, contactName: nextName ?? null, contactPhone: nextPhone ?? null },
+          countClientMessages(messages),
+        ),
+      };
+    }),
+
+  /** "Falar com um corretor": transfere dentro do próprio chat. */
+  requestHuman: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
+    const db = await getDb();
+    const token = normalizeVisitorToken(input.token);
+    if (!token) return { ok: false, state: null };
+    const conversation = await findConversation(db, token);
+    if (!conversation) return { ok: false, state: null };
+
+    if (conversation.mode !== "humano") {
+      await transferToHuman(db, conversation.id, "cliente pediu corretor no chat do site");
+    }
+    if (conversation.status !== "aberta") {
+      await db
+        .update(schema.conversations)
+        .set({ status: "aberta" })
+        .where(eq(schema.conversations.id, conversation.id));
+    }
+
+    const messages = await loadMessages(db, conversation.id);
+    return {
+      ok: true,
+      state: toPublicState(
+        token,
+        { ...conversation, mode: "humano", status: "aberta" },
+        countClientMessages(messages),
+      ),
+      messages,
+    };
+  }),
+};

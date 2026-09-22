@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Edy Imóveis PG"
+description = "Site imobiliário e painel de gestão para apresentar imóveis, captar proprietários e clientes, acompanhar leads e administrar operações imobiliárias na região de Praia Grande."
+version = "1.0.0"
+id = "artifacts/edy-imoveis"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18569
+
+[services.development]
+run = "pnpm --filter @workspace/edy-imoveis run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/edy-imoveis", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/edy-imoveis/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18569"
+BASE_PATH = "/"

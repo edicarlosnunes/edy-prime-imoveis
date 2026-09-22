@@ -1,0 +1,67 @@
+import { z } from "zod";
+import { eq } from "drizzle-orm";
+import { adminBase } from "../lib/admin-base";
+import * as schema from "../database/schema";
+import {
+  normalizePriorityCities,
+  parsePriorityCities,
+  serializePriorityCities,
+} from "../lib/priority-area";
+
+const settingsInput = z.object({
+  companyName: z.string().min(2).max(160),
+  brokerName: z.string().min(2).max(160),
+  whatsapp: z.string().min(8).max(20),
+  email: z.string().min(5).max(160),
+  creci: z.string().max(60),
+  /* CNAI = registro de perito avaliador. Impresso nos documentos. */
+  cnai: z.string().max(60).default(""),
+  address: z.string().max(300),
+  instagram: z.string().max(300),
+  facebook: z.string().max(300),
+  commissionRate: z.number().min(0).max(100),
+  /**
+   * V4 — cidades da ÁREA PRIORITÁRIA. É prioridade, não limite: cidade fora
+   * da lista cadastra pelo mesmo fluxo e só recebe o destaque visual no CRM.
+   * Lista vazia cai na lista padrão de `lib/priority-area.ts`.
+   */
+  priorityCities: z.array(z.string().max(120)).max(60).optional(),
+});
+
+export const adminSettings = {
+  get: adminBase.handler(async ({ context }) => {
+    const [row] = await context.db.select().from(schema.settings).limit(1);
+    if (!row) return null;
+    /* A lista sai pronta para a tela: JSON quando configurada, padrão quando
+       o campo está vazio — a ausência de configuração nunca vira "nenhuma
+       cidade é prioritária". */
+    return { ...row, priorityCities: parsePriorityCities(row.priorityCities) };
+  }),
+
+  update: adminBase.input(settingsInput).handler(async ({ input, context }) => {
+    const payload = {
+      companyName: input.companyName.trim(),
+      brokerName: input.brokerName.trim(),
+      whatsapp: input.whatsapp.replace(/\D/g, ""),
+      email: input.email.trim(),
+      creci: input.creci.trim(),
+      cnai: input.cnai.trim(),
+      address: input.address.trim(),
+      instagram: input.instagram.trim(),
+      facebook: input.facebook.trim(),
+      commissionRate: input.commissionRate,
+      /* Campo não enviado = mantém o que está gravado (não zera). */
+      ...(input.priorityCities
+        ? { priorityCities: serializePriorityCities(normalizePriorityCities(input.priorityCities)) }
+        : {}),
+      updatedAt: new Date(),
+    };
+    const [row] = await context.db.select().from(schema.settings).limit(1);
+    if (row) {
+      await context.db.update(schema.settings).set(payload).where(eq(schema.settings.id, row.id));
+    } else {
+      await context.db.insert(schema.settings).values(payload);
+    }
+    return { ok: true };
+  }),
+};

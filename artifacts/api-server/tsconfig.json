@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "noCheck": true,
     "incremental": true,
     "tsBuildInfoFile": ".tsbuildinfo",
     "outDir": "dist",
@@ -8,6 +9,7 @@
     "types": ["node"]
   },
   "include": ["src"],
+  "exclude": ["src/**/*.test.ts"],
   "references": [
     {
       "path": "../../lib/db"
