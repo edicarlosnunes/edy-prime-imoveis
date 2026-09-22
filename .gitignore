@@ -1,77 +1,49 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
 # dependencies
 node_modules
 
-# output
-out
-dist
-dist-electron
-release
-web-build
-*.tgz
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
 
-# code coverage
-coverage
-*.lcov
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 
-# logs
-logs
-_.log
-report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
 
-# local databases
-*.db
-
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
-.env*.local
-
-# caches
-.eslintcache
-.cache
-*.tsbuildinfo
-.turbo
-
-# IntelliJ based IDEs
-.idea
-
-# macOS
+# System Files
 .DS_Store
+Thumbs.db
 
-# Expo
-.expo/
-expo-env.d.ts
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
 
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-*.pem
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# generated native folders
-ios
-android
-
-# scripts (local-only provisioning)
-scripts/
-!packages/mobile/scripts/
-packages/mobile/scripts/*
-!packages/mobile/scripts/generate-ios-certs.py
-!packages/web/scripts/
-packages/web/scripts/*
-!packages/web/scripts/migrate.ts
+# Replit
+.cache/
+.local/
