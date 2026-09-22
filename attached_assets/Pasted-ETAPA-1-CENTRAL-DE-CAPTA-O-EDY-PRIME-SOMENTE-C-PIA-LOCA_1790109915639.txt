@@ -1,0 +1,155 @@
+ETAPA 1 — CENTRAL DE CAPTAÇÃO EDY PRIME — SOMENTE CÓPIA LOCAL/PREVIEW
+
+Trabalhe EXCLUSIVAMENTE na cópia local deste projeto no Replit.
+
+NÃO faça deploy.
+NÃO publique.
+NÃO altere o domínio oficial.
+NÃO altere Vercel ou produção.
+NÃO altere banco de dados existente.
+NÃO apague nem migre registros.
+NÃO altere autenticação existente.
+NÃO altere APIs, webhooks, Meta, WhatsApp ou integrações externas.
+NÃO altere outras telas do CRM nesta etapa.
+
+Arquivo principal já confirmado:
+artifacts/edy-imoveis/src/web/pages/admin/captacao.tsx
+
+Rota:
+ /admin/captacao
+
+OBJETIVO DESTA ETAPA
+
+Transformar visualmente essa página na nova:
+
+CENTRAL DE CAPTAÇÃO
+
+Esta será a central operacional para entrada e acompanhamento das captações de imóveis da Edy Prime Imóveis.
+
+IMPORTANTE:
+Nesta etapa quero SOMENTE a interface visual e a navegação local.
+Não conecte ainda os novos componentes ao banco de produção.
+
+A Central deverá apresentar claramente 4 ORIGENS DE CAPTAÇÃO independentes:
+
+1. LINK_CAPTACAO
+Nome visual:
+“Link para Proprietário”
+
+Finalidade:
+Link enviado pelo corretor para um proprietário já qualificado cadastrar um imóvel que deseja VENDER ou ALUGAR.
+
+Não existe fluxo de compra aqui.
+
+2. RADAR_CAPTACAO
+Nome visual:
+“Radar de Captação”
+
+Finalidade:
+Prospecção ativa de imóveis de particulares encontrados externamente, como Google, portais, aplicativos e outras fontes.
+
+Deve preservar futuramente:
+- origem
+- fonte
+- URL do anúncio
+- identificação do proprietário
+- imóvel
+- foto de fachada
+
+3. CAPTACAO_SITE
+Nome visual:
+“Captação pelo Site”
+
+Finalidade:
+Proprietário entra espontaneamente pelo site da Edy Prime e oferece seu imóvel.
+
+Este fluxo NÃO deve ser confundido com o link enviado pelo corretor.
+
+4. CADASTRO_CORRETOR
+Nome visual:
+“Cadastro pela Equipe”
+
+Finalidade:
+Corretor ou funcionário cadastra manualmente proprietário e imóvel diretamente no CRM.
+
+REGRA ESTRUTURAL OBRIGATÓRIA
+
+Os quatro fluxos devem permanecer identificados separadamente por sua ORIGEM.
+
+Não misture as origens.
+
+Futuramente todos deverão convergir para o mesmo CRM e para as mesmas entidades de proprietários e imóveis, preservando sempre a origem da captação.
+
+INTERFACE
+
+Na parte superior da Central de Captação, criar uma visão executiva contendo:
+
+- Captações ativas
+- Novos contatos
+- Em qualificação
+- Documentação
+- Validação
+- Captados
+- Perdidos
+
+Criar abaixo uma área chamada:
+
+“Fontes de Captação”
+
+Apresentar quatro cards:
+
+LINK PARA PROPRIETÁRIO
+RADAR DE CAPTAÇÃO
+CAPTAÇÃO PELO SITE
+CADASTRO PELA EQUIPE
+
+Cada card deve ter:
+- nome
+- descrição curta
+- indicador visual
+- botão “Acessar”
+
+Manter o padrão visual premium já existente da Edy Prime:
+- fundo escuro
+- dourado
+- tipografia e identidade já utilizadas
+- menu administrativo existente
+
+Não redesenhe o restante do CRM.
+
+IMPORTANTE SOBRE O RADAR ATUAL
+
+Não excluir nem destruir o Radar de Captação existente.
+
+Preserve o código e a funcionalidade atual.
+
+A nova Central deverá ser preparada para ser a camada superior de organização das quatro fontes de captação.
+
+TESTE OBRIGATÓRIO
+
+Ao terminar:
+
+1. Execute o projeto localmente no Preview.
+2. Abra /admin/captacao usando a autenticação local já existente.
+3. Confirme visualmente que aparece o título:
+   “Central de Captação”
+4. Confirme que os quatro cards aparecem.
+5. Verifique console e logs.
+6. Não faça deploy.
+
+ENTREGA
+
+Ao final, informe objetivamente:
+
+- arquivos modificados;
+- arquivos criados;
+- rota testada;
+- quais componentes foram adicionados;
+- resultado do teste visual;
+- se houve algum erro;
+- confirmação explícita de que NÃO houve deploy;
+- confirmação explícita de que banco, produção e integrações externas não foram alterados.
+
+Depois disso PARE.
+
+Não implemente banco, formulários, automações ou integrações até receber nova autorização.

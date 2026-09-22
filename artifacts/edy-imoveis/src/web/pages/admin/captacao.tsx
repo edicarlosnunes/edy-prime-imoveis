@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Phone, MessageCircle, FileText, Building2 } from "lucide-react";
+import { Plus, Phone, MessageCircle, FileText, Building2, Link2, Radar as RadarIcon, Globe2, ArrowRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
@@ -73,13 +73,107 @@ function Content() {
   const { data = [] } = useAdminCaptures(filters);
   const active = data.filter((x) => st(x) !== "perdido");
   const lost = data.filter((x) => st(x) === "perdido");
-  const overdue = active.filter((x) => x.nextActionAt && new Date(x.nextActionAt).getTime() < Date.now()).length;
-  return <AdminLayout title="Radar de Captação" subtitle="Proprietários e imóveis antes de entrarem na carteira" actions={<Btn tone="brass" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4"/> Nova captação</Btn>}>
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="Ativas" value={active.length}/><Stat label="Captadas" value={active.filter(x=>st(x)==="captado").length}/><Stat label="Atrasadas" value={overdue}/><Stat label="Perdidas" value={lost.length}/></div>
-      <Card><div className="grid gap-3 md:grid-cols-[1fr_220px]"><Input placeholder="Buscar proprietário, telefone, bairro..." value={search} onChange={e=>setSearch(e.target.value)}/><Select value={city} onChange={e=>setCity(e.target.value)}><option value="">Todas as regiões</option>{CITIES.map(c=><option key={c}>{c}</option>)}</Select></div></Card>
-      <div className="grid gap-4 xl:grid-cols-4">{STAGES.map(([key,label])=><Card key={key} title={`${label} · ${active.filter(x=>st(x)===key).length}`}><div className="space-y-3">{active.filter(x=>st(x)===key).map(c=><button key={c.id} onClick={()=>setSelected(c.id)} className="w-full rounded border border-line bg-bone/30 p-3 text-left hover:bg-bone/60">{isOutside(c.outsidePriorityArea)&&<div className="mb-2"><OutsideBand compact/></div>}<div className="font-medium text-deep">{c.owner?.name ?? `Proprietário #${c.ownerId}`}</div><div className="mt-1 text-xs text-muted">{c.propertyType || "Imóvel"} · {c.district || c.city}</div><div className="mt-2 flex flex-wrap items-center gap-1"><RegBadge status={c.registrationStatus}/><span className="text-[10px] text-muted">{c.completeness ?? 0}% preenchido</span></div><div className="mt-1 text-sm">{money(c.askingPrice)}</div>{c.nextAction && <div className="mt-2 text-[11px] text-muted">{c.nextAction} · {dateTimeLabel(c.nextActionAt)}</div>}</button>)}</div></Card>)}</div>
-      {lost.length>0 && <Card title={`Arquivo de perdidos · ${lost.length}`}><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{lost.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} className="rounded border border-line p-3 text-left"><b>{c.owner?.name}</b><div className="text-xs text-muted">{c.lostReason || "Motivo não informado"}</div></button>)}</div></Card>}
+  return <AdminLayout title="Central de Captação" subtitle="Proprietários e imóveis antes de entrarem na carteira" actions={<Btn tone="brass" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4"/> Nova captação</Btn>}>
+    <div className="space-y-8">
+      {/* Executive Overview */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-7">
+        <Stat label="Ativas" value={active.length} tone="brass"/>
+        <Stat label="Novos contatos" value={active.filter(x=>st(x)==="novo_contato").length}/>
+        <Stat label="Em qualificação" value={active.filter(x=>st(x)!=="captado" && (x.completeness ?? 0) > 0 && (x.completeness ?? 0) < 100).length}/>
+        <Stat label="Documentação" value={active.filter(x=>st(x)==="documentacao").length}/>
+        <Stat label="Validação" value={active.filter(x=>st(x)==="validacao").length}/>
+        <Stat label="Captados" value={active.filter(x=>st(x)==="captado").length} tone="green"/>
+        <Stat label="Perdidos" value={lost.length} tone="rose"/>
+      </div>
+
+      {/* Fontes de Captação */}
+      <div className="space-y-4">
+        <h2 className="text-lg font-medium text-deep">Fontes de Captação</h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card className="flex h-full flex-col hover:border-brass/50 transition-colors">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
+                <Link2 className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium text-deep">Link para Proprietário</h3>
+            </div>
+            <p className="mb-6 flex-1 text-sm text-muted">
+              Envie ao proprietário já qualificado um link para cadastrar o imóvel que deseja vender ou alugar.
+            </p>
+            <button
+              className="flex w-full items-center justify-center gap-2 rounded bg-bone/50 px-4 py-2 text-xs font-medium text-deep transition-colors hover:bg-bone"
+              onClick={() => alert("Em breve: Geração de link exclusivo para o proprietário preencher a ficha.")}
+            >
+              Acessar <ArrowRight className="h-3 w-3" />
+            </button>
+          </Card>
+
+          <Card className="flex h-full flex-col hover:border-brass/50 transition-colors">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
+                <RadarIcon className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium text-deep">Radar de Captação</h3>
+            </div>
+            <p className="mb-6 flex-1 text-sm text-muted">
+              Organize a prospecção ativa de imóveis encontrados em portais, aplicativos e outras fontes externas.
+            </p>
+            <button
+              className="flex w-full items-center justify-center gap-2 rounded bg-brass px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-brass/90"
+              onClick={() => document.getElementById("radar-section")?.scrollIntoView({ behavior: "smooth" })}
+            >
+              Acessar <ArrowRight className="h-3 w-3" />
+            </button>
+          </Card>
+
+          <Card className="flex h-full flex-col hover:border-brass/50 transition-colors">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
+                <Globe2 className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium text-deep">Captação pelo Site</h3>
+            </div>
+            <p className="mb-6 flex-1 text-sm text-muted">
+              Acompanhe proprietários que espontaneamente oferecem seus imóveis pelo site da Edy Prime.
+            </p>
+            <button
+              className="flex w-full items-center justify-center gap-2 rounded bg-bone/50 px-4 py-2 text-xs font-medium text-deep transition-colors hover:bg-bone"
+              onClick={() => alert("Em breve: Painel de captações integradas diretamente com o site.")}
+            >
+              Acessar <ArrowRight className="h-3 w-3" />
+            </button>
+          </Card>
+
+          <Card className="flex h-full flex-col hover:border-brass/50 transition-colors">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
+                <Plus className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium text-deep">Cadastro pela Equipe</h3>
+            </div>
+            <p className="mb-6 flex-1 text-sm text-muted">
+              Permita que corretores e funcionários cadastrem manualmente proprietário e imóvel no CRM.
+            </p>
+            <button
+              className="flex w-full items-center justify-center gap-2 rounded border border-brass px-4 py-2 text-xs font-medium text-brass transition-colors hover:bg-brass/10"
+              onClick={() => setNewOpen(true)}
+            >
+              Acessar <ArrowRight className="h-3 w-3" />
+            </button>
+          </Card>
+        </div>
+      </div>
+
+      {/* Radar Section */}
+      <div id="radar-section" className="space-y-4 pt-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-medium text-deep">Radar de Captação</h2>
+          <div className="text-sm text-muted">Acompanhamento de fluxo e etapas</div>
+        </div>
+        <Card><div className="grid gap-3 md:grid-cols-[1fr_220px]"><Input placeholder="Buscar proprietário, telefone, bairro..." value={search} onChange={e=>setSearch(e.target.value)}/><Select value={city} onChange={e=>setCity(e.target.value)}><option value="">Todas as regiões</option>{CITIES.map(c=><option key={c}>{c}</option>)}</Select></div></Card>
+        <div className="grid gap-4 xl:grid-cols-4">{STAGES.map(([key,label])=><Card key={key} title={`${label} · ${active.filter(x=>st(x)===key).length}`}><div className="space-y-3">{active.filter(x=>st(x)===key).map(c=><button key={c.id} onClick={()=>setSelected(c.id)} className="w-full rounded border border-line bg-bone/30 p-3 text-left hover:bg-bone/60">{isOutside(c.outsidePriorityArea)&&<div className="mb-2"><OutsideBand compact/></div>}<div className="font-medium text-deep">{c.owner?.name ?? `Proprietário #${c.ownerId}`}</div><div className="mt-1 text-xs text-muted">{c.propertyType || "Imóvel"} · {c.district || c.city}</div><div className="mt-2 flex flex-wrap items-center gap-1"><RegBadge status={c.registrationStatus}/><span className="text-[10px] text-muted">{c.completeness ?? 0}% preenchido</span></div><div className="mt-1 text-sm">{money(c.askingPrice)}</div>{c.nextAction && <div className="mt-2 text-[11px] text-muted">{c.nextAction} · {dateTimeLabel(c.nextActionAt)}</div>}</button>)}</div></Card>)}</div>
+        {lost.length>0 && <Card title={`Arquivo de perdidos · ${lost.length}`}><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{lost.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} className="rounded border border-line p-3 text-left"><b>{c.owner?.name}</b><div className="text-xs text-muted">{c.lostReason || "Motivo não informado"}</div></button>)}</div></Card>}
+      </div>
     </div>
     <NewCapture open={newOpen} onClose={()=>setNewOpen(false)} onCreated={(id)=>{setNewOpen(false);setSelected(id)}}/>
     <Detail id={selected} onClose={()=>setSelected(null)}/>
