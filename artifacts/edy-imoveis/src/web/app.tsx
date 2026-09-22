@@ -7,6 +7,7 @@ import AdminLeads from "./pages/admin/leads";
 import AdminClients from "./pages/admin/clients";
 import AdminOwners from "./pages/admin/owners";
 import AdminCaptacao from "./pages/admin/captacao";
+import AdminLinkCaptacao from "./pages/admin/link-captacao";
 import AdminDocumento from "./pages/admin/documento";
 import AdminAgenda from "./pages/admin/agenda";
 import AdminDeals from "./pages/admin/deals";
@@ -21,6 +22,7 @@ import AdminWatermark from "./pages/admin/watermark";
 import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
 import LinkCaptacao from "./pages/link-captacao";
+import CaptacaoPublica from "./pages/captacao-publica";
 import Privacidade from "./pages/privacidade";
 import Termos from "./pages/termos";
 import ExclusaoDeDados from "./pages/exclusao-de-dados";
@@ -32,6 +34,7 @@ function App() {
       <Switch>
         <Route path="/" component={Index} />
         <Route path="/link-captacao" component={LinkCaptacao} />
+        <Route path="/captacao/:token" component={CaptacaoPublica} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/imoveis" component={AdminProperties} />
@@ -41,6 +44,7 @@ function App() {
         <Route path="/admin/clientes" component={AdminClients} />
         <Route path="/admin/proprietarios" component={AdminOwners} />
         <Route path="/admin/captacao" component={AdminCaptacao} />
+        <Route path="/admin/captacao/link" component={AdminLinkCaptacao} />
         <Route path="/admin/documento/:id" component={AdminDocumento} />
         <Route path="/admin/agenda" component={AdminAgenda} />
         <Route path="/admin/propostas" component={AdminDeals} />

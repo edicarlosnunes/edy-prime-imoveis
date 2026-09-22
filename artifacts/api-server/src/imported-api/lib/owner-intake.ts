@@ -41,6 +41,8 @@ export interface OwnerIntakeInput {
   state?: string | null;
   complements?: Complements | null;
   askingPrice?: number | null;
+  /** finalidade do imóvel, limitada a vender/alugar nos links públicos */
+  intention?: "vender" | "alugar" | null;
 }
 
 export interface OwnerIntakeResult {
@@ -197,6 +199,7 @@ async function ensureCapture(
     complements: input.complements ?? null,
     propertyType: input.propertyType ?? null,
     askingPrice: input.askingPrice ?? null,
+    intention: input.intention ?? null,
     notes: input.message ?? null,
     source: input.source ?? "site",
   });

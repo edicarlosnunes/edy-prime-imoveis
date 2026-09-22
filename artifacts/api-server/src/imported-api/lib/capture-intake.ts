@@ -27,11 +27,13 @@ import {
 } from "./capture-address";
 
 /** Origem da captação. `site` é o formulário público do proprietário. */
-export const CAPTURE_SOURCES = ["site", "manual", "prospeccao", "indicacao", "portal"] as const;
+export const CAPTURE_SOURCES = ["site", "manual", "prospeccao", "indicacao", "portal", "LINK_CAPTACAO"] as const;
 export type CaptureSource = (typeof CAPTURE_SOURCES)[number];
 
 export function normalizeSource(raw: string | null | undefined): CaptureSource {
-  const value = String(raw ?? "").trim().toLowerCase();
+  const original = String(raw ?? "").trim();
+  if (original.toUpperCase() === "LINK_CAPTACAO") return "LINK_CAPTACAO";
+  const value = original.toLowerCase();
   if ((CAPTURE_SOURCES as readonly string[]).includes(value)) return value as CaptureSource;
   /* Valores antigos gravados pelo site: `site_vender`, `site-proprietario`... */
   if (value.startsWith("site")) return "site";

@@ -318,6 +318,37 @@ export const owners = sqliteTable("owners", {
     .$defaultFn(() => new Date()),
 });
 
+/* --------------------------------------- links individuais de captação */
+
+/**
+ * Link público individual para a ficha do proprietário.
+ *
+ * O token em claro nunca é persistido: a URL carrega apenas o valor entregue
+ * ao corretor uma única vez, enquanto o banco guarda seu SHA-256.
+ */
+export const ownerIntakeLinks = sqliteTable(
+  "owner_intake_links",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    tokenHash: text("token_hash").notNull().unique(),
+    ownerName: text("owner_name").notNull(),
+    phone: text("phone"),
+    /** aguardando | iniciado | concluido */
+    status: text("status").notNull().default("aguardando"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    startedAt: integer("started_at", { mode: "timestamp" }),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+    ownerId: integer("owner_id"),
+    captureId: integer("capture_id"),
+  },
+  (t) => [
+    uniqueIndex("owner_intake_links_token_idx").on(t.tokenHash),
+    index("owner_intake_links_status_idx").on(t.status),
+  ],
+);
+
 /* ------------------------------------------- serial global do CRM (V3) */
 
 /**

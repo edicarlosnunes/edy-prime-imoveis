@@ -86,6 +86,20 @@ const statements = [
     capture_status TEXT NOT NULL DEFAULT 'prospeccao',
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS owner_intake_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    owner_name TEXT NOT NULL,
+    phone TEXT,
+    status TEXT NOT NULL DEFAULT 'aguardando',
+    created_at INTEGER NOT NULL,
+    started_at INTEGER,
+    completed_at INTEGER,
+    owner_id INTEGER,
+    capture_id INTEGER
+  )`,
+  "CREATE UNIQUE INDEX IF NOT EXISTS owner_intake_links_token_idx ON owner_intake_links (token_hash)",
+  "CREATE INDEX IF NOT EXISTS owner_intake_links_status_idx ON owner_intake_links (status)",
   `CREATE TABLE IF NOT EXISTS clients (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     name TEXT NOT NULL,

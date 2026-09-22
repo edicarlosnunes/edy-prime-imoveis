@@ -65,6 +65,7 @@ const CRECI = "134718-F";
 export default function Captacao() { return <AdminGuard><Content /></AdminGuard>; }
 
 function Content() {
+  const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [city, setCity] = useState("");
   const [newOpen, setNewOpen] = useState(false);
@@ -101,8 +102,8 @@ function Content() {
               Envie ao proprietário já qualificado um link para cadastrar o imóvel que deseja vender ou alugar.
             </p>
             <button
-              className="flex w-full items-center justify-center gap-2 rounded bg-bone/50 px-4 py-2 text-xs font-medium text-deep transition-colors hover:bg-bone"
-              onClick={() => alert("Em breve: Geração de link exclusivo para o proprietário preencher a ficha.")}
+              className="flex w-full items-center justify-center gap-2 rounded bg-brass px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-brass/90"
+              onClick={() => navigate("/admin/captacao/link")}
             >
               Acessar <ArrowRight className="h-3 w-3" />
             </button>

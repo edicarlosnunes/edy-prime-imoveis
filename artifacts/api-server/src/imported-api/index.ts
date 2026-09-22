@@ -33,6 +33,7 @@ import { adminAgents } from "./routes/admin-agents";
 import { adminAutomations } from "./routes/admin-automations";
 import { adminWatermark } from "./routes/admin-watermark";
 import { adminAudit } from "./routes/admin-audit";
+import { adminOwnerIntakeLinks, ownerIntakeLinks } from "./routes/owner-intake-links";
 import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
 import * as schema from "./database/schema";
@@ -90,6 +91,8 @@ export const router = {
   adminAutomations,
   adminWatermark,
   adminAudit,
+  adminOwnerIntakeLinks,
+  ownerIntakeLinks,
 };
 
 export type AppRouter = typeof router;

@@ -1,0 +1,156 @@
+ETAPA — IMPLEMENTAR LINK_CAPTACAO
+
+Trabalhe exclusivamente no fluxo Link para Proprietário existente na página /admin/captacao.
+
+Antes de alterar código, examine a estrutura atual do projeto, banco, APIs, modelos de proprietário/imóvel, autenticação e o formulário/ficha de captação que já existe. Reutilize o que for compatível. Não crie sistemas duplicados.
+
+1. OBJETIVO
+
+O botão Acessar do card Link para Proprietário deve permitir que um corretor/equipe gere um link individual de captação para enviar a um proprietário que já foi previamente qualificado.
+
+A origem desse fluxo deve ser registrada internamente exatamente como:
+
+LINK_CAPTACAO
+
+Esse fluxo é exclusivamente para proprietário que possui imóvel e deseja:
+
+VENDER
+ALUGAR
+
+Não incluir opção de compra/procura de imóvel.
+
+2. ÁREA ADMINISTRATIVA
+
+Ao clicar em Acessar no card Link para Proprietário, abrir uma tela própria dentro do módulo CAPTAÇÃO.
+
+Essa tela deve permitir ao corretor:
+
+identificar o proprietário;
+informar nome e, quando necessário, telefone/WhatsApp;
+gerar um link individual;
+copiar o link;
+visualizar o status do link, por exemplo: aguardando preenchimento, iniciado e concluído;
+identificar data de criação e, se disponível, data de conclusão.
+
+O link precisa possuir identificador/token não previsível. Não colocar dados pessoais do proprietário diretamente na URL.
+
+3. EXPERIÊNCIA DO PROPRIETÁRIO
+
+Quando o proprietário abrir o link, ele não deve entrar no painel administrativo e não deve visualizar CRM, menu administrativo ou informações de outros clientes.
+
+Deve abrir uma ficha pública, limpa, responsiva e identificada visualmente como Edy Prime Imóveis.
+
+O preenchimento deve ser dividido em etapas, evitando apresentar um formulário enorme de uma vez.
+
+ETAPA 1 — Proprietário
+
+Nome completo.
+WhatsApp/telefone, caso ainda não esteja associado ao link.
+E-mail opcional.
+
+ETAPA 2 — Imóvel / endereço
+
+finalidade: Vender ou Alugar;
+tipo do imóvel;
+CEP;
+rua/avenida;
+número;
+complemento;
+bairro;
+cidade;
+UF;
+apartamento/unidade, bloco, torre ou demais complementos somente quando aplicáveis.
+
+ETAPA 3 — Situação e documentação
+Apresentar os campos necessários para sabermos a situação documental e comercial do imóvel. Reutilizar os campos/documentação já existentes no projeto quando forem adequados, sem exigir upload desnecessário de documentos nesta primeira captação.
+
+ETAPA 4 — Qualificação do imóvel
+Criar checklist objetivo com as informações necessárias para a equipe avaliar a captação, reutilizando os campos já existentes no projeto quando compatíveis: características principais, condição do imóvel, ocupação, disponibilidade, valor pretendido e demais dados essenciais à qualificação.
+
+Não transformar esta etapa em cadastro completo de anúncio imobiliário. O objetivo é qualificar a captação.
+
+ETAPA 5 — Foto de identificação
+Somente no final solicitar 1 única foto da frente/fachada do imóvel.
+
+Mostrar ao proprietário uma explicação semelhante a:
+
+“Para finalizar, envie uma foto da frente/fachada do imóvel. Essa imagem será utilizada apenas para facilitar a localização e identificação rápida do imóvel pela nossa equipe.”
+
+Nesta etapa do fluxo não solicitar álbum, fotos internas ou várias imagens.
+
+ETAPA 6 — Revisão e envio
+Antes da conclusão, permitir ao proprietário revisar as principais informações.
+
+Ao enviar, mostrar confirmação clara de que a ficha foi recebida pela Edy Prime Imóveis.
+
+4. INTEGRAÇÃO COM O CRM
+
+O formulário não pode virar um cadastro isolado.
+
+Ao ser concluído, deve alimentar o mesmo CRM/banco de proprietários e imóveis já utilizado pelo projeto, preservando:
+
+proprietário;
+imóvel;
+origem LINK_CAPTACAO;
+finalidade VENDER ou ALUGAR;
+informações da ficha;
+estágio da captação;
+datas;
+foto de fachada;
+vínculo entre proprietário e imóvel.
+
+Evitar duplicação de proprietário quando já existir mecanismo seguro de identificação no sistema.
+
+A nova captação deve aparecer na Central de Captação e entrar no funil existente no estágio adequado.
+
+5. SEGURANÇA
+
+O link público deve permitir acesso somente à ficha correspondente àquele token.
+
+Não criar bypass de autenticação administrativa.
+
+O proprietário não pode consultar outras captações alterando ID ou URL.
+
+Não expor IDs internos sensíveis, credenciais, tokens administrativos ou dados de outros clientes.
+
+Validar os dados recebidos no servidor.
+
+6. IMPORTANTE — NÃO MEXER
+
+Nesta etapa:
+
+não alterar Radar de Captação;
+não alterar Captação pelo Site;
+não alterar Cadastro pela Equipe;
+não alterar Captação pelo WhatsApp;
+não integrar Meta/WhatsApp API;
+não alterar webhooks externos;
+não alterar domínio oficial;
+não alterar a capa/site institucional;
+não modificar registros existentes sem necessidade;
+não remover funcionalidades existentes.
+7. PRIMEIRO TRABALHAR E TESTAR; NÃO PUBLICAR AUTOMATICAMENTE
+
+Implemente inicialmente no ambiente de desenvolvimento/Preview.
+
+Faça um teste completo:
+
+Admin → Link para Proprietário → gerar link → abrir como proprietário → preencher ficha → enviar → verificar gravação → confirmar origem LINK_CAPTACAO → confirmar entrada na Central de Captação.
+
+Verifique também que um token inválido ou inexistente não permite acesso a dados.
+
+Não faça deploy/republicação da produção nesta etapa.
+
+Ao terminar, pare e apresente:
+
+arquivos criados;
+arquivos modificados;
+tabelas/modelos alterados;
+rotas criadas;
+campos efetivamente usados na ficha;
+como o token foi protegido;
+onde LINK_CAPTACAO ficou registrado;
+resultado de cada teste;
+confirmação explícita de que produção não foi publicada.
+
+Não declare concluído apenas porque compilou. O fluxo precisa ser testado de ponta a ponta no Preview.
