@@ -89,7 +89,7 @@ function Content() {
       {/* Fontes de Captação */}
       <div className="space-y-4">
         <h2 className="text-lg font-medium text-deep">Fontes de Captação</h2>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <Card className="flex h-full flex-col hover:border-brass/50 transition-colors">
             <div className="mb-3 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
@@ -157,6 +157,24 @@ function Content() {
             <button
               className="flex w-full items-center justify-center gap-2 rounded border border-brass px-4 py-2 text-xs font-medium text-brass transition-colors hover:bg-brass/10"
               onClick={() => setNewOpen(true)}
+            >
+              Acessar <ArrowRight className="h-3 w-3" />
+            </button>
+          </Card>
+
+          <Card className="flex h-full flex-col hover:border-brass/50 transition-colors">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
+                <MessageCircle className="h-5 w-5" />
+              </div>
+              <h3 className="font-medium text-deep">Captação pelo WhatsApp</h3>
+            </div>
+            <p className="mb-6 flex-1 text-sm text-muted">
+              Receba e organize proprietários e imóveis originados pelo atendimento da Edy Prime no WhatsApp.
+            </p>
+            <button
+              className="flex w-full items-center justify-center gap-2 rounded bg-bone/50 px-4 py-2 text-xs font-medium text-deep transition-colors hover:bg-bone"
+              onClick={() => alert("Em breve: entrada visual reservada para captações originadas pelo WhatsApp. Nenhuma integração está conectada.")}
             >
               Acessar <ArrowRight className="h-3 w-3" />
             </button>
