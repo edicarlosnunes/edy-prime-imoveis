@@ -194,6 +194,13 @@ const DDL = [
   `CREATE INDEX inbound_events_status_idx ON inbound_events (status, claimed_at)`,
   `CREATE INDEX inbound_events_created_idx ON inbound_events (created_at)`,
   `CREATE UNIQUE INDEX messages_conversation_external_uk ON messages (conversation_id, external_id)`,
+  `CREATE TABLE owner_intake_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_hash TEXT NOT NULL UNIQUE, short_code TEXT UNIQUE,
+    owner_name TEXT NOT NULL, phone TEXT, status TEXT NOT NULL DEFAULT 'aguardando',
+    profile TEXT, draft TEXT, created_at INTEGER NOT NULL DEFAULT 0,
+    started_at INTEGER, completed_at INTEGER, cancellation_reason TEXT,
+    owner_id INTEGER, capture_id INTEGER)`,
 ];
 
 /* ------------------------------------------------------------ fixture */
@@ -343,6 +350,38 @@ describe("mensagem legítima", () => {
     expect(await count("leads")).toBe(1); // dedupe de lead preservado
     expect(aiCalls).toBe(2);
     expect(graphCalls.length).toBe(2);
+  });
+});
+
+describe("gatilho fixo do LINK_CAPTACAO no webhook", () => {
+  test("frase exata entra no modo de captação sem chamar a IA", async () => {
+    const res = await post(textMessage("wamid.LINK", "Vamos cadastrar seu imóvel?"));
+
+    expect(res.status).toBe(200);
+    expect(aiCalls).toBe(0);
+    expect(graphCalls).toHaveLength(1);
+    expect(graphCalls[0]?.body).toContain("Você é proprietário, locador ou corretor?");
+    expect(await count("owner_intake_links")).toBe(1);
+  });
+
+  test("mensagem parecida continua no atendimento normal", async () => {
+    const res = await post(textMessage("wamid.NORMAL", "Quero cadastrar meu imóvel"));
+
+    expect(res.status).toBe(200);
+    expect(aiCalls).toBe(1);
+    expect(graphCalls[0]?.body).toContain("Olá! Sou o atendimento da Edy Prime.");
+    expect(await count("owner_intake_links")).toBe(0);
+  });
+
+  test("resposta seguinte usa o remetente como identidade e não pergunta telefone", async () => {
+    await post(textMessage("wamid.LINK", "Vamos cadastrar seu imóvel?"));
+    const res = await post(textMessage("wamid.PROFILE", "PROPRIETARIO"));
+
+    expect(res.status).toBe(200);
+    expect(aiCalls).toBe(0);
+    expect(graphCalls.at(-1)?.body).toContain("Qual é o seu nome completo?");
+    expect(graphCalls.at(-1)?.body).not.toContain("telefone");
+    expect(graphCalls.at(-1)?.body).not.toContain("celular");
   });
 });
 

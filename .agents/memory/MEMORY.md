@@ -1,0 +1,1 @@
+- [WhatsApp capture architecture](whatsapp-capture-architecture.md) — fixed phrase opens sender-scoped internal capture; normal messages remain on the existing AI path.

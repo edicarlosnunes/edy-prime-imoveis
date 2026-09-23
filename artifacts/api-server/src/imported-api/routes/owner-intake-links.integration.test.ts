@@ -6,6 +6,13 @@ import { unlinkSync } from "node:fs";
 import * as schema from "../database/schema";
 import { sha256Hex } from "../lib/auth";
 import { publicCancel, publicFacade, publicTurn } from "./owner-intake-links";
+import {
+  isFixedWhatsappCaptureTrigger,
+  whatsappCapturePhoto,
+  whatsappCaptureSession,
+  whatsappCaptureText,
+  WHATSAPP_CAPTURE_SUCCESS,
+} from "../agent/whatsapp-link-captacao";
 
 const DDL = [
   `CREATE TABLE owners (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, system_key TEXT UNIQUE, phone TEXT, email TEXT, notes TEXT, document TEXT, rg TEXT, capture_status TEXT NOT NULL DEFAULT 'prospeccao', possible_duplicate INTEGER NOT NULL DEFAULT 0, duplicate_of_owner_id INTEGER, duplicate_note TEXT, created_at INTEGER NOT NULL DEFAULT 0)`,
@@ -83,6 +90,35 @@ async function drive(token: string, profile: "PROPRIETARIO" | "LOCADOR" | "CORRE
 }
 
 describe("LINK_CAPTACAO — roteiro exato A-U", () => {
+  test("WhatsApp usa a frase fixa, isola remetentes e conclui na foto", async () => {
+    expect(isFixedWhatsappCaptureTrigger("vamos cadastrar seu imóvel?")).toBe(true);
+    expect(isFixedWhatsappCaptureTrigger("Tenho interesse em cadastrar meu imóvel")).toBe(false);
+    expect(isFixedWhatsappCaptureTrigger("LINK_CAPTACAO")).toBe(false);
+
+    const first = "5513997726767";
+    const second = "5513997726768";
+    const opening = await whatsappCaptureText(db as never, first, "Vamos cadastrar seu imóvel?", "Ana");
+    expect(opening?.text).toBe("Você é proprietário, locador ou corretor?");
+    expect((await whatsappCaptureText(db as never, first, "LOCADOR"))?.text).toBe("Qual é o seu nome completo?");
+    expect((await whatsappCaptureText(db as never, second, "Vamos cadastrar seu imóvel?", "Corretor"))?.text)
+      .toBe("Você é proprietário, locador ou corretor?");
+    expect((await whatsappCaptureText(db as never, second, "CORRETOR"))?.text).toBe("Qual é o seu nome completo?");
+    expect((await whatsappCaptureText(db as never, second, "Ana Souza"))?.text).toBe("Qual é o seu CRECI?");
+    expect((await whatsappCaptureSession(db as never, first))?.draft.profile).toBe("LOCADOR");
+    expect((await whatsappCaptureSession(db as never, second))?.draft.profile).toBe("CORRETOR");
+
+    let reply = await whatsappCaptureText(db as never, first, "Ana Souza");
+    for (let i = 0; i < 40 && reply && !reply.text.includes("foto da frente"); i++) {
+      const answer = answerFor(reply.text);
+      reply = await whatsappCaptureText(db as never, first, answer);
+    }
+    const waiting = await whatsappCaptureSession(db as never, first);
+    expect(waiting?.waitingForPhoto).toBe(true);
+    const photo = await whatsappCapturePhoto(db as never, first, "/api/media/test-photo");
+    expect(photo?.text).toBe(WHATSAPP_CAPTURE_SUCCESS);
+    expect(await whatsappCaptureSession(db as never, first)).toBeNull();
+  });
+
   test("1 owner apartment sale persists progressive answers and price", async () => {
     const token = await link("5513997141174"); const draft = await drive(token, "PROPRIETARIO");
     expect(draft.propertyType).toBe("apartamento"); expect(draft.intention).toBe("venda"); expect(draft.askingPrice).toBe(450000);

@@ -23,8 +23,11 @@ import {
 import { intakeLead, normalizeWebhookLead } from "../lib/lead-intake";
 import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
-import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
-import { captureSnapshot } from "../agent/owner-capture";
+import {
+  whatsappCapturePhoto,
+  whatsappCaptureSession,
+  whatsappCaptureText,
+} from "../agent/whatsapp-link-captacao";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
@@ -184,6 +187,8 @@ export function registerWebhookRoutes(app: Hono) {
       if (claim.resumed) resumed++;
 
       try {
+        let captureReply: string | null = null;
+        let captureHandled = false;
         const conversation = await ensureConversation(db, {
           channel: "whatsapp",
           externalId: message.from,
@@ -192,14 +197,12 @@ export function registerWebhookRoutes(app: Hono) {
         });
 
         if (message.mediaId) {
-          const snapshot = await captureSnapshot(db, message.from);
-          const origin = String(
-            (snapshot.answers as Record<string, string | undefined>).origem ?? "",
-          ).trim().toUpperCase();
+          const capture = await whatsappCaptureSession(db, message.from);
 
-          /* Imagem fora do LINK_CAPTACAO continua sendo ignorada pelo canal,
-             como antes desta funcionalidade. */
-          if (!snapshot.captureId || origin !== "LINK_CAPTACAO") {
+          /* Imagem fora do LINK_CAPTACAO, ou antes da etapa final, continua
+             sendo ignorada pelo canal. A foto só conclui uma sessão WhatsApp
+             interna aberta pelo link fixo. */
+          if (!capture?.captureId || !capture.waitingForPhoto) {
             await completeInboundEvent(db, claim.eventId);
             processed++;
             continue;
@@ -217,22 +220,10 @@ export function registerWebhookRoutes(app: Hono) {
           }).onConflictDoNothing();
           const url = `/api/media/${mediaKey}`;
           message.text = `[imagem:${url}]`;
-
-          const [capture] = await db
-            .select()
-            .from(schema.propertyCaptures)
-            .where(eq(schema.propertyCaptures.id, snapshot.captureId))
-            .limit(1);
-          if (capture) {
-            const photos = addOwnerPhotos(
-              capture.ownerPhotos,
-              [{ url, caption: "Fachada" }],
-              { source: "proprietario" },
-            );
-            await db
-              .update(schema.propertyCaptures)
-              .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
-              .where(eq(schema.propertyCaptures.id, snapshot.captureId));
+          const completed = await whatsappCapturePhoto(db, message.from, url);
+          if (completed) {
+            captureReply = completed.text;
+            captureHandled = true;
           }
         }
 
@@ -274,8 +265,32 @@ export function registerWebhookRoutes(app: Hono) {
            Responder duas vezes ao cliente é pior que não responder. */
         if (!stageReached(claim.stage, "replied")) {
           await advanceInboundEvent(db, claim.eventId, "replied");
-          const turn = await aiTurn(db, conversation.id, baseUrl);
+          if (!captureHandled && !message.mediaId) {
+            const capture = await whatsappCaptureText(
+              db,
+              message.from,
+              message.text,
+              message.name,
+            );
+            if (capture) {
+              captureReply = capture.text;
+              captureHandled = true;
+            }
+          }
+
+          const turn = captureHandled
+            ? { replied: true, text: captureReply ?? "" }
+            : await aiTurn(db, conversation.id, baseUrl);
           if (turn.replied && turn.text) {
+            /* aiTurn já grava a resposta no inbox. Só o adaptador determinístico
+               precisa persistir aqui antes do envio ao WhatsApp. */
+            if (captureHandled) {
+              await addMessage(db, conversation.id, {
+                direction: "out",
+                author: "ia",
+                body: turn.text,
+              });
+            }
             try {
               await sendWhatsappText(wa, message.from, turn.text);
             } catch (error) {
