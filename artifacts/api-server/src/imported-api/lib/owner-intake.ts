@@ -43,6 +43,8 @@ export interface OwnerIntakeInput {
   askingPrice?: number | null;
   /** finalidade do imóvel, limitada a vender/alugar nos links públicos */
   intention?: "vender" | "alugar" | null;
+  /** Public links use this when a fresh token identifies a second property. */
+  forceNewCapture?: boolean;
 }
 
 export interface OwnerIntakeResult {
@@ -263,7 +265,7 @@ async function ensureCapture(
      voltou. Sem endereço informado, continua o pendente mais recente; com
      endereço de OUTRO imóvel, `resolveResume` devolve `new` e o segundo
      imóvel nasce reaproveitando o mesmo contato (item 4). */
-  const resume = resolveResume(
+  const resume = input.forceNewCapture ? { action: "new" as const } : resolveResume(
     rows
       .filter((row) => row.ownerId === ownerId)
       .map((row) => ({

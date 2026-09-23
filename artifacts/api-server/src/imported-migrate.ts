@@ -657,6 +657,7 @@ const propertyCaptureColumns: Record<string, string> = {
 const ownerIntakeLinkColumns: Record<string, string> = {
   profile: "TEXT",
   draft: "TEXT",
+  cancellation_reason: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */

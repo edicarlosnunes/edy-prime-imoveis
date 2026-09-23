@@ -370,6 +370,7 @@ export const ownerIntakeLinks = sqliteTable(
       .$defaultFn(() => new Date()),
     startedAt: integer("started_at", { mode: "timestamp" }),
     completedAt: integer("completed_at", { mode: "timestamp" }),
+    cancellationReason: text("cancellation_reason"),
     ownerId: integer("owner_id"),
     captureId: integer("capture_id"),
   },

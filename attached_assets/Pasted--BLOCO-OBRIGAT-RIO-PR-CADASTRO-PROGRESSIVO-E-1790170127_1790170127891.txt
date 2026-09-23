@@ -1,0 +1,264 @@
+==================================================
+BLOCO OBRIGATÓRIO — PRÉ-CADASTRO PROGRESSIVO / EPI
+==================================================
+
+Este bloco é CENTRAL para o LINK_CAPTACAO.
+Não tratar a captação somente como formulário que cria registro no final.
+
+A captação deve existir progressivamente no CRM desde o primeiro momento
+em que houver identificação suficiente.
+
+OBJETIVO:
+
+Mesmo que a pessoa abandone o atendimento antes do final, a equipe Edy Prime
+deve conseguir localizar a tentativa de captação, visualizar o que já foi
+respondido, entrar em contato, continuar manualmente ou cancelar.
+
+--------------------------------------------------
+1. TELEFONE / IDENTIFICAÇÃO INICIAL
+--------------------------------------------------
+
+Quando o link for enviado a partir de um contexto do CRM em que o telefone
+destinatário já seja conhecido:
+
+- vincular esse telefone ao pré-cadastro imediatamente;
+- não pedir novamente o telefone se já estiver disponível e validado;
+- não substituir esse telefone por telefone de outra pessoa/perfil.
+
+Quando for um link genérico compartilhado externamente e o sistema NÃO
+conhecer tecnicamente o destinatário:
+
+- NÃO inventar telefone;
+- coletar o telefone no primeiro momento apropriado;
+- assim que informado, salvar imediatamente no pré-cadastro.
+
+A regra é:
+TELEFONE CONHECIDO = SALVAR IMEDIATAMENTE.
+
+--------------------------------------------------
+2. ESCOLHA DO PERFIL
+--------------------------------------------------
+
+Assim que selecionar:
+
+PROPRIETÁRIO
+LOCADOR
+ou
+CORRETOR
+
+salvar imediatamente o perfil no pré-cadastro.
+
+Não esperar a conclusão do atendimento.
+
+--------------------------------------------------
+3. NOME
+--------------------------------------------------
+
+Depois da escolha do perfil, perguntar o nome da pessoa que está fazendo
+a captação.
+
+Ao receber o nome:
+
+SALVAR IMEDIATAMENTE.
+
+Para Corretor:
+o nome é do CORRETOR.
+
+Para Proprietário:
+o nome é do PROPRIETÁRIO.
+
+Para Locador:
+o nome é do LOCADOR.
+
+Nunca misturar identidades.
+
+--------------------------------------------------
+4. ENDEREÇO E CRIAÇÃO DO PRÉ-CADASTRO
+--------------------------------------------------
+
+Assim que houver identificação mínima e o endereço do imóvel for informado:
+
+1. salvar imediatamente o endereço;
+2. criar/atualizar o registro de PRÉ-CADASTRO da captação;
+3. gerar o código interno EPI;
+4. deixar esse pré-cadastro visível para a equipe no CRM/Central de Captação.
+
+NÃO esperar foto.
+NÃO esperar documentação.
+NÃO esperar conclusão da conversa.
+
+A partir desse momento deve existir uma captação recuperável internamente.
+
+--------------------------------------------------
+5. CÓDIGO EPI
+--------------------------------------------------
+
+Cada pré-cadastro válido deve possuir seu código EPI interno.
+
+O EPI é o identificador operacional da captação.
+
+Usar o mecanismo de código existente no projeto, se já existir.
+
+NÃO inventar um segundo sistema de identificação se o EPI/código interno
+já estiver implementado.
+
+O código deve ser gerado de maneira segura/atômica para evitar duplicidade
+em acessos simultâneos.
+
+O EPI NÃO depende de a pessoa terminar o cadastro.
+
+--------------------------------------------------
+6. SALVAMENTO PROGRESSIVO
+--------------------------------------------------
+
+Cada resposta válida deve ser persistida ANTES de avançar para a próxima.
+
+Exemplo:
+
+telefone -> salva
+perfil -> salva
+nome -> salva
+endereço -> salva + garante pré-cadastro/EPI
+tipo -> salva
+características -> salva
+valor -> salva
+documentação -> salva
+observação -> salva
+foto -> salva
+confirmação -> conclui
+
+Se a pessoa fechar o navegador no meio, nada que já respondeu pode ser perdido.
+
+--------------------------------------------------
+7. STATUS OPERACIONAL
+--------------------------------------------------
+
+O pré-cadastro deve permitir distinguir, usando estados existentes quando
+possível:
+
+AGUARDANDO
+EM ANDAMENTO
+PRÉ-CADASTRO / INCOMPLETO
+CONCLUÍDO
+CANCELADO
+
+Não criar estados duplicados se o schema já possuir equivalentes.
+
+--------------------------------------------------
+8. ABANDONO
+--------------------------------------------------
+
+Se a pessoa abandonar depois de fornecer identificação suficiente:
+
+NÃO apagar o pré-cadastro.
+
+A equipe deve conseguir visualizar:
+
+- EPI;
+- perfil;
+- nome disponível;
+- telefone disponível;
+- endereço disponível;
+- respostas já coletadas;
+- última etapa atingida;
+- status incompleto/em andamento;
+- data/hora da última atualização.
+
+A equipe poderá entrar em contato e completar posteriormente.
+
+--------------------------------------------------
+9. CANCELAMENTO
+--------------------------------------------------
+
+Adicionar/usar ação operacional de CANCELAR CAPTAÇÃO.
+
+Quando a pessoa informar que não tem interesse ou quando a equipe decidir
+cancelar:
+
+- marcar a tentativa como CANCELADA;
+- registrar motivo quando informado;
+- impedir que seja tratada como captação ativa;
+- não publicar imóvel;
+- não transformar automaticamente em imóvel ativo;
+- preservar somente o histórico operacional necessário.
+
+O código EPI utilizado NÃO deve ser reciclado para outro imóvel/captação,
+mesmo que a tentativa seja cancelada.
+
+Não apagar silenciosamente histórico que seja necessário para auditoria.
+
+--------------------------------------------------
+10. DIFERENÇA ENTRE PRÉ-CADASTRO E CADASTRO CONCLUÍDO
+--------------------------------------------------
+
+PRÉ-CADASTRO:
+registro operacional recuperável, ainda incompleto.
+
+CADASTRO CONCLUÍDO:
+fluxo confirmado e enviado para tratamento normal na Ficha Única/CRM.
+
+Uma pessoa que abandona não pode desaparecer.
+
+Uma pessoa que cancela não pode aparecer como imóvel ativo.
+
+--------------------------------------------------
+11. ADMIN — IDENTIFICAÇÃO IMEDIATA
+--------------------------------------------------
+
+Na Central/Link de Captação:
+
+Antes de identificação:
+Link #N — AGUARDANDO.
+
+Depois de telefone/nome:
+mostrar os dados disponíveis imediatamente.
+
+Depois do endereço/EPI:
+mostrar também o EPI e status do pré-cadastro.
+
+Exemplo conceitual:
+
+EPI-XXXX
+João Silva
+(13) XXXXX-XXXX
+Apartamento — endereço disponível
+PRÉ-CADASTRO / EM ANDAMENTO
+
+A equipe deve poder abrir esse registro para acompanhar o que já foi preenchido.
+
+--------------------------------------------------
+12. TESTES OBRIGATÓRIOS
+--------------------------------------------------
+
+Adicionar testes específicos:
+
+A) inicia -> informa telefone -> abandona:
+telefone permanece recuperável.
+
+B) escolhe Proprietário -> informa nome -> abandona:
+perfil + telefone + nome permanecem.
+
+C) informa endereço:
+pré-cadastro existe e EPI foi atribuído.
+
+D) abandona depois do endereço:
+pré-cadastro continua visível e recuperável.
+
+E) retorna pelo mesmo link:
+retoma do ponto correto sem criar outro EPI.
+
+F) mesmo proprietário cadastra outro imóvel:
+nova captação/EPI, sem duplicar indevidamente o proprietário.
+
+G) Corretor:
+EPI pertence à captação; dados do corretor não viram dados do proprietário.
+
+H) cancelamento:
+status CANCELADO; não cria/publica imóvel ativo.
+
+I) dois usuários simultâneos:
+não misturar respostas e não gerar EPI duplicado.
+
+J) conclusão:
+o mesmo pré-cadastro evolui para concluído.
+NÃO criar um segundo registro desconectado no final.

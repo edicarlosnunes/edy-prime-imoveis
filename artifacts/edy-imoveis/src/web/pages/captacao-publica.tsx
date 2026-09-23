@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Camera, Check, Loader2, Send } from "lucide-react";
+import { Camera, Check, Loader2, Send, XCircle } from "lucide-react";
 import { useRoute } from "wouter";
-import { useOwnerLinkFacade, useOwnerLinkState, useOwnerLinkTurn } from "../queries/owner-links";
+import { useCancelPublicOwnerLink, useOwnerLinkFacade, useOwnerLinkState, useOwnerLinkTurn } from "../queries/owner-links";
 
 type Profile = "PROPRIETARIO" | "LOCADOR" | "CORRETOR";
 
@@ -11,6 +11,7 @@ export default function CaptacaoPublica() {
   const state = useOwnerLinkState(token);
   const turn = useOwnerLinkTurn();
   const facade = useOwnerLinkFacade();
+  const cancel = useCancelPublicOwnerLink();
   const [text, setText] = useState("");
   const [profile, setProfile] = useState<Profile | undefined>();
   const [photo, setPhoto] = useState<string | null>(null);
@@ -24,7 +25,8 @@ export default function CaptacaoPublica() {
   if (state.isLoading || !state.data) return <div className="min-h-screen bg-[#07101f] flex items-center justify-center text-white"><Loader2 className="animate-spin" /></div>;
 
   const data = state.data;
-  const done = data.completed;
+  const cancelled = data.status === "cancelado";
+  const done = data.completed || cancelled;
 
   async function send(value = text, selectedProfile = profile) {
     const message = value.trim();
@@ -50,11 +52,12 @@ export default function CaptacaoPublica() {
   return (
     <main className="min-h-screen bg-[#07101f] px-4 py-8 text-slate-100">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl flex-col">
-        <header className="mb-6 border-b border-white/10 pb-5">
+         <header className="mb-6 border-b border-white/10 pb-5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-[#d8ad5c]">Edy Prime Imóveis</p>
           <h1 className="mt-2 text-2xl font-semibold">Cadastro de imóvel</h1>
           <p className="mt-1 text-sm text-slate-400">Uma pergunta por vez. Você pode responder com suas próprias palavras.</p>
-          <div className="mt-4 h-1 rounded-full bg-white/10"><div className="h-full rounded-full bg-[#d8ad5c] transition-all" style={{ width: `${data.progress ?? (done ? 100 : 0)}%` }} /></div>
+           <div className="mt-4 h-1 rounded-full bg-white/10"><div className="h-full rounded-full bg-[#d8ad5c] transition-all" style={{ width: `${data.progress ?? (done ? 100 : 0)}%` }} /></div>
+           {data.capture?.serial && <p className="mt-3 text-xs text-slate-400">EPI: <strong className="text-slate-200">{data.capture.serial}</strong></p>}
         </header>
 
         <section className="flex-1 space-y-3">
@@ -64,7 +67,7 @@ export default function CaptacaoPublica() {
           {photo && <img src={photo} alt="Fachada provisória" className="max-h-48 w-full rounded-xl object-cover opacity-80" />}
         </section>
 
-        {!done && (
+         {!done && (
           <footer className="mt-6">
             {!data.profile && (
               <div className="mb-3 grid grid-cols-3 gap-2">
@@ -89,10 +92,30 @@ export default function CaptacaoPublica() {
             <p className="mt-2 text-center text-[11px] text-slate-500">Você pode dizer “não sei” ou “corrigir”. Não inventamos dados.</p>
           </footer>
         )}
-        {done && <div className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-300"><Check className="h-4 w-4" /> Recebido para revisão humana</div>}
+         {cancelled && <div className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-sm text-red-200"><XCircle className="h-4 w-4" /> Cadastro cancelado. Este link não está mais ativo.</div>}
+         {done && !cancelled && <div className="mt-6 space-y-3"><div className="flex items-center justify-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3 text-sm text-emerald-300"><Check className="h-4 w-4" /> Recebido para revisão humana</div></div>}
+         {!cancelled && data.status !== "concluido" && <PublicCancel token={token} cancel={cancel} />}
       </div>
     </main>
   );
+}
+
+function PublicCancel({ token, cancel }: { token: string; cancel: ReturnType<typeof useCancelPublicOwnerLink> }) {
+  const [reason, setReason] = useState("");
+  async function submit() {
+    if (!window.confirm("Cancelar este cadastro? Essa ação não pode ser desfeita.")) return;
+    try { await cancel.mutateAsync({ token, reason: reason.trim() || undefined }); }
+    catch { window.alert("Não foi possível cancelar agora. Tente novamente."); }
+  }
+  return <div className="mt-8 border-t border-white/10 pt-4 text-center">
+    <details className="text-left">
+      <summary className="cursor-pointer text-xs text-slate-500 hover:text-slate-300">Cancelar cadastro</summary>
+      <div className="mt-3 flex gap-2">
+        <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Motivo (opcional)" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none focus:border-[#d8ad5c]" />
+        <button type="button" onClick={() => void submit()} disabled={cancel.isPending} className="rounded-lg border border-red-400/30 px-3 py-2 text-xs text-red-200 hover:bg-red-400/10 disabled:opacity-50">{cancel.isPending ? "Cancelando…" : "Confirmar"}</button>
+      </div>
+    </details>
+  </div>;
 }
 
 function Unavailable() {

@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
 import { base } from "../__core/app";
@@ -13,10 +13,11 @@ import { COMPLEMENT_FIELDS } from "../lib/capture-address";
 import { generateText, tool } from "ai";
 import { gateway, gatewayConfigured } from "../agent/gateway";
 import { pickModel } from "../agent/model";
+import { allocateSerial } from "../lib/serial-counter";
 
 const tokenInput = z.string().regex(/^[a-f0-9]{64}$/i, "Link inválido");
 export const publicTokenPattern = /^[a-f0-9]{64}$/i;
-const statusInput = z.enum(["aguardando", "iniciado", "concluido"]);
+const statusInput = z.enum(["aguardando", "iniciado", "concluido", "cancelado"]);
 const complementsInput = z
   .object(
     Object.fromEntries(
@@ -109,10 +110,53 @@ export const adminOwnerIntakeLinks = {
         completedAt: schema.ownerIntakeLinks.completedAt,
         ownerId: schema.ownerIntakeLinks.ownerId,
         captureId: schema.ownerIntakeLinks.captureId,
+        captureSerial: schema.propertyCaptures.serial,
+        captureAddress: schema.propertyCaptures.address,
+        captureType: schema.propertyCaptures.propertyType,
+        registrationStatus: schema.propertyCaptures.registrationStatus,
+        lastFieldAt: schema.propertyCaptures.lastFieldAt,
+        profile: schema.ownerIntakeLinks.profile,
+        draft: schema.ownerIntakeLinks.draft,
+        cancellationReason: schema.ownerIntakeLinks.cancellationReason,
       })
       .from(schema.ownerIntakeLinks)
+      .leftJoin(schema.propertyCaptures, eq(schema.propertyCaptures.id, schema.ownerIntakeLinks.captureId))
       .orderBy(desc(schema.ownerIntakeLinks.createdAt));
     return input?.status ? rows.filter((row) => row.status === input.status) : rows;
+  }),
+
+  /** Cancela pela sessão do painel, sem aceitar nem devolver o token público. */
+  cancel: adminBase.input(z.object({
+    id: z.number().int().positive(),
+    reason: z.string().trim().max(500).optional(),
+  })).handler(async ({ input, context }) => {
+    const [link] = await context.db
+      .select()
+      .from(schema.ownerIntakeLinks)
+      .where(eq(schema.ownerIntakeLinks.id, input.id))
+      .limit(1);
+    if (!link) throw new ORPCError("NOT_FOUND", { message: "Link de captação não encontrado" });
+    if (link.status === "cancelado") return { ok: true, status: "cancelado" as const };
+    if (link.status === "concluido") throw new ORPCError("CONFLICT", { message: "Uma captação concluída não pode ser cancelada" });
+    const now = new Date();
+    const reason = input.reason || "Cancelada pela equipe";
+    const changed = await context.db.update(schema.ownerIntakeLinks).set({
+      status: "cancelado",
+      completedAt: now,
+      cancellationReason: reason,
+      draft: JSON.stringify({ ...safeDraft(link.draft), cancellationReason: reason }),
+    }).where(and(eq(schema.ownerIntakeLinks.id, input.id), eq(schema.ownerIntakeLinks.status, link.status)));
+    if (!changed.rowsAffected) throw new ORPCError("CONFLICT", { message: "A captação foi alterada por outra sessão" });
+    if (link.captureId) {
+      await context.db.update(schema.propertyCaptures).set({
+        registrationStatus: "ARQUIVADO",
+        registrationStatusAt: now,
+        lostReason: "CANCELADO",
+        lostDetail: reason,
+        updatedAt: now,
+      }).where(eq(schema.propertyCaptures.id, link.captureId));
+    }
+    return { ok: true, status: "cancelado" as const, reason };
   }),
 };
 
@@ -120,7 +164,7 @@ export const ownerIntakeLinks = {
   metadata: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
     const db = await getDb();
     const link = await findByToken(db, input.token);
-    if (!link || link.status === "concluido") invalidLink();
+    if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
     return {
       ownerName: link.ownerName,
       phone: link.phone,
@@ -132,7 +176,7 @@ export const ownerIntakeLinks = {
   started: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
     const db = await getDb();
     const link = await findByToken(db, input.token);
-    if (!link || link.status === "concluido") invalidLink();
+    if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
     if (link.status === "aguardando") {
       await db
         .update(schema.ownerIntakeLinks)
@@ -148,7 +192,14 @@ export const ownerIntakeLinks = {
     const link = await findByToken(db, input.token);
     if (!link) invalidLink();
     const draft = safeDraft(link.draft);
-    return publicState(link, draft);
+    const [capture] = link.captureId ? await db.select({ serial: schema.propertyCaptures.serial }).from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, link.captureId)).limit(1) : [];
+    return publicState(link, draft, capture?.serial ?? null);
+  }),
+
+  /** Cancela a tentativa sem apagar histórico nem liberar o EPI. */
+  cancel: base.input(z.object({ token: tokenInput, reason: z.string().trim().max(500).optional() })).handler(async ({ input }) => {
+    const db = await getDb();
+    return publicCancel(db, input);
   }),
 
   /** Um turno por requisição; cada resposta válida é persistida antes da próxima. */
@@ -158,31 +209,26 @@ export const ownerIntakeLinks = {
     profile: z.enum(["PROPRIETARIO", "LOCADOR", "CORRETOR"]).optional(),
   })).handler(async ({ input }) => {
     const db = await getDb();
-    const link = await findByToken(db, input.token);
-    if (!link || link.status === "concluido") invalidLink();
-    const current = safeDraft(link.draft);
-    if (!input.text.trim()) return publicState(link, current);
-    const next = await applyPublicTurn(db, link, current, input.text, input.profile);
-    appendAssistant(next, nextPublicQuestion(next));
-    await db.update(schema.ownerIntakeLinks).set({
-      status: "iniciado",
-      startedAt: link.startedAt ?? new Date(),
-      profile: next.profile,
-      draft: JSON.stringify(next),
-      ownerName: next.ownerName ?? link.ownerName,
-      phone: next.phone ?? link.phone,
-    }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, link.status)));
-    const [fresh] = await db.select().from(schema.ownerIntakeLinks).where(eq(schema.ownerIntakeLinks.id, link.id)).limit(1);
-    return publicState(fresh ?? link, next);
+    return publicTurn(db, input);
   }),
 
+  /*
+   * The public route remains the production entry point, while this narrow
+   * database-injected service is also used by the SQLite integration suite.
+   * Keeping the database argument explicit prevents tests from ever touching
+   * the workspace database.
+   */
+  /*
+   * facade is intentionally kept below the turn handler so the route shape
+   * remains unchanged for existing oRPC callers.
+   */
   facade: base.input(z.object({
     token: tokenInput,
     facadeImage: z.string().min(1).max(2_800_000),
   })).handler(async ({ input }) => {
     const db = await getDb();
     const link = await findByToken(db, input.token);
-    if (!link || link.status === "concluido") invalidLink();
+    if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
     const draft = safeDraft(link.draft);
     const captureId = link.captureId ?? null;
     if (!captureId) throw new ORPCError("CONFLICT", { message: "Informe nome e telefone antes da foto da fachada" });
@@ -203,7 +249,7 @@ export const ownerIntakeLinks = {
   submit: base.input(ownerIntakeSubmitInput).handler(async ({ input }) => {
     const db = await getDb();
     const link = await findByToken(db, input.token);
-    if (!link || link.status === "concluido") invalidLink();
+    if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
     const facade = decodeFacadeImage(input.facadeImage);
     const qualificationNotes = [
       "LINK_CAPTACAO — ficha pública concluída.",
@@ -211,7 +257,12 @@ export const ownerIntakeLinks = {
       input.qualification ? `Qualificação: ${input.qualification}` : "",
       input.documentation ? `Documentação: ${input.documentation}` : "",
     ].filter(Boolean).join("\n");
-    const result = await intakeOwner(db, {
+    const result = link.captureId ? {
+      captureId: link.captureId,
+      id: link.ownerId,
+      snapshot: { ownerId: link.ownerId },
+      saved: true,
+    } : await intakeOwner(db, {
       name: input.name,
       phone: input.phone ?? link.phone ?? "",
       email: input.email ?? null,
@@ -228,6 +279,17 @@ export const ownerIntakeLinks = {
       askingPrice: input.askingPrice ?? null,
       intention: input.intention,
     });
+    if (link.captureId) {
+      await db.update(schema.propertyCaptures).set({
+        propertyType: input.propertyType,
+        intention: input.intention,
+        askingPrice: input.askingPrice ?? null,
+        updatedAt: new Date(),
+        lastFieldAt: new Date(),
+        registrationStatus: "CONCLUIDO",
+        registrationStatusAt: new Date(),
+      }).where(eq(schema.propertyCaptures.id, link.captureId));
+    }
     if (!result.captureId) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível registrar a captação" });
     if (facade) {
       const id = randomHex(12);
@@ -441,7 +503,7 @@ export function nextPublicQuestion(draft: PublicDraft): string {
 }
 
 export function buildPublicSaveInput(draft: PublicDraft) {
-  return {
+    return {
     phone: draft.phone ?? null,
     nome: draft.ownerName,
     tipoImovel: draft.propertyType,
@@ -475,21 +537,31 @@ export function buildBrokerPatch(draft: PublicDraft) {
   };
 }
 
-export function publicState(link: typeof schema.ownerIntakeLinks.$inferSelect, draft: PublicDraft) {
+export function publicState(link: typeof schema.ownerIntakeLinks.$inferSelect, draft: PublicDraft, captureSerial: string | null = null) {
   const question = nextPublicQuestion(draft);
+  // The transcript is client-visible. Do not leak a CRM-known phone (or a
+  // phone pasted in free text) through the otherwise harmless conversation
+  // history.
+  const publicTranscript = (draft.transcript ?? []).map((entry) => ({
+    ...entry,
+    text: entry.text
+      .replace(/\+?\d[\d\s().-]{7,}\d/g, "[telefone]")
+      .replace(link.phone ? new RegExp(link.phone.replace(/\D/g, "\\D"), "g") : /$^/, "[telefone]"),
+  }));
   return {
     profile: draft.profile ?? null,
     question,
     draft: {
       profile: draft.profile ?? null,
       ownerName: draft.ownerName ?? null,
+      phone: draft.profile === "CORRETOR" ? null : draft.phone ?? null,
       email: draft.email ?? null,
       intention: draft.intention ?? null,
       propertyType: draft.propertyType ?? null,
       address: draft.address ?? null,
       askingPrice: draft.askingPrice ?? null,
     answers: draft.answers ?? {},
-    transcript: draft.transcript ?? [],
+    transcript: publicTranscript,
       broker: draft.profile === "CORRETOR" ? {
         name: draft.brokerName ?? null,
         phone: draft.brokerPhone ?? null,
@@ -497,6 +569,7 @@ export function publicState(link: typeof schema.ownerIntakeLinks.$inferSelect, d
       } : null,
     },
     status: link.status,
+    capture: captureSerial ? { serial: captureSerial } : null,
     completed: Boolean(draft.complete || link.status === "concluido"),
     progress: draft.complete ? 100 : Math.min(95, Math.round((Object.keys(draft).length / 14) * 100)),
     review: {
@@ -514,6 +587,187 @@ export function publicState(link: typeof schema.ownerIntakeLinks.$inferSelect, d
   };
 }
 
+export type PublicTurnInput = {
+  token: string;
+  text: string;
+  profile?: "PROPRIETARIO" | "LOCADOR" | "CORRETOR";
+};
+const activePublicTurns = new Set<string>();
+
+export async function publicCancel(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: { token: string; reason?: string },
+) {
+  const link = await findByToken(db, input.token);
+  if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
+  const now = new Date();
+  const reason = input.reason || "Cancelada pelo participante";
+  const changed = await db.update(schema.ownerIntakeLinks).set({
+    status: "cancelado",
+    cancellationReason: reason,
+    draft: JSON.stringify({ ...safeDraft(link.draft), cancellationReason: reason }),
+  }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, link.status)));
+  if (!changed.rowsAffected) throw new ORPCError("CONFLICT", { message: "A captação foi alterada por outra sessão" });
+  if (link.captureId) {
+    await db.update(schema.propertyCaptures).set({
+      registrationStatus: "PAUSADO",
+      registrationStatusAt: now,
+      lastFieldAt: now,
+      stage: "perdido",
+      stageChangedAt: now,
+      lostReason: "CANCELADO",
+      lostDetail: reason,
+      updatedAt: now,
+    }).where(eq(schema.propertyCaptures.id, link.captureId));
+  }
+  return { ok: true, status: "cancelado" as const, reason };
+}
+
+/** Finalizes the already-linked progressive capture; never creates a second one. */
+export async function publicComplete(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: { token: string; propertyType?: string; intention?: "venda" | "alugar"; askingPrice?: number | null },
+) {
+  const link = await findByToken(db, input.token);
+  if (!link || link.status === "cancelado" || link.status === "concluido") invalidLink();
+  if (!link.captureId) throw new ORPCError("CONFLICT", { message: "A captação ainda não foi criada" });
+  const now = new Date();
+  await db.update(schema.propertyCaptures).set({
+    ...(input.propertyType ? { propertyType: input.propertyType } : {}),
+    ...(input.intention ? { intention: input.intention } : {}),
+    ...(input.askingPrice !== undefined ? { askingPrice: input.askingPrice } : {}),
+    registrationStatus: "CONCLUIDO",
+    registrationStatusAt: now,
+    lastFieldAt: now,
+    updatedAt: now,
+  }).where(eq(schema.propertyCaptures.id, link.captureId));
+  const changed = await db.update(schema.ownerIntakeLinks).set({
+    status: "concluido",
+    completedAt: now,
+  }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, link.status)));
+  if (!changed.rowsAffected) throw new ORPCError("CONFLICT", { message: "Este link já foi concluído" });
+  return { ok: true, status: "concluido" as const, captureId: link.captureId };
+}
+
+/** Database-injected implementation of the public turn route. */
+export async function publicTurn(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: PublicTurnInput,
+) {
+  if (activePublicTurns.has(input.token)) {
+    throw new ORPCError("CONFLICT", { message: "Este link recebeu outra resposta; retome o estado atualizado" });
+  }
+  activePublicTurns.add(input.token);
+  try {
+    return await runPublicTurn(db, input);
+  } finally {
+    activePublicTurns.delete(input.token);
+  }
+}
+
+async function runPublicTurn(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: PublicTurnInput,
+) {
+  const link = await findByToken(db, input.token);
+  if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
+  const current = safeDraft(link.draft);
+  // A CRM-known phone is authoritative and is never replaced by a
+  // participant/broker phone supplied in a later turn.
+  if (link.phone && current.profile === "CORRETOR" && !current.brokerPhone) current.brokerPhone = link.phone;
+  if (link.phone && current.profile !== "CORRETOR" && !current.phone) current.phone = link.phone;
+  if (!input.text.trim()) return publicState(link, current);
+  const next = await applyPublicTurn(db, link, current, input.text, input.profile);
+  appendAssistant(next, nextPublicQuestion(next));
+  const changed = await db.update(schema.ownerIntakeLinks).set({
+    status: "iniciado",
+    startedAt: link.startedAt ?? new Date(),
+    profile: next.profile,
+    draft: JSON.stringify(next),
+    ownerName: next.ownerName ?? link.ownerName,
+    phone: next.phone ?? link.phone,
+  }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, link.status), link.draft ? eq(schema.ownerIntakeLinks.draft, link.draft) : isNull(schema.ownerIntakeLinks.draft)));
+  if (!changed.rowsAffected) throw new ORPCError("CONFLICT", { message: "Este link recebeu outra resposta; retome o estado atualizado" });
+  await ensureProgressiveCapture(db, { ...link, draft: JSON.stringify(next) }, next);
+  const [fresh] = await db.select().from(schema.ownerIntakeLinks).where(eq(schema.ownerIntakeLinks.id, link.id)).limit(1);
+  const currentLink = fresh ?? link;
+  const [capture] = currentLink.captureId ? await db.select({ serial: schema.propertyCaptures.serial }).from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, currentLink.captureId)).limit(1) : [];
+  return publicState(currentLink, next, capture?.serial ?? null);
+}
+
+/** Ensures the first address-bearing answer creates the recoverable capture and
+ * reserves its EPI exactly once. The link remains the source of truth for
+ * resumption, so the same link cannot allocate a second serial. */
+async function ensureProgressiveCapture(
+  db: Awaited<ReturnType<typeof getDb>>,
+  link: typeof schema.ownerIntakeLinks.$inferSelect,
+  draft: PublicDraft,
+) {
+  if (!draft.ownerName || !draft.phone || !draft.address) return;
+  let captureId = link.captureId;
+  let ownerId = link.ownerId;
+  if (!captureId) {
+    const result = await intakeOwner(db, {
+      name: draft.ownerName,
+      phone: draft.phone,
+      propertyType: draft.propertyType,
+      intention: draft.intention === "locacao" ? "alugar" : "vender",
+      cep: draft.addressParts?.cep ?? null,
+      rua: draft.addressParts?.street ?? draft.address,
+      numero: draft.addressParts?.number ?? null,
+      bairro: draft.addressParts?.district ?? null,
+      cidade: draft.addressParts?.city ?? null,
+      estado: draft.addressParts?.state ?? null,
+      source: "LINK_CAPTACAO",
+      forceNewCapture: !link.captureId,
+    });
+    captureId = result.captureId;
+    ownerId = result.id;
+  }
+  if (!captureId) return;
+  const [capture] = await db.select({ serial: schema.propertyCaptures.serial })
+    .from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, captureId)).limit(1);
+  if (capture && !capture.serial) {
+    const serial = await allocateSerial(db, draft.propertyType);
+    await db.update(schema.propertyCaptures).set({
+      serial,
+      registrationStatus: "EM_ANDAMENTO",
+      registrationStatusAt: new Date(),
+      lastFieldAt: new Date(),
+      updatedAt: new Date(),
+      brokerName: draft.profile === "CORRETOR" ? draft.brokerName ?? null : null,
+      brokerPhone: draft.profile === "CORRETOR" ? draft.brokerPhone ?? null : null,
+      brokerCreci: draft.profile === "CORRETOR" ? draft.brokerCreci ?? null : null,
+    }).where(and(eq(schema.propertyCaptures.id, captureId), isNull(schema.propertyCaptures.serial)));
+    if (!capture || !capture.serial) {
+      const [winner] = await db.select({ serial: schema.propertyCaptures.serial })
+        .from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, captureId)).limit(1);
+      if (!winner?.serial) throw new ORPCError("CONFLICT", { message: "Não foi possível reservar o EPI; tente novamente" });
+    }
+  }
+  await db.update(schema.ownerIntakeLinks).set({ captureId, ownerId, ownerName: draft.ownerName, phone: link.phone ?? draft.phone })
+    .where(and(
+      eq(schema.ownerIntakeLinks.id, link.id),
+      link.captureId === null ? isNull(schema.ownerIntakeLinks.captureId) : eq(schema.ownerIntakeLinks.captureId, link.captureId),
+    ));
+}
+
+async function ensureProgressiveOwner(
+  db: Awaited<ReturnType<typeof getDb>>,
+  name: string | undefined,
+  phone: string | undefined,
+) {
+  if (!name || !phone) return null;
+  const [existing] = await db.select({ id: schema.owners.id }).from(schema.owners)
+    .where(eq(schema.owners.phone, phone)).limit(1);
+  if (existing) {
+    await db.update(schema.owners).set({ name }).where(eq(schema.owners.id, existing.id));
+    return existing.id;
+  }
+  const [created] = await db.insert(schema.owners).values({ name, phone }).returning({ id: schema.owners.id });
+  return created?.id ?? null;
+}
+
 async function applyPublicTurn(
   db: Awaited<ReturnType<typeof getDb>>,
   link: typeof schema.ownerIntakeLinks.$inferSelect,
@@ -528,13 +782,18 @@ async function applyPublicTurn(
   if (selectedProfile && !current.profile) {
     draft.profile = selectedProfile;
     if (selectedProfile === "LOCADOR") draft.intention = "locacao";
+    if (selectedProfile === "CORRETOR" && link.phone) draft.brokerPhone = link.phone;
+    if (selectedProfile !== "CORRETOR" && link.phone) draft.phone = link.phone;
     return draft;
   }
   if (selectedProfile) draft.profile = selectedProfile;
   if (!draft.profile) {
-    if (/^(1|propriet)/.test(fold)) draft.profile = "PROPRIETARIO";
-    else if (/^(2|locador)/.test(fold)) { draft.profile = "LOCADOR"; draft.intention = "locacao"; }
-    else if (/^(3|corretor)/.test(fold)) draft.profile = "CORRETOR";
+    if (/^(1|propriet)/.test(fold)) { draft.profile = "PROPRIETARIO"; if (link.phone) draft.phone = link.phone; }
+    else if (/^(2|locador)/.test(fold)) { draft.profile = "LOCADOR"; draft.intention = "locacao"; if (link.phone) draft.phone = link.phone; }
+    else if (/^(3|corretor)/.test(fold)) {
+      draft.profile = "CORRETOR";
+      if (link.phone) draft.brokerPhone = link.phone;
+    }
     return draft;
   }
   draft.transcript = [...(draft.transcript ?? []).slice(-19), { role: "user", text }];
@@ -590,35 +849,20 @@ async function applyPublicTurn(
   }
   if (!draft.phone) {
     draft.phone = extracted.phone ?? text;
-    const saved = await saveCaptureAnswer(db, {
-      phone: draft.phone,
-      nome: draft.ownerName,
-      negociacao: draft.intention,
-      origem: "LINK_CAPTACAO",
-    });
-    if (saved.saved && saved.captureId) {
-      await db.update(schema.ownerIntakeLinks).set({
-        captureId: saved.captureId,
-        ownerId: saved.snapshot.ownerId,
-      }).where(eq(schema.ownerIntakeLinks.id, link.id));
-    }
+    const ownerId = await ensureProgressiveOwner(db, draft.ownerName, draft.phone);
+    if (ownerId) await db.update(schema.ownerIntakeLinks).set({ ownerId, ownerName: draft.ownerName, phone: link.phone ?? draft.phone })
+      .where(eq(schema.ownerIntakeLinks.id, link.id));
     return draft;
   }
   if (!draft.email) {
     draft.email = extracted.email ?? (unknown(text) ? "NÃO SEI" : text);
-    const emailSave = await saveCaptureAnswer(db, {
-      phone: draft.phone ?? null,
-      nome: draft.ownerName,
-      negociacao: draft.intention,
-      origem: "LINK_CAPTACAO",
-    });
-    if (emailSave.saved && emailSave.snapshot.ownerId && draft.email && draft.email !== "NÃO SEI") {
-      await db.update(schema.owners).set({ email: draft.email }).where(eq(schema.owners.id, emailSave.snapshot.ownerId));
-    }
+    const ownerId = await ensureProgressiveOwner(db, draft.ownerName, draft.phone);
+    if (ownerId && draft.email && draft.email !== "NÃO SEI") await db.update(schema.owners).set({ email: draft.email }).where(eq(schema.owners.id, ownerId));
     return draft;
   }
   if (!draft.intention && draft.profile !== "LOCADOR") {
-    draft.intention = extracted.intention ?? (/loca|alug/i.test(fold) ? "locacao" : "venda"); return draft;
+    draft.intention = extracted.intention ?? (/loca|alug/i.test(fold) ? "locacao" : "venda");
+    return draft;
   }
   if (!draft.propertyType) { draft.propertyType = extracted.propertyType ?? text; return draft; }
   if (!draft.address) {

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { orpc } from "../lib/api";
 
-export function useAdminOwnerLinks(status?: "aguardando" | "iniciado" | "concluido") {
+export type OwnerLinkStatus = "aguardando" | "iniciado" | "concluido" | "cancelado";
+
+export function useAdminOwnerLinks(status?: OwnerLinkStatus) {
   return useQuery(orpc.adminOwnerIntakeLinks.list.queryOptions({ input: { status } }));
 }
 
@@ -53,6 +55,24 @@ export function useOwnerLinkFacade() {
   const queryClient = useQueryClient();
   return useMutation({
     ...orpc.ownerIntakeLinks.facade.mutationOptions(),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
+/** Cancellation is deliberately admin-scoped: the public token is never
+ * reconstructed or sent from the central panel. */
+export function useCancelOwnerLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...orpc.adminOwnerIntakeLinks.cancel.mutationOptions(),
+    onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
+export function useCancelPublicOwnerLink() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...orpc.ownerIntakeLinks.cancel.mutationOptions(),
     onSuccess: () => queryClient.invalidateQueries(),
   });
 }
