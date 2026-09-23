@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
 import { ORPCError } from "@orpc/server";
@@ -35,6 +35,7 @@ export const adminOwners = {
     const owners = await context.db
       .select()
       .from(schema.owners)
+      .where(isNull(schema.owners.systemKey))
       .orderBy(asc(schema.owners.name))
       .limit(500);
     const properties = await context.db
@@ -164,6 +165,7 @@ export const adminOwners = {
         document: schema.owners.document,
       })
       .from(schema.owners)
+      .where(isNull(schema.owners.systemKey))
       .orderBy(asc(schema.owners.name))
       .limit(500);
   }),

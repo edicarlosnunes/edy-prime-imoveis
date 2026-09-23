@@ -45,6 +45,8 @@ export interface OwnerIntakeInput {
   intention?: "vender" | "alugar" | null;
   /** Public links use this when a fresh token identifies a second property. */
   forceNewCapture?: boolean;
+  /** Internal system-owned presenter placeholder; never a public owner. */
+  ownerIdOverride?: number;
 }
 
 export interface OwnerIntakeResult {
@@ -472,21 +474,40 @@ export async function intakeOwner(
   const email = input.email?.trim().toLowerCase() || null;
   const now = new Date();
 
+  const [overrideOwner] = input.ownerIdOverride
+    ? await db
+        .select()
+        .from(schema.owners)
+        .where(eq(schema.owners.id, input.ownerIdOverride))
+        .limit(1)
+    : [];
+  if (input.ownerIdOverride && !overrideOwner) {
+    throw new Error("Owner override não encontrado");
+  }
+
   /* Candidatos: a tabela de proprietários é pequena, então a comparação por
-     dígitos é feita em memória para also casar telefones salvos formatados. */
-  const candidates = await db
-    .select()
-    .from(schema.owners)
-    .limit(500);
+     dígitos é feita em memória para também casar telefones salvos formatados.
+     Overrides de sistema são buscados diretamente e nunca podem cair no fluxo
+     de criação de um proprietário comum. */
+  const candidates = input.ownerIdOverride
+    ? []
+    : await db
+        .select()
+        .from(schema.owners)
+        .limit(500);
 
   /* Identidade V3: o TELEFONE reutiliza o proprietário; o e-mail NÃO mescla
      mais. E-mail repetido cria o proprietário normalmente e só marca POSSÍVEL
      DUPLICADO para revisão humana — ver lib/owner-identity.ts. */
-  const decision = resolveOwnerIdentity(candidates, { phone: phoneDigits, email });
+  const decision = input.ownerIdOverride
+    ? { action: "reuse" as const, ownerId: input.ownerIdOverride, duplicateOfOwnerId: null, reason: "system override" }
+    : resolveOwnerIdentity(candidates, { phone: phoneDigits, email });
 
   const existing =
-    decision.action === "reuse"
-      ? candidates.find((owner) => owner.id === decision.ownerId)
+    input.ownerIdOverride
+      ? overrideOwner
+      : decision.action === "reuse"
+        ? candidates.find((owner) => owner.id === decision.ownerId)
       : undefined;
 
   if (existing) {

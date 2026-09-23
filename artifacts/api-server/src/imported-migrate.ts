@@ -28,6 +28,7 @@ const statements = [
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     user_id INTEGER NOT NULL,
     token_hash TEXT NOT NULL UNIQUE,
+    short_code TEXT,
     expires_at INTEGER NOT NULL,
     created_at INTEGER NOT NULL
   )`,
@@ -594,6 +595,7 @@ const propertyColumns: Record<string, string> = {
  * nenhum merge antigo é desfeito e o alerta nunca bloqueia cadastro.
  */
 const ownerColumns: Record<string, string> = {
+  system_key: "TEXT",
   possible_duplicate: "INTEGER NOT NULL DEFAULT 0",
   duplicate_of_owner_id: "INTEGER",
   duplicate_note: "TEXT",
@@ -655,6 +657,7 @@ const propertyCaptureColumns: Record<string, string> = {
 
 /** Estado mínimo, token-scoped, do atendimento público conversacional. */
 const ownerIntakeLinkColumns: Record<string, string> = {
+  short_code: "TEXT",
   profile: "TEXT",
   draft: "TEXT",
   cancellation_reason: "TEXT",
@@ -718,6 +721,7 @@ const columnMaps: Record<string, Record<string, string>> = {
 
 /** Índices que dependem de colunas adicionadas acima — criados por último. */
 const lateIndexes = [
+  "CREATE UNIQUE INDEX IF NOT EXISTS owners_system_key_idx ON owners (system_key)",
   "CREATE INDEX IF NOT EXISTS leads_stage_idx ON leads (stage)",
   "CREATE INDEX IF NOT EXISTS leads_phone_idx ON leads (phone)",
   "CREATE INDEX IF NOT EXISTS leads_score_idx ON leads (score)",
@@ -725,6 +729,7 @@ const lateIndexes = [
   /* V2 — índice da fila de revalidação (coluna adicionada acima) */
   "CREATE INDEX IF NOT EXISTS properties_next_revalidation_idx ON properties (next_revalidation_at)",
   "CREATE INDEX IF NOT EXISTS tasks_capture_idx ON tasks (capture_id)",
+  "CREATE UNIQUE INDEX IF NOT EXISTS owner_intake_links_short_code_idx ON owner_intake_links (short_code)",
   /* V3 — backstop do serial: o banco recusa duplicata mesmo se alguém gerar
      serial por fora de lib/serial-counter.ts. UNIQUE aceita vários NULL no
      SQLite, então imóveis e captações antigos (serial NULL) não conflitam. */

@@ -1,0 +1,736 @@
+PROMPT MESTRE — LINK_CAPTACAO — EDY PRIME
+IMPLEMENTAÇÃO CONTROLADA SOBRE A FERRAMENTA EXISTENTE
+
+OBJETIVO
+
+Corrigir e simplificar o LINK_CAPTACAO já existente da Edy Prime para funcionar como uma conversa extremamente simples, leve e responsiva, visualmente inspirada na dinâmica básica de WhatsApp:
+
+PERGUNTA → RESPOSTA → SALVA → PRÓXIMA PERGUNTA.
+
+Não criar um aplicativo pesado para o usuário.
+Não reconstruir o projeto.
+Não apagar a implementação existente.
+Não começar do zero.
+
+Trabalhar SOBRE a ferramenta LINK_CAPTACAO que já existe, reaproveitando banco de dados, rotas, segurança, geração de EPI, captações, sessões, APIs e demais estruturas existentes que estejam funcionando.
+
+Antes de alterar código, analisar a implementação atual e reutilizar o máximo possível.
+
+NÃO alterar outros módulos do CRM.
+NÃO alterar RADAR_CAPTACAO.
+NÃO alterar integrações externas.
+NÃO alterar Meta/WhatsApp oficial.
+NÃO alterar o site institucional.
+NÃO realizar redesign geral.
+NÃO publicar/deployar automaticamente ao terminar.
+NÃO inventar perguntas, etapas ou regras além das especificadas abaixo.
+
+==================================================
+1. EXPERIÊNCIA PÚBLICA DO LINK_CAPTACAO
+==================================================
+
+A experiência deve ser uma conversa básica:
+
+mensagem → resposta → salvamento → próxima mensagem.
+
+Uma pergunta por vez.
+
+Cada resposta válida deve ser persistida ANTES da próxima pergunta.
+
+Eliminar da experiência pública qualquer aparência desnecessária de formulário/aplicativo complexo.
+
+Preservar uma interface leve, limpa e responsiva.
+
+Não criar telas desnecessárias.
+
+==================================================
+2. LINK PÚBLICO CURTO — EDY PRIME
+==================================================
+
+O LINK_CAPTACAO público deve ser curto, compacto, limpo e apresentável, utilizando a identidade EDY PRIME.
+
+Evitar apresentar ao cliente a URL longa atual com token extenso.
+
+Criar um alias/código público curto, aleatório e não previsível.
+
+Exemplo conceitual de formato:
+
+/c/7K4P9X
+
+O exemplo acima é apenas ilustrativo.
+Não utilizar código sequencial ou facilmente adivinhável.
+
+REGRA DE SEGURANÇA:
+
+NÃO encurtar o token seguro existente simplesmente cortando caracteres.
+
+NÃO enfraquecer a segurança interna existente.
+
+NÃO substituir hash/token seguro interno por um código inseguro.
+
+Manter internamente o mecanismo seguro existente de token/hash e associar o código público curto ao registro seguro correspondente.
+
+A URL pública curta NÃO deve expor:
+ID interno do banco,
+hash,
+token de segurança,
+número sequencial interno,
+EPI,
+ou qualquer informação sensível/previsível.
+
+Os links longos que já tenham sido gerados anteriormente devem continuar funcionando.
+
+NÃO quebrar compatibilidade com links existentes.
+
+Na apresentação pública dessa ferramenta utilizar a marca:
+
+EDY PRIME
+
+Evitar “Edy Prime Imóveis” na apresentação ao usuário do LINK_CAPTACAO.
+
+Esta alteração deve ser localizada ao fluxo LINK_CAPTACAO.
+NÃO executar substituição global de marca no projeto inteiro.
+
+==================================================
+3. ABERTURA
+==================================================
+
+Ao abrir:
+
+“Vamos cadastrar seu imóvel?”
+
+Essa é uma mensagem automática de abertura.
+
+NÃO solicitar SIM/NÃO.
+
+Imediatamente perguntar:
+
+“Você é proprietário, locador ou corretor?”
+
+Opções:
+PROPRIETÁRIO
+LOCADOR
+CORRETOR
+
+Salvar imediatamente o perfil escolhido.
+
+==================================================
+4. TELEFONE AUTOMÁTICO
+==================================================
+
+Quando o LINK_CAPTACAO tiver sido enviado através de um contexto do sistema que já conhece o telefone/WhatsApp destinatário:
+
+salvar esse telefone automaticamente na sessão/captação.
+
+NÃO perguntar novamente.
+
+NÃO exibir “[telefone]”.
+
+NÃO usar placeholder como dado real.
+
+NÃO inventar telefone.
+
+IMPORTANTE:
+um link genérico aberto fora de um contexto que conheça o destinatário não pode magicamente descobrir o telefone.
+
+Preservar essa diferença técnica.
+Nunca fabricar um número para cumprir a regra.
+
+==================================================
+5. PROPRIETÁRIO E LOCADOR — NASCIMENTO DO EPI
+==================================================
+
+Depois da escolha do perfil:
+
+PERGUNTA:
+“Qual é o seu nome completo?”
+
+O nome é obrigatório para avançar.
+
+Implementar validação mínima de plausibilidade de nome.
+
+Não aceitar como nome suficiente:
+campo vazio,
+apenas números,
+pontuação,
+uma única letra,
+“abc” ou sequência evidentemente inválida.
+
+A validação não precisa provar identidade civil; apenas impedir que qualquer caractere permita avançar.
+
+Nome válido:
+SALVAR IMEDIATAMENTE.
+
+Depois:
+
+PERGUNTA:
+“Qual é o endereço completo do imóvel?”
+
+O endereço deve possuir informação suficiente para localização.
+
+Quando tecnicamente disponível, estruturar:
+logradouro,
+número,
+bairro,
+cidade,
+UF,
+CEP,
+e referência geográfica/coordenadas fornecidas pelo serviço utilizado.
+
+Se estiver ambíguo ou insuficiente, solicitar somente a informação necessária.
+NÃO inventar endereço.
+
+Endereço suficientemente localizado:
+SALVAR IMEDIATAMENTE.
+
+GATILHO OBRIGATÓRIO:
+
+TELEFONE
++ NOME VÁLIDO
++ ENDEREÇO VÁLIDO/LOCALIZÁVEL
+= CRIAR/CONSOLIDAR IMEDIATAMENTE PRÉ-CAPTAÇÃO + EPI.
+
+Não esperar o restante do questionário.
+
+Todo o restante atualiza ESSE MESMO EPI.
+
+==================================================
+6. CORRETOR — NASCIMENTO DO EPI
+==================================================
+
+Para CORRETOR:
+
+telefone conhecido → salvar automaticamente.
+
+Perguntar:
+“Qual é o seu nome completo?”
+
+Validar minimamente e salvar.
+
+Depois perguntar:
+“Qual é o seu CRECI?”
+
+Salvar imediatamente o CRECI.
+
+Depois perguntar:
+“Qual é o endereço completo do imóvel?”
+
+Aplicar a mesma regra de localização do endereço.
+
+GATILHO DO CORRETOR:
+
+TELEFONE
++ NOME DO CORRETOR
++ CRECI
++ ENDEREÇO DO IMÓVEL
+= PRÉ-CAPTAÇÃO + EPI.
+
+NÃO exigir:
+nome do proprietário,
+telefone do proprietário,
+WhatsApp do proprietário,
+e-mail do proprietário.
+
+NÃO copiar dados do corretor para campos do proprietário.
+
+==================================================
+7. COMPLEMENTO
+==================================================
+
+Após endereço/EPI:
+
+Perguntar se existe complemento.
+
+Exemplos:
+apartamento,
+bloco,
+torre,
+casa,
+lote etc.
+
+Se não houver:
+registrar SEM COMPLEMENTO.
+
+==================================================
+8. PROPRIETÁRIO
+==================================================
+
+Perfil PROPRIETÁRIO significa finalidade VENDA.
+
+Não perguntar novamente venda/locação.
+
+Perguntar o tipo do imóvel:
+
+APARTAMENTO
+CASA
+TERRENO
+LOTE
+GLEBA
+SÍTIO
+CHÁCARA
+FAZENDA
+IMÓVEL RURAL
+OUTRO
+
+O TIPO determina o questionário.
+
+------------------------------
+8A. APARTAMENTO/CASA — VENDA
+------------------------------
+
+Perguntar e salvar, uma pergunta por vez:
+
+1. O imóvel fica em condomínio? SIM/NÃO.
+
+2. Como está a documentação do imóvel? O imóvel está em seu nome?
+
+3. Quantos dormitórios?
+
+4. Quantas suítes?
+Aceitar 0 como zero real.
+
+5. Quantos banheiros?
+
+6. Quantas vagas de garagem?
+Aceitar 0.
+
+7. Qual é a área útil ou construída?
+
+8. Qual é o valor pretendido para venda?
+
+REGRA:
+somente a resposta da pergunta de VALOR pode alimentar o campo de preço.
+“2 dormitórios” jamais pode virar preço 2.
+
+9. Se houver condomínio:
+Qual é o valor do condomínio?
+Se não houver, pular.
+
+10. Qual é o valor do IPTU?
+
+11. O imóvel está ocupado atualmente?
+
+12. Existe alguma característica/diferencial que gostaria de informar?
+
+Depois ir diretamente para FOTO.
+
+------------------------------
+8B. TERRENO/LOTE — VENDA
+------------------------------
+
+NÃO perguntar dormitórios, suítes, banheiros ou garagem residencial.
+
+Perguntar:
+
+1. Como está a documentação? Está em seu nome?
+
+2. Qual é a área total?
+
+3. Sabe informar frente, fundos e laterais?
+Aceitar NÃO SEI.
+NÃO SEI ≠ zero.
+
+4. Fica em condomínio ou loteamento?
+Se SIM, perguntar o nome.
+Se NÃO, pular.
+
+5. Qual é o valor pretendido para venda?
+
+6. Qual é o IPTU?
+
+7. Existe alguma característica importante/diferencial?
+
+Depois FOTO.
+
+------------------------------
+8C. RURAL — VENDA
+------------------------------
+
+Para gleba, sítio, chácara, fazenda ou imóvel rural:
+
+1. Como está a documentação? Está em seu nome?
+
+2. Qual é a área total?
+
+3. Unidade: m², hectares ou alqueires?
+
+4. Possui casa, galpão, curral ou outras construções/benfeitorias?
+
+5. Possui poço, nascente, rio, córrego, represa ou outra fonte de água?
+
+6. Como é o acesso?
+
+7. Possui energia elétrica?
+
+8. Qual é o valor pretendido para venda?
+
+9. Existe alguma informação/característica adicional?
+
+Depois FOTO.
+
+==================================================
+9. LOCADOR — LOCAÇÃO
+==================================================
+
+Perfil LOCADOR significa finalidade LOCAÇÃO.
+
+Não perguntar novamente venda/locação.
+
+Usar o mesmo cabeçalho:
+telefone + nome + endereço → EPI.
+
+Perguntar tipo do imóvel.
+
+------------------------------
+9A. APARTAMENTO/CASA — LOCAÇÃO
+------------------------------
+
+1. Fica em condomínio?
+
+2. Como está a documentação? Está em seu nome?
+
+3. Quantos dormitórios?
+
+4. Quantas suítes?
+
+5. Quantos banheiros?
+
+6. Quantas vagas?
+
+7. Área útil/construída?
+
+8. Valor pretendido do aluguel mensal?
+
+9. Se houver condomínio, valor do condomínio.
+
+10. Valor do IPTU.
+
+11. Está disponível para locação imediata?
+
+12. Mobiliado, parcialmente mobiliado ou sem mobília?
+
+13. Está ocupado atualmente?
+
+14. Existe alguma condição/informação importante sobre a locação?
+
+Depois FOTO.
+
+------------------------------
+9B. TERRENO/LOTE — LOCAÇÃO
+------------------------------
+
+Não fazer perguntas residenciais incompatíveis.
+
+1. Documentação/está em seu nome?
+
+2. Área total?
+
+3. Frente, fundos e laterais?
+Aceitar NÃO SEI.
+
+4. Condomínio/loteamento?
+Se SIM, nome.
+
+5. Valor do aluguel mensal?
+
+6. IPTU?
+
+7. Condições/características importantes da locação?
+
+Depois FOTO.
+
+------------------------------
+9C. RURAL — LOCAÇÃO
+------------------------------
+
+1. Documentação/está em seu nome?
+
+2. Área total?
+
+3. Unidade: m², hectares ou alqueires?
+
+4. Construções/benfeitorias?
+
+5. Fontes de água?
+
+6. Acesso?
+
+7. Energia elétrica?
+
+8. Valor pretendido do aluguel?
+
+9. Condições/informações importantes da locação?
+
+Depois FOTO.
+
+==================================================
+10. CORRETOR
+==================================================
+
+Depois do cabeçalho específico do corretor e criação do EPI:
+
+perguntar complemento.
+
+Perguntar:
+
+“Este imóvel está sendo cadastrado para VENDA ou LOCAÇÃO?”
+
+Salvar finalidade.
+
+Depois perguntar tipo do imóvel.
+
+Combinar:
+TIPO + FINALIDADE.
+
+Se VENDA:
+usar integralmente as perguntas correspondentes do fluxo PROPRIETÁRIO/VENDA acima.
+
+Se LOCAÇÃO:
+usar integralmente as perguntas correspondentes do fluxo LOCADOR/LOCAÇÃO acima.
+
+ADAPTAÇÃO OBRIGATÓRIA:
+como quem responde é CORRETOR, não perguntar se o imóvel “está em seu nome”.
+
+Perguntar apenas:
+“Como está a documentação do imóvel?”
+
+Não exigir identificação do proprietário.
+
+==================================================
+11. SALVAMENTO PROGRESSIVO
+==================================================
+
+Regra para TODOS:
+
+PERGUNTA
+→ RESPOSTA
+→ VALIDAR SOMENTE QUANDO NECESSÁRIO
+→ SALVAR
+→ PRÓXIMA PERGUNTA.
+
+Não esperar o final para salvar tudo.
+
+Se houver abandono depois da criação do EPI, preservar tudo que já foi coletado para a equipe Edy Prime poder recuperar a pré-captação.
+
+Uma mesma pessoa pode possuir várias captações.
+
+Não sobrescrever um imóvel anterior ao cadastrar outro.
+
+==================================================
+12. NÃO CRIAR FLUXO DE CORREÇÃO
+==================================================
+
+NÃO criar tela de revisão.
+
+NÃO perguntar:
+“Estas informações estão corretas?”
+
+NÃO criar:
+Confirmar,
+Corrigir,
+Voltar para corrigir,
+resumo obrigatório antes da conclusão.
+
+Se a pessoa fornecer algum dado incorreto mas aceitável durante o fluxo, o cadastro segue.
+
+A Edy Prime poderá posteriormente corrigir/complementar internamente.
+
+A prioridade do fluxo público é ser rápido e simples.
+
+==================================================
+13. FOTO — ÚLTIMA ENTRADA EM TODOS OS FLUXOS
+==================================================
+
+Esta é REGRA GLOBAL E INVIOLÁVEL.
+
+PROPRIETÁRIO,
+LOCADOR,
+CORRETOR,
+VENDA,
+LOCAÇÃO,
+APARTAMENTO,
+CASA,
+TERRENO,
+LOTE,
+RURAL:
+
+TODOS terminam na FOTO.
+
+Pergunta final:
+
+“Envie uma foto da frente/fachada do imóvel para identificação.”
+
+Receber a fotografia.
+
+Salvar no MESMO EPI e vinculá-la ao mesmo imóvel/endereço/captação.
+
+A foto e o endereço serão utilizados posteriormente pela equipe Edy Prime para CONFERÊNCIA HUMANA.
+
+A equipe poderá consultar Google Maps, Street View ou outra ferramenta e comparar visualmente endereço e fachada.
+
+A IA NÃO confirma que a fotografia pertence ao endereço.
+A IA NÃO aprova.
+A IA NÃO reprova.
+A IA NÃO cancela automaticamente por divergência de imagem/endereço.
+
+A decisão é humana.
+
+==================================================
+14. FOTO SALVA = FINALIZAÇÃO IMEDIATA
+==================================================
+
+Assim que a fotografia for recebida e persistida com sucesso:
+
+MARCAR O CADASTRO COMO CONCLUÍDO.
+
+Mostrar:
+
+“Cadastro concluído com sucesso! Recebemos as informações do seu imóvel e nossa equipe entrará em contato em breve.”
+
+E ENCERRAR A SESSÃO.
+
+Depois dessa mensagem:
+
+NÃO mostrar campo de resposta.
+NÃO fazer outra pergunta.
+NÃO apresentar confirmação.
+NÃO apresentar correção.
+NÃO permitir alterar o cadastro através daquela sessão.
+NÃO reabrir silenciosamente.
+NÃO criar novo EPI automaticamente.
+
+A pessoa que quiser falar posteriormente com a Edy Prime utilizará o WhatsApp pelo qual recebeu o link.
+
+==================================================
+15. DADOS FINAIS NO CRM
+==================================================
+
+Preservar sempre:
+
+ORIGEM = LINK_CAPTACAO
+
+PERFIL =
+PROPRIETARIO
+ou LOCADOR
+ou CORRETOR
+
+FINALIDADE =
+VENDA
+ou LOCACAO
+
+EPI = o MESMO EPI criado na pré-captação.
+
+Na foto salva:
+STATUS = CONCLUÍDO.
+
+Não criar segundo cadastro no encerramento.
+Não gerar outro EPI.
+
+==================================================
+16. RESTRIÇÕES DE IMPLEMENTAÇÃO
+==================================================
+
+CRÍTICO:
+
+NÃO apagar a ferramenta existente.
+NÃO reconstruir LINK_CAPTACAO do zero.
+NÃO substituir banco desnecessariamente.
+NÃO eliminar dados existentes.
+NÃO quebrar links existentes.
+NÃO alterar serial/EPI sem necessidade comprovada.
+NÃO modificar módulos externos ao escopo.
+NÃO fazer redesign do site.
+NÃO modificar Meta/WhatsApp.
+NÃO publicar automaticamente.
+NÃO gastar trabalho refatorando áreas sem relação com este fluxo.
+
+Primeiro analisar o código existente.
+
+Reutilizar componentes, APIs, tabelas, geração de EPI, segurança e persistência já existentes quando estiverem corretos.
+
+Fazer alterações mínimas e direcionadas para adequar a implementação a ESTE documento.
+
+Remover/substituir apenas comportamentos conflitantes, especialmente:
+- fluxo antigo de revisão/confirmação;
+- interpretação incorreta de números;
+- exigência indevida de proprietário no fluxo Corretor;
+- placeholders [telefone];
+- possibilidade de continuar conversando depois da conclusão.
+
+==================================================
+17. VALIDAÇÃO ANTES DE CONSIDERAR CONCLUÍDO
+==================================================
+
+Testar no mínimo:
+
+A. Proprietário + apartamento/casa + venda.
+B. Proprietário + terreno/lote + venda.
+C. Proprietário + rural + venda.
+D. Locador + apartamento/casa + locação.
+E. Locador + terreno/lote + locação.
+F. Locador + rural + locação.
+G. Corretor + venda.
+H. Corretor + locação.
+I. abandono depois da criação do EPI.
+J. telefone conhecido não é perguntado novamente.
+K. nome inválido não avança.
+L. endereço insuficiente não é inventado.
+M. zero continua zero.
+N. NÃO SEI não vira zero.
+O. número de dormitórios não contamina preço.
+P. Corretor não recebe perguntas obrigatórias sobre proprietário.
+Q. CRECI permanece associado ao corretor.
+R. foto fica vinculada ao EPI correto.
+S. foto salva conclui imediatamente.
+T. sessão concluída não aceita novas respostas.
+U. captações diferentes não se misturam.
+V. novo link público é curto, aleatório e não expõe token/hash/ID/EPI.
+W. links longos antigos continuam funcionando.
+
+Executar os testes necessários e informar objetivamente:
+arquivos alterados,
+comportamentos alterados,
+testes executados,
+resultado dos testes,
+qualquer limitação encontrada.
+
+NÃO FAZER DEPLOY/PUBLICAÇÃO.
+Aguardar autorização da Edy Prime para qualquer publicação.
+
+==================================================
+A → Z — RESUMO OPERACIONAL PARA CONFERÊNCIA
+==================================================
+
+A — Abre o LINK_CAPTACAO curto da Edy Prime.
+B — Aparece automaticamente “Vamos cadastrar seu imóvel?”
+C — Escolhe Proprietário, Locador ou Corretor.
+D — Telefone conhecido é salvo automaticamente.
+E — Pergunta nome e exige nome plausível.
+F — Corretor informa CRECI.
+G — Pergunta endereço e localiza/estrutura sem inventar.
+H — Proprietário/Locador: telefone + nome + endereço = EPI.
+I — Corretor: telefone + nome + CRECI + endereço = EPI.
+J — Pergunta complemento.
+K — Finalidade: Proprietário=Venda; Locador=Locação; Corretor escolhe.
+L — Identifica tipo do imóvel.
+M — Tipo determina as perguntas corretas.
+N — Cada resposta é salva antes da próxima.
+O — Apartamento/casa recebe perguntas residenciais.
+P — Terreno/lote não recebe perguntas residenciais incompatíveis.
+Q — Rural recebe perguntas próprias.
+R — Venda recebe valor de venda.
+S — Locação recebe valor de aluguel e informações próprias.
+T — Corretor não precisa fornecer proprietário.
+U — Não existe revisão final.
+V — Não existe Confirmar/Corrigir.
+W — Última pergunta de TODOS os fluxos é a foto da fachada.
+X — Foto é salva no mesmo EPI; conferência endereço/foto será HUMANA.
+Y — Foto salva → mensagem de sucesso → status CONCLUÍDO.
+Z — Sessão fecha e não aceita mais respostas; contato posterior é pelo WhatsApp da Edy Prime.
+
+REGRA COMPLEMENTAR DO LINK:
+O cliente vê um link curto e apresentável da EDY PRIME.
+A segurança interna permanece forte.
+Links antigos continuam compatíveis.
+
+FIM DO PROMPT.

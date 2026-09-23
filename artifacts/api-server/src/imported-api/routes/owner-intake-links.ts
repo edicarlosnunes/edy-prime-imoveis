@@ -16,6 +16,9 @@ import { pickModel } from "../agent/model";
 import { allocateSerial } from "../lib/serial-counter";
 
 const tokenInput = z.string().regex(/^[a-f0-9]{64}$/i, "Link inválido");
+/** Public locator deliberately accepts only the two issued formats. */
+const shortCodeInput = z.string().regex(/^[a-f0-9]{15}$/i, "Link inválido");
+export const publicLocatorInput = z.union([tokenInput, shortCodeInput]);
 export const publicTokenPattern = /^[a-f0-9]{64}$/i;
 const statusInput = z.enum(["aguardando", "iniciado", "concluido", "cancelado"]);
 const complementsInput = z
@@ -30,7 +33,7 @@ const complementsInput = z
 export const ownerIntakeLinkCreateInput = z.object({});
 
 export const ownerIntakeSubmitInput = z.object({
-  token: tokenInput,
+  token: publicLocatorInput,
   name: z.string().trim().min(2).max(120),
   phone: z.string().trim().max(30).optional(),
   email: z.string().trim().email().max(160).optional(),
@@ -62,6 +65,19 @@ async function findByToken(db: Awaited<ReturnType<typeof getDb>>, token: string)
   return link;
 }
 
+async function findByLocator(db: Awaited<ReturnType<typeof getDb>>, locator: string) {
+  if (publicTokenPattern.test(locator)) return findByToken(db, locator);
+  if (!/^[a-f0-9]{15}$/i.test(locator)) return undefined;
+  const [link] = await db.select().from(schema.ownerIntakeLinks)
+    .where(eq(schema.ownerIntakeLinks.shortCode, locator)).limit(1);
+  return link;
+}
+
+function shortCode() {
+  // 15 hexadecimal characters encode 60 random bits exactly.
+  return randomHex(16).slice(0, 15);
+}
+
 function invalidLink(): never {
   throw new ORPCError("NOT_FOUND", { message: "Link de captação inválido ou indisponível" });
 }
@@ -80,18 +96,22 @@ function decodeFacadeImage(value: string | undefined) {
 export const adminOwnerIntakeLinks = {
   create: adminBase.input(ownerIntakeLinkCreateInput).handler(async ({ context }) => {
     const token = randomHex(32);
-    const [link] = await context.db
-      .insert(schema.ownerIntakeLinks)
-      .values({
-        tokenHash: await sha256Hex(token),
-        ownerName: "",
-        phone: null,
-      })
-      .returning({ id: schema.ownerIntakeLinks.id, createdAt: schema.ownerIntakeLinks.createdAt });
+    let link: { id: number; createdAt: Date; shortCode: string | null } | undefined;
+    for (let attempt = 0; attempt < 5 && !link; attempt++) {
+      try {
+        const [created] = await context.db.insert(schema.ownerIntakeLinks).values({
+          tokenHash: await sha256Hex(token), ownerName: "", phone: null, shortCode: shortCode(),
+        }).returning({ id: schema.ownerIntakeLinks.id, createdAt: schema.ownerIntakeLinks.createdAt, shortCode: schema.ownerIntakeLinks.shortCode });
+        link = created;
+      } catch (error) {
+        if (attempt === 4) throw error;
+      }
+    }
     if (!link) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível criar o link" });
     return {
       id: link.id,
       token,
+      shortPath: `/c/${encodeURIComponent(link.shortCode!)}`,
       path: `/captacao/${encodeURIComponent(token)}`,
       status: "aguardando" as const,
       createdAt: link.createdAt,
@@ -99,6 +119,21 @@ export const adminOwnerIntakeLinks = {
   }),
 
   list: adminBase.input(z.object({ status: statusInput.optional() }).optional()).handler(async ({ input, context }) => {
+    // Authenticated, idempotent backfill for links created before short aliases.
+    const legacy = await context.db.select({ id: schema.ownerIntakeLinks.id })
+      .from(schema.ownerIntakeLinks).where(isNull(schema.ownerIntakeLinks.shortCode));
+    for (const row of legacy) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const changed = await context.db.update(schema.ownerIntakeLinks)
+            .set({ shortCode: shortCode() })
+            .where(and(eq(schema.ownerIntakeLinks.id, row.id), isNull(schema.ownerIntakeLinks.shortCode)));
+          if (changed.rowsAffected) break;
+        } catch (error) {
+          if (attempt === 4) throw error;
+        }
+      }
+    }
     const rows = await context.db
       .select({
         id: schema.ownerIntakeLinks.id,
@@ -118,6 +153,7 @@ export const adminOwnerIntakeLinks = {
         profile: schema.ownerIntakeLinks.profile,
         draft: schema.ownerIntakeLinks.draft,
         cancellationReason: schema.ownerIntakeLinks.cancellationReason,
+        shortCode: schema.ownerIntakeLinks.shortCode,
       })
       .from(schema.ownerIntakeLinks)
       .leftJoin(schema.propertyCaptures, eq(schema.propertyCaptures.id, schema.ownerIntakeLinks.captureId))
@@ -161,9 +197,9 @@ export const adminOwnerIntakeLinks = {
 };
 
 export const ownerIntakeLinks = {
-  metadata: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
+  metadata: base.input(z.object({ token: publicLocatorInput })).handler(async ({ input }) => {
     const db = await getDb();
-    const link = await findByToken(db, input.token);
+    const link = await findByLocator(db, input.token);
     if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
     return {
       ownerName: link.ownerName,
@@ -173,9 +209,9 @@ export const ownerIntakeLinks = {
     };
   }),
 
-  started: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
+  started: base.input(z.object({ token: publicLocatorInput })).handler(async ({ input }) => {
     const db = await getDb();
-    const link = await findByToken(db, input.token);
+    const link = await findByLocator(db, input.token);
     if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
     if (link.status === "aguardando") {
       await db
@@ -187,9 +223,9 @@ export const ownerIntakeLinks = {
   }),
 
   /** Estado público mínimo. O cliente nunca recebe IDs, hashes ou outras fichas. */
-  state: base.input(z.object({ token: tokenInput })).handler(async ({ input }) => {
+  state: base.input(z.object({ token: publicLocatorInput })).handler(async ({ input }) => {
     const db = await getDb();
-    const link = await findByToken(db, input.token);
+    const link = await findByLocator(db, input.token);
     if (!link) invalidLink();
     const draft = safeDraft(link.draft);
     const [capture] = link.captureId ? await db.select({ serial: schema.propertyCaptures.serial }).from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, link.captureId)).limit(1) : [];
@@ -197,14 +233,14 @@ export const ownerIntakeLinks = {
   }),
 
   /** Cancela a tentativa sem apagar histórico nem liberar o EPI. */
-  cancel: base.input(z.object({ token: tokenInput, reason: z.string().trim().max(500).optional() })).handler(async ({ input }) => {
+  cancel: base.input(z.object({ token: publicLocatorInput, reason: z.string().trim().max(500).optional() })).handler(async ({ input }) => {
     const db = await getDb();
     return publicCancel(db, input);
   }),
 
   /** Um turno por requisição; cada resposta válida é persistida antes da próxima. */
   turn: base.input(z.object({
-    token: tokenInput,
+    token: publicLocatorInput,
     text: z.string().max(4000),
     profile: z.enum(["PROPRIETARIO", "LOCADOR", "CORRETOR"]).optional(),
   })).handler(async ({ input }) => {
@@ -223,33 +259,19 @@ export const ownerIntakeLinks = {
    * remains unchanged for existing oRPC callers.
    */
   facade: base.input(z.object({
-    token: tokenInput,
+    token: publicLocatorInput,
     facadeImage: z.string().min(1).max(2_800_000),
   })).handler(async ({ input }) => {
     const db = await getDb();
-    const link = await findByToken(db, input.token);
-    if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
-    const draft = safeDraft(link.draft);
-    const captureId = link.captureId ?? null;
-    if (!captureId) throw new ORPCError("CONFLICT", { message: "Informe nome e telefone antes da foto da fachada" });
-    const facade = decodeFacadeImage(input.facadeImage);
-    if (!facade) throw new ORPCError("BAD_REQUEST", { message: "Foto da fachada inválida" });
-    const [capture] = await db.select({ ownerPhotos: schema.propertyCaptures.ownerPhotos, ownerId: schema.propertyCaptures.ownerId }).from(schema.propertyCaptures).where(and(eq(schema.propertyCaptures.id, captureId), eq(schema.propertyCaptures.ownerId, link.ownerId ?? -1))).limit(1);
-    if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação indisponível" });
-    const id = randomHex(12);
-    await db.insert(schema.media).values({ id, mime: facade.mime, size: facade.size, data: facade.data, name: "fachada-link-captacao", variant: "original" });
-    const photos = addOwnerPhotos(capture?.ownerPhotos, [{ url: `/api/media/${id}`, caption: "Fachada provisória de captação" }], { source: "proprietario" });
-    await db.update(schema.propertyCaptures).set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() }).where(and(eq(schema.propertyCaptures.id, captureId), eq(schema.propertyCaptures.ownerId, link.ownerId ?? -1)));
-    draft.answers = { ...(draft.answers ?? {}), fachada: "Foto provisória recebida" };
-    appendAssistant(draft, nextPublicQuestion(draft));
-    await db.update(schema.ownerIntakeLinks).set({ draft: JSON.stringify(draft) }).where(eq(schema.ownerIntakeLinks.id, link.id));
-    return { ok: true, state: publicState({ ...link, draft: JSON.stringify(draft) }, draft) };
+    return publicFacade(db, input);
   }),
 
   submit: base.input(ownerIntakeSubmitInput).handler(async ({ input }) => {
     const db = await getDb();
-    const link = await findByToken(db, input.token);
+    const link = await findByLocator(db, input.token);
     if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
+    const submitDraft = safeDraft(link.draft);
+    if (submitDraft.step !== "photo") throw new ORPCError("CONFLICT", { message: "O cadastro só pode ser concluído após a foto da fachada" });
     const facade = decodeFacadeImage(input.facadeImage);
     const qualificationNotes = [
       "LINK_CAPTACAO — ficha pública concluída.",
@@ -329,6 +351,8 @@ export const ownerIntakeLinks = {
 };
 
 export type PublicDraft = {
+  /** Explicit cursor: the public flow must never infer the next step from keys. */
+  step?: string;
   profile?: "PROPRIETARIO" | "LOCADOR" | "CORRETOR";
   ownerName?: string;
   phone?: string;
@@ -344,19 +368,62 @@ export type PublicDraft = {
   priceClarification?: string;
   answers?: Record<string, string>;
   complete?: boolean;
-  review?: boolean;
-  correction?: string;
-  correctionPrompt?: boolean;
   transcript?: { role: "user" | "assistant"; text: string }[];
 };
 
 function safeDraft(value: string | null | undefined): PublicDraft {
   if (!value) return {};
-  try { return JSON.parse(value) as PublicDraft; } catch { return {}; }
+  try { return normalizeDraftStep(JSON.parse(value) as PublicDraft); } catch { return {}; }
+}
+
+/** Migrates pre-cursor drafts without guessing from arbitrary object keys. */
+export function normalizeDraftStep(input: PublicDraft): PublicDraft {
+  const draft = { ...input, answers: { ...(input.answers ?? {}) } };
+  if (draft.complete) return draft;
+  if (!draft.profile) return draft;
+  if (!draft.step) {
+    if (draft.profile === "CORRETOR" && !draft.brokerName) draft.step = "name";
+    else if (draft.profile !== "CORRETOR" && !draft.ownerName) draft.step = "name";
+    else if (draft.profile === "CORRETOR" && !draft.brokerCreci) draft.step = "creci";
+    else if (draft.profile === "CORRETOR" && !draft.brokerPhone && !draft.phone) draft.step = "phone";
+    else if (!draft.phone && draft.profile !== "CORRETOR") draft.step = "phone";
+    else if (!draft.address) draft.step = "address";
+    else if (!draft.answers.complemento) draft.step = "complement";
+    else if (draft.profile === "CORRETOR" && !draft.intention) draft.step = "intention";
+    else if (!draft.propertyType) draft.step = "type";
+    else {
+      const legacy: Record<string, string> = { dormitorios: "quartos", suites: "suites", banheiros: "banheiros", vagas: "vagas", area: "areaUtil", preco: "valorPretendido" };
+      const sequence = exactSequence(draft);
+      const index = sequence.findIndex((key) => draft.answers![key] === undefined && draft.answers![legacy[key] ?? ""] === undefined && (key !== "preco" || draft.askingPrice === undefined));
+      draft.step = index < 0 ? "photo" : `q${index}`;
+    }
+  }
+  return draft;
 }
 
 function cleanText(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, 500);
+}
+
+export function plausiblePublicName(value: string): boolean {
+  const name = cleanText(value);
+  const folded = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (name.length < 2 || !/[a-zà-ÿ]/i.test(name) || /^[\W\d_]+$/u.test(name)) return false;
+  if (/^(?:a+|abc|teste|test|asdf|qwerty|xxx+)$/i.test(folded.replace(/\s+/g, ""))) return false;
+  if (/^[a-z]$/i.test(name) || /^[\d\W_]+$/u.test(name)) return false;
+  return name.split(/\s+/).filter(Boolean).length >= 2;
+}
+
+export function sufficientPublicAddress(value: string): boolean {
+  const text = cleanText(value);
+  if (text.length < 8 || !/[a-zà-ÿ]/i.test(text)) return false;
+  const fold = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const cep = /\b\d{5}-?\d{3}\b/.test(text);
+  const street = /\b(rua|r\.|avenida|av\.|alameda|rodovia|estrada|travessa|praça|praca|quadra|loteamento)\b/i.test(fold);
+  const cityAndUf = /,\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.'-]{2,}\s*[-/]\s*[A-Z]{2}\b/.test(text)
+    || /\bcidade\s*:\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s.'-]{2,}.*\b(?:uf|estado)\s*:\s*[A-Z]{2}\b/i.test(text);
+  const number = /(?:\bn[ºo.]?\s*|\s)\d{1,6}\b/i.test(text);
+  return street && number && (cep || cityAndUf);
 }
 
 function firstNumber(value: string) {
@@ -472,34 +539,57 @@ function appendAssistant(draft: PublicDraft, text: string) {
 }
 
 export function nextPublicQuestion(draft: PublicDraft): string {
-  if (!draft.profile) return "Você é:\n1 — Proprietário\n2 — Locador\n3 — Corretor";
-  if (draft.correctionPrompt) return "Qual informação você deseja corrigir? (ex.: quartos, valor, nome ou endereço)";
-  if (draft.correction) return `Qual é o novo valor de ${draft.correction}?`;
-  if (draft.review && !draft.complete) return "Revise o resumo abaixo e escolha CONFIRMAR ou CORRIGIR.";
-  if (draft.profile === "CORRETOR") {
-    if (!draft.brokerName) return "Qual é o seu nome completo?";
-    if (!draft.brokerPhone) return "Qual é o seu telefone ou WhatsApp?";
-    if (!draft.brokerCreci) return "Qual é o seu CRECI? Se não souber, digite NÃO SEI.";
+  draft = normalizeDraftStep(draft);
+  if (draft.complete) return "Cadastro concluído com sucesso! Recebemos as informações do seu imóvel e nossa equipe entrará em contato em breve.";
+  if (!draft.profile) return "Você é proprietário, locador ou corretor?";
+  const step = draft.step;
+  const prompts: Record<string, string> = {
+    name: "Qual é o seu nome completo?",
+    phone: "Qual é o seu telefone ou WhatsApp?",
+    creci: "Qual é o seu CRECI?",
+    address: "Qual é o endereço completo do imóvel?",
+    complement: "Existe algum complemento? (apartamento, bloco, torre, casa, lote etc.)",
+    intention: "Este imóvel está sendo cadastrado para VENDA ou LOCAÇÃO?",
+    type: "Qual é o tipo do imóvel? (apartamento, casa, terreno, lote, gleba, sítio, chácara, fazenda, imóvel rural ou outro)",
+    photo: "Envie uma foto da frente/fachada do imóvel para identificação.",
+  };
+  if (step && prompts[step]) return prompts[step]!;
+  if (step === "photo") return prompts.photo;
+  if (step?.startsWith("q")) {
+    const key = exactSequence(draft)[Number(step.slice(1))];
+    const labels: Record<string, string> = {
+      condominio: "O imóvel fica em condomínio? Responda SIM ou NÃO.",
+      documentacao: draft.profile === "CORRETOR" ? "Como está a documentação do imóvel?" : "Como está a documentação do imóvel? O imóvel está em seu nome?",
+      dormitorios: "Quantos dormitórios?",
+      suites: "Quantas suítes?",
+      banheiros: "Quantos banheiros?",
+      vagas: "Quantas vagas de garagem?",
+      area: "Qual é a área útil ou construída?",
+      preco: draft.intention === "locacao" ? "Qual é o valor pretendido do aluguel mensal?" : "Qual é o valor pretendido para venda?",
+      condominioValor: "Qual é o valor do condomínio?",
+      iptu: "Qual é o valor do IPTU?",
+      ocupacao: "O imóvel está ocupado atualmente?",
+      disponibilidade: "O imóvel está disponível para locação imediata?",
+      mobilia: "O imóvel é mobiliado, parcialmente mobiliado ou sem mobília?",
+      condicao: "Existe alguma condição/informação importante sobre a locação?",
+      caracteristica: "Existe alguma característica/diferencial que gostaria de informar?",
+      areaTotal: "Qual é a área total?",
+      medidas: "Sabe informar frente, fundos e laterais?",
+      condominioTipo: "Fica em condomínio ou loteamento? Responda SIM ou NÃO.",
+      condominioNome: "Qual é o nome do condomínio ou loteamento?",
+      unidade: "Qual é a unidade da área: m², hectares ou alqueires?",
+      benfeitorias: "Possui casa, galpão, curral ou outras construções/benfeitorias?",
+      agua: "Possui poço, nascente, rio, córrego, represa ou outra fonte de água?",
+      acesso: "Como é o acesso?",
+      energia: "Possui energia elétrica?",
+    };
+    return labels[key ?? ""] ?? "Informe a informação solicitada.";
   }
-  if (!draft.ownerName) return "Qual é o nome completo do proprietário?";
-  if (!draft.phone) return "Qual é o telefone ou WhatsApp do proprietário?";
-  if (!draft.email) return "Qual é o e-mail do proprietário? (opcional — digite NÃO SEI para continuar)";
-  if (!draft.intention && draft.profile !== "LOCADOR") return "O imóvel será para VENDA ou LOCAÇÃO?";
-  if (!draft.propertyType) return "Qual é o tipo do imóvel?";
-  if (!draft.address) return "Qual é o endereço do imóvel? Você pode informar vários dados na mesma mensagem.";
-  const answers = draft.answers ?? {};
-  if (!answers.caracteristicas) {
-    const type = (draft.propertyType ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    if (/terreno|lote/.test(type)) return "Informe a área total e, se souber, frente x fundos.";
-    if (/rural|sitio|chacara|fazenda/.test(type)) return "Informe a área, acesso/localização e benfeitorias existentes.";
-    if (/comercial|sala|loja|galpao/.test(type)) return "Informe a área, banheiros, vagas e características comerciais.";
-    return "Conte as principais características (quartos, suítes, banheiros, vagas, área e comodidades).";
-  }
-  if (draft.askingPrice === undefined) return draft.priceClarification ?? (draft.intention === "locacao" ? "Qual é o valor mensal pretendido?" : "Qual é o valor pretendido?");
-  if (!answers.documentacao) return "Qual é a situação da documentação? Se não souber, digite NÃO SEI.";
-  if (!answers.ocupacao && draft.intention === "locacao") return "O imóvel está ocupado ou desocupado? Se não souber, digite NÃO SEI.";
-  if (!answers.fachada) return "Envie uma foto da frente/fachada na próxima etapa. Ela será provisória para identificação da equipe.";
-  return "Revise os dados acima e responda CONFIRMAR para concluir ou CORRIGIR para alterar uma informação.";
+  const type = (draft.propertyType ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/apartamento|casa/.test(type)) return "O imóvel fica em condomínio? Responda SIM ou NÃO.";
+  if (/terreno|lote/.test(type)) return "Como está a documentação? Está em seu nome?";
+  if (/gleba|sitio|chacara|fazenda|rural/.test(type)) return "Como está a documentação? Está em seu nome?";
+  return "Como está a documentação do imóvel?";
 }
 
 export function buildPublicSaveInput(draft: PublicDraft) {
@@ -524,7 +614,6 @@ export function buildPublicSaveInput(draft: PublicDraft) {
     metragem: draft.answers?.areaUtil,
     ocupacao: draft.answers?.ocupacao,
     origem: "LINK_CAPTACAO" as const,
-    confirmacaoFinal: "CONFIRMADO" as const,
   };
 }
 
@@ -553,37 +642,17 @@ export function publicState(link: typeof schema.ownerIntakeLinks.$inferSelect, d
     question,
     draft: {
       profile: draft.profile ?? null,
-      ownerName: draft.ownerName ?? null,
-      phone: draft.profile === "CORRETOR" ? null : draft.phone ?? null,
-      email: draft.email ?? null,
+      step: draft.step ?? null,
       intention: draft.intention ?? null,
       propertyType: draft.propertyType ?? null,
-      address: draft.address ?? null,
       askingPrice: draft.askingPrice ?? null,
-    answers: draft.answers ?? {},
-    transcript: publicTranscript,
-      broker: draft.profile === "CORRETOR" ? {
-        name: draft.brokerName ?? null,
-        phone: draft.brokerPhone ?? null,
-        creci: draft.brokerCreci ?? null,
-      } : null,
+      answers: draft.answers ?? {},
+      transcript: publicTranscript,
     },
     status: link.status,
     capture: captureSerial ? { serial: captureSerial } : null,
     completed: Boolean(draft.complete || link.status === "concluido"),
     progress: draft.complete ? 100 : Math.min(95, Math.round((Object.keys(draft).length / 14) * 100)),
-    review: {
-      profile: draft.profile ?? null,
-      owner: draft.ownerName ?? null,
-      purpose: draft.intention ?? null,
-      propertyType: draft.propertyType ?? null,
-      location: draft.address ?? draft.addressParts?.district ?? null,
-      characteristics: draft.answers?.caracteristicas ?? null,
-      value: draft.askingPrice ?? null,
-      documentation: draft.answers?.documentacao ?? null,
-      occupancy: draft.answers?.ocupacao ?? null,
-      broker: draft.profile === "CORRETOR" ? { name: draft.brokerName ?? null, phone: draft.brokerPhone ?? null, creci: draft.brokerCreci ?? null } : null,
-    },
   };
 }
 
@@ -592,13 +661,84 @@ export type PublicTurnInput = {
   text: string;
   profile?: "PROPRIETARIO" | "LOCADOR" | "CORRETOR";
 };
+export type PublicFacadeInput = { token: string; facadeImage: string };
 const activePublicTurns = new Set<string>();
+export const LINK_CAPTACAO_BROKER_UNIDENTIFIED = "LINK_CAPTACAO_BROKER_UNIDENTIFIED";
+
+/** DB-injected terminal photo operation, shared by the HTTP route and the
+ * in-memory integration suite. Every write is guarded by the same link/capture
+ * identity, so a completed link can never receive a second media row. */
+export async function publicFacade(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: PublicFacadeInput,
+) {
+  return db.transaction(async (tx) => runPublicFacade(tx as never, input));
+}
+
+async function runPublicFacade(
+  db: Awaited<ReturnType<typeof getDb>>,
+  input: PublicFacadeInput,
+) {
+  const link = await findByLocator(db, input.token);
+  if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
+  const draft = safeDraft(link.draft);
+  if (draft.step !== "photo") throw new ORPCError("CONFLICT", { message: "A foto da fachada só pode ser enviada na última etapa" });
+  if (!link.captureId || !link.ownerId) throw new ORPCError("CONFLICT", { message: "A captação ainda não foi criada" });
+  const facade = decodeFacadeImage(input.facadeImage);
+  if (!facade) throw new ORPCError("BAD_REQUEST", { message: "Foto da fachada inválida" });
+  const [capture] = await db.select({
+    id: schema.propertyCaptures.id,
+    serial: schema.propertyCaptures.serial,
+    ownerId: schema.propertyCaptures.ownerId,
+    ownerPhotos: schema.propertyCaptures.ownerPhotos,
+  }).from(schema.propertyCaptures).where(and(
+    eq(schema.propertyCaptures.id, link.captureId),
+    eq(schema.propertyCaptures.ownerId, link.ownerId),
+  )).limit(1);
+  if (!capture) throw new ORPCError("NOT_FOUND", { message: "Captação indisponível" });
+  if (capture.ownerPhotos?.includes("Fachada provisória de captação")) {
+    throw new ORPCError("CONFLICT", { message: "A foto da fachada já foi recebida" });
+  }
+  const id = randomHex(12);
+  await db.insert(schema.media).values({
+    id, mime: facade.mime, size: facade.size, data: facade.data,
+    name: "fachada-link-captacao", variant: "original",
+  });
+  const photos = addOwnerPhotos(capture.ownerPhotos, [{
+    url: `/api/media/${id}`, caption: "Fachada provisória de captação",
+  }], { source: "proprietario" });
+  const completedAt = new Date();
+  const captureChanged = await db.update(schema.propertyCaptures).set({
+    ownerPhotos: serializeOwnerPhotos(photos),
+    registrationStatus: "CONCLUIDO",
+    registrationStatusAt: completedAt,
+    updatedAt: completedAt,
+  }).where(and(
+    eq(schema.propertyCaptures.id, capture.id),
+    eq(schema.propertyCaptures.ownerId, link.ownerId),
+    eq(schema.propertyCaptures.registrationStatus, "EM_ANDAMENTO"),
+  ));
+  if (!captureChanged.rowsAffected) throw new ORPCError("CONFLICT", { message: "A captação foi alterada por outra sessão" });
+  draft.answers = { ...(draft.answers ?? {}), fachada: "Foto provisória recebida" };
+  draft.complete = true;
+  draft.step = "completed";
+  const changed = await db.update(schema.ownerIntakeLinks).set({
+    draft: JSON.stringify(draft), status: "concluido", completedAt,
+    startedAt: link.startedAt ?? completedAt,
+  }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, link.status)));
+  if (!changed.rowsAffected) throw new ORPCError("CONFLICT", { message: "Este link já foi concluído" });
+  return {
+    ok: true,
+    message: "Cadastro concluído com sucesso! Recebemos as informações do seu imóvel e nossa equipe entrará em contato em breve.",
+    state: publicState({ ...link, draft: JSON.stringify(draft), status: "concluido" }, draft, capture.serial),
+  };
+}
 
 export async function publicCancel(
   db: Awaited<ReturnType<typeof getDb>>,
   input: { token: string; reason?: string },
 ) {
-  const link = await findByToken(db, input.token);
+  const link = await findByLocator(db, input.token);
   if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
   const now = new Date();
   const reason = input.reason || "Cancelada pelo participante";
@@ -628,9 +768,10 @@ export async function publicComplete(
   db: Awaited<ReturnType<typeof getDb>>,
   input: { token: string; propertyType?: string; intention?: "venda" | "alugar"; askingPrice?: number | null },
 ) {
-  const link = await findByToken(db, input.token);
+  const link = await findByLocator(db, input.token);
   if (!link || link.status === "cancelado" || link.status === "concluido") invalidLink();
   if (!link.captureId) throw new ORPCError("CONFLICT", { message: "A captação ainda não foi criada" });
+  if (safeDraft(link.draft).step !== "photo") throw new ORPCError("CONFLICT", { message: "A foto da fachada é obrigatória para concluir" });
   const now = new Date();
   await db.update(schema.propertyCaptures).set({
     ...(input.propertyType ? { propertyType: input.propertyType } : {}),
@@ -669,7 +810,7 @@ async function runPublicTurn(
   db: Awaited<ReturnType<typeof getDb>>,
   input: PublicTurnInput,
 ) {
-  const link = await findByToken(db, input.token);
+  const link = await findByLocator(db, input.token);
   if (!link || link.status === "concluido" || link.status === "cancelado") invalidLink();
   const current = safeDraft(link.draft);
   // A CRM-known phone is authoritative and is never replaced by a
@@ -685,14 +826,45 @@ async function runPublicTurn(
     profile: next.profile,
     draft: JSON.stringify(next),
     ownerName: next.ownerName ?? link.ownerName,
-    phone: next.phone ?? link.phone,
+    phone: next.profile === "CORRETOR" ? link.phone : (next.phone ?? link.phone),
   }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, link.status), link.draft ? eq(schema.ownerIntakeLinks.draft, link.draft) : isNull(schema.ownerIntakeLinks.draft)));
   if (!changed.rowsAffected) throw new ORPCError("CONFLICT", { message: "Este link recebeu outra resposta; retome o estado atualizado" });
   await ensureProgressiveCapture(db, { ...link, draft: JSON.stringify(next) }, next);
   const [fresh] = await db.select().from(schema.ownerIntakeLinks).where(eq(schema.ownerIntakeLinks.id, link.id)).limit(1);
   const currentLink = fresh ?? link;
+  if (currentLink.captureId) await syncPublicDraftCapture(db, currentLink.captureId, next);
   const [capture] = currentLink.captureId ? await db.select({ serial: schema.propertyCaptures.serial }).from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, currentLink.captureId)).limit(1) : [];
   return publicState(currentLink, next, capture?.serial ?? null);
+}
+
+async function syncPublicDraftCapture(
+  db: Awaited<ReturnType<typeof getDb>>,
+  captureId: number,
+  draft: PublicDraft,
+) {
+  const answers = draft.answers ?? {};
+  await db.update(schema.propertyCaptures).set({
+    ...(draft.propertyType ? { propertyType: draft.propertyType } : {}),
+    ...(draft.intention ? { intention: draft.intention } : {}),
+    ...(draft.askingPrice !== undefined ? { askingPrice: draft.askingPrice } : {}),
+    ...(draft.profile === "CORRETOR" ? {
+      brokerName: draft.brokerName ?? null,
+      brokerPhone: draft.brokerPhone ?? null,
+      brokerCreci: draft.brokerCreci ?? null,
+    } : {}),
+    ...(draft.address ? {
+      address: draft.address,
+      street: draft.addressParts?.street ?? draft.address,
+      ...(draft.addressParts?.cep ? { cep: draft.addressParts.cep } : {}),
+      ...(draft.addressParts?.number ? { number: draft.addressParts.number } : {}),
+      ...(draft.addressParts?.district ? { district: draft.addressParts.district } : {}),
+      ...(draft.addressParts?.city ? { city: draft.addressParts.city } : {}),
+      ...(draft.addressParts?.state ? { state: draft.addressParts.state } : {}),
+    } : {}),
+    notes: JSON.stringify({ source: "LINK_CAPTACAO", profile: draft.profile, answers }),
+    lastFieldAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(schema.propertyCaptures.id, captureId));
 }
 
 /** Ensures the first address-bearing answer creates the recoverable capture and
@@ -703,13 +875,18 @@ async function ensureProgressiveCapture(
   link: typeof schema.ownerIntakeLinks.$inferSelect,
   draft: PublicDraft,
 ) {
-  if (!draft.ownerName || !draft.phone || !draft.address) return;
+  const presenterReady = draft.profile === "CORRETOR"
+    ? Boolean(draft.brokerName && draft.brokerCreci && draft.address && (draft.brokerPhone || link.phone))
+    : Boolean(draft.ownerName && (draft.phone || link.phone) && draft.address);
+  if (!presenterReady) return;
   let captureId = link.captureId;
   let ownerId = link.ownerId;
   if (!captureId) {
-    const result = await intakeOwner(db, {
-      name: draft.ownerName,
-      phone: draft.phone,
+    const result = draft.profile === "CORRETOR"
+      ? await ensureBrokerPlaceholderCapture(db, link, draft)
+      : await intakeOwner(db, {
+      name: draft.ownerName!,
+      phone: draft.phone!,
       propertyType: draft.propertyType,
       intention: draft.intention === "locacao" ? "alugar" : "vender",
       cep: draft.addressParts?.cep ?? null,
@@ -752,6 +929,44 @@ async function ensureProgressiveCapture(
     ));
 }
 
+/** property_captures predates presenters and requires owner_id.  A broker
+ * submission therefore uses an explicitly-labelled neutral CRM owner, never
+ * the broker's identity or phone. */
+async function ensureBrokerPlaceholderCapture(
+  db: Awaited<ReturnType<typeof getDb>>,
+  link: typeof schema.ownerIntakeLinks.$inferSelect,
+  draft: PublicDraft,
+) {
+  const systemKey = LINK_CAPTACAO_BROKER_UNIDENTIFIED;
+  const placeholder = "Não informado";
+  await db.insert(schema.owners).values({
+    name: "Não informado",
+    systemKey,
+    phone: null,
+    notes: null,
+  }).onConflictDoNothing({ target: schema.owners.systemKey });
+  const [sentinel] = await db.select({ id: schema.owners.id }).from(schema.owners)
+    .where(eq(schema.owners.systemKey, systemKey)).limit(1);
+  const sentinelId = sentinel?.id;
+  if (!sentinelId) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível reservar o proprietário-sistema" });
+  const result = await intakeOwner(db, {
+    name: placeholder,
+    phone: "",
+    propertyType: draft.propertyType,
+    intention: draft.intention === "locacao" ? "alugar" : "vender",
+    cep: draft.addressParts?.cep ?? null,
+    street: draft.addressParts?.street ?? draft.address ?? null,
+    number: draft.addressParts?.number ?? null,
+    neighborhood: draft.addressParts?.district ?? null,
+    city: draft.addressParts?.city ?? null,
+    state: draft.addressParts?.state ?? null,
+    source: "LINK_CAPTACAO",
+    forceNewCapture: !link.captureId,
+    ownerIdOverride: sentinelId,
+  });
+  return result;
+}
+
 async function ensureProgressiveOwner(
   db: Awaited<ReturnType<typeof getDb>>,
   name: string | undefined,
@@ -779,9 +994,12 @@ async function applyPublicTurn(
   if (!text) return current;
   const fold = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const draft: PublicDraft = { ...current, answers: { ...(current.answers ?? {}) } };
+  return applyExactPublicTurn(draft, link, text, fold, selectedProfile);
+  /* Legacy extraction path retained below for old drafts. */
   if (selectedProfile && !current.profile) {
     draft.profile = selectedProfile;
     if (selectedProfile === "LOCADOR") draft.intention = "locacao";
+    if (selectedProfile === "PROPRIETARIO") draft.intention = "venda";
     if (selectedProfile === "CORRETOR" && link.phone) draft.brokerPhone = link.phone;
     if (selectedProfile !== "CORRETOR" && link.phone) draft.phone = link.phone;
     return draft;
@@ -796,126 +1014,112 @@ async function applyPublicTurn(
     }
     return draft;
   }
-  draft.transcript = [...(draft.transcript ?? []).slice(-19), { role: "user", text }];
-  if (/^(corrigir|errei|voltar)\b/i.test(fold)) {
-    draft.review = false;
-    draft.correction = text.replace(/^(corrigir|errei|voltar)\s*/i, "").trim() || undefined;
-    draft.correctionPrompt = !draft.correction;
+  return draft;
+}
+
+function addressPartsFromText(text: string) {
+  const cep = text.match(/\b\d{5}-?\d{3}\b/)?.[0];
+  const state = text.match(/(?:-|\/|,\s*)\s*([A-Z]{2})\b/)?.[1];
+  const number = text.match(/\b(?:n[ºo.]?\s*)?(\d{1,6})\b/i)?.[1];
+  const comma = text.split(",").map((part) => part.trim()).filter(Boolean);
+  return { cep, street: comma[0], number, district: comma[2], city: comma[3]?.replace(/\s*[-/]\s*[A-Z]{2}\b.*/, ""), state };
+}
+
+function normalizeType(text: string) {
+  const value = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/apartamento|apto/.test(value)) return "apartamento";
+  if (/casa/.test(value)) return "casa";
+  if (/terreno/.test(value)) return "terreno";
+  if (/lote/.test(value)) return "lote";
+  if (/gleba/.test(value)) return "gleba";
+  if (/sitio/.test(value)) return "sitio";
+  if (/chacara/.test(value)) return "chacara";
+  if (/fazenda/.test(value)) return "fazenda";
+  if (/imovel rural|rural/.test(value)) return "imovel rural";
+  return "outro";
+}
+
+function exactSequence(draft: PublicDraft) {
+  const type = draft.propertyType ?? "";
+  const residential = /apartamento|casa/.test(type);
+  const land = /terreno|lote/.test(type);
+  const rural = /gleba|sitio|chacara|fazenda|rural/.test(type);
+  const broker = draft.profile === "CORRETOR";
+  const docs = broker ? "documentacao" : "documentacao";
+  const common = residential
+    ? ["condominio", docs, "dormitorios", "suites", "banheiros", "vagas", "area", "preco", "condominioValor", "iptu", ...(draft.intention === "locacao" ? ["disponibilidade", "mobilia", "ocupacao", "condicao"] : ["ocupacao", "caracteristica"])]
+    : land
+      ? [docs, "areaTotal", "medidas", "condominioTipo", "condominioNome", "preco", "iptu", "caracteristica"]
+      : rural
+        ? [docs, "areaTotal", "unidade", "benfeitorias", "agua", "acesso", "energia", "preco", "caracteristica"]
+        : [docs, "caracteristica", "preco"];
+  const answers = draft.answers ?? {};
+  const negative = (value: string | undefined) => /^(nao|não|n|sem)\b/i.test(value ?? "");
+  if (negative(answers.condominio)) return common.filter((key) => key !== "condominioValor");
+  if (negative(answers.condominioTipo)) return common.filter((key) => key !== "condominioNome");
+  return common;
+}
+
+async function applyExactPublicTurn(
+  draft: PublicDraft,
+  link: typeof schema.ownerIntakeLinks.$inferSelect,
+  text: string,
+  fold: string,
+  selectedProfile?: PublicDraft["profile"],
+) {
+  if (selectedProfile && !draft.profile) {
+    draft.profile = selectedProfile;
+    draft.step = "name";
+    if (selectedProfile === "LOCADOR") draft.intention = "locacao";
+    if (selectedProfile === "PROPRIETARIO") draft.intention = "venda";
+    if (link.phone) draft.profile === "CORRETOR" ? (draft.brokerPhone = link.phone) : (draft.phone = link.phone);
     return draft;
   }
-  if (current.correctionPrompt) {
-    draft.correction = text;
-    draft.correctionPrompt = false;
+  if (!draft.profile) {
+    const profile = /corretor/.test(fold) ? "CORRETOR" : /locador/.test(fold) ? "LOCADOR" : /propriet/.test(fold) ? "PROPRIETARIO" : undefined;
+    if (!profile) return draft;
+    draft.profile = profile; draft.step = "name";
+    draft.intention = profile === "LOCADOR" ? "locacao" : profile === "PROPRIETARIO" ? "venda" : undefined;
+    if (link.phone) profile === "CORRETOR" ? (draft.brokerPhone = link.phone) : (draft.phone = link.phone);
     return draft;
   }
-  if (current.correction) {
-    const target = current.correction.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const value = unknown(text) ? "NÃO SEI" : text;
-    if (/quarto|dorm/.test(target)) draft.answers!.quartos = value;
-    else if (/suite/.test(target)) draft.answers!.suites = value;
-    else if (/banheiro/.test(target)) draft.answers!.banheiros = value;
-    else if (/vaga|garagem/.test(target)) draft.answers!.vagas = value;
-    else if (/valor|pre[cç]o/.test(target)) draft.askingPrice = unknown(text) ? null : parsePublicMoney(text);
-    else if (/nome/.test(target)) draft.ownerName = text;
-    else if (/telefone|celular|whats/.test(target)) draft.phone = text;
-    else if (/email|e-mail/.test(target)) draft.email = unknown(text) ? "NÃO SEI" : text;
-    else if (/endere[cç]o|rua|cep|bairro/.test(target)) draft.address = text;
-    else draft.answers!.caracteristicas = value;
-    if (draft.ownerName && draft.phone) {
-      await saveCaptureAnswer(db, {
-        phone: draft.phone, nome: draft.ownerName,
-        tipoImovel: draft.propertyType, negociacao: draft.intention, valorPretendido: draft.askingPrice,
-        cep: draft.addressParts?.cep, rua: draft.addressParts?.street ?? draft.address, numero: draft.addressParts?.number,
-        bairro: draft.addressParts?.district, cidade: draft.addressParts?.city, estado: draft.addressParts?.state,
-        dormitorios: draft.answers!.quartos, suites: draft.answers!.suites, banheiros: draft.answers!.banheiros,
-        vagas: draft.answers!.vagas, metragem: draft.answers!.areaUtil,
-        caracteristicas: draft.answers!.caracteristicas, origem: "LINK_CAPTACAO",
-      });
+  if (draft.step === "name") {
+    if (!plausiblePublicName(text)) return draft;
+    if (draft.profile === "CORRETOR") draft.brokerName = text; else draft.ownerName = text;
+    draft.step = (draft.profile === "CORRETOR" ? (draft.brokerPhone ? "creci" : "phone") : (draft.phone ? "address" : "phone"));
+    return draft;
+  }
+  if (draft.step === "phone") {
+    if (!/\d{8,}/.test(text.replace(/\D/g, ""))) return draft;
+    if (draft.profile === "CORRETOR") draft.brokerPhone = text; else draft.phone = text;
+    draft.step = draft.profile === "CORRETOR" ? "creci" : "address"; return draft;
+  }
+  if (draft.step === "creci") { if (unknown(text) || text.length < 2) return draft; draft.brokerCreci = text; draft.step = "address"; return draft; }
+  if (draft.step === "address") {
+    if (!sufficientPublicAddress(text)) return draft;
+    draft.address = text; draft.addressParts = addressPartsFromText(text); draft.step = "complement"; return draft;
+  }
+  if (draft.step === "complement") {
+    draft.answers!.complemento = unknown(text) || /^(nao|não|sem)$/i.test(text) ? "SEM COMPLEMENTO" : text;
+    draft.step = draft.profile === "CORRETOR" ? "intention" : "type"; return draft;
+  }
+  if (draft.step === "intention") {
+    if (/venda|vender/.test(fold)) draft.intention = "venda";
+    else if (/loca|alug/.test(fold)) draft.intention = "locacao";
+    else return draft;
+    draft.step = "type"; return draft;
+  }
+  if (draft.step === "type") { draft.propertyType = normalizeType(text); draft.step = "q0"; return draft; }
+  if (draft.step?.startsWith("q")) {
+    const sequence = exactSequence(draft); const index = Number(draft.step.slice(1));
+    const key = sequence[index]; if (key) {
+      draft.answers![key] = unknown(text) ? "NÃO SEI" : text;
+      if (key === "preco") draft.askingPrice = unknown(text) ? null : parsePublicMoney(text);
     }
-    draft.correction = undefined;
-    draft.correctionPrompt = false;
-    draft.review = true;
-    return draft;
-  }
-  if (draft.profile === "CORRETOR" && !draft.brokerName) { draft.brokerName = text; return draft; }
-  if (draft.profile === "CORRETOR" && !draft.brokerPhone) { draft.brokerPhone = text; return draft; }
-  if (draft.profile === "CORRETOR" && !draft.brokerCreci) { draft.brokerCreci = text; return draft; }
-  const extracted = await extractPublic(text, draft);
-  mergeExtracted(draft, extracted);
-  if (!draft.ownerName) {
-    const probableName = extracted.ownerName ?? (extracted.phone || extracted.propertyType ? text.split(",")[0] : text);
-    draft.ownerName = probableName;
-    return draft;
-  }
-  if (!draft.phone) {
-    draft.phone = extracted.phone ?? text;
-    const ownerId = await ensureProgressiveOwner(db, draft.ownerName, draft.phone);
-    if (ownerId) await db.update(schema.ownerIntakeLinks).set({ ownerId, ownerName: draft.ownerName, phone: link.phone ?? draft.phone })
-      .where(eq(schema.ownerIntakeLinks.id, link.id));
-    return draft;
-  }
-  if (!draft.email) {
-    draft.email = extracted.email ?? (unknown(text) ? "NÃO SEI" : text);
-    const ownerId = await ensureProgressiveOwner(db, draft.ownerName, draft.phone);
-    if (ownerId && draft.email && draft.email !== "NÃO SEI") await db.update(schema.owners).set({ email: draft.email }).where(eq(schema.owners.id, ownerId));
-    return draft;
-  }
-  if (!draft.intention && draft.profile !== "LOCADOR") {
-    draft.intention = extracted.intention ?? (/loca|alug/i.test(fold) ? "locacao" : "venda");
-    return draft;
-  }
-  if (!draft.propertyType) { draft.propertyType = extracted.propertyType ?? text; return draft; }
-  if (!draft.address) {
-    draft.address = text;
-    draft.addressParts = { cep: extracted.cep, street: extracted.street, number: extracted.number, district: extracted.district, city: extracted.city, state: extracted.state };
-    return draft;
-  }
-  if (extracted.bedrooms !== undefined) draft.answers!.quartos = String(extracted.bedrooms);
-  if (extracted.suites !== undefined) draft.answers!.suites = String(extracted.suites);
-  if (extracted.bathrooms !== undefined) draft.answers!.banheiros = String(extracted.bathrooms);
-  if (extracted.parking !== undefined) draft.answers!.vagas = String(extracted.parking);
-  if (extracted.areaUtil !== undefined) draft.answers!.areaUtil = String(extracted.areaUtil);
-  if (extracted.amenities) draft.answers!.comodidades = extracted.amenities;
-  if (extracted.documentation) draft.answers!.documentacao = extracted.documentation;
-  if (extracted.occupancy) draft.answers!.ocupacao = extracted.occupancy;
-  if (!draft.answers!.caracteristicas) {
-    draft.answers!.caracteristicas = extracted.amenities ?? text;
-    return draft;
-  }
-  if (draft.askingPrice === undefined) {
-    const parsed = extracted.askingPrice !== undefined ? extracted.askingPrice : (unknown(text) ? null : parsePublicMoney(text));
-    if (parsed !== null && parsed !== undefined && parsed < 10000 && !/(mil|k|r\$|\.)/i.test(text)) {
-      draft.priceClarification = "Esse valor parece ambíguo. Informe, por exemplo, 450 mil, R$ 450.000 ou 450k.";
-    } else {
-      draft.askingPrice = parsed;
-      draft.priceClarification = undefined;
-    }
-    return draft;
-  }
-  if (!draft.answers!.documentacao) { draft.answers!.documentacao = extracted.documentation ?? (unknown(text) ? "NÃO SEI" : text); return draft; }
-  if (draft.intention === "locacao" && !draft.answers!.ocupacao) { draft.answers!.ocupacao = text; return draft; }
-  if (!draft.answers!.fachada) return draft;
-  if (/^(confirmar|confirmo|ok)\b/i.test(fold)) {
-    draft.review = true;
-    if (!draft.review) return draft;
-  }
-  if (draft.review && /^(confirmar|confirmo|ok)\b/i.test(fold)) {
-    if (!draft.phone || !draft.ownerName) return draft;
-    const result = await saveCaptureAnswer(db, buildPublicSaveInput(draft));
-    if (result.saved && result.captureId && draft.profile === "CORRETOR" && (draft.brokerName || draft.brokerPhone || draft.brokerCreci)) {
-      await db.update(schema.propertyCaptures).set({
-        ...buildBrokerPatch(draft), updatedAt: new Date(),
-      }).where(eq(schema.propertyCaptures.id, result.captureId));
-    }
-    if (result.saved && result.captureId) {
-      await db.update(schema.ownerIntakeLinks).set({
-        captureId: result.captureId,
-        ownerId: result.snapshot.ownerId,
-        status: "concluido",
-        completedAt: new Date(),
-      }).where(and(eq(schema.ownerIntakeLinks.id, link.id), eq(schema.ownerIntakeLinks.status, "iniciado")));
-    }
-    if (result.saved && result.captureId) draft.complete = true;
+    const updatedSequence = exactSequence(draft);
+    const currentIndex = key ? updatedSequence.indexOf(key) : index;
+    const next = currentIndex + 1;
+    draft.step = next < updatedSequence.length ? `q${next}` : "photo";
   }
   return draft;
 }

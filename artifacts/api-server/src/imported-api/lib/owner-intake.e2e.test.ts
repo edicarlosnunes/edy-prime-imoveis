@@ -36,6 +36,7 @@ const DDL = [
   `CREATE TABLE owners (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     name TEXT NOT NULL,
+    system_key TEXT UNIQUE,
     phone TEXT,
     email TEXT,
     notes TEXT,

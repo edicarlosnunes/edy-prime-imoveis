@@ -46,7 +46,8 @@ export function useOwnerLinkTurn() {
   return useMutation({
     ...orpc.ownerIntakeLinks.turn.mutationOptions(),
     onSuccess: () => {
-      queryClient.invalidateQueries();
+      queryClient.invalidateQueries({ queryKey: orpc.ownerIntakeLinks.state.key() });
+      queryClient.refetchQueries({ queryKey: orpc.ownerIntakeLinks.state.key(), type: "active" });
     },
   });
 }
@@ -55,7 +56,10 @@ export function useOwnerLinkFacade() {
   const queryClient = useQueryClient();
   return useMutation({
     ...orpc.ownerIntakeLinks.facade.mutationOptions(),
-    onSuccess: () => queryClient.invalidateQueries(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: orpc.ownerIntakeLinks.state.key() });
+      queryClient.refetchQueries({ queryKey: orpc.ownerIntakeLinks.state.key(), type: "active" });
+    },
   });
 }
 

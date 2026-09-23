@@ -315,6 +315,7 @@ export const propertyRevalidations = sqliteTable(
 export const owners = sqliteTable("owners", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
+  systemKey: text("system_key"),
   phone: text("phone"),
   email: text("email"),
   notes: text("notes"),
@@ -343,7 +344,9 @@ export const owners = sqliteTable("owners", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => [
+  uniqueIndex("owners_system_key_idx").on(t.systemKey),
+]);
 
 /* --------------------------------------- links individuais de captação */
 
@@ -358,6 +361,7 @@ export const ownerIntakeLinks = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     tokenHash: text("token_hash").notNull().unique(),
+    shortCode: text("short_code"),
     ownerName: text("owner_name").notNull(),
     phone: text("phone"),
     /** aguardando | iniciado | concluido */
@@ -376,6 +380,7 @@ export const ownerIntakeLinks = sqliteTable(
   },
   (t) => [
     uniqueIndex("owner_intake_links_token_idx").on(t.tokenHash),
+    uniqueIndex("owner_intake_links_short_code_idx").on(t.shortCode),
     index("owner_intake_links_status_idx").on(t.status),
   ],
 );

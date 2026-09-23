@@ -1,179 +1,140 @@
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { sql } from "drizzle-orm";
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { unlinkSync } from "node:fs";
 import * as schema from "../database/schema";
 import { sha256Hex } from "../lib/auth";
-import { publicCancel, publicComplete, publicTurn } from "./owner-intake-links";
+import { publicCancel, publicFacade, publicTurn } from "./owner-intake-links";
 
-/*
- * This suite deliberately uses only an in-memory libSQL database.  It is a
- * route integration test: every assertion below reads rows written by the
- * real public-turn/capture/serial code, rather than testing question helpers.
- */
 const DDL = [
-  `CREATE TABLE owners (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, email TEXT, notes TEXT, document TEXT, rg TEXT, capture_status TEXT NOT NULL DEFAULT 'prospeccao', possible_duplicate INTEGER NOT NULL DEFAULT 0, duplicate_of_owner_id INTEGER, duplicate_note TEXT, created_at INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE owners (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, system_key TEXT UNIQUE, phone TEXT, email TEXT, notes TEXT, document TEXT, rg TEXT, capture_status TEXT NOT NULL DEFAULT 'prospeccao', possible_duplicate INTEGER NOT NULL DEFAULT 0, duplicate_of_owner_id INTEGER, duplicate_note TEXT, created_at INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE property_captures (id INTEGER PRIMARY KEY AUTOINCREMENT, owner_id INTEGER NOT NULL, city TEXT NOT NULL DEFAULT 'Praia Grande', district TEXT, address TEXT, property_type TEXT, serial TEXT, cep TEXT, street TEXT, number TEXT, state TEXT, complements TEXT, unit_key TEXT, doc_validated_by TEXT, doc_validated_at INTEGER, doc_validation_note TEXT, owner_photos TEXT, asking_price REAL, estimated_price REAL, source TEXT NOT NULL DEFAULT 'manual', stage TEXT NOT NULL DEFAULT 'novo_contato', intention TEXT, next_action TEXT, next_action_at INTEGER, appraisal_status TEXT NOT NULL DEFAULT 'pendente', appraisal_at INTEGER, appraisal_note TEXT, doc_status TEXT NOT NULL DEFAULT 'nao_iniciado', registration_status TEXT NOT NULL DEFAULT 'NOVO', registration_status_at INTEGER, completeness INTEGER NOT NULL DEFAULT 0, last_field_at INTEGER, address_key TEXT, building_key TEXT, outside_priority_area INTEGER NOT NULL DEFAULT 0, duplicate_of_capture_id INTEGER, duplicate_note TEXT, notes TEXT, lost_reason TEXT, lost_detail TEXT, converted_property_id INTEGER, converted_at INTEGER, stage_changed_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0, broker_name TEXT, broker_phone TEXT, broker_creci TEXT)`,
   `CREATE TABLE tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'visita', due_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pendente', lead_id INTEGER, client_id INTEGER, property_id INTEGER, capture_id INTEGER, notes TEXT, created_at INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE settings (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT NOT NULL DEFAULT '', broker_name TEXT NOT NULL DEFAULT '', whatsapp TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', creci TEXT NOT NULL DEFAULT '', cnai TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', instagram TEXT NOT NULL DEFAULT '', facebook TEXT NOT NULL DEFAULT '', commission_rate REAL NOT NULL DEFAULT 6, priority_cities TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE properties (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL, title TEXT NOT NULL, purpose TEXT NOT NULL DEFAULT 'venda', type TEXT NOT NULL DEFAULT 'casa', price REAL NOT NULL DEFAULT 0, district TEXT NOT NULL DEFAULT '', city TEXT NOT NULL DEFAULT 'Praia Grande', published INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE crm_serials (id INTEGER PRIMARY KEY, next INTEGER NOT NULL DEFAULT 0)`,
-  `CREATE TABLE owner_intake_links (id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL UNIQUE, owner_name TEXT NOT NULL, phone TEXT, status TEXT NOT NULL DEFAULT 'aguardando', profile TEXT, draft TEXT, created_at INTEGER NOT NULL DEFAULT 0, started_at INTEGER, completed_at INTEGER, cancellation_reason TEXT, owner_id INTEGER, capture_id INTEGER)`,
+  `CREATE TABLE media (id TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, data TEXT NOT NULL, name TEXT, alt TEXT, original_id TEXT, variant TEXT, created_at INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE owner_intake_links (id INTEGER PRIMARY KEY AUTOINCREMENT, token_hash TEXT NOT NULL UNIQUE, short_code TEXT UNIQUE, owner_name TEXT NOT NULL, phone TEXT, status TEXT NOT NULL DEFAULT 'aguardando', profile TEXT, draft TEXT, created_at INTEGER NOT NULL DEFAULT 0, started_at INTEGER, completed_at INTEGER, cancellation_reason TEXT, owner_id INTEGER, capture_id INTEGER)`,
 ];
-
-type TestDb = ReturnType<typeof drizzle<typeof schema>>;
-let db: TestDb;
+let db: ReturnType<typeof drizzle<typeof schema>>;
 let sequence = 0;
-
+let dbPath = "";
+let dbCounter = 0;
 beforeEach(async () => {
-  db = drizzle(createClient({ url: ":memory:" }), { schema });
+  dbPath = `/tmp/owner-intake-links-${process.pid}-${++dbCounter}.db`;
+  db = drizzle(createClient({ url: `file:${dbPath}` }), { schema });
   for (const statement of DDL) await db.run(sql.raw(statement));
   await db.run(sql`INSERT INTO settings (priority_cities) VALUES ('Praia Grande')`);
   sequence = 0;
 });
-
-async function link(phone: string | null = null) {
+afterEach(() => {
+  try { unlinkSync(dbPath); } catch { /* already removed */ }
+});
+async function link(phone: string | null = null, shortCode?: string) {
   const token = `${(++sequence).toString(16).padStart(2, "0")}${"a".repeat(62)}`;
-  await db.insert(schema.ownerIntakeLinks).values({
-    tokenHash: await sha256Hex(token),
-    ownerName: "",
-    phone,
-  });
+  await db.insert(schema.ownerIntakeLinks).values({ tokenHash: await sha256Hex(token), shortCode, ownerName: "", phone });
   return token;
 }
-
-async function row<T>(query: ReturnType<typeof sql>) {
-  const result = await db.all<T>(query);
-  return result[0];
+async function state(token: string) {
+  const row = await db.all<{ draft: string }>(sql`SELECT draft FROM owner_intake_links WHERE token_hash = ${await sha256Hex(token)}`);
+  return row[0]?.draft ? JSON.parse(row[0].draft) : {};
+}
+const answerFor = (question: string) => {
+  if (/nome completo/i.test(question)) return "Ana Souza";
+  if (/CRECI/i.test(question)) return "CRECI 12345";
+  if (/telefone|WhatsApp/i.test(question)) return "5513997141174";
+  if (/endereço/i.test(question)) return "Rua das Flores, 10, Centro, Praia Grande - SP";
+  if (/complemento/i.test(question)) return "SEM COMPLEMENTO";
+  if (/valor.*(venda|aluguel)/i.test(question)) return "450 mil";
+  if (/sendo cadastrado/i.test(question)) return /VENDA/.test(question) ? "VENDA" : "LOCAÇÃO";
+  if (/tipo/i.test(question)) return "apartamento";
+  if (/condomínio\\?/i.test(question)) return "NÃO";
+  if (/documentação/i.test(question)) return "Documentação regular";
+  if (/dormitórios/i.test(question)) return "2";
+  if (/suítes/i.test(question)) return "0";
+  if (/banheiros/i.test(question)) return "2";
+  if (/vagas/i.test(question)) return "1";
+  if (/área útil/i.test(question)) return "78 m²";
+  if (/área total/i.test(question)) return "500 m²";
+  if (/frente/i.test(question)) return "10 x 50";
+  if (/condomínio/i.test(question)) return "0";
+  if (/IPTU/i.test(question)) return "1200";
+  if (/ocupad/i.test(question)) return "desocupado";
+  if (/disponível/i.test(question)) return "SIM";
+  if (/mobiliado/i.test(question)) return "sem mobília";
+  if (/característica|condição|informação/i.test(question)) return "Nenhuma";
+  if (/unidade/i.test(question)) return "hectares";
+  if (/construções|benfeitorias|água|acesso|energia/i.test(question)) return "não";
+  return "NÃO SEI";
+};
+async function drive(token: string, profile: "PROPRIETARIO" | "LOCADOR" | "CORRETOR", type = "apartamento", purpose?: string) {
+  let result = await publicTurn(db as never, { token, text: profile, profile });
+  for (let i = 0; i < 40; i++) {
+    const draft = await state(token);
+    if (draft.step === "photo") return draft;
+    const question = (result as any).question as string;
+    let answer = answerFor(question);
+    if (/tipo/i.test(question)) answer = type;
+    if (purpose && /sendo cadastrado/i.test(question)) answer = purpose;
+    result = await publicTurn(db as never, { token, text: answer });
+  }
+  throw new Error("roteiro não chegou à foto");
 }
 
-async function reachAddress(token: string, name: string, address: string, profile: "PROPRIETARIO" | "LOCADOR" = "LOCADOR") {
-  await publicTurn(db as never, { token, text: profile, profile });
-  await publicTurn(db as never, { token, text: name });
-  await publicTurn(db as never, { token, text: "email@example.com" });
-  await publicTurn(db as never, { token, text: "casa" });
-  return publicTurn(db as never, { token, text: address });
-}
-
-describe("LINK_CAPTACAO progressive DB integration A-J", () => {
-  test("A — CRM-known phone remains after abandon", async () => {
-    const token = await link("5513997141174");
-    await publicTurn(db as never, { token, text: "PROPRIETARIO", profile: "PROPRIETARIO" });
-    await publicTurn(db as never, { token, text: "Ana Souza" });
-    const saved = await row<{ phone: string }>(sql`SELECT phone FROM owner_intake_links`);
-    expect(saved?.phone).toBe("5513997141174");
+describe("LINK_CAPTACAO — roteiro exato A-U", () => {
+  test("1 owner apartment sale persists progressive answers and price", async () => {
+    const token = await link("5513997141174"); const draft = await drive(token, "PROPRIETARIO");
+    expect(draft.propertyType).toBe("apartamento"); expect(draft.intention).toBe("venda"); expect(draft.askingPrice).toBe(450000);
+    expect(draft.answers.dormitorios).toBe("2");
+    expect((await db.all(sql`SELECT count(*) n FROM property_captures`))[0]!.n).toBe(1);
   });
-
-  test("B — profile and participant name persist immediately", async () => {
-    const token = await link();
-    await publicTurn(db as never, { token, text: "CORRETOR", profile: "CORRETOR" });
-    await publicTurn(db as never, { token, text: "Bruno Corretor" });
-    const saved = await row<{ profile: string; draft: string }>(sql`SELECT profile, draft FROM owner_intake_links`);
-    expect(saved?.profile).toBe("CORRETOR");
-    expect(JSON.parse(saved!.draft).brokerName).toBe("Bruno Corretor");
+  test("2 owner land skips residential and condominium-name fields without skipping price", async () => { const t = await link("5513997141174"); const d = await drive(t, "PROPRIETARIO", "terreno"); expect(d.answers.dormitorios).toBeUndefined(); expect(d.answers.condominioNome).toBeUndefined(); expect(d.propertyType).toBe("terreno"); expect(d.askingPrice).toBe(450000); });
+  test("3 owner rural collects rural fields", async () => { const t = await link("5513997141174"); const d = await drive(t, "PROPRIETARIO", "sitio"); expect(d.answers.areaTotal).toBeDefined(); expect(d.answers.agua).toBeDefined(); });
+  test("4 locador apartment collects rent-specific fields", async () => { const t = await link("5513997141174"); const d = await drive(t, "LOCADOR"); expect(d.intention).toBe("locacao"); expect(d.answers.disponibilidade).toBeDefined(); expect(d.answers.mobilia).toBeDefined(); });
+  test("5 locador land", async () => { const t = await link("5513997141174"); const d = await drive(t, "LOCADOR", "lote"); expect(d.answers.dormitorios).toBeUndefined(); expect(d.intention).toBe("locacao"); });
+  test("6 locador rural", async () => { const t = await link("5513997141174"); const d = await drive(t, "LOCADOR", "fazenda"); expect(d.answers.energia).toBeDefined(); });
+  test("7 broker sale reuses the hidden system owner even beyond the ordinary owner scan limit", async () => {
+    await db.run(sql.raw(`WITH RECURSIVE seq(n) AS (
+      SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 501
+    ) INSERT INTO owners (name) SELECT 'Owner ' || n FROM seq`));
+    const t = await link();
+    const d = await drive(t, "CORRETOR", "casa", "VENDA");
+    expect(d.brokerName).toBe("Ana Souza");
+    expect(d.brokerCreci).toContain("12345");
+    expect(d.ownerName).toBeUndefined();
+    const sentinels = await db.all<{ system_key: string; notes: string | null }>(
+      sql`SELECT system_key, notes FROM owners WHERE system_key = 'LINK_CAPTACAO_BROKER_UNIDENTIFIED'`,
+    );
+    expect(sentinels).toHaveLength(1);
+    expect(sentinels[0]?.notes ?? "").not.toContain("Ana Souza");
+    expect((await db.all<{ n: number }>(sql`SELECT count(*) n FROM owners WHERE name = 'Não informado' AND system_key IS NULL`))[0]!.n).toBe(0);
   });
-
-  test("C — address creates property_capture, atomic serial, owner and link", async () => {
-    const token = await link("5513997141174");
-    const state = await reachAddress(token, "Ana Souza", "Rua A, 10, Centro, Praia Grande - SP");
-    const capture = await row<{ id: number; serial: string; owner_id: number; registration_status: string }>(sql`SELECT id, serial, owner_id, registration_status FROM property_captures`);
-    const saved = await row<{ owner_id: number; capture_id: number }>(sql`SELECT owner_id, capture_id FROM owner_intake_links`);
-    expect(capture?.serial).toMatch(/^[A-Z]{2}-\d{4}-\d{6}$/);
-    expect(capture?.registration_status).toBe("EM_ANDAMENTO");
-    expect(saved?.owner_id).toBe(capture?.owner_id);
-    expect(saved?.capture_id).toBe(capture?.id);
-    expect(state.capture?.serial).toBe(capture?.serial);
-  });
-
-  test("D — incomplete capture is queryable as EM_ANDAMENTO with lastFieldAt", async () => {
-    const token = await link("5513997141174");
-    await reachAddress(token, "Ana Souza", "Rua D, 40, Centro");
-    const capture = await row<{ registration_status: string; last_field_at: number }>(sql`SELECT registration_status, last_field_at FROM property_captures`);
-    expect(capture?.registration_status).toBe("EM_ANDAMENTO");
-    expect(capture?.last_field_at).toBeTruthy();
-  });
-
-  test("E — resume same link keeps capture and EPI", async () => {
-    const token = await link("5513997141174");
-    await reachAddress(token, "Ana Souza", "Rua E, 50, Centro");
-    const before = await row<{ id: number; serial: string }>(sql`SELECT id, serial FROM property_captures`);
-    await publicTurn(db as never, { token, text: "2 quartos e 1 vaga" });
-    const after = await row<{ id: number; serial: string }>(sql`SELECT id, serial FROM property_captures`);
-    expect(after).toEqual(before);
-  });
-
-  test("F — same owner and second property creates capture/EPI, not owner", async () => {
-    const first = await link("5513997141174");
-    await reachAddress(first, "Ana Souza", "11701-060 Rua F, 60, Centro");
-    const second = await link("5513997141174");
-    await db.update(schema.ownerIntakeLinks).set({
-      profile: "LOCADOR",
-      phone: "5513997141174",
-      draft: JSON.stringify({ profile: "LOCADOR", ownerName: "Ana Souza", phone: "5513997141174", email: "email@example.com", intention: "locacao", propertyType: "casa", answers: {} }),
-    }).where(sql`token_hash = ${await sha256Hex(second)}`);
-    await publicTurn(db as never, { token: second, text: "11701-061 Rua F2, 61, Centro" });
-    const counts = await row<{ owners: number; captures: number }>(sql`SELECT (SELECT count(*) FROM owners) owners, (SELECT count(*) FROM property_captures) captures`);
-    const serials = await db.all<{ serial: string }>(sql`SELECT serial FROM property_captures ORDER BY id`);
-    expect(counts).toEqual({ owners: 1, captures: 2 });
-    expect(serials[0]?.serial).not.toBe(serials[1]?.serial);
-  });
-
-  test("G — CORRETOR fields remain broker fields", async () => {
-    const token = await link();
-    await publicTurn(db as never, { token, text: "CORRETOR", profile: "CORRETOR" });
-    await publicTurn(db as never, { token, text: "Corretor Silva" });
-    await publicTurn(db as never, { token, text: "11988887777" });
-    await publicTurn(db as never, { token, text: "12345" });
-    await publicTurn(db as never, { token, text: "Ana Souza" });
-    await publicTurn(db as never, { token, text: "5513997141174" });
-    await publicTurn(db as never, { token, text: "ana@example.com" });
-    await publicTurn(db as never, { token, text: "venda" });
-    await publicTurn(db as never, { token, text: "casa" });
-    await publicTurn(db as never, { token, text: "Rua G, 70, Centro" });
-    const capture = await row<{ broker_name: string; broker_phone: string }>(sql`SELECT broker_name, broker_phone FROM property_captures`);
-    const owner = await row<{ name: string; phone: string }>(sql`SELECT name, phone FROM owners`);
-    expect(capture?.broker_name).toBe("Corretor Silva");
-    expect(capture?.broker_phone).toBe("11988887777");
-    expect(owner?.name).toBe("Ana Souza");
-    expect(owner?.phone).toBe("5513997141174");
-  });
-
-  test("H — cancellation persists reason, pauses capture, and never publishes property", async () => {
-    const token = await link("5513997141174");
-    await reachAddress(token, "Ana Souza", "Rua H, 80, Centro");
-    await publicCancel(db as never, { token, reason: "Desistiu" });
-    const saved = await row<{ status: string; cancellation_reason: string }>(sql`SELECT status, cancellation_reason FROM owner_intake_links`);
-    const capture = await row<{ registration_status: string; lost_reason: string }>(sql`SELECT registration_status, lost_reason FROM property_captures`);
-    expect(saved).toEqual({ status: "cancelado", cancellation_reason: "Desistiu" });
-    expect(capture?.registration_status).toBe("PAUSADO");
-    expect(capture?.lost_reason).toBe("CANCELADO");
-    expect(await row<{ n: number }>(sql`SELECT count(*) n FROM properties`)).toEqual({ n: 0 });
-  });
-
-  test("I — tokens isolate; same-token concurrent turn has one winner", async () => {
-    const a = await link("5513997141174");
-    const b = await link("5513997141175");
-    await Promise.all([reachAddress(a, "Ana A", "Rua IA, 1, Centro"), reachAddress(b, "Ana B", "Rua IB, 2, Centro")]);
-    const captures = await db.all<{ owner_id: number; serial: string }>(sql`SELECT owner_id, serial FROM property_captures ORDER BY id`);
-    expect(captures).toHaveLength(2);
-    expect(captures[0]?.serial).not.toBe(captures[1]?.serial);
-    const c = await link("5513997141176");
-    await publicTurn(db as never, { token: c, text: "PROPRIETARIO", profile: "PROPRIETARIO" });
-    const results = await Promise.allSettled([publicTurn(db as never, { token: c, text: "Ana C" }), publicTurn(db as never, { token: c, text: "Ana C" })]);
+  test("8 broker rent", async () => { const t = await link(); const d = await drive(t, "CORRETOR", "casa", "LOCAÇÃO"); expect(d.intention).toBe("locacao"); expect(d.ownerName).toBeUndefined(); });
+  test("9 known phone, invalid name and insufficient address do not advance", async () => { const t = await link("5513997141174"); await publicTurn(db as never, { token: t, text: "PROPRIETARIO", profile: "PROPRIETARIO" }); await publicTurn(db as never, { token: t, text: "abc" }); expect((await state(t)).step).toBe("name"); await publicTurn(db as never, { token: t, text: "Ana Souza" }); expect((await state(t)).step).toBe("address"); await publicTurn(db as never, { token: t, text: "Rua A" }); expect((await state(t)).step).toBe("address"); expect((await db.all(sql`SELECT count(*) n FROM property_captures`))[0]!.n).toBe(0); });
+  test("10 zero and unknown stay distinct and bedroom is not price", async () => { const t = await link("5513997141174"); const d = await drive(t, "PROPRIETARIO"); expect(d.answers.dormitorios).toBe("2"); expect(d.askingPrice).toBe(450000); const t2 = await link("5513997141175"); await drive(t2, "PROPRIETARIO", "terreno"); expect((await state(t2)).askingPrice).not.toBe(2); });
+  test("11 facade persists on the same EPI and is terminal/idempotently guarded", async () => {
+    const t = await link("5513997141174");
+    await drive(t, "PROPRIETARIO");
+    const before = (await db.all<{ id: number; serial: string }>(sql`SELECT id,serial FROM property_captures`))[0]!;
+    const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+    const result = await publicFacade(db as never, { token: t, facadeImage: image });
+    expect(result.message).toBe("Cadastro concluído com sucesso! Recebemos as informações do seu imóvel e nossa equipe entrará em contato em breve.");
+    const after = (await db.all<{ id: number; serial: string; registration_status: string; owner_photos: string }>(sql`SELECT id,serial,registration_status,owner_photos FROM property_captures`))[0]!;
+    expect(after.id).toBe(before.id); expect(after.serial).toBe(before.serial); expect(after.registration_status).toBe("CONCLUIDO"); expect(after.owner_photos).toContain("/api/media/");
+    expect((await db.all<{ n: number }>(sql`SELECT count(*) n FROM media`))[0]!.n).toBe(1);
+    await expect(publicTurn(db as never, { token: t, text: "qualquer coisa" })).rejects.toThrow();
+    await expect(publicFacade(db as never, { token: t, facadeImage: image })).rejects.toThrow();
+    expect((await db.all<{ n: number }>(sql`SELECT count(*) n FROM media`))[0]!.n).toBe(1);
+    const concurrent = await link("5513997141175", "def456def456def");
+    await drive(concurrent, "PROPRIETARIO");
+    const results = await Promise.allSettled([
+      publicFacade(db as never, { token: concurrent, facadeImage: image }),
+      publicFacade(db as never, { token: "def456def456def", facadeImage: image }),
+    ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-    expect(await row<{ n: number }>(sql`SELECT count(*) n FROM owner_intake_links WHERE token_hash = ${await sha256Hex(c)}`)).toEqual({ n: 1 });
+    expect((await db.all<{ n: number }>(sql`SELECT count(*) n FROM media`))[0]!.n).toBe(2);
   });
-
-  test("J — confirmation completes the same linked capture", async () => {
-    const token = await link("5513997141174");
-    await reachAddress(token, "Ana Souza", "Rua J, 90, Centro");
-    const before = await row<{ id: number; serial: string }>(sql`SELECT id, serial FROM property_captures`);
-    const completed = await publicComplete(db as never, { token, propertyType: "casa", intention: "venda", askingPrice: 450000 });
-    const after = await row<{ id: number; serial: string; registration_status: string }>(sql`SELECT id, serial, registration_status FROM property_captures`);
-    expect(completed.captureId).toBe(before?.id);
-    expect(after?.id).toBe(before?.id);
-    expect(after?.serial).toBe(before?.serial);
-    expect(after?.registration_status).toBe("CONCLUIDO");
-    expect(await row<{ n: number }>(sql`SELECT count(*) n FROM owner_intake_links WHERE status = 'concluido'`)).toEqual({ n: 1 });
-  });
+  test("12 links isolate and resume same EPI", async () => { const a = await link("5513997141174"); await publicTurn(db as never, { token: a, text: "PROPRIETARIO", profile: "PROPRIETARIO" }); await publicTurn(db as never, { token: a, text: "Ana Souza" }); await publicTurn(db as never, { token: a, text: "Rua A, 1, Centro, Praia Grande - SP" }); const first = await db.all<{ id: number; serial: string }>(sql`SELECT id,serial FROM property_captures`); await publicTurn(db as never, { token: a, text: "SEM COMPLEMENTO" }); const second = await db.all<{ id: number; serial: string }>(sql`SELECT id,serial FROM property_captures`); expect(second).toEqual(first); });
+  test("13 short alias and legacy token resolve the same state", async () => { const t = await link("5513997141174", "abc123abc123abc"); await publicTurn(db as never, { token: t, text: "PROPRIETARIO", profile: "PROPRIETARIO" }); const alias = await (await import("./owner-intake-links")).publicTurn(db as never, { token: "abc123abc123abc", text: "Ana Souza" }); expect(alias).toBeDefined(); expect(JSON.stringify(alias)).not.toContain(t); expect(JSON.stringify(alias)).not.toContain("tokenHash"); });
 });

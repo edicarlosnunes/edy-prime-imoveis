@@ -33,7 +33,7 @@ function Generator() {
   async function generate() {
     try {
       const res = await create.mutateAsync({});
-      const url = `${window.location.origin}${res.path}`;
+      const url = `${window.location.origin}${res.shortPath}`;
       setCreated({ url });
       setCopied(false);
     } catch (e) {

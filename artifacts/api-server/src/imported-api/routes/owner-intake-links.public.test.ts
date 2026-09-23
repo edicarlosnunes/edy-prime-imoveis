@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildBrokerPatch, buildPublicSaveInput, deterministicPublicExtract, nextPublicQuestion, parsePublicMoney, publicState, publicTokenPattern, type PublicDraft } from "./owner-intake-links";
+import { buildBrokerPatch, buildPublicSaveInput, deterministicPublicExtract, nextPublicQuestion, parsePublicMoney, publicState, publicTokenPattern, sufficientPublicAddress, type PublicDraft } from "./owner-intake-links";
 
 describe("motor público LINK_CAPTACAO", () => {
   test("interpreta vários campos de uma mensagem sem confundir os números", () => {
@@ -23,11 +23,8 @@ describe("motor público LINK_CAPTACAO", () => {
     expect(deterministicPublicExtract("NÃO SEI").askingPrice).toBeNull();
   });
 
-  test("usa o tipo para escolher a pergunta e oferece correção dedicada", () => {
-    expect(nextPublicQuestion({ profile: "PROPRIETARIO", ownerName: "Ana", phone: "119", email: "a@b.com", intention: "venda", propertyType: "terreno", address: "Rua A" })).toContain("área total");
-    expect(nextPublicQuestion({ profile: "LOCADOR", intention: "locacao", correctionPrompt: true })).toContain("Qual informação");
-    expect(nextPublicQuestion({ profile: "LOCADOR", intention: "locacao", correction: "valor" })).toContain("novo valor");
-    expect(nextPublicQuestion({ profile: "CORRETOR", brokerName: "B", brokerPhone: "11", brokerCreci: "123", ownerName: "O", phone: "22", email: "o@e.com", intention: "venda", propertyType: "apartamento", address: "Rua A", answers: { caracteristicas: "2 quartos", documentacao: "NÃO SEI", fachada: "recebida" }, askingPrice: 450000, review: true })).toContain("Revise");
+  test("usa o tipo para escolher a pergunta", () => {
+    expect(nextPublicQuestion({ profile: "PROPRIETARIO", ownerName: "Ana", phone: "119", email: "a@b.com", intention: "venda", propertyType: "terreno", address: "Rua A", answers: { complemento: "SEM COMPLEMENTO" } })).toContain("documentação");
   });
 
   test("proprietário pode declarar venda sem converter para compra", () => {
@@ -41,7 +38,7 @@ describe("motor público LINK_CAPTACAO", () => {
 
   test("locador tem finalidade automática e pergunta de ocupação", () => {
     expect(nextPublicQuestion({ profile: "LOCADOR" })).toContain("nome completo");
-    expect(nextPublicQuestion({ profile: "LOCADOR", ownerName: "O", phone: "11", email: "o@e.com", intention: "locacao", propertyType: "casa", address: "Rua A", answers: { caracteristicas: "2 quartos", documentacao: "NÃO SEI" }, askingPrice: 1800 })).toContain("ocupado");
+    expect(nextPublicQuestion({ profile: "LOCADOR", ownerName: "O", phone: "11", email: "o@e.com", intention: "locacao", propertyType: "casa", address: "Rua A", answers: { complemento: "SEM COMPLEMENTO", documentacao: "NÃO SEI" }, askingPrice: 1800 })).toContain("condomínio");
   });
 
   test("locador extrai ocupado e desocupado como valores declarados", () => {
@@ -54,13 +51,6 @@ describe("motor público LINK_CAPTACAO", () => {
     expect(buildBrokerPatch(draft).brokerPhone).toBe("11999990000");
     expect(buildPublicSaveInput(draft).phone).toBe("13988887777");
     expect(buildBrokerPatch(draft).brokerPhone).not.toBe(buildPublicSaveInput(draft).phone);
-  });
-
-  test("revisão expõe dados separados de corretor e proprietário", () => {
-    const state = publicState({ status: "iniciado" } as never, { profile: "CORRETOR", brokerName: "B", ownerName: "O", propertyType: "casa", address: "Rua A", intention: "venda" });
-    expect(state.review.broker?.name).toBe("B");
-    expect(state.review.owner).toBe("O");
-    expect(state.review.propertyType).toBe("casa");
   });
 
   test("resposta vazia não cria transcript nem avança", () => {
@@ -77,26 +67,20 @@ describe("motor público LINK_CAPTACAO", () => {
 
   test("NÃO SEI permanece nulo/desconhecido", () => {
     expect(deterministicPublicExtract("NÃO SEI").askingPrice).toBeNull();
-    expect(nextPublicQuestion({ profile: "PROPRIETARIO", ownerName: "O", phone: "11", email: "NÃO SEI" })).toContain("VENDA");
-  });
-
-  test("correção dedicada não altera o campo de outro domínio", () => {
-    const draft: PublicDraft = { profile: "PROPRIETARIO", answers: { quartos: "2", vagas: "1" }, correction: "quartos" };
-    expect(nextPublicQuestion(draft)).toContain("quartos");
-    expect(draft.answers?.vagas).toBe("1");
+    expect(nextPublicQuestion({ profile: "PROPRIETARIO", ownerName: "O", phone: "11", email: "NÃO SEI" })).toContain("endereço");
   });
 
   test("retomada usa próximo dado faltante e transcript persistido", () => {
     const state = publicState({ status: "iniciado" } as never, { profile: "PROPRIETARIO", ownerName: "O", phone: "11", transcript: [{ role: "user", text: "O" }, { role: "assistant", text: "telefone" }] });
     expect(state.draft.transcript).toHaveLength(2);
-    expect(state.question).toContain("e-mail");
+    expect(state.question).toContain("endereço");
   });
 
   test("dois drafts públicos permanecem isolados", () => {
     const a = publicState({ status: "iniciado" } as never, { profile: "PROPRIETARIO", ownerName: "A" });
     const b = publicState({ status: "iniciado" } as never, { profile: "LOCADOR", ownerName: "B", intention: "locacao" });
-    expect(a.draft.ownerName).toBe("A");
-    expect(b.draft.ownerName).toBe("B");
+    expect(a.draft.profile).toBe("PROPRIETARIO");
+    expect(b.draft.profile).toBe("LOCADOR");
     expect(a.draft.intention).toBeNull();
     expect(b.draft.intention).toBe("locacao");
   });
@@ -120,7 +104,6 @@ describe("motor público LINK_CAPTACAO", () => {
     expect(input.cep).toBe("11700-000");
     expect(input.dormitorios).toBe("2");
     expect(input.vagas).toBe("1");
-    expect(input.confirmacaoFinal).toBe("CONFIRMADO");
   });
 
   test("captação pública não publica automaticamente", () => {
@@ -129,8 +112,13 @@ describe("motor público LINK_CAPTACAO", () => {
     expect(input).not.toHaveProperty("published");
   });
 
-  test("valor ambíguo permanece sem confirmação definitiva", () => {
+  test("valor permanece somente no passo de preço", () => {
     expect(parsePublicMoney("450")).toBe(450);
-    expect(nextPublicQuestion({ profile: "PROPRIETARIO", ownerName: "O", phone: "11", email: "NÃO SEI", intention: "venda", propertyType: "casa", address: "Rua A", answers: { caracteristicas: "casa" }, priceClarification: "Confirme o valor" })).toContain("Confirme");
+  });
+
+  test("endereço sem CEP exige cidade distinta e UF", () => {
+    expect(sufficientPublicAddress("Rua das Flores, 10, Centro, Praia Grande - SP")).toBe(true);
+    expect(sufficientPublicAddress("Rua das Flores, 10 - SP")).toBe(false);
+    expect(sufficientPublicAddress("Rua das Flores, 10, 11700-000")).toBe(true);
   });
 });
