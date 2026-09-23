@@ -23,7 +23,6 @@ import { readConfig } from "../lib/integrations";
 import { ownerPhoneKey } from "../lib/owner-identity";
 import { captureFlowPrompt, captureSnapshot, captureTools } from "./owner-capture";
 import { classifyContactIntent, INTENT_QUESTION } from "./capture-intent";
-import { linkCaptacaoReply, linkCaptacaoState } from "./link-captacao";
 import { handoffAllowance, looksLikeHandoffText } from "./handoff-guard";
 
 export interface AgentRow {
@@ -238,22 +237,6 @@ export async function agentReply(
      da conversa. É isso que faz a IA retomar de onde parou e não repetir
      pergunta já respondida. */
   const phone = ownerPhoneKey(options.phone) ? (options.phone ?? null) : null;
-
-  /**
-   * LINK_CAPTACAO tem precedência sobre tudo o que vem depois.
-   *
-   * Quem entrou pelo link de captação já declarou o que quer: cadastrar um
-   * imóvel para venda. Esse fluxo tem roteiro próprio e texto fixo, então ele
-   * responde o turno inteiro — sem classificação de intenção, sem busca de
-   * imóveis, sem o roteiro do WhatsApp. O atendimento de comprador só é
-   * alcançado quando o fluxo do link não está ativo, exatamente como antes.
-   */
-  if (phone) {
-    const linkState = await linkCaptacaoState(db, phone, turns);
-    if (linkState?.active) {
-      return linkCaptacaoReply(db, agent, turns, phone, linkState, configured);
-    }
-  }
 
   const snapshot = phone ? await captureSnapshot(db, phone) : null;
 
