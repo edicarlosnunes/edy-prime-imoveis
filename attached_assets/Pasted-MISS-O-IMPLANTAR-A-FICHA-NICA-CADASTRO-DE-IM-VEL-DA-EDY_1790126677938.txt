@@ -1,0 +1,562 @@
+MISSÃO — IMPLANTAR A FICHA ÚNICA “CADASTRO DE IMÓVEL” DA EDY PRIME IMÓVEIS
+
+IMPORTANTE:
+Esta é uma alteração estrutural do formulário de cadastro de imóvel, mas NÃO é autorização para reconstruir o CRM, recriar banco, excluir módulos ou alterar integrações.
+
+Antes de modificar qualquer arquivo, inspecione a implementação atual relacionada a:
+
+- cadastro de imóveis;
+- properties;
+- owners/proprietários;
+- property_captures;
+- clientes;
+- fotos;
+- documentos;
+- características;
+- valores;
+- localização;
+- corretores/angariadores;
+- rotas administrativas;
+- criação e edição de imóvel.
+
+OBJETIVO
+
+Transformar o atual Cadastro de Imóvel em uma FICHA ÚNICA da Edy Prime Imóveis.
+
+Essa ficha será o ponto central de entrada dos dados de imóvel + proprietário.
+
+Posteriormente, diferentes fontes de captação e o agente de IA alimentarão esta mesma estrutura.
+
+Portanto, NÃO criar cadastros paralelos nem duplicar entidades desnecessariamente.
+
+==================================================
+1. NOME NO MENU
+==================================================
+
+No menu administrativo, onde atualmente existe o item visual relacionado a “Imóvel” ou “Imóveis”, ajustar o acesso ao cadastro conforme a estrutura atual para apresentar:
+
+“Cadastro de Imóvel”
+
+ATENÇÃO:
+Antes de alterar o texto do menu, verificar como a rota atual funciona.
+
+Não quebrar:
+- listagem de imóveis;
+- edição;
+- visualização;
+- links existentes;
+- rotas;
+- permissões.
+
+Se “Imóveis” também for necessário como acesso à carteira/listagem, PRESERVAR esse acesso e utilizar “Cadastro de Imóvel” somente onde corresponde à criação/cadastro.
+
+Não renomear rotas ou arquivos apenas por causa do texto visual.
+
+==================================================
+2. CONCEITO DA FICHA
+==================================================
+
+Criar uma única página vertical, organizada em blocos, com rolagem normal.
+
+NÃO criar wizard obrigatório.
+NÃO dividir o cadastro em várias páginas.
+NÃO obrigar o usuário a clicar “próximo” várias vezes.
+
+A intenção é:
+
+abrir → preencher → rolar → salvar.
+
+A página deverá seguir visualmente o padrão atual do CRM Edy Prime:
+
+- fundo escuro;
+- azul-marinho/grafite;
+- cartões em tons escuros;
+- bordas discretas;
+- azul para ações auxiliares;
+- dourado/champagne para ações principais e destaques;
+- tipografia clara;
+- campos bem separados;
+- aparência premium;
+- responsiva.
+
+NÃO utilizar:
+- nome Brovia;
+- logotipo Brovia;
+- cores ou identidade de marca Brovia;
+- textos proprietários da Brovia;
+- links da Brovia;
+- qualquer referência externa à Brovia.
+
+A referência visual fornecida serve somente para organização funcional.
+
+==================================================
+3. CABEÇALHO
+==================================================
+
+Título:
+
+Cadastro de Imóvel
+
+Subtítulo:
+
+Preencha os dados para publicar nos portais e gerenciar no CRM
+
+Ações:
+
+Cancelar
+Salvar Imóvel
+
+==================================================
+4. INFORMAÇÕES BÁSICAS
+==================================================
+
+Criar/manter os campos:
+
+- Título do anúncio
+- Tipo de imóvel
+- Finalidade
+- Código interno
+- Descrição detalhada
+
+Finalidade deve aproveitar as modalidades já suportadas pelo sistema, especialmente:
+
+- Venda
+- Locação
+
+Não limitar tipos de imóvel que já existam no sistema.
+
+Preservar os tipos existentes e preparar a interface para imóveis como:
+
+- Apartamento
+- Casa
+- Cobertura
+- Kitnet/Studio
+- Comercial
+- Sala comercial
+- Loja
+- Galpão
+- Terreno
+- Lote
+- Chácara
+- Sítio
+- Fazenda
+- Gleba
+- Rural
+- outros tipos já existentes.
+
+Se já existir função de geração de descrição por IA, reutilizá-la.
+
+Não criar segunda implementação paralela de IA.
+
+==================================================
+5. LOCALIZAÇÃO
+==================================================
+
+Bloco principal:
+
+- CEP
+- Cidade
+- UF
+- Bairro
+- Logradouro/Rua/Avenida
+- Número
+- Complemento
+- Condomínio/Empreendimento
+
+Preservar a lógica de CEP existente.
+
+Se existir consulta automática de CEP, reutilizar.
+
+Não criar integração duplicada.
+
+==================================================
+6. GEOLOCALIZAÇÃO
+==================================================
+
+Bloco complementar:
+
+- Latitude
+- Longitude
+- Proximidades
+
+Geolocalização pode ser opcional.
+
+Não exigir latitude/longitude para salvar um imóvel se atualmente isso não for obrigatório.
+
+==================================================
+7. CARACTERÍSTICAS DO IMÓVEL
+==================================================
+
+Utilizar os campos compatíveis com o tipo do imóvel.
+
+Estrutura base:
+
+- Quartos
+- Suítes
+- Banheiros
+- Vagas
+- Cozinha
+- Salas
+- Área total
+- Área útil
+- Área do terreno
+- Frente x fundos
+- Hectares, quando aplicável
+- Andar
+- Total de andares
+- Ano de construção
+- posição solar, se suportada
+- distância do mar, se suportada
+
+IMPORTANTE:
+
+Não obrigar campos residenciais em terrenos, glebas ou imóveis rurais.
+
+A interface deverá permitir evolução posterior para exibição condicional por tipo de imóvel.
+
+Preservar campos existentes no banco sempre que possível.
+
+==================================================
+8. ÁREAS COMUNS / COMODIDADES
+==================================================
+
+Criar ou preservar seleção simples de características/comodidades.
+
+Exemplos:
+
+- Salão de festas
+- Academia
+- Piscina
+- Playground
+- Espaço pet
+- Coworking
+- Portaria
+- Bicicletário
+- Churrasqueira
+- Quadra
+- Elevador
+- Recebimento de encomendas
+- CCTV
+- outras comodidades existentes no sistema.
+
+ANTES de criar qualquer nova estrutura no banco, verificar se o sistema já possui campo/estrutura de características.
+
+Reutilizar o existente sempre que possível.
+
+==================================================
+9. VALORES
+==================================================
+
+Organizar em um único bloco:
+
+- Preço de venda
+- Preço de locação
+- Condomínio
+- IPTU
+
+Preservar periodicidade existente quando aplicável:
+
+- mensal
+- anual
+
+Adicionar/organizar “Forma de negociação” somente se puder ser armazenada corretamente na estrutura existente.
+
+Possibilidades:
+
+- Analisa proposta
+- Aceita permuta
+- Financiamento
+- Consórcio
+
+Não inventar valor.
+Não converter automaticamente valores comerciais.
+
+==================================================
+10. FOTOS E VÍDEOS
+==================================================
+
+Manter o sistema de upload existente.
+
+Área:
+
+Fotos e Vídeos
+
+Permitir:
+
+- selecionar/arrastar fotos;
+- utilizar limites e formatos já suportados pelo sistema;
+- link público de vídeo quando suportado.
+
+Se já existir câmera/upload, reutilizar.
+
+IMPORTANTE:
+
+Não misturar fotos provisórias de captação com fotos oficiais do anúncio se o sistema atualmente mantém essa separação.
+
+Preservar a regra existente de segurança entre:
+
+- fotos provisórias da captação;
+- imagens oficiais/publicáveis do imóvel.
+
+==================================================
+11. DADOS DO PROPRIETÁRIO
+==================================================
+
+Este é um ponto estrutural fundamental.
+
+Dentro da MESMA FICHA de Cadastro de Imóvel deverá existir:
+
+DADOS DO PROPRIETÁRIO
+
+Primeiro permitir:
+
+“Buscar proprietário existente”
+
+Pesquisa por:
+
+- nome;
+- telefone;
+- e-mail.
+
+Quando encontrado, permitir vincular o imóvel ao proprietário existente.
+
+Quando não encontrado, permitir cadastrar novo proprietário na própria ficha.
+
+Campos essenciais:
+
+- Nome completo
+- CPF/CNPJ, se a estrutura atual suportar
+- Telefone
+- E-mail opcional
+
+REGRA FUNDAMENTAL:
+
+O proprietário é uma entidade própria.
+
+O imóvel deve ser VINCULADO ao proprietário.
+
+NÃO copiar o proprietário como simples texto dentro do imóvel se já existe tabela/modelo owners.
+
+NÃO criar um novo proprietário toda vez que o mesmo proprietário cadastrar outro imóvel.
+
+Preservar a regra existente de múltiplos imóveis por proprietário.
+
+Telefone identifica o proprietário conforme a arquitetura já implementada.
+
+Não alterar regras existentes de duplicidade sem necessidade.
+
+==================================================
+12. DOCUMENTOS
+==================================================
+
+Criar/manter bloco:
+
+Documentos
+
+Permitir anexar os formatos já suportados pelo sistema.
+
+NÃO remover o modelo atual de status/documentação.
+
+Preservar estados e regras existentes de documentação e validação.
+
+Não considerar automaticamente um documento anexado como documento validado.
+
+==================================================
+13. OBSERVAÇÕES INTERNAS
+==================================================
+
+Campo:
+
+Observações internas (para a equipe)
+
+Utilização:
+
+- informações adicionais;
+- chaves;
+- disponibilidade;
+- visitas;
+- documentos;
+- observações de negociação;
+- informações operacionais.
+
+Esse conteúdo não deve aparecer automaticamente no anúncio público.
+
+==================================================
+14. ANGARIADOR / CORRETOR
+==================================================
+
+Quando a estrutura atual permitir:
+
+- selecionar angariador/corretor;
+- vincular ao cadastro;
+- manter como opcional quando apropriado.
+
+Não criar novo cadastro de corretor dentro desta missão.
+
+Reutilizar os corretores existentes.
+
+==================================================
+15. PREVISÃO / INFORMAÇÕES OPERACIONAIS
+==================================================
+
+Se compatível com a estrutura atual, preservar campos como:
+
+- previsão de entrega;
+- construtora;
+- empreendimento;
+- variações de quartos;
+- variações de vagas;
+- variações de metragem.
+
+Não tornar esses campos obrigatórios para imóvel usado comum.
+
+==================================================
+16. RELAÇÃO COM A CAPTAÇÃO
+==================================================
+
+Esta Ficha Única deverá ser preparada para receber posteriormente informações provenientes de:
+
+- LINK_CAPTACAO;
+- RADAR_CAPTACAO;
+- CAPTACAO_SITE;
+- CADASTRO_CORRETOR/VENDEDOR;
+- WhatsApp/IA quando essa integração for autorizada.
+
+IMPORTANTE:
+
+NÃO implementar essas integrações nesta missão.
+
+Apenas garantir que a estrutura do Cadastro de Imóvel possa receber e editar os dados dessas origens futuramente sem exigir criação de um segundo cadastro de imóvel.
+
+==================================================
+17. CLIENTES / PROPRIETÁRIOS
+==================================================
+
+NÃO excluir agora:
+
+- Clientes;
+- Proprietários;
+- qualquer módulo aparentemente duplicado.
+
+Não sabemos ainda todas as dependências existentes.
+
+Nenhuma tabela, rota ou menu desses módulos deve ser apagada nesta missão.
+
+==================================================
+18. BANCO DE DADOS
+==================================================
+
+PRIORIDADE MÁXIMA:
+
+Reutilizar schema e relacionamentos existentes.
+
+Antes de qualquer migração, mapear:
+
+CAMPO VISUAL → CAMPO/MODELO EXISTENTE
+
+Somente criar nova coluna quando realmente não houver lugar semanticamente correto para armazenar o dado.
+
+PROIBIDO nesta missão:
+
+- DROP TABLE;
+- apagar coluna;
+- recriar banco;
+- resetar banco;
+- limpar dados;
+- migração destrutiva;
+- alterar banco de produção;
+- alterar Turso de produção.
+
+Se algum campo visual não puder ser persistido corretamente sem mudança de schema, NÃO improvisar.
+
+Relatar esse campo no final para decisão.
+
+==================================================
+19. PRESERVAÇÃO DO SISTEMA
+==================================================
+
+Não alterar:
+
+- Central de Captação;
+- LINK_CAPTACAO;
+- Radar;
+- Meta;
+- WhatsApp;
+- webhooks;
+- Vercel;
+- Turso de produção;
+- domínio oficial;
+- site público;
+- integrações externas.
+
+Não republicar.
+
+==================================================
+20. TESTES OBRIGATÓRIOS
+==================================================
+
+Validar localmente:
+
+1. página abre normalmente;
+2. formulário completo é exibido em uma única rolagem;
+3. campos existentes carregam corretamente;
+4. criação de imóvel funciona;
+5. edição de imóvel existente funciona;
+6. proprietário existente pode ser localizado/vinculado;
+7. novo proprietário pode ser criado sem duplicar desnecessariamente;
+8. mesmo proprietário pode possuir mais de um imóvel;
+9. fotos continuam funcionando;
+10. documentos continuam funcionando;
+11. valores persistem corretamente;
+12. localização persiste corretamente;
+13. características persistem corretamente;
+14. nenhuma rota administrativa relacionada foi quebrada;
+15. TypeScript frontend sem novos erros;
+16. TypeScript API sem novos erros;
+17. testes relacionados passam.
+
+==================================================
+21. RESULTADO ESPERADO
+==================================================
+
+A Ficha Única será o núcleo do cadastro:
+
+ENTRADAS FUTURAS
+        ↓
+CAPTAÇÃO / IA / EQUIPE
+        ↓
+FICHA ÚNICA
+        ↓
+PROPRIETÁRIO + IMÓVEL
+        ↓
+VALIDAÇÃO DA EQUIPE
+        ↓
+CARTEIRA / PUBLICAÇÃO / CRM
+
+Não implementar agora as entradas futuras.
+
+Nesta missão estamos construindo somente o destino central correto dos dados.
+
+==================================================
+22. FINALIZAÇÃO
+==================================================
+
+Ao terminar:
+
+NÃO fazer deploy.
+NÃO republicar.
+NÃO alterar produção.
+
+Apresentar relatório contendo:
+
+1. arquivos modificados;
+2. componentes criados;
+3. campos reutilizados;
+4. mapeamento dos dados;
+5. qualquer campo que não pôde ser persistido;
+6. alterações de banco, se realmente necessárias;
+7. resultado de cada teste;
+8. confirmação de que nenhuma integração externa foi alterada;
+9. confirmação de que não houve publicação.
+
+Depois PARAR e aguardar autorização.

@@ -12,6 +12,8 @@ export interface PropertyProgressInput {
   city: string;
   district: string;
   price: string;
+  salePrice?: string;
+  rentPrice?: string;
   bedrooms: string;
   bathrooms: string;
   areaUtil: string;
@@ -80,7 +82,7 @@ export function propertyProgress(input: PropertyProgressInput): PropertyProgress
       weight: 5,
       done: positive(input.bedrooms) || positive(input.bathrooms),
     },
-    { key: "price", label: "Preço", section: "valores", weight: 15, done: hasAmount(input.price) },
+    { key: "price", label: "Preço", section: "valores", weight: 15, done: hasAmount(input.price) || hasAmount(input.salePrice || "") || hasAmount(input.rentPrice || "") },
     {
       key: "owner",
       label: "Proprietário vinculado",

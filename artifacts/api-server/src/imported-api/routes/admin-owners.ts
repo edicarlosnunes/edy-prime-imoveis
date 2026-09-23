@@ -4,6 +4,7 @@ import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
 import { ORPCError } from "@orpc/server";
 import { docWarning, normalizeDoc, normalizeRg } from "../lib/person-doc";
+import { matchOwnerByPhone } from "../lib/owner-matching";
 
 const ownerInput = z.object({
   name: z.string().min(2).max(120),
@@ -52,8 +53,18 @@ export const adminOwners = {
   }),
 
   create: adminBase.input(ownerInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(schema.owners).values(toRow(input)).returning();
-    return { id: created?.id ?? 0 };
+    const row = toRow(input);
+    /* Phone matching is deliberately independent from document/email duplicate
+       warnings: this flow only reuses an existing owner for a usable phone. */
+    if (row.phone) {
+      const ownersWithPhones = await context.db
+        .select({ id: schema.owners.id, phone: schema.owners.phone })
+        .from(schema.owners);
+      const existing = matchOwnerByPhone(ownersWithPhones, row.phone);
+      if (existing) return { id: existing.id, reused: true };
+    }
+    const [created] = await context.db.insert(schema.owners).values(row).returning();
+    return { id: created?.id ?? 0, reused: false };
   }),
 
   update: adminBase
@@ -145,7 +156,13 @@ export const adminOwners = {
 
   options: adminBase.handler(async ({ context }) => {
     return context.db
-      .select({ id: schema.owners.id, name: schema.owners.name })
+      .select({
+        id: schema.owners.id,
+        name: schema.owners.name,
+        phone: schema.owners.phone,
+        email: schema.owners.email,
+        document: schema.owners.document,
+      })
       .from(schema.owners)
       .orderBy(asc(schema.owners.name))
       .limit(500);

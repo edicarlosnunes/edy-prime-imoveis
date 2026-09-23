@@ -96,10 +96,10 @@ function Content() {
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
                 <Link2 className="h-5 w-5" />
               </div>
-              <h3 className="font-medium text-deep">Link para Proprietário</h3>
+              <h3 className="font-medium text-deep">Link de captação</h3>
             </div>
             <p className="mb-6 flex-1 text-sm text-muted">
-              Envie ao proprietário já qualificado um link para cadastrar o imóvel que deseja vender ou alugar.
+              Gere um link seguro para coletar os dados de uma nova captação e envie pelo canal que desejar.
             </p>
             <button
               className="flex w-full items-center justify-center gap-2 rounded bg-brass px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-brass/90"
@@ -114,7 +114,7 @@ function Content() {
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
                 <RadarIcon className="h-5 w-5" />
               </div>
-              <h3 className="font-medium text-deep">Radar de Captação</h3>
+              <h3 className="font-medium text-deep">Radar de captação</h3>
             </div>
             <p className="mb-6 flex-1 text-sm text-muted">
               Organize a prospecção ativa de imóveis encontrados em portais, aplicativos e outras fontes externas.
@@ -132,7 +132,7 @@ function Content() {
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
                 <Globe2 className="h-5 w-5" />
               </div>
-              <h3 className="font-medium text-deep">Captação pelo Site</h3>
+              <h3 className="font-medium text-deep">Captação pelo site</h3>
             </div>
             <p className="mb-6 flex-1 text-sm text-muted">
               Acompanhe proprietários que espontaneamente oferecem seus imóveis pelo site da Edy Prime.
@@ -150,7 +150,7 @@ function Content() {
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brass/10 text-brass">
                 <Plus className="h-5 w-5" />
               </div>
-              <h3 className="font-medium text-deep">Cadastro pela Equipe</h3>
+              <h3 className="font-medium text-deep">Cadastro pela equipe</h3>
             </div>
             <p className="mb-6 flex-1 text-sm text-muted">
               Permita que corretores e funcionários cadastrem manualmente proprietário e imóvel no CRM.

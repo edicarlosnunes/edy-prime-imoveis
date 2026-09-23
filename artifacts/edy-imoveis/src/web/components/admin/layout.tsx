@@ -14,6 +14,7 @@ import {
   MessagesSquare,
   Palette,
   Plug,
+  PlusSquare,
   Radar,
   ScrollText,
   Settings,
@@ -31,12 +32,13 @@ import { useAdminMe } from "../../queries/admin";
 const nav: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/imoveis", label: "Imóveis", icon: Building2 },
+  { href: "/admin/imoveis/novo", label: "Cadastro de Imóvel", icon: PlusSquare },
   { href: "/admin/leads", label: "Leads / CRM", icon: Users },
   { href: "/admin/clientes", label: "Clientes", icon: UserRound },
   { href: "/admin/proprietarios", label: "Proprietários", icon: KeyRound },
   /* RADAR DE CAPTAÇÃO = ferramenta de prospecção/pré-cadastro.
      "Captação" (sem Radar) segue sendo o processo interno de cada ficha. */
-  { href: "/admin/captacao", label: "CAPTAÇÃO", icon: Radar },
+  { href: "/admin/captacao", label: "captação", icon: Radar },
   { href: "/admin/agenda", label: "Agenda", icon: CalendarClock },
   { href: "/admin/propostas", label: "Propostas", icon: Handshake },
   { href: "/admin/conversas", label: "Conversas", icon: MessagesSquare },

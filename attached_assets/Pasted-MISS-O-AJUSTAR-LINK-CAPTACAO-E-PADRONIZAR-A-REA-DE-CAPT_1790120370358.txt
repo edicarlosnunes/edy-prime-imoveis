@@ -1,0 +1,164 @@
+MISSÃO — AJUSTAR LINK_CAPTACAO E PADRONIZAR A ÁREA DE CAPTAÇÃO
+
+Trabalhe somente no projeto atual da Edy Prime Imóveis que já está aberto no Replit.
+
+IMPORTANTE:
+Antes de alterar qualquer coisa, analise a implementação existente e preserve tudo o que já funciona. Não reconstrua páginas, não substitua a estrutura atual e não faça alterações fora do escopo descrito abaixo.
+
+OBJETIVO DESTA ETAPA
+
+Corrigir a apresentação e o funcionamento da ferramenta LINK_CAPTACAO, deixando a geração do link simples e adequada ao fluxo já definido.
+
+1. MENU LATERAL
+
+No menu administrativo existe atualmente o texto visual:
+
+CAPTAÇÃO
+
+Alterar SOMENTE o texto visual para:
+
+captação
+
+ATENÇÃO:
+- A palavra deve ficar totalmente em letras minúsculas.
+- Não alterar a rota `/admin/captacao`.
+- Não renomear arquivos por causa dessa alteração.
+- Não alterar permissões, autenticação ou navegação.
+- É somente uma padronização do texto visual do menu.
+
+2. CARD DA FONTE DE CAPTAÇÃO
+
+Na página `/admin/captacao`, alterar o nome visual:
+
+“Link para Proprietário”
+
+para:
+
+“Link de captação”
+
+Motivo:
+Essa ferramenta não deve ser apresentada como exclusiva para proprietário. O LINK_CAPTACAO fará parte de um fluxo que poderá atender modalidades diferentes, portanto o nome correto da ferramenta é “Link de captação”.
+
+Não alterar a rota existente do card:
+
+`/admin/captacao/link`
+
+3. PADRONIZAÇÃO DOS NOMES DOS CARDS
+
+Manter os cinco cards existentes e padronizar os textos exatamente desta forma:
+
+- Link de captação
+- Radar de captação
+- Captação pelo site
+- Cadastro pela equipe
+- Captação pelo WhatsApp
+
+Não remover nenhum card.
+Não alterar o funcionamento dos outros quatro cards nesta missão.
+
+4. TELA `/admin/captacao/link`
+
+A tela atualmente exige:
+
+- Nome do proprietário
+- WhatsApp
+- botão “Gerar link exclusivo”
+
+Essa não é a finalidade desejada.
+
+Remover a obrigatoriedade de preencher nome e WhatsApp para gerar o link.
+
+A função principal da tela deverá ser:
+
+BOTÃO:
+“Gerar link de captação”
+
+Ao clicar:
+
+1. gerar uma URL/chave exclusiva e segura;
+2. apresentar o link gerado na própria tela;
+3. disponibilizar um botão “Copiar link”;
+4. permitir que o administrador copie esse link e envie posteriormente pelo canal que desejar.
+
+O administrador NÃO deve precisar saber previamente quem vai utilizar o link.
+
+5. FUNCIONAMENTO DO LINK
+
+O link gerado deve continuar utilizando a estrutura segura já implementada para LINK_CAPTACAO:
+
+- token aleatório;
+- URL sem nome, telefone ou dados pessoais;
+- somente hash do token persistido;
+- token bruto não deve ser armazenado no banco;
+- link deve abrir somente a ficha pública correspondente.
+
+NÃO enfraquecer nem remover a proteção de token já implementada.
+
+6. FICHA DE CAPTAÇÃO
+
+Ao abrir o link gerado, deve abrir a ficha pública de captação que já foi construída.
+
+NÃO reconstruir essa ficha nesta missão.
+
+NÃO modificar seus campos ou seu fluxo nesta missão.
+
+NÃO transformar novamente o link em “link para proprietário”.
+
+O objetivo agora é apenas garantir:
+
+Gerar link → copiar link → abrir ficha existente.
+
+7. REGISTRO DE ORIGEM
+
+Preservar a origem existente:
+
+`LINK_CAPTACAO`
+
+Não converter para `manual` ou qualquer outra origem.
+
+8. NÃO ALTERAR NESTA MISSÃO
+
+Não alterar:
+
+- Radar de captação;
+- Captação pelo site;
+- Cadastro pela equipe;
+- Captação pelo WhatsApp;
+- ficha única da equipe;
+- Meta;
+- WhatsApp Cloud API;
+- webhooks;
+- número de WhatsApp;
+- Vercel;
+- Turso de produção;
+- domínio oficial;
+- integrações externas;
+- banco de produção.
+
+Não criar nenhuma nova integração externa.
+
+9. VALIDAÇÃO
+
+Depois das alterações, validar localmente:
+
+- menu mostrando exatamente “captação” em letras minúsculas;
+- card mostrando “Link de captação”;
+- rota `/admin/captacao/link` funcionando;
+- geração do link sem exigir nome ou WhatsApp;
+- botão “Copiar link” funcionando;
+- link gerado abrindo a ficha pública existente;
+- origem LINK_CAPTACAO preservada;
+- TypeScript sem erros;
+- frontend e API iniciando normalmente.
+
+NÃO REPUBLICAR automaticamente.
+
+Ao terminar, pare e apresente um relatório objetivo contendo:
+
+1. arquivos modificados;
+2. exatamente o que foi alterado;
+3. resultado de cada teste;
+4. confirmação de que não houve republicação;
+5. confirmação de que produção e integrações externas não foram alteradas.
+
+Aguardar autorização antes de qualquer republicação ou nova alteração.

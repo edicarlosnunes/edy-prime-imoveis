@@ -21,21 +21,8 @@ import {
   purposeLabel,
 } from "../../components/admin/labels";
 import { errorMessage } from "../../lib/admin-session";
-import {
-  useAdminProperties,
-  usePatchProperty,
-  useRemoveProperty,
-  useResumePropertyPause,
-  useSetCommercialStatus,
-} from "../../queries/admin";
-import {
-  COMMERCIAL_STATUSES,
-  COMMERCIAL_STATUS_LABEL,
-  COMMERCIAL_STATUS_TONE,
-  type CommercialStatus,
-} from "../../../api/lib/commercial-status";
-import { PropertyForm } from "./property-form";
-import { readCaptureId } from "../../lib/capture-conversion-flow";
+import { useAdminProperties, usePatchProperty, useRemoveProperty, useResumePropertyPause, useSetCommercialStatus } from "../../queries/admin";
+import { COMMERCIAL_STATUSES, COMMERCIAL_STATUS_LABEL, COMMERCIAL_STATUS_TONE, type CommercialStatus } from "../../../api/lib/commercial-status";
 
 type StatusFilter = (typeof propertyStatuses)[number] | "";
 
@@ -58,17 +45,7 @@ export default function AdminProperties() {
 function Content() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
-  const [editing, setEditing] = useState<number | "new" | null>(null);
-  /**
-   * O Radar abre o Cadastro Premium por rota: /admin/imoveis/novo?capture_id=<id>.
-   * Ler da rota (e não de estado em memória) faz o prefill sobreviver a refresh.
-   */
-  const search_ = useSearch();
-  const [, navigate] = useLocation();
-  const captureId = readCaptureId(search_);
-  useEffect(() => {
-    if (captureId !== null) setEditing("new");
-  }, [captureId]);
+  const [location, navigate] = useLocation();
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(
@@ -98,7 +75,7 @@ function Content() {
       title="Imóveis"
       subtitle="Cadastro que alimenta a vitrine do site"
       actions={
-        <Btn tone="brass" onClick={() => setEditing("new")}>
+        <Btn tone="brass" onClick={() => navigate("/admin/imoveis/novo")}>
           <Plus className="h-3.5 w-3.5" /> Novo imóvel
         </Btn>
       }
@@ -198,7 +175,7 @@ function Content() {
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Btn tone="outline" onClick={() => setEditing(property.id)}>
+                  <Btn tone="outline" onClick={() => navigate(`/admin/imoveis/${property.id}/editar`)}>
                     <Pencil className="h-3.5 w-3.5" /> Editar
                   </Btn>
                   <Btn
@@ -302,18 +279,6 @@ function Content() {
           ))}
         </div>
       </div>
-
-      {editing !== null && (
-        <PropertyForm
-          propertyId={editing === "new" ? null : editing}
-          captureId={editing === "new" ? captureId : null}
-          onClose={() => {
-            setEditing(null);
-            /* Sai do fluxo de captação: a query string não fica presa na tela. */
-            if (captureId !== null) navigate("/admin/imoveis");
-          }}
-        />
-      )}
     </AdminLayout>
   );
 }

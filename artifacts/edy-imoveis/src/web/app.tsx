@@ -21,6 +21,7 @@ import AdminAutomations from "./pages/admin/automations";
 import AdminWatermark from "./pages/admin/watermark";
 import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
+import PropertyFormPage from "./pages/admin/property-form-page";
 import LinkCaptacao from "./pages/link-captacao";
 import CaptacaoPublica from "./pages/captacao-publica";
 import Privacidade from "./pages/privacidade";
@@ -38,8 +39,8 @@ function App() {
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/imoveis" component={AdminProperties} />
-        {/* Cadastro Premium aberto pelo Radar: /admin/imoveis/novo?capture_id=<id> */}
-        <Route path="/admin/imoveis/novo" component={AdminProperties} />
+        <Route path="/admin/imoveis/novo" component={PropertyFormPage} />
+        <Route path="/admin/imoveis/:id/editar" component={PropertyFormPage} />
         <Route path="/admin/leads" component={AdminLeads} />
         <Route path="/admin/clientes" component={AdminClients} />
         <Route path="/admin/proprietarios" component={AdminOwners} />

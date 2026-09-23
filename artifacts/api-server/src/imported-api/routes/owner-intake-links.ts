@@ -21,10 +21,7 @@ const complementsInput = z
   .partial()
   .optional();
 
-const createInput = z.object({
-  ownerName: z.string().trim().min(2).max(120),
-  phone: z.string().trim().max(30).optional(),
-});
+export const ownerIntakeLinkCreateInput = z.object({});
 
 export const ownerIntakeSubmitInput = z.object({
   token: tokenInput,
@@ -75,14 +72,14 @@ function decodeFacadeImage(value: string | undefined) {
 }
 
 export const adminOwnerIntakeLinks = {
-  create: adminBase.input(createInput).handler(async ({ input, context }) => {
+  create: adminBase.input(ownerIntakeLinkCreateInput).handler(async ({ context }) => {
     const token = randomHex(32);
     const [link] = await context.db
       .insert(schema.ownerIntakeLinks)
       .values({
         tokenHash: await sha256Hex(token),
-        ownerName: input.ownerName,
-        phone: input.phone || null,
+        ownerName: "",
+        phone: null,
       })
       .returning({ id: schema.ownerIntakeLinks.id, createdAt: schema.ownerIntakeLinks.createdAt });
     if (!link) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Não foi possível criar o link" });

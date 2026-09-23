@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { randomHex, sha256Hex } from "../lib/auth";
 import { normalizeSource } from "../lib/capture-intake";
-import { ownerIntakeSubmitInput } from "./owner-intake-links";
+import { ownerIntakeLinkCreateInput, ownerIntakeSubmitInput } from "./owner-intake-links";
 
 describe("LINK_CAPTACAO backend contract", () => {
   test("gera token opaco de 32 bytes e guarda somente digest SHA-256", async () => {
@@ -16,6 +16,10 @@ describe("LINK_CAPTACAO backend contract", () => {
   test("preserva a origem canônica LINK_CAPTACAO", () => {
     expect(normalizeSource("LINK_CAPTACAO")).toBe("LINK_CAPTACAO");
     expect(normalizeSource("link_captacao")).toBe("LINK_CAPTACAO");
+  });
+
+  test("gera link sem identificação prévia", () => {
+    expect(ownerIntakeLinkCreateInput.safeParse({}).success).toBe(true);
   });
 
   test("recusa intenção de compra e exige vender ou alugar", () => {
