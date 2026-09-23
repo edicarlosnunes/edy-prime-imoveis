@@ -297,10 +297,15 @@ export async function aiTurn(
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "falha na IA";
-    /* Falha técnica não é decisão de atendimento humano. Mantém a conversa
-       em IA para que a próxima mensagem possa ser tentada novamente. A troca
-       para humano continua acontecendo apenas por handoff explícito ou quando
-       o corretor assume pelo painel. */
-    return { replied: false, skipped: message };
+    /* Falha técnica não pode deixar o cliente preso em silêncio no modo IA.
+       Transfere a conversa para atendimento humano e preserva o motivo técnico
+       para diagnóstico, sem tentar uma segunda chamada de IA neste turno. */
+    await transferToHuman(db, conversationId, `Falha técnica da IA: ${message}`);
+    return {
+      replied: false,
+      handoff: true,
+      reason: message,
+      skipped: message,
+    };
   }
 }
