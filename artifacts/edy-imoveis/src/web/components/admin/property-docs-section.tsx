@@ -113,7 +113,7 @@ function TriToggle({
             "rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-50",
             value === option.value
               ? "border-brass bg-brass text-white"
-              : "border-line bg-white text-muted hover:bg-bone/60",
+              : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/5/10",
           )}
         >
           {option.label}
@@ -190,7 +190,7 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
     );
   }
 
-  if (docs.isLoading) return <p className="text-sm text-muted">Carregando documentação…</p>;
+  if (docs.isLoading) return <p className="text-sm text-slate-400">Carregando documentação…</p>;
 
   const busy = saveConditions.isPending || saveChecklistItem.isPending;
 
@@ -277,8 +277,8 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
 
       {/* ------------------------------------------------------ condições */}
       <div>
-        <p className="label-xs text-muted">Condições do imóvel</p>
-        <p className="mt-1 text-[11px] text-muted">
+        <p className="label-xs text-slate-400">Condições do imóvel</p>
+        <p className="mt-1 text-[11px] text-slate-400">
           Estas respostas decidem quais blocos do checklist aparecem. São salvas na hora.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -286,9 +286,9 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
             const raw = data?.conditions as Record<string, number | null> | undefined;
             const value = toTri(raw?.[key]);
             return (
-              <div key={key} className="rounded-[10px] border border-line bg-bone/30 p-3">
-                <p className="text-sm text-deep">{CONDITION_LABEL[key]}</p>
-                <p className="mt-0.5 text-[11px] text-muted">{CONDITION_HINT[key]}</p>
+              <div key={key} className="rounded-[10px] border border-white/10 bg-black/20 p-3">
+                <p className="text-sm text-slate-200">{CONDITION_LABEL[key]}</p>
+                <p className="mt-0.5 text-[11px] text-slate-400">{CONDITION_HINT[key]}</p>
                 <div className="mt-2">
                   <TriToggle
                     value={value}
@@ -304,12 +304,12 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
 
       {/* ------------------------------------------------------- alertas */}
       {alerts.length > 0 && (
-        <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-3">
-          <p className="flex items-center gap-2 text-xs font-medium text-amber-900">
+        <div className="rounded-[10px] border border-amber-900/50 bg-amber-950/30 p-3">
+          <p className="flex items-center gap-2 text-xs font-medium text-amber-400">
             <AlertTriangle className="h-4 w-4" />
             {alerts.length} ponto(s) de atenção na documentação
           </p>
-          <ul className="mt-2 space-y-1 text-[11px] text-amber-900">
+          <ul className="mt-2 space-y-1 text-[11px] text-amber-400">
             {alerts.map((item) => (
               <li key={item.key}>• {item.label}</li>
             ))}
@@ -318,10 +318,10 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
       )}
 
       {/* ----------------------------------------------------- checklist */}
-      <div className="space-y-4 border-t border-line pt-4">
+      <div className="space-y-4 border-t border-white/10 pt-4">
         <div>
-          <p className="label-xs text-muted">Checklist documental</p>
-          <p className="mt-1 text-[11px] text-muted">
+          <p className="label-xs text-slate-400">Checklist documental</p>
+          <p className="mt-1 text-[11px] text-slate-400">
             Responder o checklist não exige anexar nada. Anexo é opcional e vive na lista de
             documentos, logo abaixo.
           </p>
@@ -331,8 +331,8 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
           const blockItems = items.filter((item) => item.block === block);
           if (blockItems.length === 0) return null;
           return (
-            <div key={block} className="rounded-[10px] border border-line">
-              <p className="border-b border-line bg-bone/40 px-3 py-2 text-xs font-medium text-deep">
+            <div key={block} className="rounded-[10px] border border-white/10">
+              <p className="border-b border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-slate-200">
                 {CHECKLIST_BLOCK_LABEL[block]}
               </p>
               <ul className="divide-y divide-line">
@@ -342,9 +342,9 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
                     current && item.alertOn ? item.alertOn.includes(current) : false;
                   return (
                     <li key={item.key} className="p-3">
-                      <p className="text-sm text-deep">{item.label}</p>
+                      <p className="text-sm text-slate-200">{item.label}</p>
                       {item.hint && (
-                        <p className="mt-0.5 text-[11px] text-muted">{item.hint}</p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">{item.hint}</p>
                       )}
                       <div className="mt-2 flex flex-wrap items-center gap-1.5">
                         {CHECKLIST_ANSWERS.map((option) => (
@@ -357,9 +357,9 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
                               "rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors disabled:opacity-50",
                               current === option
                                 ? flagged
-                                  ? "border-amber-400 bg-amber-100 text-amber-900"
+                                  ? "border-amber-500 bg-amber-900/40 text-amber-400"
                                   : "border-brass bg-brass text-white"
-                                : "border-line bg-white text-muted hover:bg-bone/60",
+                                : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/5/10",
                             )}
                           >
                             {CHECKLIST_ANSWER_LABEL[option]}
@@ -385,9 +385,9 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
       </div>
 
       {/* ---------------------------------------------------- documentos */}
-      <div className="space-y-3 border-t border-line pt-4">
+      <div className="space-y-3 border-t border-white/10 pt-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="label-xs text-muted">Documentos anexados</p>
+          <p className="label-xs text-slate-400">Documentos anexados</p>
           <div className="flex flex-wrap gap-1.5">
             <Badge>{summary.total} registro(s)</Badge>
             <Badge tone="amber">{summary.emAnalise} em análise</Badge>
@@ -395,12 +395,12 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
             <Badge tone="red">{summary.pendencias} pendência(s)</Badge>
           </div>
         </div>
-        <p className="text-[11px] text-muted">
+        <p className="text-[11px] text-slate-400">
           Arquivos privados: não vão para o site, não entram na galeria de fotos e só abrem para
           quem está logado no painel. PDF, JPG, PNG, WEBP ou AVIF, até 8 MB.
         </p>
 
-        <div className="grid grid-cols-1 gap-3 rounded-[10px] border border-line bg-bone/30 p-3 sm:grid-cols-[1fr_1fr_auto]">
+        <div className="grid grid-cols-1 gap-3 rounded-[10px] border border-white/10 bg-black/20 p-3 sm:grid-cols-[1fr_1fr_auto]">
           <Field label="Categoria">
             <Select
               value={newCategory}
@@ -425,7 +425,7 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
               type="file"
               accept="application/pdf,image/jpeg,image/png,image/webp,image/avif"
               onChange={(e) => setNewFile(e.target.files?.[0] ?? null)}
-              className="block w-full text-xs text-muted file:mr-3 file:rounded-[3px] file:border file:border-line file:bg-white file:px-3 file:py-2 file:text-xs file:text-deep"
+              className="block w-full text-xs text-slate-400 file:mr-3 file:rounded-[3px] file:border file:border-white/10 file:bg-white/5 file:px-3 file:py-2 file:text-xs file:text-slate-200"
             />
           </Field>
           <div className="sm:col-span-3">
@@ -448,17 +448,17 @@ export function PropertyDocsSection({ propertyId }: { propertyId: number | null 
               return (
                 <li
                   key={doc.id}
-                  className="rounded-[10px] border border-line p-3 sm:flex sm:items-center sm:gap-3"
+                  className="rounded-[10px] border border-white/10 p-3 sm:flex sm:items-center sm:gap-3"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 text-sm text-deep">
-                      <FileText className="h-4 w-4 shrink-0 text-muted" />
+                    <p className="flex items-center gap-2 text-sm text-slate-200">
+                      <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                       <span className="truncate">
                         {DOC_CATEGORY_LABEL[doc.category as DocCategory] ?? doc.category}
                         {doc.title ? ` — ${doc.title}` : ""}
                       </span>
                     </p>
-                    <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted">
+                    <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                       <Badge tone={DOC_STATUS_TONE[status]}>{DOC_STATUS_LABEL[status]}</Badge>
                       {doc.fileId ? (
                         <a

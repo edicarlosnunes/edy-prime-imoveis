@@ -38,34 +38,36 @@ export function FeaturesPicker({
     setDraft("");
   }
 
+  
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+    <div className="space-y-6">
+      <div className="space-y-4">
         {FEATURE_GROUPS.map((group) => (
-          <div key={group.label} className="rounded-[10px] border border-line p-3">
-            <p className="label-xs text-muted">{group.label}</p>
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-              {group.items.map((item) => (
-                <label
-                  key={item}
-                  className="flex cursor-pointer items-center gap-2 text-xs text-deep"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.has(item.toLowerCase())}
-                    onChange={() => toggle(item)}
-                  />
-                  {item}
-                </label>
-              ))}
+          <div key={group.label}>
+            <p className="text-[11px] font-medium text-slate-400 mb-2 uppercase tracking-wide">{group.label}</p>
+            <div className="flex flex-wrap gap-2">
+              {group.items.map((item) => {
+                const isActive = selected.has(item.toLowerCase());
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() => toggle(item)}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-colors ${isActive ? 'border-brass bg-brass/10 text-brass' : 'border-white/10 bg-black/20 text-slate-300 hover:border-white/20 hover:text-white'}`}
+                  >
+                    {isActive ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                    {item}
+                  </button>
+                );
+              })}
             </div>
           </div>
         ))}
       </div>
 
-      <div>
-        <p className="label-xs text-muted">Item personalizado</p>
-        <div className="mt-1.5 flex gap-2">
+      <div className="pt-4 border-t border-white/10">
+        <p className="text-[11px] font-medium text-slate-400 mb-2 uppercase tracking-wide">Item personalizado</p>
+        <div className="flex gap-2">
           <Input
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -75,37 +77,33 @@ export function FeaturesPicker({
               event.preventDefault();
               addCustom();
             }}
+            className="!bg-black/20 !border-white/10 !text-slate-200 !text-xs !py-1.5 !h-8"
           />
-          <Btn tone="outline" onClick={addCustom} className="shrink-0">
+          <Btn tone="outline" onClick={addCustom} className="shrink-0 !h-8 !py-0 !text-xs !border-white/10 !text-slate-300 hover:!text-white hover:!bg-white/5">
             <Plus className="h-3.5 w-3.5" /> Adicionar
           </Btn>
         </div>
         {custom.length > 0 && (
-          <ul className="mt-3 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {custom.map((item) => (
-              <li
+              <button
                 key={item}
-                className="flex items-center gap-1.5 rounded-full border border-brass/50 bg-brass/10 px-3 py-1 text-xs text-deep"
+                type="button"
+                onClick={() => toggle(item)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-brass bg-brass/10 px-3 py-1.5 text-xs text-brass transition-colors hover:bg-brass/20"
               >
+                <X className="h-3 w-3" />
                 {item}
-                <button
-                  type="button"
-                  onClick={() => toggle(item)}
-                  aria-label={`Remover ${item}`}
-                  className="text-muted hover:text-red-500"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </li>
+              </button>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
-      <p className="text-[11px] text-muted">
-        {value.filter((item) => item.trim()).length} característica(s) selecionada(s). A IA usa
-        apenas estes itens — nada além disso é mencionado nos textos.
+      <p className="text-[11px] text-slate-500">
+        {value.filter((item) => item.trim()).length} característica(s) selecionada(s).
       </p>
     </div>
   );
+
 }

@@ -59,6 +59,18 @@ import { parseChecklist } from "../../../api/lib/capture-checklist";
 import { checkConversionStart } from "../../../api/lib/capture-rules";
 import { formatUnitAddress } from "../../../api/lib/capture-address";
 import { parseComplements } from "../../../api/lib/capture-intake";
+
+import {
+  CompactCard,
+  CompactField,
+  CompactInput,
+  CompactSelect,
+  CompactTextarea,
+  CompactMoneyInput,
+  CompactCountInput
+} from "./property-form-local-ui";
+import { Crosshair, Link as LinkIcon, DollarSign, Image as ImageIcon } from "lucide-react";
+
 import { FeaturesPicker } from "../../components/admin/features-picker";
 import { PropertyFormHeader } from "../../components/admin/property-form-header";
 import { PropertyDocsSection } from "../../components/admin/property-docs-section";
@@ -729,7 +741,9 @@ function Content() {
         </>
       }
     >
-      <form onSubmit={submit} className="mx-auto max-w-4xl space-y-8">
+      
+      
+      <form onSubmit={submit} className="mx-auto max-w-[1100px] space-y-4 pb-24">
         <ErrorNote message={error} />
         
         <PropertyFormHeader
@@ -744,517 +758,432 @@ function Content() {
         />
 
         {captureId !== null && capture.data && (
-          <div className="rounded-[10px] border border-line bg-bone/40 p-4 text-sm">
-            <div className="label-xs text-deep">
+          <div className="rounded-[10px] border border-white/10 bg-black/20 p-4 text-sm">
+            <div className="text-[11px] font-medium text-slate-300 mb-1 block uppercase tracking-wider">
               Captação #{captureId} · {capture.data.owner?.name ?? "proprietário"}
             </div>
             {capture.data.serial && (
-              <div className="mt-1 font-mono text-xs text-deep">
+              <div className="mt-1 font-mono text-xs text-white">
                 Serial {capture.data.serial}
               </div>
             )}
-            <p className="mt-2 whitespace-pre-line text-muted">
+            <p className="mt-2 whitespace-pre-line text-slate-400">
               {parseChecklist(capture.data.notes).text || "Sem observações na captação."}
             </p>
             {captureBlock && (
-              <p className="mt-3 font-medium text-red-700">{captureBlock}</p>
+              <p className="mt-3 font-medium text-red-500">{captureBlock}</p>
             )}
           </div>
         )}
 
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <FileText className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Informações básicas</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field label="Código">
-              <Input
-                value={form.code}
-                onChange={(e) => set("code", e.target.value)}
-                placeholder="EP-1042"
-              />
-            </Field>
-            <Field label="Finalidade">
-              <Select
-                value={form.purpose}
-                onChange={(e) => set("purpose", e.target.value as FormState["purpose"])}
-              >
-                {purposes.map((value) => (
-                  <option key={value} value={value}>
-                    {purposeLabel[value]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Tipo">
-              <Select
-                value={form.type}
-                onChange={(e) => set("type", e.target.value as FormState["type"])}
-              >
-                {propertyTypes.map((value) => (
-                  <option key={value} value={value}>
-                    {propertyTypeLabel[value]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </div>
+        <CompactCard icon={<FileText className="h-4 w-4 text-brass" />} title="Informações Básicas">
+          <div className="space-y-4">
+            <CompactField label="Título do anúncio" required>
+              <CompactInput value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="Ex: Apartamento 3 quartos com vista para o mar" />
+            </CompactField>
 
-          <Field label="Título">
-            <Input value={form.title} onChange={(e) => set("title", e.target.value)} />
-          </Field>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <CompactField label="Tipo de imóvel" required>
+                <CompactSelect value={form.type} onChange={(e) => set("type", e.target.value as FormState["type"])}>
+                  {propertyTypes.map((value) => (
+                    <option key={value} value={value}>{propertyTypeLabel[value]}</option>
+                  ))}
+                </CompactSelect>
+              </CompactField>
+              <CompactField label="Finalidade" required>
+                <CompactSelect value={form.purpose} onChange={(e) => set("purpose", e.target.value as FormState["purpose"])}>
+                  {purposes.map((value) => (
+                    <option key={value} value={value}>{purposeLabel[value]}</option>
+                  ))}
+                </CompactSelect>
+              </CompactField>
+              <CompactField label="Código interno" optional>
+                <CompactInput value={form.code} onChange={(e) => set("code", e.target.value)} placeholder="Ex: AP2000" />
+              </CompactField>
+            </div>
 
-          <Field label="Frase de destaque" hint="Aparece no card do imóvel dentro do site.">
-            <Input value={form.highlight} onChange={(e) => set("highlight", e.target.value)} />
-          </Field>
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <MapPin className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Localização</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
-            <Field label="CEP" className="sm:col-span-1">
-              <div className="flex gap-2">
-                <Input
-                  value={form.cep}
-                  onChange={(e) => set("cep", e.target.value)}
-                  onBlur={handleCepLookup}
-                  placeholder="00000-000"
-                />
-                {cepLoading && <Loader2 className="mt-2 h-5 w-5 animate-spin text-muted" />}
+            <CompactField label="Descrição detalhada">
+              <div className="relative">
+                <CompactTextarea value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="Descreva os detalhes do imóvel ou use a IA para criar um texto profissional com base nos dados preenchidos." className="pb-12 min-h-[140px]" />
+                <div className="absolute bottom-2 right-2">
+                  <button type="button" onClick={runGenerate} className="flex items-center gap-1.5 text-[11px] font-medium text-brass border border-brass/30 bg-brass/10 hover:bg-brass/20 rounded-[4px] px-3 py-1.5 transition-colors">
+                    <Sparkles className="h-3 w-3" /> Gerar com IA
+                  </button>
+                </div>
               </div>
-            </Field>
-            <Field label="Estado (UF)" className="sm:col-span-1">
-               <Input value={form.state} onChange={(e) => set("state", e.target.value)} maxLength={2} />
-            </Field>
-            <Field label="Cidade" className="sm:col-span-2">
-              <Input
-                value={form.city}
-                list="edy-city-options"
-                onChange={(e) => set("city", e.target.value)}
-              />
-              <datalist id="edy-city-options">
-                {citySuggestions.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
-            </Field>
+            </CompactField>
+            
+            <CompactField label="Frase de destaque" optional>
+              <CompactInput value={form.highlight} onChange={(e) => set("highlight", e.target.value)} placeholder="Aparece no card do imóvel dentro do site." />
+            </CompactField>
           </div>
+        </CompactCard>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Bairro">
-              <Input
-                value={form.district}
-                list="edy-district-options"
-                onChange={(e) => set("district", e.target.value)}
-              />
-              <datalist id="edy-district-options">
-                {districtSuggestions.map((value) => (
-                  <option key={value} value={value} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="Logradouro">
-              <Input value={form.street} onChange={(e) => set("street", e.target.value)} placeholder="Rua / Avenida" />
-            </Field>
-          </div>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-             <Field label="Número">
-               <Input value={form.number} onChange={(e) => set("number", e.target.value)} />
-             </Field>
-             <Field label="Complemento">
-               <Input value={form.complement} onChange={(e) => set("complement", e.target.value)} placeholder="Apto, Bloco, Sala..." />
-             </Field>
-             <Field label="Condomínio">
-               <Input value={form.condominiumName} onChange={(e) => set("condominiumName", e.target.value)} />
-             </Field>
-          </div>
-
-          <Field label="Endereço Formatado (Uso interno)" hint="Texto livre compatível com legados.">
-            <Input value={form.address} onChange={(e) => set("address", e.target.value)} />
-          </Field>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-             <Field label="Latitude (opcional)">
-               <Input value={form.latitude} onChange={(e) => set("latitude", e.target.value)} />
-             </Field>
-             <Field label="Longitude (opcional)">
-               <Input value={form.longitude} onChange={(e) => set("longitude", e.target.value)} />
-             </Field>
-          </div>
-          
-          <Field label="Proximidades" hint="Separe por vírgula. Ex: Praia, Mercado, Escola...">
-            <Input 
-              value={form.proximities.join(", ")} 
-              onChange={(e) => set("proximities", e.target.value.split(",").map(s => s.trim()).filter(Boolean))} 
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <Ruler className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Características</h2>
-          </div>
-          
-          {!isTerrain && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Field label="Dormitórios">
-                <CountInput label="dormitórios" value={form.bedrooms} onChange={(next) => set("bedrooms", next)} />
-              </Field>
-              <Field label="Suítes">
-                <CountInput label="suítes" value={form.suites} onChange={(next) => set("suites", next)} />
-              </Field>
-              <Field label="Banheiros">
-                <CountInput label="banheiros" value={form.bathrooms} onChange={(next) => set("bathrooms", next)} />
-              </Field>
-              <Field label="Vagas">
-                <CountInput label="vagas" value={form.parking} onChange={(next) => set("parking", next)} />
-              </Field>
-            </div>
-          )}
-          
-          {!isTerrain && !isCommercial && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mt-4">
-               <Field label="Cozinhas">
-                  <CountInput label="cozinhas" value={form.kitchens} onChange={(next) => set("kitchens", next)} />
-               </Field>
-               <Field label="Salas">
-                  <CountInput label="salas" value={form.livingRooms} onChange={(next) => set("livingRooms", next)} />
-               </Field>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Field label="Área Útil (m²)">
-              <Input
-                value={form.areaUtil}
-                inputMode="decimal"
-                onChange={(e) => set("areaUtil", e.target.value)}
-                placeholder="Ex: 80"
-              />
-            </Field>
-            <Field label="Área Total (m²)">
-              <Input
-                value={form.areaTotal}
-                inputMode="decimal"
-                onChange={(e) => set("areaTotal", e.target.value)}
-                placeholder="Ex: 120"
-              />
-            </Field>
-            {(isTerrain || isRural) && (
-              <Field label="Hectares">
-                <Input
-                  value={form.hectares}
-                  inputMode="decimal"
-                  onChange={(e) => set("hectares", e.target.value)}
-                />
-              </Field>
-            )}
-             <Field label="Área do Terreno (m²)">
-              <Input
-                value={form.landArea}
-                inputMode="decimal"
-                onChange={(e) => set("landArea", e.target.value)}
-              />
-            </Field>
-          </div>
-          
-          {(isTerrain || isRural) && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <Field label="Frente (m)">
-                <Input value={form.frontage} inputMode="decimal" onChange={(e) => set("frontage", e.target.value)} />
-              </Field>
-              <Field label="Fundo (m)">
-                <Input value={form.depth} inputMode="decimal" onChange={(e) => set("depth", e.target.value)} />
-              </Field>
-            </div>
-          )}
-          
-          {!isTerrain && !isRural && (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-               <Field label="Andar">
-                 <Input value={form.floor} onChange={(e) => set("floor", e.target.value)} />
-               </Field>
-               <Field label="Total de Andares">
-                 <Input value={form.totalFloors} inputMode="numeric" onChange={(e) => set("totalFloors", e.target.value)} />
-               </Field>
-               <Field label="Ano Construção">
-                 <Input value={form.constructionYear} inputMode="numeric" onChange={(e) => set("constructionYear", e.target.value)} />
-               </Field>
-            </div>
-          )}
-          
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            <Field label="Posição Solar">
-              <Input value={form.solarPosition} onChange={(e) => set("solarPosition", e.target.value)} placeholder="Norte, Sul..." />
-            </Field>
-            <Field label="Distância do Mar (m)">
-              <Input value={form.seaDistance} inputMode="numeric" onChange={(e) => set("seaDistance", e.target.value)} />
-            </Field>
-          </div>
-
-          <Field label="Amenidades e Comodidades">
-            <FeaturesPicker
-              selected={form.features}
-              onChange={(next) => set("features", next)}
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <Banknote className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Valores</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field label="Preço (Compatibilidade)">
-              <MoneyInput value={form.price} onChange={(value) => set("price", value)} />
-            </Field>
-            <Field label="Preço de Venda">
-              <MoneyInput value={form.salePrice} onChange={(value) => set("salePrice", value)} />
-            </Field>
-            <Field label="Preço de Locação">
-              <MoneyInput value={form.rentPrice} onChange={(value) => set("rentPrice", value)} />
-            </Field>
-            <Field label="Condomínio">
-              <MoneyInput value={form.condoFee} onChange={(value) => set("condoFee", value)} />
-            </Field>
-            <Field label="IPTU">
-              <MoneyInput value={form.iptu} onChange={(value) => set("iptu", value)} />
-            </Field>
-            <Field label="Período do IPTU">
-              <Select value={form.iptuPeriod} onChange={(e) => set("iptuPeriod", e.target.value)}>
-                <option value="mensal">Mensal</option>
-                <option value="anual">Anual</option>
-              </Select>
-            </Field>
-          </div>
-          
-          <Field label="Condições de Negociação" hint="Ex: Aceita permuta, financiamento bancário...">
-            <Input value={form.negotiationTerms} onChange={(e) => set("negotiationTerms", e.target.value)} />
-          </Field>
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <User className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Proprietário</h2>
-          </div>
-          
-          {!isCreatingOwner ? (
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4">
+          <CompactCard icon={<MapPin className="h-4 w-4 text-red-500" />} title="Localização">
             <div className="space-y-4">
-               <div className="flex gap-4">
-                 <div className="flex-1">
-                   <Field label="Buscar proprietário" hint="Filtre por nome, e-mail, CPF ou telefone.">
-                     <Input
-                       value={ownerSearch}
-                       onChange={(e) => setOwnerSearch(e.target.value)}
-                       placeholder="Buscar..."
-                     />
-                   </Field>
-                 </div>
-                 <div className="flex-1">
-                   <Field label="Vincular proprietário" hint="Selecione na lista abaixo.">
-                     <Select
-                       value={form.ownerId}
-                       onChange={(e) => set("ownerId", e.target.value)}
-                     >
-                       <option value="">(sem proprietário vinculado)</option>
-                       {filteredOwners.map((owner) => (
-                         <option key={owner.id} value={owner.id}>
-                           {owner.name} {owner.phone ? `(${owner.phone})` : ""}
-                         </option>
-                       ))}
-                     </Select>
-                   </Field>
-                 </div>
+              <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_80px] gap-4">
+                <CompactField label="CEP">
+                  <div className="flex gap-2">
+                    <CompactInput value={form.cep} onChange={(e) => set("cep", e.target.value)} placeholder="00000-000" className="w-[110px]" />
+                    <button type="button" onClick={handleCepLookup} disabled={cepLoading} className="rounded border border-white/10 bg-black/20 px-3 text-brass hover:text-white transition-colors">
+                      {cepLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPin className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </CompactField>
+                <CompactField label="Cidade">
+                  <CompactInput value={form.city} onChange={(e) => set("city", e.target.value)} list="edy-city-options" />
+                  <datalist id="edy-city-options">
+                    {citySuggestions.map((c) => <option key={c} value={c} />)}
+                  </datalist>
+                </CompactField>
+                <CompactField label="UF">
+                  <CompactInput value={form.state} onChange={(e) => set("state", e.target.value)} maxLength={2} />
+                </CompactField>
+              </div>
+
+              <CompactField label="Bairro">
+                <CompactInput value={form.district} onChange={(e) => set("district", e.target.value)} list="districts" />
+                <datalist id="districts">
+                  {districtSuggestions.map((d) => <option key={d} value={d} />)}
+                </datalist>
+              </CompactField>
+
+              <div className="grid grid-cols-1 sm:grid-cols-[1fr_100px] gap-4">
+                <CompactField label="Logradouro (Rua, Avenida, etc.)">
+                  <CompactInput value={form.street} onChange={(e) => set("street", e.target.value)} />
+                </CompactField>
+                <CompactField label="Número">
+                  <CompactInput value={form.number} onChange={(e) => set("number", e.target.value)} />
+                </CompactField>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <CompactField label="Complemento (apto, bloco, etc.)">
+                  <CompactInput value={form.complement} onChange={(e) => set("complement", e.target.value)} />
+                </CompactField>
+                <CompactField label="Condomínio / Empreendimento">
+                  <CompactInput value={form.condominiumName} onChange={(e) => set("condominiumName", e.target.value)} />
+                </CompactField>
+              </div>
+
+              <CompactField label="Endereço Formatado Completo (Legacy)" optional>
+                <CompactTextarea value={form.address} onChange={(e) => set("address", e.target.value)} className="min-h-[60px]" />
+              </CompactField>
+            </div>
+          </CompactCard>
+
+          <CompactCard icon={<Crosshair className="h-4 w-4 text-red-500" />} title="Geolocalização" action={<span className="text-[11px] text-slate-500 font-normal">(opcional)</span>}>
+            <div className="space-y-4">
+               <div className="grid grid-cols-2 gap-4">
+                 <CompactField label="Latitude">
+                   <CompactInput value={form.latitude} onChange={(e) => set("latitude", e.target.value)} placeholder="-23.5505" />
+                 </CompactField>
+                 <CompactField label="Longitude">
+                   <CompactInput value={form.longitude} onChange={(e) => set("longitude", e.target.value)} placeholder="-46.6333" />
+                 </CompactField>
                </div>
+               <CompactField label="Proximidades">
+                  <CompactInput value={form.proximities.join(', ')} onChange={(e) => set("proximities", e.target.value.split(',').map(s=>s.trim()).filter(Boolean))} placeholder="Ex: Praia, mercado, escola, shopping..." />
+               </CompactField>
                
-               <Btn tone="outline" onClick={() => setIsCreatingOwner(true)}>
-                 <Plus className="h-4 w-4" /> Novo Proprietário
-               </Btn>
+               <CompactField label="Distância do Mar (metros)" optional>
+                 <CompactInput value={form.seaDistance} onChange={(e) => set("seaDistance", e.target.value)} />
+               </CompactField>
+            </div>
+          </CompactCard>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4">
+          <CompactCard icon={<Ruler className="h-4 w-4 text-emerald-400" />} title="Características">
+            <div className="space-y-4">
+              {!isTerrain && !isCommercial && (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+                  <CompactField label="Quartos">
+                    <CompactCountInput value={form.bedrooms} onChange={(v) => set("bedrooms", v)} />
+                  </CompactField>
+                  <CompactField label="Suítes">
+                    <CompactCountInput value={form.suites} onChange={(v) => set("suites", v)} />
+                  </CompactField>
+                  <CompactField label="Banheiros">
+                    <CompactCountInput value={form.bathrooms} onChange={(v) => set("bathrooms", v)} />
+                  </CompactField>
+                  <CompactField label="Vagas">
+                    <CompactCountInput value={form.parking} onChange={(v) => set("parking", v)} />
+                  </CompactField>
+                </div>
+              )}
+
+              {!isTerrain && !isCommercial && (
+                <div className="grid grid-cols-2 gap-4">
+                  <CompactField label="Salas">
+                    <CompactCountInput value={form.livingRooms} onChange={(v) => set("livingRooms", v)} />
+                  </CompactField>
+                  <CompactField label="Cozinhas">
+                    <CompactCountInput value={form.kitchens} onChange={(v) => set("kitchens", v)} />
+                  </CompactField>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                {!isTerrain && !isRural && (
+                  <CompactField label="Área Útil (m²)">
+                    <CompactInput value={form.areaUtil} onChange={(e) => set("areaUtil", e.target.value)} />
+                  </CompactField>
+                )}
+                <CompactField label="Área Total (m²)">
+                  <CompactInput value={form.areaTotal} onChange={(e) => set("areaTotal", e.target.value)} />
+                </CompactField>
+                <CompactField label="Área do Terreno (m²)">
+                  <CompactInput value={form.landArea} onChange={(e) => set("landArea", e.target.value)} />
+                </CompactField>
+                {(isTerrain || isRural) && (
+                  <CompactField label="Hectares">
+                    <CompactInput value={form.hectares} onChange={(e) => set("hectares", e.target.value)} />
+                  </CompactField>
+                )}
+              </div>
+
+              {(isTerrain || isRural) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <CompactField label="Frente (m)">
+                    <CompactInput value={form.frontage} onChange={(e) => set("frontage", e.target.value)} />
+                  </CompactField>
+                  <CompactField label="Fundo (m)">
+                    <CompactInput value={form.depth} onChange={(e) => set("depth", e.target.value)} />
+                  </CompactField>
+                </div>
+              )}
+
+              {!isTerrain && !isRural && (
+                <div className="grid grid-cols-3 gap-4">
+                  <CompactField label="Andar">
+                    <CompactInput value={form.floor} onChange={(e) => set("floor", e.target.value)} />
+                  </CompactField>
+                  <CompactField label="Total Andares">
+                    <CompactInput value={form.totalFloors} onChange={(e) => set("totalFloors", e.target.value)} />
+                  </CompactField>
+                  <CompactField label="Ano Construção">
+                    <CompactInput value={form.constructionYear} onChange={(e) => set("constructionYear", e.target.value)} />
+                  </CompactField>
+                </div>
+              )}
+              
+              {!isTerrain && !isRural && (
+                <CompactField label="Posição solar">
+                  <CompactSelect value={form.solarPosition} onChange={(e) => set("solarPosition", e.target.value)}>
+                    <option value="">Selecione</option>
+                    <option value="N">Norte</option>
+                    <option value="S">Sul</option>
+                    <option value="L">Leste</option>
+                    <option value="O">Oeste</option>
+                    <option value="NE">Nordeste</option>
+                    <option value="NO">Noroeste</option>
+                    <option value="SE">Sudeste</option>
+                    <option value="SO">Sudoeste</option>
+                  </CompactSelect>
+                </CompactField>
+              )}
+            </div>
+          </CompactCard>
+
+          <CompactCard title="Áreas comuns e Diferenciais">
+            <FeaturesPicker value={form.features} onChange={(v) => set("features", v)} />
+          </CompactCard>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-4">
+          <CompactCard icon={<DollarSign className="h-4 w-4 text-yellow-400" />} title="Valores">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <CompactField label="Preço (Compatibilidade)">
+                <CompactMoneyInput value={form.price} onChange={(v) => set("price", v)} />
+              </CompactField>
+              <CompactField label="Preço de Venda">
+                <CompactMoneyInput value={form.salePrice} onChange={(v) => set("salePrice", v)} />
+              </CompactField>
+              <CompactField label="Preço de Locação">
+                <CompactMoneyInput value={form.rentPrice} onChange={(v) => set("rentPrice", v)} />
+              </CompactField>
+              <CompactField label="Condomínio (R$)">
+                <CompactMoneyInput value={form.condoFee} onChange={(v) => set("condoFee", v)} />
+              </CompactField>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <CompactField label="IPTU (R$)">
+                <CompactMoneyInput value={form.iptu} onChange={(v) => set("iptu", v)} />
+              </CompactField>
+              <CompactField label="Período IPTU">
+                <CompactSelect value={form.iptuPeriod} onChange={(e) => set("iptuPeriod", e.target.value)}>
+                  <option value="mensal">Mensal</option>
+                  <option value="anual">Anual</option>
+                </CompactSelect>
+              </CompactField>
+            </div>
+          </CompactCard>
+
+          <CompactCard title="Forma de negociação">
+            <CompactField label="Observações de negociação (Analisa proposta, etc)">
+               <CompactTextarea value={form.negotiationTerms} onChange={(e) => set("negotiationTerms", e.target.value)} placeholder="Ex: Aceita permuta, financiamento bancário..." className="min-h-[72px]" />
+            </CompactField>
+          </CompactCard>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_0.8fr] gap-4">
+          <CompactCard icon={<ImageIcon className="h-4 w-4 text-blue-400" />} title="Fotos e Vídeos">
+            <PropertyGallery
+              images={images}
+              uploading={uploading}
+              onPick={pickFiles}
+              onMove={move}
+              onSetPrimary={setPrimary}
+              onRemove={removeImage}
+            />
+          </CompactCard>
+          
+          <CompactCard icon={<LinkIcon className="h-4 w-4 text-blue-400" />} title="Mídia externa">
+            <CompactField label="Link do vídeo (YouTube, Instagram, etc.)">
+              <CompactInput value={form.youtubeUrl} onChange={(e) => set("youtubeUrl", e.target.value)} placeholder="Cole o link público do vídeo" />
+            </CompactField>
+            
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <CompactField label="Marca d'água">
+                <label className="flex cursor-pointer items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={form.watermarkOff}
+                    onChange={(e) => set("watermarkOff", e.target.checked)}
+                    className="rounded border-white/10 bg-black/20 text-brass focus:ring-brass focus:ring-offset-0 h-4 w-4"
+                  />
+                  <span className="text-sm text-slate-300">Remover marca d'água das fotos</span>
+                </label>
+              </CompactField>
+            </div>
+          </CompactCard>
+        </div>
+
+        <CompactCard icon={<User className="h-4 w-4 text-blue-300" />} title="Dados do Proprietário" action={
+          <label className="flex cursor-pointer items-center gap-2">
+            <input type="checkbox" checked={isCreatingOwner} onChange={(e) => setIsCreatingOwner(e.target.checked)} className="rounded border-white/10 bg-black/20 text-brass focus:ring-brass h-4 w-4" />
+            <span className="text-xs text-brass">Cadastrar novo proprietário</span>
+          </label>
+        }>
+          {isCreatingOwner ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <CompactField label="Nome completo" required>
+                  <CompactInput value={newOwnerName} onChange={(e) => setNewOwnerName(e.target.value)} />
+                </CompactField>
+                <CompactField label="CPF / CNPJ">
+                  <CompactInput value={newOwnerDocument} onChange={(e) => setNewOwnerDocument(e.target.value)} />
+                </CompactField>
+                <CompactField label="Telefone">
+                  <CompactInput value={newOwnerPhone} onChange={(e) => setNewOwnerPhone(e.target.value)} placeholder="(00) 00000-0000" />
+                </CompactField>
+                <CompactField label="E-mail" optional>
+                  <CompactInput value={newOwnerEmail} onChange={(e) => setNewOwnerEmail(e.target.value)} placeholder="email@exemplo.com" />
+                </CompactField>
+              </div>
+              <div className="flex justify-end">
+                <button type="button" onClick={handleCreateOwner} disabled={saveOwner.isPending} className="rounded bg-brass px-4 py-2 text-xs font-medium text-white hover:bg-brass/90 transition-colors">
+                  {saveOwner.isPending ? "Salvando..." : "Salvar Proprietário"}
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="space-y-4 rounded bg-bone/30 p-4">
-               <h3 className="text-sm font-medium text-deep">Cadastrar Novo Proprietário</h3>
-               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                 <Field label="Nome Completo">
-                   <Input value={newOwnerName} onChange={e => setNewOwnerName(e.target.value)} />
-                 </Field>
-                 <Field label="Telefone">
-                   <Input value={newOwnerPhone} onChange={e => setNewOwnerPhone(e.target.value)} placeholder="(11) 99999-9999" />
-                 </Field>
-                 <Field label="Documento (CPF/CNPJ)">
-                   <Input value={newOwnerDocument} onChange={e => setNewOwnerDocument(e.target.value)} />
-                 </Field>
-                 <Field label="E-mail (opcional)">
-                   <Input value={newOwnerEmail} onChange={e => setNewOwnerEmail(e.target.value)} />
-                 </Field>
-               </div>
-               <div className="flex gap-2">
-                 <Btn tone="ghost" onClick={() => setIsCreatingOwner(false)}>Cancelar</Btn>
-                 <Btn tone="brass" onClick={handleCreateOwner} disabled={saveOwner.isPending}>
-                    {saveOwner.isPending ? "Salvando..." : "Salvar e Vincular"}
-                 </Btn>
-               </div>
+            <div className="space-y-4">
+              <CompactField label="Buscar proprietário existente">
+                <div className="relative">
+                   <CompactInput value={ownerSearch} onChange={(e) => setOwnerSearch(e.target.value)} placeholder="Digite o nome, telefone ou e-mail..." />
+                   <div className="mt-2 max-h-40 overflow-y-auto rounded border border-white/10 bg-black/20">
+                     {filteredOwners.length === 0 ? (
+                       <div className="p-3 text-xs text-slate-500">Nenhum proprietário encontrado</div>
+                     ) : (
+                       filteredOwners.map(o => (
+                         <label key={o.id} className="flex items-center gap-3 p-3 hover:bg-white/10 cursor-pointer border-b border-white/10 last:border-0 transition-colors">
+                           <input type="radio" name="owner" value={o.id} checked={form.ownerId === String(o.id)} onChange={() => set("ownerId", String(o.id))} className="text-brass focus:ring-brass bg-white/5 border-white/10 h-4 w-4" />
+                           <div>
+                             <div className="text-sm font-medium text-slate-200">{o.name}</div>
+                             <div className="text-xs text-slate-400">{o.phone} {o.email ? ` · ${o.email}` : ''}</div>
+                           </div>
+                         </label>
+                       ))
+                     )}
+                   </div>
+                </div>
+              </CompactField>
+              {ownerName && (
+                <div className="text-xs text-emerald-400 flex items-center gap-1.5 mt-2">
+                  <Check className="h-3.5 w-3.5" />
+                  Proprietário selecionado: <span className="font-medium text-white">{ownerName}</span>
+                </div>
+              )}
             </div>
           )}
-        </div>
+        </CompactCard>
 
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <Sparkles className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Descrição e Diferenciais</h2>
-          </div>
-          
-          <div className="flex justify-between items-center bg-bone/20 p-3 rounded-lg border border-line">
-            <div className="text-sm text-deep">
-              Deixe a IA escrever um texto atrativo com base nos dados que você já preencheu.
+        <CompactCard icon={<FileText className="h-4 w-4 text-slate-300" />} title="Observações Internas e Publicação">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+               <CompactField label="Observações internas (para a equipe)">
+                 <CompactTextarea value={form.internalNotes} onChange={(e) => set("internalNotes", e.target.value)} placeholder="Informações adicionais, chaves, visitas, documentos, etc." className="min-h-[140px]" />
+               </CompactField>
             </div>
-            <Btn tone="outline" onClick={runGenerate} disabled={generate.isPending}>
-              <Sparkles className="h-4 w-4" /> 
-              {generate.isPending ? "Gerando..." : "Gerar com IA"}
-            </Btn>
+            
+            <div className="space-y-4">
+              <CompactField label="Status de Publicação">
+                <CompactSelect value={form.status} onChange={(e) => set("status", e.target.value as FormState["status"])}>
+                  {propertyStatuses.map((value) => (
+                    <option key={value} value={value}>{propertyStatusLabel[value]}</option>
+                  ))}
+                </CompactSelect>
+              </CompactField>
+              
+              <CompactField label="Visibilidade no Site">
+                <label className="flex cursor-pointer items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    checked={form.published}
+                    onChange={(e) => set("published", e.target.checked)}
+                    className="rounded border-white/10 bg-black/20 text-brass focus:ring-brass h-4 w-4"
+                  />
+                  <span className="text-sm text-slate-300">Publicado e visível para clientes</span>
+                </label>
+              </CompactField>
+              
+              <CompactField label="Destaque">
+                <label className="flex cursor-pointer items-center gap-2 mt-1">
+                  <input
+                    type="checkbox"
+                    checked={form.featured}
+                    onChange={(e) => set("featured", e.target.checked)}
+                    className="rounded border-white/10 bg-black/20 text-brass focus:ring-brass h-4 w-4"
+                  />
+                  <span className="text-sm text-slate-300">Aparecer na seção de destaques da página inicial</span>
+                </label>
+              </CompactField>
+            </div>
           </div>
-          
-          {aiOpen && (
-            <PropertyAiPanel
-              loading={generate.isPending}
-              error={aiError}
-              content={aiContent}
-              usedFields={aiUsedFields}
-              onClose={() => setAiOpen(false)}
-              onApply={applyField}
-            />
-          )}
+        </CompactCard>
 
-          <Field label="Texto da descrição" hint="Aparece na página do imóvel no site.">
-            <Textarea
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-              className="min-h-48"
-            />
-          </Field>
-          
-          <Field label="Anotações Internas" hint="Uso exclusivo do CRM. Não vai pro site.">
-            <Textarea
-              value={form.internalNotes}
-              onChange={(e) => set("internalNotes", e.target.value)}
-              className="min-h-24"
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <Camera className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Fotos e Mídia</h2>
-          </div>
-          
-          <PropertyGallery
-            images={images}
-            uploading={uploading}
-            onPick={pickFiles}
-            onMove={move}
-            onSetPrimary={setPrimary}
-            onRemove={removeImage}
-          />
-
-          <Field label="Vídeo do YouTube (URL)" hint="Link completo do vídeo (ex: https://www.youtube.com/watch?v=...)">
-            <Input
-              value={form.youtubeUrl}
-              onChange={(e) => set("youtubeUrl", e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <ShieldCheck className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Documentação</h2>
-          </div>
-          
-          <PropertyDocsSection propertyId={propertyId} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <CompactCard icon={<ShieldCheck className="h-4 w-4 text-emerald-400" />} title="Documentação">
+            <PropertyDocsSection propertyId={propertyId} />
+          </CompactCard>
+          <CompactCard icon={<CalendarClock className="h-4 w-4 text-blue-400" />} title="Revalidação">
+            <PropertyRevalidationSection propertyId={propertyId} />
+          </CompactCard>
         </div>
         
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <CalendarClock className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Revalidação</h2>
-          </div>
-          
-          <PropertyRevalidationSection propertyId={propertyId} />
-        </div>
-
-        <div className="space-y-6 rounded-[10px] border border-line bg-white p-5 sm:p-6 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-line pb-3">
-            <Globe className="h-5 w-5 text-brass" />
-            <h2 className="text-lg font-medium text-deep">Publicação</h2>
-          </div>
-          
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-            <Field label="Status da Negociação">
-              <Select
-                value={form.status}
-                onChange={(e) => set("status", e.target.value as FormState["status"])}
-              >
-                {propertyStatuses.map((value) => (
-                  <option key={value} value={value}>
-                    {propertyStatusLabel[value]}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-
-            <div className="flex flex-col justify-center gap-3">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.published}
-                  onChange={(e) => set("published", e.target.checked)}
-                  className="h-4 w-4 rounded border-line text-brass focus:ring-brass bg-white"
-                />
-                <span className="text-sm text-deep">Publicar no site</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.featured}
-                  onChange={(e) => set("featured", e.target.checked)}
-                  className="h-4 w-4 rounded border-line text-brass focus:ring-brass bg-white"
-                />
-                <span className="text-sm text-deep">Destaque na página inicial</span>
-              </label>
-
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.watermarkOff}
-                  onChange={(e) => set("watermarkOff", e.target.checked)}
-                  className="h-4 w-4 rounded border-line text-brass focus:ring-brass bg-white"
-                />
-                <span className="text-sm text-deep">Remover marca d'água das fotos</span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-6 border-t border-line">
-          <Btn tone="outline" onClick={() => navigate("/admin/imoveis")}>Cancelar</Btn>
-          <Btn tone="brass" onClick={() => submit()} disabled={save.isPending}>
-            {save.isPending ? "Salvando..." : "Salvar Imóvel"}
-          </Btn>
-        </div>
+        <PropertyAiPanel
+          open={aiOpen}
+          onClose={() => setAiOpen(false)}
+          loading={generate.isPending}
+          error={aiError}
+          content={aiContent}
+          usedFields={aiUsedFields}
+          onApply={applyField}
+        />
       </form>
     </AdminLayout>
   );

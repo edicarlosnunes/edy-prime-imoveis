@@ -38,13 +38,13 @@ export function PropertyFormHeader({
   ];
 
   return (
-    <header className="rounded-[10px] border border-line bg-white px-4 py-4 sm:px-5">
+    <header className="rounded-[10px] border border-white/10 bg-white/5 px-4 py-4 sm:px-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="display truncate text-xl text-deep sm:text-2xl">
+          <p className="display truncate text-xl text-slate-200 sm:text-2xl">
             {isNew && line.length === 0 ? "Novo imóvel" : line.join(" · ") || "Novo imóvel"}
           </p>
-          <p className="mt-1.5 text-[11px] text-muted sm:text-xs">{meta.join(" · ")}</p>
+          <p className="mt-1.5 text-[11px] text-slate-400 sm:text-xs">{meta.join(" · ")}</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -56,7 +56,7 @@ export function PropertyFormHeader({
       </div>
 
       <div
-        className="mt-3.5 h-1 w-full overflow-hidden rounded-full bg-bone/70"
+        className="mt-3.5 h-1 w-full overflow-hidden rounded-full bg-black/20"
         role="progressbar"
         aria-valuenow={percent}
         aria-valuemin={0}

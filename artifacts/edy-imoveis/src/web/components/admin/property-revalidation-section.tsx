@@ -101,7 +101,7 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
     );
   }
 
-  if (docs.isLoading) return <p className="text-sm text-muted">Carregando revalidação…</p>;
+  if (docs.isLoading) return <p className="text-sm text-slate-400">Carregando revalidação…</p>;
 
   const entryValue = entryDate ?? toDateInput(portfolioEntryAt);
 
@@ -140,22 +140,22 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
       <ErrorNote message={error} />
 
       {/* -------------------------------------------------------- estado */}
-      <div className="rounded-[10px] border border-line bg-bone/30 p-3">
+      <div className="rounded-[10px] border border-white/10 bg-black/20 p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-muted" />
+          <CalendarClock className="h-4 w-4 text-slate-400" />
           <Badge tone={STATE_TONE[view.state]}>{view.label}</Badge>
           {view.dueAt && (
-            <span className="text-[11px] text-muted">Próxima: {dateLabel(view.dueAt)}</span>
+            <span className="text-[11px] text-slate-400">Próxima: {dateLabel(view.dueAt)}</span>
           )}
         </div>
-        <dl className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-muted sm:grid-cols-3">
+        <dl className="mt-3 grid grid-cols-1 gap-2 text-[11px] text-slate-400 sm:grid-cols-3">
           <div>
             <dt className="label-xs">Entrada na carteira</dt>
-            <dd className="text-deep">{portfolioEntryAt ? dateLabel(portfolioEntryAt) : "—"}</dd>
+            <dd className="text-slate-200">{portfolioEntryAt ? dateLabel(portfolioEntryAt) : "—"}</dd>
           </div>
           <div>
             <dt className="label-xs">Última revalidação</dt>
-            <dd className="text-deep">
+            <dd className="text-slate-200">
               {revalidation?.lastRevalidationAt
                 ? dateLabel(toDate(revalidation.lastRevalidationAt))
                 : "—"}
@@ -163,7 +163,7 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
           </div>
           <div>
             <dt className="label-xs">Último desfecho</dt>
-            <dd className="text-deep">
+            <dd className="text-slate-200">
               {lastOutcome ? (REVALIDATION_OUTCOME_LABEL[lastOutcome] ?? lastOutcome) : "—"}
             </dd>
           </div>
@@ -171,9 +171,9 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
       </div>
 
       {/* ------------------------------------------------------- carteira */}
-      <div className="border-t border-line pt-4">
-        <p className="label-xs text-muted">Entrada na carteira</p>
-        <p className="mt-1 text-[11px] text-muted">
+      <div className="border-t border-white/10 pt-4">
+        <p className="label-xs text-slate-400">Entrada na carteira</p>
+        <p className="mt-1 text-[11px] text-slate-400">
           Origem do ciclo de 4 meses. Imóveis antigos ficam sem data até alguém informar — nada é
           preenchido automaticamente para não vencer a carteira inteira de uma vez.
         </p>
@@ -208,9 +208,9 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
       </div>
 
       {/* ----------------------------------------------------- desfecho */}
-      <div className="border-t border-line pt-4">
-        <p className="label-xs text-muted">Registrar contato de revalidação</p>
-        <p className="mt-1 text-[11px] text-muted">
+      <div className="border-t border-white/10 pt-4">
+        <p className="label-xs text-slate-400">Registrar contato de revalidação</p>
+        <p className="mt-1 text-[11px] text-slate-400">
           O status do imóvel nunca muda sozinho aqui. Disponível e “alterou condições” reiniciam os
           4 meses; “retornar depois” reagenda 2 meses; “sem resposta” volta em 15 dias e segue
           pendente; vendido e “não deseja vender” encerram o ciclo preservando o histórico.
@@ -246,15 +246,15 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
           </Btn>
         </div>
         {suggestion && (
-          <p className="mt-3 rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-900">
+          <p className="mt-3 rounded-[10px] border border-amber-900/50 bg-amber-950/30 p-3 text-[11px] text-amber-400">
             {suggestion}
           </p>
         )}
       </div>
 
       {/* ----------------------------------------------------- histórico */}
-      <div className="border-t border-line pt-4">
-        <p className="flex items-center gap-2 label-xs text-muted">
+      <div className="border-t border-white/10 pt-4">
+        <p className="flex items-center gap-2 label-xs text-slate-400">
           <History className="h-3.5 w-3.5" />
           Histórico de revalidações
         </p>
@@ -267,16 +267,16 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
             {(data?.revalidations ?? []).map((row) => {
               const key = row.outcome as RevalidationOutcome;
               return (
-                <li key={row.id} className="rounded-[10px] border border-line p-3">
-                  <p className="flex flex-wrap items-center gap-2 text-sm text-deep">
+                <li key={row.id} className="rounded-[10px] border border-white/10 p-3">
+                  <p className="flex flex-wrap items-center gap-2 text-sm text-slate-200">
                     <Badge>{REVALIDATION_OUTCOME_LABEL[key] ?? row.outcome}</Badge>
-                    <span className="text-[11px] text-muted">
+                    <span className="text-[11px] text-slate-400">
                       {dateLabel(toDate(row.revalidatedAt))}
                       {row.userName ? ` · ${row.userName}` : ""}
                     </span>
                   </p>
-                  {row.note && <p className="mt-1 text-[11px] text-muted">{row.note}</p>}
-                  <p className="mt-1 text-[11px] text-muted">
+                  {row.note && <p className="mt-1 text-[11px] text-slate-400">{row.note}</p>}
+                  <p className="mt-1 text-[11px] text-slate-400">
                     {row.nextDueAt
                       ? `Próxima em ${dateLabel(toDate(row.nextDueAt))}`
                       : "Ciclo encerrado"}
