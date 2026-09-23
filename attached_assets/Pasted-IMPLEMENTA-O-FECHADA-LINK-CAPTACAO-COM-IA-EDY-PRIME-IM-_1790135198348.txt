@@ -1,0 +1,682 @@
+IMPLEMENTAÇÃO FECHADA — LINK_CAPTACAO COM IA
+EDY PRIME IMÓVEIS
+
+OBJETIVO
+
+Implementar no projeto atual da Edy Prime Imóveis o fluxo inteligente LINK_CAPTACAO, utilizando a estrutura existente e integrando o resultado à Ficha Única já implementada.
+
+IMPORTANTE:
+Esta tarefa NÃO é redesign.
+NÃO reconstruir a Ficha Única.
+NÃO alterar o site institucional.
+NÃO publicar.
+NÃO fazer deploy.
+NÃO alterar Meta, WhatsApp ou integrações externas.
+NÃO criar funcionalidades fora deste escopo.
+NÃO fazer refatoração ampla do projeto.
+NÃO substituir arquitetura existente sem necessidade.
+
+Antes de alterar código, inspecione SOMENTE os arquivos, rotas, modelos e APIs diretamente relacionados a:
+- LINK_CAPTACAO
+- owner_intake_links
+- formulário público /captacao/:token
+- proprietários/owners
+- imóveis/properties/property_captures
+- Ficha Única
+- corretores/angariadores
+- anexos/fotos/documentos
+
+Reutilize a estrutura existente sempre que possível.
+
+==================================================
+1. ENTRADA
+==================================================
+
+Manter o gerador genérico já existente em:
+
+/admin/captacao/link
+
+O link não deve exigir previamente nome ou telefone.
+
+Cada utilização válida do link deve iniciar/continuar uma CAPTAÇÃO INDEPENDENTE.
+
+Origem obrigatória:
+
+LINK_CAPTACAO
+
+O token bruto não deve ser persistido se a implementação atual já utiliza hash seguro.
+
+Não enfraquecer a segurança existente.
+
+==================================================
+2. EXPERIÊNCIA PÚBLICA
+==================================================
+
+Evoluir /captacao/:token para uma conversa guiada por IA.
+
+Não transformar a interface em um formulário longo disfarçado.
+
+A experiência deve:
+- apresentar uma pergunta principal por vez;
+- aceitar texto natural;
+- aproveitar várias informações fornecidas na mesma mensagem;
+- salvar dados válidos antes de avançar;
+- nunca perguntar novamente informação que já esteja registrada;
+- permitir correções;
+- permitir "não sei";
+- manter progresso da sessão quando tecnicamente seguro;
+- calcular a próxima pergunta pelos dados que ainda faltam, não apenas por um contador fixo.
+
+Primeira identificação:
+
+"Você é:
+1 — Proprietário
+2 — Locador
+3 — Corretor"
+
+Perfis internos:
+PROPRIETARIO
+LOCADOR
+CORRETOR
+
+==================================================
+3. REGRAS GERAIS DA IA
+==================================================
+
+A IA deve interpretar linguagem natural e mapear somente informações com confiança suficiente.
+
+Exemplo:
+
+"É um apartamento de 2 quartos, uma suíte, 2 banheiros, uma vaga, 78 metros e fica no Canto do Forte."
+
+Deve preencher, quando compatível com o schema existente:
+tipo = apartamento
+quartos = 2
+suites = 1
+banheiros = 2
+vagas = 1
+area = 78 m²
+bairro = Canto do Forte
+
+Depois NÃO perguntar novamente esses dados.
+
+REGRAS:
+
+- Resposta vazia não avança campo obrigatório.
+- Campo opcional pode ser pulado.
+- "0" significa inexistente/zero quando zero for resposta válida.
+- "NÃO SEI" significa desconhecido.
+- NUNCA converter NÃO SEI em zero.
+- Não inventar informação.
+- Não presumir preço.
+- Não presumir documentação regular.
+- Não presumir endereço.
+- Não presumir característica.
+- Resposta ambígua deve gerar pergunta curta de esclarecimento.
+- Usuário pode dizer "corrigir", "errei", "voltar" ou equivalente.
+- Correção deve alterar somente a informação correspondente.
+- Não reiniciar toda a captação para corrigir um campo.
+- Uma mensagem pode preencher vários campos.
+- Dados espontâneos devem ser aproveitados.
+- Cada sessão deve permanecer isolada das demais.
+- Nunca misturar dados de usuários simultâneos.
+
+==================================================
+4. FLUXO PROPRIETÁRIO
+==================================================
+
+Após PROPRIETARIO:
+
+coletar:
+- nome completo;
+- telefone/WhatsApp;
+- e-mail opcional.
+
+CPF/CNPJ NÃO deve bloquear a captação.
+Não exigir CPF/CNPJ neste fluxo inicial.
+
+Antes de criar novo proprietário:
+procurar cadastro existente utilizando os identificadores seguros já suportados pelo projeto, especialmente telefone quando essa for a regra atual.
+
+Se existir:
+vincular.
+
+Se não existir:
+criar/preparar novo proprietário conforme arquitetura existente.
+
+Um proprietário pode possuir vários imóveis.
+
+Não criar proprietário duplicado apenas porque existe outro imóvel.
+
+Perguntar finalidade:
+
+VENDA ou LOCACAO.
+
+Não existe "compra" neste fluxo.
+
+Depois:
+- tipo do imóvel;
+- endereço;
+- características condicionais;
+- valores;
+- situação;
+- documentação;
+- comodidades;
+- fachada;
+- revisão.
+
+==================================================
+5. FLUXO LOCADOR
+==================================================
+
+Após LOCADOR:
+
+finalidade deve ser automaticamente:
+
+LOCACAO
+
+Não perguntar "venda ou locação".
+
+Coletar:
+- nome completo;
+- telefone/WhatsApp;
+- e-mail opcional.
+
+Aplicar a mesma regra de deduplicação de proprietário.
+
+Depois utilizar o mesmo motor de imóvel:
+- tipo;
+- endereço;
+- características;
+- valores;
+- situação;
+- documentação;
+- comodidades;
+- fachada.
+
+Para locação coletar, quando aplicável:
+- valor mensal pretendido;
+- condomínio;
+- periodicidade;
+- IPTU;
+- periodicidade;
+- outras despesas existentes no schema;
+- ocupado/desocupado;
+- disponibilidade;
+- mobiliado/não mobiliado quando aplicável;
+- disponibilidade para visita;
+- informação operacional de acesso/chaves quando houver campo apropriado.
+
+Garantia locatícia:
+permitir registrar informação/preferência quando houver destino apropriado, como:
+- caução;
+- seguro-fiança;
+- fiador;
+- título de capitalização;
+- outra;
+- a definir/não sei.
+
+NÃO inventar política comercial da Edy Prime.
+
+==================================================
+6. FLUXO CORRETOR
+==================================================
+
+Após CORRETOR:
+
+primeiro identificar O CORRETOR:
+- nome;
+- telefone/WhatsApp;
+- CRECI quando aplicável;
+- e-mail opcional.
+
+Se existir corretor compatível no CRM:
+vincular.
+
+Evitar duplicação desnecessária.
+
+Depois identificar separadamente O PROPRIETÁRIO:
+- nome;
+- telefone/WhatsApp;
+- e-mail opcional.
+
+REGRA CRÍTICA:
+
+DADOS DO CORRETOR NUNCA PODEM SER GRAVADOS COMO DADOS DO PROPRIETÁRIO.
+
+Manter entidades/vínculos separados.
+
+O corretor deve ficar associado como responsável/angariador da captação quando a estrutura existente suportar esse vínculo.
+
+Depois perguntar:
+
+VENDA ou LOCACAO.
+
+Em seguida utilizar exatamente o mesmo motor compartilhado de imóvel.
+
+Não criar um segundo questionário independente apenas para corretor.
+
+==================================================
+7. ENDEREÇO
+==================================================
+
+Utilizar campos existentes da Ficha Única.
+
+Fluxo preferencial:
+- CEP;
+- consulta/preenchimento automático se serviço existente estiver disponível;
+- confirmar endereço encontrado;
+- número;
+- complemento quando houver.
+
+Se CEP já forneceu:
+rua
+bairro
+cidade
+UF
+
+não perguntar novamente esses campos.
+
+Se CEP estiver ausente ou consulta falhar:
+permitir endereço manual.
+
+Registrar condomínio/empreendimento quando aplicável.
+
+Não adicionar integração externa paga nesta tarefa.
+
+==================================================
+8. CARACTERÍSTICAS CONDICIONAIS
+==================================================
+
+As perguntas devem depender do tipo de imóvel.
+
+APARTAMENTO / COBERTURA / STUDIO:
+usar campos existentes pertinentes como:
+- quartos;
+- suítes;
+- banheiros;
+- vagas;
+- área útil/total;
+- andar;
+- elevador;
+- demais características compatíveis.
+
+CASA / SOBRADO:
+- quartos;
+- suítes;
+- banheiros;
+- vagas;
+- salas/cozinha quando existente;
+- área construída/útil;
+- terreno;
+- frente x fundos;
+- características pertinentes.
+
+TERRENO / LOTE:
+- área total;
+- frente x fundos;
+- informações pertinentes existentes.
+
+NÃO perguntar quartos, suítes ou cozinha para terreno.
+
+COMERCIAL / SALA / LOJA / GALPÃO:
+- área;
+- banheiros;
+- vagas;
+- características comerciais pertinentes existentes.
+
+RURAL:
+- área;
+- hectares/alqueires quando existentes;
+- acesso/localização;
+- benfeitorias;
+- construções existentes;
+- demais campos rurais existentes.
+
+Não forçar perguntas residenciais sem sentido.
+
+IMPORTANTE:
+Somente usar campos suportados pelo schema/Ficha Única existente.
+Se uma informação desejada não possuir destino real, não inventar coluna/tabela silenciosamente.
+Registrar no relatório final como "campo sem destino existente".
+
+==================================================
+9. VALORES
+==================================================
+
+VENDA:
+coletar valor pretendido de venda.
+
+LOCAÇÃO:
+coletar valor mensal pretendido.
+
+Quando aplicável:
+- condomínio;
+- periodicidade;
+- IPTU;
+- periodicidade;
+- negociação;
+- informações financeiras existentes na Ficha Única.
+
+Interpretar formatos como:
+450000
+450.000
+R$ 450.000
+450 mil
+450k
+
+Se houver ambiguidade, confirmar antes de persistir valor definitivo.
+
+==================================================
+10. SITUAÇÃO / DOCUMENTAÇÃO
+==================================================
+
+Coletar somente informações pertinentes existentes.
+
+Exemplos:
+- ocupado/desocupado;
+- disponibilidade;
+- disponibilidade para visita;
+- situação documental;
+- escritura;
+- matrícula;
+- contrato;
+- financiamento;
+- inventário;
+- documentação em andamento;
+- pendências informadas.
+
+REGRA:
+
+DOCUMENTO INFORMADO OU ENVIADO NÃO SIGNIFICA DOCUMENTO VALIDADO.
+
+Manter diferença entre:
+- declarado pelo usuário;
+- arquivo recebido;
+- validado pela equipe.
+
+Não marcar automaticamente documentação como aprovada.
+
+==================================================
+11. COMODIDADES
+==================================================
+
+Permitir resposta agrupada.
+
+Exemplo:
+
+"Tem piscina, salão de festas, academia, churrasqueira, elevador e portaria."
+
+Mapear cada item para características existentes.
+
+Não perguntar individualmente novamente o que já foi informado.
+
+==================================================
+12. FOTO DA FACHADA
+==================================================
+
+Na fase final solicitar UMA foto da frente/fachada.
+
+Texto deve explicar que a foto é usada inicialmente para:
+- identificação;
+- localização/verificação rápida pela equipe.
+
+Tratar como FOTO PROVISÓRIA DE CAPTAÇÃO.
+
+NÃO transformar automaticamente essa foto em imagem pública do anúncio.
+
+Não publicar automaticamente.
+
+==================================================
+13. REVISÃO
+==================================================
+
+Antes de concluir, apresentar resumo humano e compacto.
+
+Para Proprietário/Locador:
+- perfil;
+- tipo/finalidade;
+- localização;
+- características principais;
+- valor;
+- situação principal.
+
+Para Corretor mostrar explicitamente:
+CORRETOR:
+[nome]
+
+PROPRIETÁRIO:
+[nome]
+
+IMÓVEL:
+[resumo]
+
+Opções:
+1 — Confirmar/concluir
+2 — Corrigir informação
+
+Correção deve voltar apenas ao dado necessário e depois retornar à revisão.
+
+==================================================
+14. CONCLUSÃO E FICHA ÚNICA
+==================================================
+
+Após confirmação:
+
+- localizar/criar/vincular proprietário;
+- localizar/vincular corretor quando aplicável;
+- criar ou atualizar a captação/imóvel conforme arquitetura existente;
+- preservar origem LINK_CAPTACAO;
+- preencher todos os campos compatíveis da Ficha Única;
+- registrar histórico relevante;
+- deixar o registro disponível no CRM;
+- colocar em estágio apropriado de revisão/validação utilizando estágio existente compatível.
+
+NÃO considerar imóvel aprovado automaticamente.
+
+NÃO publicar imóvel automaticamente.
+
+NÃO enviar para portais.
+
+NÃO acionar WhatsApp/Meta.
+
+NÃO criar anúncio público.
+
+A equipe interna deve poder abrir a Ficha Única, revisar, corrigir e posteriormente validar.
+
+==================================================
+15. PERSISTÊNCIA E RETOMADA
+==================================================
+
+Garantir que:
+- cada utilização tenha sessão/captação independente;
+- resposta válida seja persistida antes de avançar;
+- refresh não misture sessões;
+- abandono não corrompa dados;
+- retomada segura continue do primeiro dado realmente faltante;
+- duas pessoas usando links simultaneamente não compartilhem estado;
+- um proprietário com dois imóveis gere dois imóveis/captações vinculados ao mesmo proprietário quando apropriado.
+
+Não depender exclusivamente do histórico textual da interface para conhecer o estado.
+
+O estado persistido deve ser a fonte confiável para decidir a próxima pergunta.
+
+==================================================
+16. SEGURANÇA
+==================================================
+
+Preservar todas as proteções existentes.
+
+Não expor:
+- tokens;
+- hashes;
+- segredos;
+- IDs internos sensíveis;
+- dados de outras captações.
+
+Link inválido, expirado ou inexistente deve ser tratado de forma segura e amigável.
+
+Não permitir acesso cruzado entre sessões.
+
+Não reduzir autenticação das rotas administrativas.
+
+==================================================
+17. COMPATIBILIDADE COM A FICHA ÚNICA
+==================================================
+
+ANTES de criar qualquer novo campo ou migration:
+
+comparar cada informação coletada com o schema atual e a Ficha Única atual.
+
+PRIORIDADE:
+REUTILIZAR CAMPOS EXISTENTES.
+
+Somente criar alteração mínima de schema se for tecnicamente indispensável para o funcionamento central e não houver destino existente equivalente.
+
+Não fazer migration destrutiva.
+
+Não remover campos existentes.
+
+Não apagar dados existentes.
+
+Não reconstruir Ficha Única.
+
+Não alterar funcionalidades existentes sem necessidade.
+
+Se algum dado desta especificação não puder ser armazenado sem mudança estrutural relevante:
+NÃO improvisar.
+Listar no relatório final.
+
+==================================================
+18. TESTES OBRIGATÓRIOS
+==================================================
+
+Executar localmente testes do fluxo:
+
+A. PROPRIETÁRIO
+- cadastro completo;
+- venda;
+- locação;
+- múltiplos dados numa mensagem.
+
+B. LOCADOR
+- finalidade automática LOCACAO;
+- valores;
+- imóvel ocupado/desocupado.
+
+C. CORRETOR
+- corretor separado de proprietário;
+- corretor existente;
+- proprietário existente;
+- vínculo correto.
+
+D. ESTADO
+- resposta vazia;
+- 0;
+- NÃO SEI;
+- correção;
+- abandono;
+- retomada;
+- refresh.
+
+E. DEDUPLICAÇÃO
+- mesmo proprietário;
+- dois imóveis diferentes;
+- não duplicar pessoa indevidamente.
+
+F. CONCORRÊNCIA
+- duas sessões simultâneas;
+- confirmar que dados não se misturam.
+
+G. SEGURANÇA
+- token inválido;
+- token inexistente;
+- tentativa de acessar sessão diferente.
+
+H. DESTINO
+- confirmar origem LINK_CAPTACAO;
+- confirmar dados na Ficha Única;
+- confirmar registro no CRM;
+- confirmar que nada foi publicado automaticamente.
+
+Executar também:
+- typecheck;
+- build;
+- testes existentes relacionados às áreas modificadas.
+
+Corrigir somente regressões provocadas por esta implementação.
+
+Não aproveitar esta tarefa para corrigir problemas não relacionados.
+
+==================================================
+19. INTERFACE
+==================================================
+
+Manter identidade visual atual da Edy Prime.
+
+A conversa deve ser:
+- limpa;
+- responsiva;
+- simples;
+- adequada para celular;
+- uma pergunta principal por vez;
+- progresso discreto;
+- mensagens legíveis;
+- envio de foto simples;
+- opção clara de corrigir;
+- revisão final clara.
+
+Não redesenhar globalmente o sistema.
+
+Não alterar a Ficha Única visual já aprovada.
+
+==================================================
+20. LIMITE DE ESCOPO
+==================================================
+
+NESTA TAREFA NÃO FAZER:
+
+- publicação;
+- deploy;
+- republicação;
+- produção oficial;
+- alteração em www.edyprimeimoveis.com.br;
+- alteração Vercel;
+- Meta;
+- WhatsApp;
+- webhook externo;
+- Radar de Captação;
+- Captação pelo Site;
+- Cadastro pela Equipe;
+- outras fontes de captação;
+- redesign do CRM;
+- redesign da Ficha Única;
+- nova landing page;
+- SEO;
+- portais imobiliários;
+- refatoração geral;
+- funcionalidades adicionais sugeridas pelo Agent.
+
+==================================================
+21. RELATÓRIO FINAL
+==================================================
+
+Ao terminar, PARAR e informar objetivamente:
+
+1. arquivos alterados;
+2. migrations/schema alterados, se houve;
+3. como os três perfis foram implementados;
+4. como sessão e retomada funcionam;
+5. como proprietário duplicado é evitado;
+6. como corretor e proprietário permanecem separados;
+7. como os dados chegam à Ficha Única;
+8. campos solicitados sem destino existente, se houver;
+9. testes executados;
+10. resultado do typecheck;
+11. resultado do build;
+12. regressões encontradas/corrigidas;
+13. confirmação de que NÃO houve deploy/publicação;
+14. confirmação de que Meta/WhatsApp e produção oficial NÃO foram alterados.
+
+Depois do relatório, NÃO iniciar outra tarefa automaticamente.
+Aguardar nova autorização.

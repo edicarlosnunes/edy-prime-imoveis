@@ -92,6 +92,8 @@ const statements = [
     owner_name TEXT NOT NULL,
     phone TEXT,
     status TEXT NOT NULL DEFAULT 'aguardando',
+     profile TEXT,
+     draft TEXT,
     created_at INTEGER NOT NULL,
     started_at INTEGER,
     completed_at INTEGER,
@@ -435,6 +437,9 @@ const statements = [
     source TEXT NOT NULL DEFAULT 'manual',
     stage TEXT NOT NULL DEFAULT 'novo_contato',
     intention TEXT,
+     broker_name TEXT,
+     broker_phone TEXT,
+     broker_creci TEXT,
     next_action TEXT,
     next_action_at INTEGER,
     appraisal_status TEXT NOT NULL DEFAULT 'pendente',
@@ -643,6 +648,15 @@ const propertyCaptureColumns: Record<string, string> = {
   outside_priority_area: "INTEGER NOT NULL DEFAULT 0",
   duplicate_of_capture_id: "INTEGER",
   duplicate_note: "TEXT",
+  broker_name: "TEXT",
+  broker_phone: "TEXT",
+  broker_creci: "TEXT",
+};
+
+/** Estado mínimo, token-scoped, do atendimento público conversacional. */
+const ownerIntakeLinkColumns: Record<string, string> = {
+  profile: "TEXT",
+  draft: "TEXT",
 };
 
 /** Coluna que preserva a foto original quando há marca d'água. */
@@ -697,6 +711,7 @@ const columnMaps: Record<string, Record<string, string>> = {
   leads: leadColumns,
   owners: ownerColumns,
   property_captures: propertyCaptureColumns,
+  owner_intake_links: ownerIntakeLinkColumns,
   settings: settingsColumns,
 };
 

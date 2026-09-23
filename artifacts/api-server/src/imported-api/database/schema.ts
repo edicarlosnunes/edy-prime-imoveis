@@ -362,6 +362,9 @@ export const ownerIntakeLinks = sqliteTable(
     phone: text("phone"),
     /** aguardando | iniciado | concluido */
     status: text("status").notNull().default("aguardando"),
+    /** Perfil e rascunho progressivo do fluxo público; nunca o token bruto. */
+    profile: text("profile"),
+    draft: text("draft"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -451,6 +454,10 @@ export const propertyCaptures = sqliteTable(
     /** novo_contato | avaliacao | documentacao | captado | perdido */
     stage: text("stage").notNull().default("novo_contato"),
     intention: text("intention"),
+    /** Corretor apresentante; nunca substitui ownerId. */
+    brokerName: text("broker_name"),
+    brokerPhone: text("broker_phone"),
+    brokerCreci: text("broker_creci"),
     nextAction: text("next_action"),
     nextActionAt: integer("next_action_at", { mode: "timestamp" }),
     appraisalStatus: text("appraisal_status").notNull().default("pendente"),
