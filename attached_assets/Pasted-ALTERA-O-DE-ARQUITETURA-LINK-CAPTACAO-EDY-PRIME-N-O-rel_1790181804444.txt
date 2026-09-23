@@ -1,0 +1,59 @@
+ALTERAÇÃO DE ARQUITETURA — LINK_CAPTACAO EDY PRIME
+
+NÃO releia/reconstrua o projeto do zero.
+NÃO refaça os DNAs e regras de captação já implementados no trabalho anterior.
+NÃO recrie banco, EPI, perguntas, ramificações ou lógica já construída.
+NÃO tente corrigir/remendar a interface web atual de /c/:code.
+NÃO faça deploy/publicação.
+
+MUDANÇA ÚNICA DE DIREÇÃO:
+
+A experiência pública do LINK_CAPTACAO não deve mais acontecer no formulário/aplicativo web.
+
+Todo o fluxo de pergunta e resposta já implementado deve passar a funcionar DIRETAMENTE NO WHATSAPP já existente da Edy Prime, utilizando a integração/agente de WhatsApp que o projeto já possui.
+
+WhatsApp Edy Prime:
++55 13 99772-6767
+
+Antes de implementar, localize e reutilize a infraestrutura de WhatsApp já existente no projeto. Não crie uma segunda integração e não altere configurações da Meta.
+
+O acesso à captação deve usar UM ÚNICO LINK FIXO E PERMANENTE da Edy Prime que abre conversa com esse WhatsApp.
+
+NÃO gerar um link diferente por cliente.
+NÃO gerar /c/:code por envio.
+NÃO depender de token público individual.
+O mesmo link deve poder ficar salvo no celular da Edy Prime e ser enviado repetidamente para qualquer quantidade de pessoas.
+
+A individualização deve ocorrer pelo número do remetente da conversa do WhatsApp, e não pelo link.
+
+Ao iniciar a conversa de captação:
+- identificar o telefone pelo próprio remetente do WhatsApp;
+- não perguntar telefone;
+- aplicar a mesma lógica/DNA de Proprietário, Locador e Corretor já implementada;
+- manter CRECI obrigatório no fluxo Corretor;
+- manter criação do EPI conforme as regras já implementadas;
+- manter uma pergunta por vez;
+- salvar cada resposta progressivamente no mesmo EPI;
+- manter todas as ramificações já implementadas por perfil, tipo de imóvel e venda/locação;
+- não criar revisão, confirmação ou correção final;
+- manter a FOTO como última entrada obrigatória;
+- foto salva = concluir EPI/captação;
+- enviar a mensagem final de sucesso;
+- encerrar aquele fluxo de captação.
+
+IMPORTANTE:
+Não transformar toda conversa normal recebida no WhatsApp em uma captação automaticamente. O fluxo de captação deve possuir um gatilho/entrada inequívoco proveniente do link fixo, reaproveitando a infraestrutura existente.
+
+Preservar o atendimento normal já existente no WhatsApp fora desse fluxo.
+
+OBJETIVO:
+LINK FIXO → WHATSAPP EDY PRIME → IDENTIFICA REMETENTE → FLUXO DE CAPTAÇÃO JÁ CONSTRUÍDO → EPI → FOTO → CONCLUÍDO.
+
+Faça somente essa adaptação arquitetural sobre o que já foi construído.
+
+Antes de executar alterações, informe de forma curta:
+1. qual infraestrutura de WhatsApp existente será reutilizada;
+2. como o link fixo acionará especificamente o modo LINK_CAPTACAO;
+3. quais arquivos precisarão ser alterados.
+
+Pare nessa análise e aguarde aprovação antes de modificar arquivos.
