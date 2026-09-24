@@ -8,7 +8,9 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "dist-electron/**", ".expo/**"]
+      "outputs": ["dist/**", "dist-electron/**", ".expo/**"],
+      "cache": false,
+      "passThroughEnv": ["DATABASE_URL", "DATABASE_AUTH_TOKEN"]
     },
     "lint": {
       "outputs": []
