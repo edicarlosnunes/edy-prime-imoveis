@@ -27,6 +27,7 @@ import type { AdminDb } from "../lib/admin-base";
 import { ownerPhoneKey } from "../lib/owner-identity";
 import {
   captureSnapshot,
+  linkCaptureSession,
   saveCaptureAnswer,
   type CaptureAnswerInput,
   type CaptureSnapshot,
@@ -406,7 +407,7 @@ export async function linkCaptacaoState(
   /* O envio da mensagem pré-preenchida já é a confirmação de entrada.
      A primeira resposta do contato é diretamente o perfil: proprietário ou corretor. */
   const roleAnswer = afterGeneric[0]?.content ?? "";
-  const brokerEntry = /\bcorretor\b/i.test(fold(roleAnswer)) || turns.some((turn) => turn.role === "user" && fold(turn.content) === fold(BROKER_ENTRY_MESSAGE));
+  const brokerEntry = /\bcorretor(?:a)?\b/i.test(fold(roleAnswer)) || turns.some((turn) => turn.role === "user" && fold(turn.content) === fold(BROKER_ENTRY_MESSAGE));
   if (brokerEntry) return brokerLinkState(db, phone!, turns);
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const freshEntry = hasLinkToken(lastUser);
@@ -422,13 +423,21 @@ export async function linkCaptacaoState(
   });
   const relink = lastLink >= 0 && lastLink > lastClosing;
 
-  const snapshot = await captureSnapshot(db, phone);
+  const baseSnapshot = await captureSnapshot(db, phone);
+  const session = await linkCaptureSession(db, baseSnapshot.ownerId);
+  const snapshot = session.activeCaptureId !== null
+    ? await captureSnapshot(db, phone, session.activeCaptureId)
+    : baseSnapshot;
+  if (session.activeCaptureId !== null && snapshot.captureId !== session.activeCaptureId) return null;
   const origin = (snapshot.answers as Record<string, string | undefined>).origem ?? null;
-  const sticky = fold(origin) === fold(LINK_CAPTACAO_ORIGIN);
-  if (!freshEntry && !fromLink && !sticky) return null;
+  const sticky = session.activeCaptureId !== null || fold(origin) === fold(LINK_CAPTACAO_ORIGIN);
+  const pendingAddress =
+    !freshEntry && !fromLink && looksLikeStreetAddress(lastUser) &&
+    session.awaitingAddress;
+  if (!freshEntry && !fromLink && !sticky && !pendingAddress) return null;
 
   /* Uma ENTRADA_LINK_CAPTACAO explícita abre uma nova sessão lógica.
-     Até o nome ser informado, a ficha pendente anterior deste telefone não
+     Até o endereço ser informado, a ficha pendente anterior deste telefone não
      pode escolher a próxima pergunta. A ficha antiga continua preservada no
      banco; ela apenas deixa de comandar esta nova entrada. */
   const validOwnerRoleIndex = afterGeneric.findIndex((turn) =>
@@ -439,14 +448,15 @@ export async function linkCaptacaoState(
   const cleanExplicitEntry =
     latestGeneric >= 0 &&
     validOwnerRoleIndex >= 0 &&
-    /* Mantém a fronteira também no turno em que o nome chega. Só depois
-       que esse nome cria a nova ficha a sessão deixa de depender desta trava. */
-    ownerDataReplies.length <= 1;
+    /* O endereço precisa ser associado ao imóvel certo antes de reler a ficha
+       anterior deste telefone. Nome, sozinho, não abre ficha para contato antigo. */
+    ownerDataReplies.length <= 2;
 
-  if (cleanExplicitEntry) {
+  if (cleanExplicitEntry || pendingAddress) {
+    const nameAnswered = ownerDataReplies.length === 2 || pendingAddress;
     const cleanSnapshot: CaptureSnapshot = {
       ...snapshot,
-      ownerName: null,
+      ownerName: nameAnswered ? snapshot.ownerName ?? ownerDataReplies[0]?.content ?? null : null,
       captureId: null,
       pending: false,
       registrationStatus: null,
@@ -463,13 +473,16 @@ export async function linkCaptacaoState(
       duplicateNote: null,
       outsidePriorityArea: false,
     };
-    return buildState({
+    const cleanState = buildState({
       snapshot: cleanSnapshot,
       freshEntry: false,
       fromLink: true,
       sticky: false,
       relink: false,
     });
+    return nameAnswered
+      ? { ...cleanState, startNewProperty: true }
+      : cleanState;
   }
 
   return buildState({ snapshot, freshEntry, fromLink, sticky, relink });
@@ -527,6 +540,11 @@ function shortStreetAddress(text: string | null | undefined) {
   return { rua: match[1]!.trim(), numero: match[2]! };
 }
 
+/** Uma volta sem o link só pode retomar a sessão marcada se responder com rua e número. */
+function looksLikeStreetAddress(text: string | null | undefined): boolean {
+  return /^(?:rua|r\.|avenida|av\.?|alameda|travessa|estrada|rodovia|praça|praca)\s+[\p{L}\p{M}][^\n]{1,120}?\b\d{1,6}\b/iu.test(String(text ?? "").trim());
+}
+
 /** Tudo que o fluxo do link grava. Intenção e origem são fixas. */
 function saveInput(
   state: LinkCaptacaoState,
@@ -544,9 +562,13 @@ function saveInput(
        neste fluxo e o valor nunca vem do modelo. */
     negociacao: "venda",
     origem: LINK_CAPTACAO_ORIGIN,
-    /* Outro imóvel só abre quando o cadastro anterior terminou E o endereço do
-       novo está vindo neste envio. */
+    /* Só o endereço permite comparar com fichas anteriores ou abrir outro
+       imóvel; o nome sozinho nunca decide a identidade do imóvel. */
     novoImovel: state.startNewProperty && addressish ? true : undefined,
+    /* A sessão explícita pode atravessar uma ficha pendente antiga, mas só o
+       endereço decide qual imóvel reutilizar ou abrir na entrada única. */
+    novaSessaoLink: state.startNewProperty && state.snapshot.captureId === null && addressish ? true : undefined,
+    targetCaptureId: !state.startNewProperty && !addressish ? state.snapshot.captureId ?? undefined : undefined,
   } satisfies CaptureAnswerInput;
 }
 
@@ -670,10 +692,9 @@ export async function linkCaptacaoReply(
     /* Enquanto o contato não informar um perfil válido, cada nova resposta
        precisa ter chance de corrigir a anterior. Antes olhávamos somente
        replies[0], então um primeiro erro deixava a conversa presa para sempre. */
-    const roleReply = [...replies].reverse().find((turn) => {
-      const value = fold(turn.content);
-      return /propriet|dono|dona/.test(value) || /corretor/.test(value);
-    });
+    const roleReply = [...replies].reverse().find((turn) =>
+      /^(proprietario|proprietaria|dono|dona|corretor|corretora)$/.test(fold(turn.content)),
+    );
     if (!roleReply) {
       return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
@@ -683,9 +704,10 @@ export async function linkCaptacaoReply(
     /* A identificação de perfil é controle do fluxo, não dado do imóvel.
        Assim que "proprietário" é informado corretamente, mesmo depois de
        respostas inválidas, o roteiro avança para o nome. */
-    if (isOwner && state.presenter === "proprietario") {
+    if (isOwner && state.presenter === "proprietario" && roleReply === replies[replies.length - 1]) {
       /* No turno imediatamente após o perfil, só perguntamos o nome.
-         Quando o usuário responder o nome, a gravação abaixo cria a nova ficha. */
+         A resposta seguinte será gravada; contato antigo espera o endereço
+         antes de escolher uma ficha. */
       return finish(state, { offScript: false, toolCalls });
     }
   }
@@ -729,8 +751,8 @@ export async function linkCaptacaoReply(
     return finish(state, { offScript: false, toolCalls });
   }
 
-  /* Nome da nova ENTRADA_LINK_CAPTACAO: grava de forma determinística e
-     cria a ficha nova antes de qualquer releitura por telefone. */
+  /* Nome da nova ENTRADA_LINK_CAPTACAO: grava de forma determinística.
+     Para contato conhecido, a ficha só é escolhida quando chegar o endereço. */
   if (state.nextStep === "nome" && state.answered.length === 0 && lastUser) {
     const nome = String(lastUser).trim();
     if (nome && !isGenericLinkStart(nome) && !/^(proprietario|proprietaria|dono|dona)$/i.test(fold(nome))) {
@@ -822,9 +844,11 @@ export async function linkCaptacaoReply(
   if (state.nextStep === "observacaoFinal") {
     if (/^ok$/i.test(String(lastUser ?? "").trim())) {
       const input = { observacaoFinal: "sem observações adicionais", confirmacaoFinal: "OK" };
-      await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+      const saved = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
       toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
-      return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+      return saved.saved
+        ? finish({ ...state, complete: true, nextStep: null, nextQuestion: null }, { offScript: false, toolCalls })
+        : finish(state, { offScript: false, toolCalls });
     }
     const note = String(lastUser ?? "").trim().slice(0, 500);
     if (note) {
@@ -837,9 +861,11 @@ export async function linkCaptacaoReply(
 
   if (state.nextStep === "confirmacaoFinal" && /^ok$/i.test(String(lastUser ?? "").trim())) {
     const input = { confirmacaoFinal: "OK" };
-    await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+    const saved = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
-    return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+    return saved.saved
+      ? finish({ ...state, complete: true, nextStep: null, nextQuestion: null }, { offScript: false, toolCalls })
+      : finish(state, { offScript: false, toolCalls });
   }
 
   if (state.nextStep === "endereco") {
@@ -848,7 +874,7 @@ export async function linkCaptacaoReply(
       const saved = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, address));
       toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(address) });
       if (saved.saved) {
-        return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+        return finish(await reload(db, state.ownerPhone ?? phone, false), { offScript: false, toolCalls });
       }
     }
   }
@@ -863,6 +889,7 @@ export async function linkCaptacaoReply(
   let offScript = false;
   let handoffReason: string | null = null;
 
+  let addressSaved = false;
   const saveTool = {
     salvarCadastroVenda: tool({
       description:
@@ -872,6 +899,10 @@ export async function linkCaptacaoReply(
         const substantive = Object.keys(input).some((key) => key !== "observacao" && input[key as keyof SaveToolInput] !== undefined);
         if (input.observacao && !substantive) offScript = true;
         const result = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
+        if (result.saved && state.nextStep === "endereco" &&
+            (input.cep || input.rua || input.numero || input.bairro || input.cidade || input.estado)) {
+          addressSaved = true;
+        }
         return result.saved
           ? { salvo: true, cadastroId: result.captureId, aviso: result.duplicateUnit }
           : { salvo: false, motivo: result.reason };
@@ -918,7 +949,7 @@ export async function linkCaptacaoReply(
     };
   }
 
-  return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript, toolCalls });
+  return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty && !addressSaved), { offScript, toolCalls });
 }
 
 /**
@@ -929,7 +960,11 @@ export async function linkCaptacaoReply(
  * repetir o fechamento do cadastro ANTERIOR em vez de insistir no endereço.
  */
 async function reload(db: AdminDb, phone: string, relink: boolean): Promise<LinkCaptacaoState> {
-  const snapshot = await captureSnapshot(db, phone);
+  const baseSnapshot = await captureSnapshot(db, phone);
+  const session = await linkCaptureSession(db, baseSnapshot.ownerId);
+  const snapshot = session.activeCaptureId !== null
+    ? await captureSnapshot(db, phone, session.activeCaptureId)
+    : baseSnapshot;
   return buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink });
 }
 

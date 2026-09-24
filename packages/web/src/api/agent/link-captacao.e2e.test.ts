@@ -910,3 +910,261 @@ describe("6. ausência de duplicidade", () => {
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 });
+
+describe("7. respostas após a identificação no link genérico", () => {
+  async function iniciarCadastro(conversationId: number) {
+    expect((await linkTurn(conversationId, LINK_CAPTACAO_MESSAGE)).reply).toBe(
+      "Você é o proprietário do imóvel ou corretor?",
+    );
+    expect((await linkTurn(conversationId, "proprietário")).reply).toBe(
+      linkQuestion("nome"),
+    );
+    expect((await linkTurn(conversationId, "ana exemplo")).reply).toBe(
+      linkQuestion("endereco"),
+    );
+  }
+
+  test("corretora segue para identificação profissional, sem abrir ficha de proprietário", async () => {
+    const conversa = await conversation("5513997141174:corretora");
+    await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE);
+    const perfil = await linkTurn(conversa.id, "corretora");
+
+    expect(perfil.reply).toBe("Qual é o seu CRECI?");
+    expect(await counts()).toEqual({ owners: 0, captures: 0 });
+  });
+
+  test("nome em minúsculas e rua com número são gravados antes da próxima pergunta", async () => {
+    const conversa = await conversation("5513997141174:novo");
+    await iniciarCadastro(conversa.id);
+
+    const [owner] = await db.all<{ name: string; phone: string }>(
+      sql`SELECT name, phone FROM owners LIMIT 1`,
+    );
+    expect(owner?.name?.toLowerCase()).toBe("ana exemplo");
+    expect(owner?.phone?.replace(/\D/g, "")).toBe(PHONE.replace(/\D/g, ""));
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+
+    const endereco = await linkTurn(conversa.id, "Rua Guimarães Rosa 492");
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    const ficha = await onlyCapture();
+    expect(ficha.street).toBe("Rua Guimarães Rosa");
+    expect(ficha.number).toBe("492");
+  });
+
+  test("nova entrada do mesmo contato não deixa uma ficha vazia ao repetir o endereço", async () => {
+    const primeira = await conversation("5513997141174:primeira");
+    await iniciarCadastro(primeira.id);
+    await linkTurn(primeira.id, "Rua Guimarães Rosa 492");
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+
+    const segunda = await conversation("5513997141174:segunda");
+    await iniciarCadastro(segunda.id);
+    const endereco = await linkTurn(segunda.id, "Rua Guimarães Rosa 492");
+
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    expect((await onlyCapture()).number).toBe("492");
+  });
+
+  test("outro endereço abre outra ficha sem alterar a ficha pendente anterior", async () => {
+    const primeira = await conversation("5513997141174:imovel-antigo");
+    await iniciarCadastro(primeira.id);
+    await linkTurn(primeira.id, "Rua Guimarães Rosa 492");
+    const [anterior] = await captureRows();
+    expect(anterior?.street).toBe("Rua Guimarães Rosa");
+
+    const segunda = await conversation("5513997141174:imovel-novo");
+    await iniciarCadastro(segunda.id);
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    const endereco = await linkTurn(segunda.id, "Rua das Flores 88");
+
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect(await counts()).toEqual({ owners: 1, captures: 2 });
+    const [antiga, nova] = await captureRows();
+    expect(antiga?.id).toBe(anterior?.id);
+    expect(antiga?.street).toBe("Rua Guimarães Rosa");
+    expect(antiga?.number).toBe("492");
+    expect(nova?.street).toBe("Rua das Flores");
+    expect(nova?.number).toBe("88");
+  });
+
+  test("ficha antiga sem endereço é completada sem abrir uma segunda ficha vazia", async () => {
+    const primeira = await conversation("5513997141174:sem-endereco");
+    await iniciarCadastro(primeira.id);
+    const [pendente] = await captureRows();
+    expect(pendente?.street).toBeNull();
+
+    const segunda = await conversation("5513997141174:retorno");
+    await iniciarCadastro(segunda.id);
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    const endereco = await linkTurn(segunda.id, "Rua Guimarães Rosa 492");
+
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    const ficha = await onlyCapture();
+    expect(ficha.id).toBe(pendente?.id);
+    expect(ficha.street).toBe("Rua Guimarães Rosa");
+    expect(ficha.number).toBe("492");
+  });
+
+  test("endereço completo extraído pela IA também avança e mantém uma só ficha", async () => {
+    const conversa = await conversation("5513997141174:endereco-completo");
+    await iniciarCadastro(conversa.id);
+
+    const endereco = await linkTurn(
+      conversa.id,
+      "Rua Guimarães Rosa, 492, Boqueirão, Praia Grande - SP",
+      { rua: "Rua Guimarães Rosa", numero: "492", bairro: "Boqueirão", cidade: "Praia Grande", estado: "SP" },
+    );
+
+    expect(endereco.saved?.salvo).toBe(true);
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    const ficha = await onlyCapture();
+    expect(ficha.street).toBe("Rua Guimarães Rosa");
+    expect(ficha.number).toBe("492");
+    expect(ficha.city).toBe("Praia Grande");
+  });
+
+  test("nome e rua com palavras de perfil não reiniciam a pergunta do perfil", async () => {
+    const conversa = await conversation("5513997141174:palavras-perfil");
+    await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE);
+    await linkTurn(conversa.id, "proprietário");
+    expect((await linkTurn(conversa.id, "dona maria")).reply).toBe(linkQuestion("endereco"));
+
+    const endereco = await linkTurn(conversa.id, "Rua dos Proprietários 10");
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    const ficha = await onlyCapture();
+    expect(ficha.street).toBe("Rua dos Proprietários");
+    expect(ficha.number).toBe("10");
+  });
+
+  test("contato conhecido retoma o endereço em outra conversa sem levar mensagens comuns para a captação", async () => {
+    await db.run(sql`INSERT INTO owners (name, phone, notes)
+      VALUES ('Contato Original', ${PHONE}, 'Anotação humana preservada')`);
+    const entrada = await conversation("5513997141174:marcador");
+    await iniciarCadastro(entrada.id);
+    expect(await counts()).toEqual({ owners: 1, captures: 0 });
+    const [aguardando] = await db.all<{ notes: string }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(aguardando?.notes).toContain("Anotação humana preservada");
+    expect(aguardando?.notes).toContain("[LINK_CAPTACAO_AGUARDANDO_ENDERECO:");
+
+    const retorno = await conversation("5513997141174:outra-conversa");
+    const comum = await linkTurn(retorno.id, "Oi, tudo bem?");
+    expect(comum.reply).not.toBe(linkQuestion("endereco"));
+    expect(await counts()).toEqual({ owners: 1, captures: 0 });
+
+    const endereco = await linkTurn(retorno.id, "Rua dos Proprietários 10");
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    expect((await onlyCapture()).number).toBe("10");
+    const [concluido] = await db.all<{ notes: string }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(concluido?.notes).toContain("Anotação humana preservada");
+    expect(concluido?.notes).not.toContain("[LINK_CAPTACAO_AGUARDANDO_ENDERECO:");
+  });
+
+  test("endereço em outra conversa não sobrescreve o imóvel pendente anterior", async () => {
+    const antigo = await conversation("5513997141174:pendente-anterior");
+    await iniciarCadastro(antigo.id);
+    await linkTurn(antigo.id, "Rua Guimarães Rosa 492");
+    const [anterior] = await captureRows();
+
+    const entrada = await conversation("5513997141174:novo-link");
+    await iniciarCadastro(entrada.id);
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+
+    const retorno = await conversation("5513997141174:resposta-em-outra-conversa");
+    const endereco = await linkTurn(retorno.id, "Rua das Flores 88");
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect(await counts()).toEqual({ owners: 1, captures: 2 });
+    const [primeira, segunda] = await captureRows();
+    expect(primeira?.id).toBe(anterior?.id);
+    expect(primeira?.street).toBe("Rua Guimarães Rosa");
+    expect(primeira?.number).toBe("492");
+    expect(segunda?.street).toBe("Rua das Flores");
+    expect(segunda?.number).toBe("88");
+  });
+
+  test("endereço completo em outra conversa usa o extrator e remove o marcador", async () => {
+    await db.run(sql`INSERT INTO owners (name, phone, notes)
+      VALUES ('Contato Original', ${PHONE}, 'Observação anterior')`);
+    const entrada = await conversation("5513997141174:extrator-entrada");
+    await iniciarCadastro(entrada.id);
+    expect(await counts()).toEqual({ owners: 1, captures: 0 });
+
+    const retorno = await conversation("5513997141174:extrator-retorno");
+    const endereco = await linkTurn(
+      retorno.id,
+      "Rua Guimarães Rosa, 492, Boqueirão, Praia Grande - SP",
+      { rua: "Rua Guimarães Rosa", numero: "492", bairro: "Boqueirão", cidade: "Praia Grande", estado: "SP" },
+    );
+
+    expect(endereco.saved?.salvo).toBe(true);
+    expect(endereco.reply).toBe(linkQuestion("documentacao"));
+    expect((await onlyCapture()).street).toBe("Rua Guimarães Rosa");
+    const [owner] = await db.all<{ notes: string }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(owner?.notes).toContain("Observação anterior");
+    expect(owner?.notes).not.toContain("[LINK_CAPTACAO_AGUARDANDO_ENDERECO:");
+  });
+
+  test("marcador vencido não captura mensagem nova e preserva observações", async () => {
+    await db.run(sql`INSERT INTO owners (name, phone, notes)
+      VALUES ('Contato Original', ${PHONE}, 'Observação humana\n\n[LINK_CAPTACAO_AGUARDANDO_ENDERECO:1000000000000]')`);
+    const conversa = await conversation("5513997141174:marcador-vencido");
+    await linkTurn(conversa.id, "Rua das Flores 88");
+
+    expect(await counts()).toEqual({ owners: 1, captures: 0 });
+    const [owner] = await db.all<{ notes: string }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(owner?.notes).toBe("Observação humana");
+  });
+
+  test("atualização no CRM da ficha antiga não desvia a resposta seguinte do imóvel novo", async () => {
+    const antigo = await conversation("5513997141174:imovel-em-aberto");
+    await iniciarCadastro(antigo.id);
+    await linkTurn(antigo.id, "Rua Guimarães Rosa 492");
+    const [anterior] = await captureRows();
+
+    const novo = await conversation("5513997141174:imovel-em-atendimento");
+    await iniciarCadastro(novo.id);
+    await linkTurn(novo.id, "Rua das Flores 88");
+    expect(await counts()).toEqual({ owners: 1, captures: 2 });
+
+    /* Uma edição posterior do CRM não pode redefinir qual imóvel o WhatsApp está cadastrando. */
+    await db.run(sql`UPDATE property_captures SET updated_at = ${Math.floor(Date.now() / 1000) + 3600}
+      WHERE id = ${anterior!.id}`);
+    await linkTurn(novo.id, "Escritura da segunda casa", {
+      documentacao: "Escritura da segunda casa",
+    });
+
+    const [primeira, segunda] = await captureRows();
+    expect(primeira?.notes).not.toContain("Escritura da segunda casa");
+    expect(segunda?.notes).toContain("Escritura da segunda casa");
+
+    const retorno = await conversation("5513997141174:retorno-apos-edicao");
+    const tipo = await linkTurn(retorno.id, "Apartamento");
+    expect(tipo.reply).toBe(linkQuestion("dormitorios"));
+    const [antigaDepois, novaDepois] = await captureRows();
+    expect(antigaDepois?.property_type).toBeNull();
+    expect(novaDepois?.property_type).toBe("apartamento");
+  });
+
+  test("o identificador da ficha ativa é removido ao encerrar a captação", async () => {
+    const conversa = await conversation("5513997141174:encerramento");
+    await iniciarCadastro(conversa.id);
+    await linkTurn(conversa.id, "Rua das Flores 88");
+    const ficha = await onlyCapture();
+    const [durante] = await db.all<{ notes: string }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(durante?.notes).toContain(`[LINK_CAPTACAO_FICHA_ATIVA:${ficha.id}:`);
+
+    const { saveCaptureAnswer } = await import("./owner-capture");
+    const salvo = await saveCaptureAnswer(db, {
+      phone: PHONE,
+      targetCaptureId: ficha.id,
+      origem: LINK_CAPTACAO_ORIGIN,
+      confirmacaoFinal: "OK",
+    });
+    expect(salvo.saved).toBe(true);
+    const [depois] = await db.all<{ notes: string | null }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(depois?.notes ?? "").not.toContain("[LINK_CAPTACAO_FICHA_ATIVA:");
+  });
+});

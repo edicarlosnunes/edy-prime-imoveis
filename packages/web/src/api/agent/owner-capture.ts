@@ -23,7 +23,7 @@
  *  - humano no controle (`conversations.mode = humano`) e a IA não fala — essa
  *    trava é de `lib/inbox.ts#aiTurn` e continua sendo a única.
  */
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { tool } from "ai";
 import { z } from "zod";
 import * as schema from "../database/schema";
@@ -370,7 +370,11 @@ export function nextCaptureStep(answered: readonly CaptureStepKey[]): CaptureSte
  * É daqui que sai "retomar de onde parou" e "não repetir o que já foi
  * informado": o roteiro não guarda memória de conversa, ele lê a ficha.
  */
-export async function captureSnapshot(db: AdminDb, phone: string | null): Promise<CaptureSnapshot> {
+export async function captureSnapshot(
+  db: AdminDb,
+  phone: string | null,
+  preferredCaptureId: number | null = null,
+): Promise<CaptureSnapshot> {
   const key = ownerPhoneKey(phone);
   if (!key) return { ...EMPTY_SNAPSHOT };
 
@@ -390,7 +394,9 @@ export async function captureSnapshot(db: AdminDb, phone: string | null): Promis
       (b.updatedAt ?? b.createdAt ?? new Date(0)).getTime() -
       (a.updatedAt ?? a.createdAt ?? new Date(0)).getTime(),
   )[0];
-  const target = (resumable ? captures.find((row) => row.id === resumable.id) : null) ?? latest ?? null;
+  const target =
+    (preferredCaptureId !== null ? captures.find((row) => row.id === preferredCaptureId) : null) ??
+    (resumable ? captures.find((row) => row.id === resumable.id) : null) ?? latest ?? null;
 
   const { answers } = parseCaptureBlock(target?.notes ?? null);
   const ownerName = isBlank(owner.name) || owner.name === "Proprietário sem nome" ? null : owner.name!;
@@ -417,6 +423,71 @@ export async function captureSnapshot(db: AdminDb, phone: string | null): Promis
     duplicateNote: target?.duplicateNote ?? null,
     outsidePriorityArea: (target?.outsidePriorityArea ?? 0) === 1,
   };
+}
+
+/* A sessão do link fica nas observações do contato, sem tabela ou ficha vazia.
+   O identificador da ficha ativa evita escolher outra após uma edição no CRM. */
+const LINK_ADDRESS_MARKER = /(?:\r?\n){0,2}\[LINK_CAPTACAO_AGUARDANDO_ENDERECO:(\d{13})\]/g;
+const LINK_ACTIVE_MARKER = /(?:\r?\n){0,2}\[LINK_CAPTACAO_FICHA_ATIVA:(\d+):(\d{13})\]/g;
+const LINK_ADDRESS_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
+
+function markerIsCurrent(stamp: string): boolean {
+  const age = Date.now() - Number(stamp);
+  return age >= 0 && age <= LINK_ADDRESS_SESSION_MS;
+}
+
+function withoutLinkMarkers(notes: string | null): string | null {
+  return notes?.replace(LINK_ADDRESS_MARKER, "").replace(LINK_ACTIVE_MARKER, "") || null;
+}
+
+/** A condição no UPDATE impede apagar observações editadas pela equipe entre leitura e gravação. */
+async function updateOwnerLinkNotes(
+  db: AdminDb,
+  ownerId: number,
+  change: (notes: string | null) => string | null,
+  name?: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const [owner] = await db.select({ notes: schema.owners.notes })
+      .from(schema.owners).where(eq(schema.owners.id, ownerId)).limit(1);
+    if (!owner) throw new Error("Contato não encontrado para atualizar a sessão de captação.");
+    const [updated] = await db.update(schema.owners)
+      .set({ notes: change(owner.notes), ...(name ? { name } : {}) })
+      .where(and(
+        eq(schema.owners.id, ownerId),
+        owner.notes === null ? isNull(schema.owners.notes) : eq(schema.owners.notes, owner.notes),
+      ))
+      .returning({ id: schema.owners.id });
+    if (updated) return;
+  }
+  throw new Error("Observações alteradas simultaneamente; captação não foi atualizada.");
+}
+
+export async function linkCaptureSession(
+  db: AdminDb,
+  ownerId: number | null,
+): Promise<{ awaitingAddress: boolean; activeCaptureId: number | null }> {
+  if (ownerId === null) return { awaitingAddress: false, activeCaptureId: null };
+  const [owner] = await db.select({ notes: schema.owners.notes })
+    .from(schema.owners).where(eq(schema.owners.id, ownerId)).limit(1);
+  const notes = owner?.notes ?? "";
+  const pending = [...notes.matchAll(LINK_ADDRESS_MARKER)].at(-1);
+  const active = [...notes.matchAll(LINK_ACTIVE_MARKER)].at(-1);
+  if ((pending && !markerIsCurrent(pending[1]!)) || (active && !markerIsCurrent(active[2]!))) {
+    await updateOwnerLinkNotes(db, ownerId, (current) =>
+      current?.replace(LINK_ADDRESS_MARKER, (match, stamp: string) => markerIsCurrent(stamp) ? match : "")
+        .replace(LINK_ACTIVE_MARKER, (match, _id: string, stamp: string) => markerIsCurrent(stamp) ? match : "") || null,
+    );
+  }
+  let activeCaptureId = active && markerIsCurrent(active[2]!) ? Number(active[1]) : null;
+  if (activeCaptureId !== null) {
+    const [capture] = await db.select({ id: schema.propertyCaptures.id })
+      .from(schema.propertyCaptures)
+      .where(and(eq(schema.propertyCaptures.id, activeCaptureId), eq(schema.propertyCaptures.ownerId, ownerId)))
+      .limit(1);
+    if (!capture) activeCaptureId = null;
+  }
+  return { awaitingAddress: Boolean(pending && markerIsCurrent(pending[1]!)), activeCaptureId };
 }
 
 /* ------------------------------------------------------------ gravação */
@@ -461,8 +532,10 @@ export interface CaptureAnswerInput {
   observacao?: string | null;
   /** proprietário quer cadastrar OUTRO imóvel */
   novoImovel?: boolean;
-  /** Entrada explícita do Link: cria ficha nova sem reutilizar a pendente antiga. */
+  /** Entrada explícita do Link: só o endereço decide qual ficha usar. */
   novaSessaoLink?: boolean;
+  /** Ficha vinculada à sessão ativa do link; nunca aceitar id de outro contato. */
+  targetCaptureId?: number;
 }
 
 export type CaptureSaveResult =
@@ -505,13 +578,21 @@ export async function saveCaptureAnswer(
   db: AdminDb,
   input: CaptureAnswerInput,
 ): Promise<CaptureSaveResult> {
-  const before = await captureSnapshot(db, input.phone);
+  const before = await captureSnapshot(db, input.phone, input.targetCaptureId ?? null);
 
   if (!ownerPhoneKey(input.phone)) {
     return {
       saved: false,
       reason:
         "Sem telefone do contato não é possível gravar a captação (o telefone é a identidade do proprietário). Peça atendimento humano.",
+      snapshot: before,
+    };
+  }
+
+  if (input.targetCaptureId !== undefined && before.captureId !== input.targetCaptureId) {
+    return {
+      saved: false,
+      reason: "A ficha desta sessão não pertence ao contato ou não está disponível. Reabra o link de captação.",
       snapshot: before,
     };
   }
@@ -575,30 +656,25 @@ export async function saveCaptureAnswer(
   let duplicateUnit: string | null = null;
   let detail = "";
 
-  /* ENTRADA_LINK_CAPTACAO explícita: o telefone identifica a pessoa, mas não
-     autoriza reutilizar a ficha pendente anterior como se fosse este imóvel. */
-  if (input.novaSessaoLink === true && before.ownerId !== null) {
-    const now = new Date();
-    if (clean(input.nome, 120)) {
-      await db.update(schema.owners).set({ name: clean(input.nome, 120)! }).where(eq(schema.owners.id, before.ownerId));
-    }
-    const [created] = await db.insert(schema.propertyCaptures).values({
-      ownerId: before.ownerId,
-      source: "manual",
-      stage: "novo_contato",
-      intention: "venda",
-      registrationStatus: "EM_ANDAMENTO",
-      registrationStatusAt: now,
-      completeness: 0,
-      lastFieldAt: now,
-      notes: serializeCaptureBlock("", { origem: "LINK_CAPTACAO" }),
-      stageChangedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).returning({ id: schema.propertyCaptures.id });
-    captureId = created?.id ?? null;
-    detail = captureId ? `Nova captação LINK_CAPTACAO #${captureId} criada.` : "";
-  } else if (addressCore || input.novoImovel || before.ownerId === null || captureId === null) {
+  /* Contato já conhecido: guardar o nome sem criar uma ficha vazia. Na resposta
+     seguinte, a entrada única compara o endereço com os imóveis existentes. */
+  if (input.novaSessaoLink === true && !addressCore && before.ownerId !== null && clean(input.nome, 120)) {
+    const marker = `[LINK_CAPTACAO_AGUARDANDO_ENDERECO:${Date.now()}]`;
+    await updateOwnerLinkNotes(db, before.ownerId, (notes) => {
+      const previousNotes = withoutLinkMarkers(notes);
+      return previousNotes ? `${previousNotes}\n\n${marker}` : marker;
+    }, name);
+    return {
+      saved: true,
+      captureId: null,
+      resumed: false,
+      duplicateUnit: null,
+      detail: "Nome do proprietário atualizado; aguardando endereço do imóvel.",
+      snapshot: await captureSnapshot(db, input.phone),
+    };
+  }
+
+  if (addressCore || input.novoImovel || before.ownerId === null || captureId === null) {
     const result = await intakeOwner(db, {
       name,
       phone: input.phone!,
@@ -657,7 +733,39 @@ export async function saveCaptureAnswer(
     firstContact: before.captureId === null,
   });
 
-  const after = await captureSnapshot(db, input.phone);
+  if (input.novaSessaoLink && addressCore && clean(input.rua, 200) && clean(input.numero, 30) &&
+      captureId !== null) {
+    const [target] = await db.select({
+      ownerId: schema.propertyCaptures.ownerId,
+      street: schema.propertyCaptures.street,
+      number: schema.propertyCaptures.number,
+    })
+      .from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, captureId)).limit(1);
+    if (clean(target?.street, 200) && clean(target?.number, 30)) {
+      if (before.ownerId !== null && target?.ownerId !== before.ownerId) {
+        throw new Error("A ficha de captação não pertence ao contato.");
+      }
+      const marker = `[LINK_CAPTACAO_FICHA_ATIVA:${captureId}:${Date.now()}]`;
+      await updateOwnerLinkNotes(db, target!.ownerId, (notes) => {
+        const previousNotes = withoutLinkMarkers(notes);
+        return previousNotes ? `${previousNotes}\n\n${marker}` : marker;
+      });
+    }
+  }
+
+  if (captureId !== null && clean(input.confirmacaoFinal, 40)?.toLowerCase() === "ok" &&
+      clean(input.origem, 300) === "LINK_CAPTACAO") {
+    const [target] = await db.select({ ownerId: schema.propertyCaptures.ownerId })
+      .from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, captureId)).limit(1);
+    if (target) {
+      await updateOwnerLinkNotes(db, target.ownerId, (notes) =>
+        notes?.replace(LINK_ACTIVE_MARKER, (match, id: string) =>
+          Number(id) === captureId ? "" : match) || null,
+      );
+    }
+  }
+
+  const after = await captureSnapshot(db, input.phone, captureId);
   return {
     saved: true,
     captureId,
