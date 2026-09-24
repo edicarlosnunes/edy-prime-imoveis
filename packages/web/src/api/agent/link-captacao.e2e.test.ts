@@ -1619,6 +1619,25 @@ describe("7. respostas após a identificação no link genérico", () => {
     expect(await counts()).toEqual({ owners: 0, captures: 0 });
   });
 
+  test("corretor não termina depois do nome: pede o endereço e mantém a ficha aberta", async () => {
+    const conversa = await conversation("5513997141174:corretor-nome");
+    expect((await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(
+      "Você é proprietário, locador ou corretor do imóvel?",
+    );
+    expect((await linkTurn(conversa.id, "corretor")).reply).toBe("Qual é o seu CRECI?");
+    expect((await linkTurn(conversa.id, "134718-F")).reply).toBe("Qual é o seu nome completo?");
+
+    const depoisDoNome = await linkTurn(conversa.id, "Edson Muniz");
+    expect(depoisDoNome.reply).toBe(linkQuestion("endereco"));
+    expect(depoisDoNome.reply).not.toContain("OK");
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    expect((await onlyCapture()).street).toBeNull();
+
+    const endereco = await linkTurn(conversa.id, "Rua das Flores 88");
+    expect(endereco.reply).toBe(Q_DOCUMENTACAO);
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+  });
+
   test("novo token de corretor após fechamento reinicia o contexto sem herdar a ficha anterior", async () => {
     const conversa = await conversation("5513997141174:corretor-relink");
     await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE);

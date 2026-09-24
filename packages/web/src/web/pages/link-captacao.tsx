@@ -1,4 +1,4 @@
-import { BadgeCheck, Link2 } from "lucide-react";
+import { ArrowRight, BadgeCheck, Link2 } from "lucide-react";
 
 export default function LinkCaptacao() {
   return (
@@ -21,6 +21,12 @@ export default function LinkCaptacao() {
               <p className="mt-3 text-sm leading-6 text-muted">
                 Peça à equipe da Edy Prime Imóveis um novo link exclusivo para o imóvel que deseja cadastrar. Este endereço não inicia uma nova ficha.
               </p>
+              <a
+                href="/admin/captacao"
+                className="mt-8 inline-flex items-center gap-2 rounded-lg bg-deep px-4 py-3 text-sm font-medium text-white transition hover:bg-deep/90"
+              >
+                Equipe: abrir painel de captação <ArrowRight className="h-4 w-4" />
+              </a>
             </div>
           </div>
 
