@@ -519,6 +519,14 @@ function shortPropertyType(text: string | null | undefined): string | null {
   return types[value] ?? null;
 }
 
+/** Rua e número inequívocos não precisam esperar a extração da IA. */
+function shortStreetAddress(text: string | null | undefined) {
+  const value = String(text ?? "").trim().replace(/\s+/g, " ");
+  const match = /^((?:rua|r\.|avenida|av\.?|alameda|travessa|estrada|rodovia|praça|praca)\s+[\p{L}\p{M} .'-]{2,})\s*,?\s+(?:n[º°o.]?\s*)?(\d{1,6})$/iu.exec(value);
+  if (!match) return null;
+  return { rua: match[1]!.trim(), numero: match[2]! };
+}
+
 /** Tudo que o fluxo do link grava. Intenção e origem são fixas. */
 function saveInput(
   state: LinkCaptacaoState,
@@ -832,6 +840,17 @@ export async function linkCaptacaoReply(
     await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, input));
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
     return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+  }
+
+  if (state.nextStep === "endereco") {
+    const address = shortStreetAddress(lastUser);
+    if (address) {
+      const saved = await saveCaptureAnswer(db, saveInput(state, state.ownerPhone ?? phone, address));
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(address) });
+      if (saved.saved) {
+        return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty), { offScript: false, toolCalls });
+      }
+    }
   }
 
   if (!gatewayConfigured()) {
