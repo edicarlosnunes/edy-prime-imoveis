@@ -509,6 +509,7 @@ describe("1. cadastro novo pelo WhatsApp", () => {
     expect(ficha.city).toBe("Praia Grande");
     expect(ficha.property_type).toBe("apartamento");
     expect(ficha.intention).toBe("venda");
+    expect(ficha.source).toBe("whatsapp");
     expect(ficha.asking_price).toBe(780000);
     expect(ficha.complements).toContain("163");
     expect(ficha.completeness).toBeGreaterThan(50);

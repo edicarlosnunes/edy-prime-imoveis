@@ -22,6 +22,7 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { sql } from "drizzle-orm";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { Hono } from "hono";
 import * as schema from "../database/schema";
 import type { AdminDb } from "../lib/admin-base";
 import {
@@ -56,6 +57,11 @@ let behavior: Behavior = async () => ({ text: "ok", steps: [] });
 let modelCalls = 0;
 let lastSystem = "";
 let lastTools: string[] = [];
+let db: AdminDb;
+let app: Hono;
+let webhookMessageSeq = 0;
+const APP_SECRET = "segredo-de-teste";
+const graphCalls: { url: string; body: string }[] = [];
 
 /* `tool`, `stepCountIs` e o resto continuam reais: só `generateText` é dublê. */
 const aiReal = { ...(await import("ai")) };
@@ -69,8 +75,15 @@ mock.module("ai", () => ({
   },
 }));
 
+/* A rota usa o banco de produção por padrão; este teste injeta o SQLite em memória. */
+mock.module("../lib/auth", () => ({
+  getDb: async () => db,
+  resolveSession: async () => null,
+}));
+
 /* Importado DEPOIS do mock para que o broker receba o `generateText` dublê. */
 const { addMessage, aiTurn, ensureConversation } = await import("../lib/inbox");
+const { registerWebhookRoutes } = await import("../http/webhook-routes");
 
 /* ------------------------------------------------------------------ DDL */
 
@@ -279,9 +292,106 @@ const DDL = [
     detail TEXT,
     ip TEXT,
     created_at INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE integration_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    integration_key TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'sync',
+    ok INTEGER NOT NULL DEFAULT 1,
+    message TEXT,
+    created_at INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE inbound_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    channel TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'processing',
+    stage TEXT NOT NULL DEFAULT 'claimed',
+    attempts INTEGER NOT NULL DEFAULT 1,
+    last_error TEXT,
+    claimed_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    created_at INTEGER NOT NULL)`,
+  `CREATE UNIQUE INDEX inbound_events_channel_external_uk ON inbound_events (channel, external_id)`,
+  `CREATE TABLE leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    name TEXT NOT NULL,
+    phone TEXT NOT NULL,
+    interest TEXT NOT NULL,
+    message TEXT,
+    source TEXT NOT NULL DEFAULT 'site',
+    created_at INTEGER NOT NULL,
+    email TEXT,
+    stage TEXT NOT NULL DEFAULT 'novo',
+    status TEXT NOT NULL DEFAULT 'aberto',
+    lost_reason TEXT,
+    client_id INTEGER,
+    property_id INTEGER,
+    next_action TEXT,
+    next_action_at INTEGER,
+    updated_at INTEGER,
+    portal TEXT,
+    channel TEXT,
+    campaign TEXT,
+    utm_source TEXT,
+    utm_medium TEXT,
+    utm_campaign TEXT,
+    external_id TEXT,
+    score INTEGER NOT NULL DEFAULT 0,
+    score_tier TEXT NOT NULL DEFAULT 'frio',
+    score_reasons TEXT,
+    score_at INTEGER,
+    qualified_at INTEGER)`,
+  `CREATE TABLE lead_notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    lead_id INTEGER NOT NULL,
+    body TEXT NOT NULL,
+    created_at INTEGER NOT NULL)`,
+  `CREATE TABLE lead_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    lead_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    actor_type TEXT NOT NULL DEFAULT 'sistema',
+    actor_name TEXT,
+    score_before INTEGER,
+    score_after INTEGER,
+    created_at INTEGER NOT NULL)`,
+  `CREATE TABLE lead_profile (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    lead_id INTEGER NOT NULL UNIQUE,
+    purpose TEXT,
+    property_type TEXT,
+    city TEXT,
+    districts TEXT,
+    budget_min REAL,
+    budget_max REAL,
+    bedrooms INTEGER,
+    suites INTEGER,
+    parking INTEGER,
+    area_min REAL,
+    financing TEXT,
+    fgts TEXT,
+    trade_in TEXT,
+    trade_in_detail TEXT,
+    timeframe TEXT,
+    preferences TEXT,
+    restrictions TEXT,
+    contact_preference TEXT,
+    contact_window TEXT,
+    summary TEXT,
+    wants_visit INTEGER NOT NULL DEFAULT 0,
+    wants_human INTEGER NOT NULL DEFAULT 0,
+    cash_payment INTEGER NOT NULL DEFAULT 0,
+    just_looking INTEGER NOT NULL DEFAULT 0,
+    messages_count INTEGER NOT NULL DEFAULT 0,
+    contact_days INTEGER NOT NULL DEFAULT 0,
+    last_customer_at INTEGER,
+    source TEXT NOT NULL DEFAULT 'deterministico',
+    fields_source TEXT,
+    completeness INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER)`,
 ];
-
-let db: AdminDb;
 
 /** Telefone do WhatsApp: identidade do proprietário, nunca perguntado. */
 const PHONE = "(13) 99714-1174";
@@ -294,10 +404,19 @@ beforeEach(async () => {
   db = instance as unknown as AdminDb;
   await db.run(sql`INSERT INTO ai_agents (name, active, channels, transfer_message, created_at, updated_at)
     VALUES ('Atendimento Edy Prime', 1, '["site","whatsapp"]', 'Vou chamar um corretor.', 0, 0)`);
+  await db.run(sql`INSERT INTO integrations (key, status, enabled, config, updated_at)
+    VALUES ('whatsapp_cloud', 'conectado', 1, ${JSON.stringify({
+      phoneNumberId: "000000000000000",
+      accessToken: "token-de-teste",
+      verifyToken: "verify-de-teste",
+      appSecret: APP_SECRET,
+    })}, 0)`);
   behavior = async () => ({ text: "ok", steps: [] });
   modelCalls = 0;
   lastSystem = "";
   lastTools = [];
+  webhookMessageSeq = 0;
+  graphCalls.length = 0;
 });
 
 /* ------------------------------------------------------------ utilidades */
@@ -398,6 +517,55 @@ async function outbound(conversationId: number) {
     sql`SELECT body, author FROM messages WHERE conversation_id = ${conversationId} AND direction = 'out' ORDER BY id`,
   );
   return rows;
+}
+
+async function signWebhook(raw: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(APP_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(raw));
+  return `sha256=${Array.from(new Uint8Array(mac), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+async function postWhatsapp(text: string) {
+  const id = `wamid.capture.${++webhookMessageSeq}`;
+  const message = {
+    from: "5513997141174",
+    id,
+    timestamp: "1757400000",
+    type: "text",
+    text: { body: text },
+  };
+  const payload = {
+    object: "whatsapp_business_account",
+    entry: [{
+      id: "waba",
+      changes: [{
+        field: "messages",
+        value: {
+          messaging_product: "whatsapp",
+          metadata: { display_phone_number: "5513997726767", phone_number_id: "000000000000000" },
+          contacts: [{ profile: { name: "Maria Souza" }, wa_id: message.from }],
+          messages: [message],
+        },
+      }],
+    }],
+  };
+  const raw = JSON.stringify(payload);
+  const response = await app.request("/api/webhooks/whatsapp", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-for": `10.10.0.${webhookMessageSeq}`,
+      "x-hub-signature-256": await signWebhook(raw),
+    },
+    body: raw,
+  });
+  return { status: response.status, body: await response.json() as Record<string, unknown> };
 }
 
 /* ------------------------------------------------ textos exigidos (literais) */
@@ -542,6 +710,80 @@ describe("1. entrada pelo link de captação", () => {
     expect(owner?.phone?.replace(/\D/g, "")).toBe(PHONE.replace(/\D/g, ""));
     for (const message of await outbound(conversa.id)) {
       expect(message.body).not.toMatch(/telefone|celular|whatsapp/i);
+    }
+  });
+});
+
+describe("webhook Vercel legado → IA → persistência CRM", () => {
+  test("a mensagem WhatsApp assinada percorre a rota real e grava a captação no CRM", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("graph.facebook.com")) {
+        graphCalls.push({ url, body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.out.test" }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      behavior = async (call) => {
+        const save = {
+          rua: "Rua das Flores",
+          numero: "88",
+          bairro: "Boqueirão",
+          cidade: "Praia Grande",
+          estado: "SP",
+        };
+        const result = await call.tools.salvarCadastroVenda!.execute(save, toolOptions) as SaveResult;
+        expect(result.salvo).toBe(true);
+        return {
+          text: "TEXTO DO MODELO (não deve ser enviado)",
+          steps: [{ toolCalls: [{ toolName: "salvarCadastroVenda", input: save }] }],
+        };
+      };
+      app = new Hono();
+      registerWebhookRoutes(app);
+
+      for (const text of [LINK_CAPTACAO_MESSAGE, "proprietário", "Maria Souza"]) {
+        const response = await postWhatsapp(text);
+        expect(response.status).toBe(200);
+        expect(response.body.processed).toBe(1);
+      }
+      const address = await postWhatsapp(
+        "Rua das Flores, 88, Boqueirão, Praia Grande - SP",
+      );
+
+      expect(address.status).toBe(200);
+      expect(address.body.processed).toBe(1);
+      expect(modelCalls).toBe(1);
+      expect(lastTools).toEqual(["salvarCadastroVenda"]);
+      expect(graphCalls).toHaveLength(4);
+      const sent = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(sent.text.body).toBe(Q_DOCUMENTACAO);
+      expect(sent.text.body).not.toContain("TEXTO DO MODELO");
+
+      const [capture] = await db.all<{
+        source: string;
+        intention: string | null;
+        street: string | null;
+        number: string | null;
+        notes: string | null;
+      }>(sql`SELECT source, intention, street, number, notes FROM property_captures`);
+      expect(capture?.source).toBe("link_captacao");
+      expect(capture?.intention).toBe("venda");
+      expect(capture?.street).toBe("Rua das Flores");
+      expect(capture?.number).toBe("88");
+      expect(capture?.notes).toContain(`Origem do cadastro: ${LINK_CAPTACAO_ORIGIN}`);
+
+      const [lead] = await db.all<{ source: string; channel: string }>(
+        sql`SELECT source, channel FROM leads`,
+      );
+      expect(lead?.source).toBe("whatsapp");
+      expect(lead?.channel).toBe("whatsapp");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    } finally {
+      globalThis.fetch = realFetch;
     }
   });
 });

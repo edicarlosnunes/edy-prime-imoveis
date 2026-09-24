@@ -26,8 +26,16 @@ import {
   unitKey,
 } from "./capture-address";
 
-/** Origem da captação. `site` é o formulário público do proprietário. */
-export const CAPTURE_SOURCES = ["site", "manual", "prospeccao", "indicacao", "portal"] as const;
+/** Origem da captação: formulário do site, CRM, WhatsApp ou link de captação. */
+export const CAPTURE_SOURCES = [
+  "site",
+  "manual",
+  "prospeccao",
+  "indicacao",
+  "portal",
+  "whatsapp",
+  "link_captacao",
+] as const;
 export type CaptureSource = (typeof CAPTURE_SOURCES)[number];
 
 export function normalizeSource(raw: string | null | undefined): CaptureSource {
@@ -36,6 +44,30 @@ export function normalizeSource(raw: string | null | undefined): CaptureSource {
   /* Valores antigos gravados pelo site: `site_vender`, `site-proprietario`... */
   if (value.startsWith("site")) return "site";
   return "manual";
+}
+
+/**
+ * Filtra fichas pela origem, incluindo apenas os marcadores explícitos
+ * conhecidos para fichas antigas que foram gravadas como `manual`.
+ */
+export function matchesCaptureSourceFilter(
+  source: string,
+  notes: string | null | undefined,
+  filter: string,
+): boolean {
+  if (source === filter) return true;
+  if (source !== "manual") return false;
+
+  const markerByLegacyFilter: Record<string, string> = {
+    link_captacao: "LINK_CAPTACAO",
+    whatsapp: "whatsapp",
+  };
+  const markerValue = markerByLegacyFilter[filter];
+  if (!markerValue) return false;
+
+  return (notes ?? "").split(/\r?\n/).some((line) =>
+    line.trim().replace(/^[-•]\s*/, "") === `Origem do cadastro: ${markerValue}`,
+  );
 }
 
 const text = (value: unknown, max = 200): string | null => {

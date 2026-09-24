@@ -10,6 +10,7 @@ import {
   buildCapturePayload,
   cleanComplements,
   findDuplicateUnit,
+  matchesCaptureSourceFilter,
   normalizeSource,
   parseComplements,
   serializeComplements,
@@ -54,12 +55,37 @@ describe("payload da ficha única", () => {
     expect(buildCapturePayload(base).askingPrice).toBeNull();
   });
 
-  test("origem desconhecida vira manual; prospecção é preservada", () => {
+  test("preserva origens WhatsApp/link e desconhecidas viram manual", () => {
     expect(normalizeSource("qualquer-coisa")).toBe("manual");
     expect(normalizeSource(null)).toBe("manual");
     expect(normalizeSource("site")).toBe("site");
     expect(normalizeSource("site-proprietario")).toBe("site");
     expect(normalizeSource("prospeccao")).toBe("prospeccao");
+    expect(normalizeSource("whatsapp")).toBe("whatsapp");
+    expect(normalizeSource("LINK_CAPTACAO")).toBe("link_captacao");
+    expect(buildCapturePayload({ ...base, source: "whatsapp" }).source).toBe("whatsapp");
+    expect(buildCapturePayload({ ...base, source: "LINK_CAPTACAO" }).source).toBe("link_captacao");
+  });
+
+  test("origem legada só é inferida por marcador explícito em ficha manual", () => {
+    expect(
+      matchesCaptureSourceFilter(
+        "manual",
+        "[captacao-ia]\n- Origem do cadastro: LINK_CAPTACAO\n[/captacao-ia]",
+        "link_captacao",
+      ),
+    ).toBe(true);
+    expect(
+      matchesCaptureSourceFilter(
+        "manual",
+        "[captacao-ia]\n- Origem do cadastro: whatsapp\n[/captacao-ia]",
+        "whatsapp",
+      ),
+    ).toBe(true);
+    expect(matchesCaptureSourceFilter("manual", "WhatsApp: contato recebido", "whatsapp")).toBe(false);
+    expect(matchesCaptureSourceFilter("manual", "Origem do cadastro: LINK_CAPTACAO (suspeita)", "link_captacao")).toBe(false);
+    expect(matchesCaptureSourceFilter("manual", null, "whatsapp")).toBe(false);
+    expect(matchesCaptureSourceFilter("site", "Origem do cadastro: whatsapp", "whatsapp")).toBe(false);
   });
 });
 

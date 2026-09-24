@@ -166,8 +166,8 @@ const BLOCK_KEYS = BLOCK_STEPS.map((step) => step.key) as readonly string[];
  * Existem porque o fluxo LINK_CAPTACAO (`agent/link-captacao.ts`) pergunta
  * coisas que o roteiro do WhatsApp não pergunta — condomínio/unidade e a foto
  * da frente — e porque a origem real do cadastro precisa ficar gravada na
- * ficha (`property_captures.source` só aceita o vocabulário de
- * `CAPTURE_SOURCES`, e mexer nele mudaria filtro e tela do CRM).
+ * ficha. Fichas antigas podem continuar como `manual`, com a origem original
+ * preservada neste bloco para o filtro legado do CRM.
  *
  * Nada aqui entra em `CAPTURE_STEPS`: o roteiro do WhatsApp continua com as
  * mesmas perguntas, na mesma ordem.
@@ -687,9 +687,8 @@ export async function saveCaptureAnswer(
       state: clean(input.estado, 2),
       complements: Object.keys(complements).length ? complements : null,
       askingPrice,
-      /* `whatsapp`/`link_captacao` não estão em CAPTURE_SOURCES: a entrada
-         única normaliza para `manual` e a origem real fica registrada nas
-         observações da ficha (campo "Origem do cadastro"). */
+      /* Origem mantida separada da negociação: formulário/link/WhatsApp não
+         devem ser confundidos com venda ou locação. */
       source: clean(input.origem, 60) ?? "whatsapp",
     });
     captureId = result.captureId ?? captureId;

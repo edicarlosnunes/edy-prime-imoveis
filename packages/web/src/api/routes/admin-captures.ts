@@ -15,7 +15,12 @@ import {
 } from "../lib/capture-rules";
 import { CHECKLIST_ITEMS, isChecklistKey, toggleChecklistItem } from "../lib/capture-checklist";
 import { COMPLEMENT_FIELDS } from "../lib/capture-address";
-import { buildCapturePayload, findDuplicateUnit, parseComplements } from "../lib/capture-intake";
+import {
+  buildCapturePayload,
+  findDuplicateUnit,
+  matchesCaptureSourceFilter,
+  parseComplements,
+} from "../lib/capture-intake";
 import { deriveRegistrationStatus, isManualRegistrationStatus, normalizeRegistrationStatus, REGISTRATION_STATUSES } from "../lib/capture-registration";
 import { outsidePriorityArea, parsePriorityCities } from "../lib/priority-area";
 import {
@@ -134,8 +139,8 @@ export const adminCaptures = {
       }).optional(),
     )
     .handler(async ({ input, context }) => {
-      const captures = await context.db.select().from(schema.propertyCaptures).orderBy(desc(schema.propertyCaptures.updatedAt)).limit(500);
-      const owners = await context.db.select().from(schema.owners).limit(1000);
+      const captures = await context.db.select().from(schema.propertyCaptures).orderBy(desc(schema.propertyCaptures.updatedAt));
+      const owners = await context.db.select().from(schema.owners);
       const ownerById = new Map(owners.map((owner) => [owner.id, owner]));
       const q = input?.search?.trim().toLowerCase();
       return captures
@@ -145,7 +150,10 @@ export const adminCaptures = {
           /* Compara etapa CANÔNICA: filtrar por DOCUMENTAÇÃO tem que trazer
              também as captações antigas gravadas como `avaliacao`. */
           if (input?.stage && normalizeStage(row.stage) !== normalizeStage(input.stage)) return false;
-          if (input?.source && row.source !== input.source) return false;
+          if (
+            input?.source &&
+            !matchesCaptureSourceFilter(row.source, row.notes, input.source)
+          ) return false;
           if (q) {
             const hay = [row.owner?.name, row.owner?.phone, row.city, row.district, row.address, row.propertyType]
               .filter(Boolean)
