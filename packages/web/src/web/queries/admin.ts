@@ -343,6 +343,8 @@ export function useCapture(id: number | null) {
   return useQuery({ ...orpc.adminCaptures.get.queryOptions({ input: { id: id ?? 0 } }), enabled: id !== null });
 }
 export function useCreateCapture() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.create.mutationOptions({ onSuccess: invalidate })); }
+export function useIssueCaptureShareLink() { return useMutation(orpc.adminCaptureLinks.issue.mutationOptions()); }
+export function useRevokeCaptureShareLink() { return useMutation(orpc.adminCaptureLinks.revoke.mutationOptions()); }
 export function useSetCaptureStage() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setStage.mutationOptions({ onSuccess: invalidate })); }
 /* Item 8 — status do cadastro, eixo paralelo ao funil do Radar. */
 export function useSetCaptureRegistrationStatus() { const invalidate = useInvalidate(); return useMutation(orpc.adminCaptures.setRegistrationStatus.mutationOptions({ onSuccess: invalidate })); }

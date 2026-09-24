@@ -21,6 +21,7 @@ import AdminWatermark from "./pages/admin/watermark";
 import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
 import LinkCaptacao from "./pages/link-captacao";
+import LinkCaptacaoToken from "./pages/link-captacao-token";
 import Privacidade from "./pages/privacidade";
 import Termos from "./pages/termos";
 import ExclusaoDeDados from "./pages/exclusao-de-dados";
@@ -32,6 +33,7 @@ function App() {
     <Provider>
       <Switch>
         <Route path="/" component={Index} />
+        <Route path="/link-captacao/:token" component={LinkCaptacaoToken} />
         <Route path="/link-captacao" component={LinkCaptacao} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />

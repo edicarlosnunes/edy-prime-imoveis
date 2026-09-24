@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
 import { siteBaseUrl } from "../lib/base-url";
-import { addMessage, aiTurn, ensureConversation } from "../lib/inbox";
+import { addMessage, aiTurn, conversationTurns, ensureConversation } from "../lib/inbox";
 import {
   advanceInboundEvent,
   claimInboundEvent,
@@ -24,7 +24,14 @@ import { intakeLead, normalizeWebhookLead } from "../lib/lead-intake";
 import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
 import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
-import { captureSnapshot } from "../agent/owner-capture";
+import {
+  bindCaptureShareToCapture,
+  completeCurrentCaptureShareForSender,
+  latestCaptureShareForSender,
+  redeemCaptureShareToken,
+} from "../lib/capture-share-tokens";
+import { captureSnapshot, linkCaptureSession } from "../agent/owner-capture";
+import { CLOSING_MESSAGE, linkCaptacaoState } from "../agent/link-captacao";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
@@ -184,55 +191,91 @@ export function registerWebhookRoutes(app: Hono) {
       if (claim.resumed) resumed++;
 
       try {
+        const shareTokenMatch = /^LINK_CAPTACAO:([a-f0-9]{64})$/i.exec(message.text.trim());
+        const redeemedShare = shareTokenMatch
+          ? await redeemCaptureShareToken(db, shareTokenMatch[1]!, message.from)
+          : null;
         const conversation = await ensureConversation(db, {
           channel: "whatsapp",
           externalId: message.from,
           contactName: message.name,
           contactPhone: message.from,
         });
+        const senderShare = await latestCaptureShareForSender(db, message.from);
+        const completionGuard = senderShare?.status === "completed";
+        const snapshotBeforeInbound = senderShare?.status === "redeemed"
+          ? await captureSnapshot(db, message.from, senderShare.captureId ?? undefined)
+          : null;
+        const sessionBeforeInbound = snapshotBeforeInbound?.ownerId
+          ? await linkCaptureSession(db, snapshotBeforeInbound.ownerId)
+          : null;
 
+        let trustedCaptureMedia = false;
         if (message.mediaId) {
-          const snapshot = await captureSnapshot(db, message.from);
-          const origin = String(
-            (snapshot.answers as Record<string, string | undefined>).origem ?? "",
-          ).trim().toUpperCase();
-
-          /* Imagem fora do LINK_CAPTACAO continua sendo ignorada pelo canal,
-             como antes desta funcionalidade. */
-          if (!snapshot.captureId || origin !== "LINK_CAPTACAO") {
-            await completeInboundEvent(db, claim.eventId);
-            processed++;
-            continue;
-          }
-
-          const media = await downloadWhatsappMedia(wa, message.mediaId);
-          const mediaKey = await whatsappMediaHex(message.mediaId);
-          await db.insert(schema.media).values({
-            id: mediaKey,
-            mime: media.mime,
-            size: media.size,
-            data: media.data,
-            name: "fachada-whatsapp",
-            alt: "Foto provisória enviada pelo proprietário via WhatsApp",
-          }).onConflictDoNothing();
-          const url = `/api/media/${mediaKey}`;
-          message.text = `[imagem:${url}]`;
-
-          const [capture] = await db
-            .select()
-            .from(schema.propertyCaptures)
-            .where(eq(schema.propertyCaptures.id, snapshot.captureId))
-            .limit(1);
-          if (capture) {
-            const photos = addOwnerPhotos(
-              capture.ownerPhotos,
-              [{ url, caption: "Fachada" }],
-              { source: "proprietario" },
+          if (completionGuard) {
+            message.text = "[imagem recebida]";
+          } else {
+            if (senderShare?.status !== "redeemed" || senderShare.captureId === null) {
+              await completeInboundEvent(db, claim.eventId);
+              processed++;
+              continue;
+            }
+            const snapshot = await captureSnapshot(db, message.from, senderShare.captureId);
+            const origin = String(
+              (snapshot.answers as Record<string, string | undefined>).origem ?? "",
+            ).trim().toUpperCase();
+            const captureState = await linkCaptacaoState(
+              db,
+              message.from,
+              await conversationTurns(db, conversation.id),
             );
-            await db
-              .update(schema.propertyCaptures)
-              .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
-              .where(eq(schema.propertyCaptures.id, snapshot.captureId));
+
+            /* Imagem fora do LINK_CAPTACAO continua sendo ignorada pelo canal,
+               como antes desta funcionalidade. */
+            if (
+              snapshot.captureId !== senderShare.captureId ||
+              origin !== "LINK_CAPTACAO" ||
+              !captureState?.active ||
+              captureState.shareTokenId !== senderShare.id ||
+              captureState.shareCaptureId !== senderShare.captureId ||
+              captureState?.completionGuard ||
+              captureState?.nextStep !== "fotoFrente"
+            ) {
+              await completeInboundEvent(db, claim.eventId);
+              processed++;
+              continue;
+            }
+
+            const media = await downloadWhatsappMedia(wa, message.mediaId);
+            const mediaKey = await whatsappMediaHex(message.mediaId);
+            await db.insert(schema.media).values({
+              id: mediaKey,
+              mime: media.mime,
+              size: media.size,
+              data: media.data,
+              name: "fachada-whatsapp",
+              alt: "Foto provisória enviada pelo proprietário via WhatsApp",
+            }).onConflictDoNothing();
+            const url = `/api/media/${mediaKey}`;
+            message.text = `[imagem:${url}]`;
+            trustedCaptureMedia = true;
+
+            const [capture] = await db
+              .select()
+              .from(schema.propertyCaptures)
+              .where(eq(schema.propertyCaptures.id, snapshot.captureId))
+              .limit(1);
+            if (capture) {
+              const photos = addOwnerPhotos(
+                capture.ownerPhotos,
+                [{ url, caption: "Fachada" }],
+                { source: "proprietario" },
+              );
+              await db
+                .update(schema.propertyCaptures)
+                .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
+                .where(eq(schema.propertyCaptures.id, snapshot.captureId));
+            }
           }
         }
 
@@ -274,7 +317,59 @@ export function registerWebhookRoutes(app: Hono) {
            Responder duas vezes ao cliente é pior que não responder. */
         if (!stageReached(claim.stage, "replied")) {
           await advanceInboundEvent(db, claim.eventId, "replied");
-          const turn = await aiTurn(db, conversation.id, baseUrl);
+          let turn = completionGuard
+            ? { replied: true, text: "Solicite outro link para cadastro." }
+            : await aiTurn(db, conversation.id, baseUrl, {
+                trustedWhatsappMedia: trustedCaptureMedia,
+              });
+          if (completionGuard && turn.text) {
+            await addMessage(db, conversation.id, {
+              direction: "out",
+              author: "ia",
+              body: turn.text,
+            });
+          }
+          if (snapshotBeforeInbound) {
+            const snapshot = await captureSnapshot(
+              db,
+              message.from,
+              senderShare?.captureId ?? undefined,
+            );
+            const sessionAfterInbound = snapshot.ownerId
+              ? await linkCaptureSession(db, snapshot.ownerId)
+              : null;
+            const addressSavedNow = Boolean(
+              snapshot.captureId &&
+              (sessionBeforeInbound?.awaitingAddress
+                ? !sessionAfterInbound?.awaitingAddress
+                : snapshotBeforeInbound.nextStep === "endereco" &&
+                  snapshot.answered.includes("endereco")),
+            );
+            const origin = String(
+              (snapshot.answers as Record<string, string | undefined>).origem ?? "",
+            ).trim().toUpperCase();
+            if (
+              addressSavedNow &&
+              snapshot.captureId &&
+              snapshot.address &&
+              origin === "LINK_CAPTACAO" &&
+              redeemedShare?.ok !== false
+            ) {
+              const binding = await bindCaptureShareToCapture(db, message.from, snapshot.captureId);
+              if (!binding.ok) {
+                turn = { ...turn, text: "Solicite outro link para cadastro." };
+              }
+            }
+          }
+          if (turn.text === CLOSING_MESSAGE) {
+            const share = await latestCaptureShareForSender(db, message.from);
+            if (share?.status === "redeemed") {
+              const completed = await completeCurrentCaptureShareForSender(db, message.from);
+              if (!completed) {
+                turn = { ...turn, text: "Solicite outro link para cadastro." };
+              }
+            }
+          }
           if (turn.replied && turn.text) {
             try {
               await sendWhatsappText(wa, message.from, turn.text);

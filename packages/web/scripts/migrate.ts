@@ -7,8 +7,10 @@ import { createClient } from "@libsql/client/web";
 import { FALLBACK_MODEL } from "../src/api/agent/model";
 
 const url = (process.env.DATABASE_URL ?? "").replace(/^libsql:\/\//, "https://");
-if (!url) throw new Error("DATABASE_URL ausente");
-const db = createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN });
+if (import.meta.main && !url) throw new Error("DATABASE_URL ausente");
+const db = import.meta.main && url
+  ? createClient({ url, authToken: process.env.DATABASE_AUTH_TOKEN })
+  : null;
 
 const statements = [
   `CREATE TABLE IF NOT EXISTS admin_users (
@@ -433,6 +435,20 @@ const statements = [
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS capture_share_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active',
+    sender_phone TEXT,
+    capture_id INTEGER,
+    created_by INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL,
+    redeemed_at INTEGER,
+    completed_at INTEGER
+  )`,
+  `CREATE INDEX IF NOT EXISTS capture_share_tokens_sender_idx ON capture_share_tokens (sender_phone, status)`,
   /* ------------------------------- V4: central de logradouros (endereço
      inteligente). Tabela nova: nenhum dado existente é tocado. Guarda os
      candidatos que lib/street-normalize.ts compara. */
@@ -653,6 +669,13 @@ const columnMaps: Record<string, Record<string, string>> = {
   leads: leadColumns,
   owners: ownerColumns,
   property_captures: propertyCaptureColumns,
+  /* Tabela nova adicionada na migration anterior; backfill as colunas que
+     podem faltar em bancos onde ela já foi criada. */
+  capture_share_tokens: {
+    /* 0 temporário: o helper migra para created_at + 30 dias imediatamente. */
+    expires_at: "INTEGER NOT NULL DEFAULT 0",
+    revoked_at: "INTEGER",
+  },
   settings: settingsColumns,
 };
 
@@ -702,14 +725,48 @@ const expectedIndexes = nameOf(
 );
 
 const objectNames = async (type: "table" | "index") => {
-  const rows = await db.execute(`SELECT name FROM sqlite_master WHERE type='${type}'`);
+  const rows = await db!.execute(`SELECT name FROM sqlite_master WHERE type='${type}'`);
   return new Set(rows.rows.map((r) => String(r.name)));
 };
 
 const columnsOf = async (table: string) => {
-  const info = await db.execute(`PRAGMA table_info(${table})`);
+  const info = await db!.execute(`PRAGMA table_info(${table})`);
   return new Set(info.rows.map((r) => String(r.name)));
 };
+
+type AdditiveMigrationDb = {
+  execute(statement: string): Promise<{ rows: Array<{ name?: unknown }> }>;
+};
+
+/**
+ * Adds missing columns without rewriting existing rows. Exported so the
+ * idempotent legacy-table upgrade is exercised by the SQLite migration test.
+ */
+export async function ensureAdditiveColumns(
+  executor: AdditiveMigrationDb,
+  table: string,
+  columns: Record<string, string>,
+) {
+  const info = await executor.execute(`PRAGMA table_info(${table})`);
+  const present = new Set(info.rows.map((row) => String(row.name)));
+  const added: string[] = [];
+  for (const [column, type] of Object.entries(columns)) {
+    if (present.has(column)) continue;
+    await executor.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    present.add(column);
+    added.push(column);
+  }
+  return added;
+}
+
+/** Backfills legacy links from their original issue time (SQLite epoch seconds). */
+export async function migrateCaptureShareTokenColumns(executor: AdditiveMigrationDb) {
+  const added = await ensureAdditiveColumns(executor, "capture_share_tokens", columnMaps.capture_share_tokens);
+  await executor.execute(
+    "UPDATE capture_share_tokens SET expires_at = created_at + 2592000 WHERE expires_at = 0",
+  );
+  return added;
+}
 
 /**
  * Modo --check: NÃO escreve nada. Lista o que falta e sai com código 1.
@@ -718,7 +775,7 @@ const columnsOf = async (table: string) => {
  * verificava se os dois batiam. É o gate para conferir o banco depois de
  * aplicar a migração, antes de publicar o código que depende dela.
  */
-if (process.argv.includes("--check")) {
+if (import.meta.main && process.argv.includes("--check")) {
   const drift: string[] = [];
 
   const tables = await objectNames("table");
@@ -740,7 +797,7 @@ if (process.argv.includes("--check")) {
   }
 
   if (tables.has("crm_serials")) {
-    const seeded = await db.execute("SELECT count(*) as n FROM crm_serials WHERE id = 1");
+    const seeded = await db!.execute("SELECT count(*) as n FROM crm_serials WHERE id = 1");
     if (Number(seeded.rows[0]?.n ?? 0) === 0) {
       drift.push("SEMENTE AUSENTE: crm_serials id=1");
     }
@@ -757,35 +814,35 @@ if (process.argv.includes("--check")) {
     for (const line of drift) console.log(" -", line);
     process.exitCode = 1;
   }
-} else {
+} else if (import.meta.main) {
   for (const sql of statements) {
-    await db.execute(sql);
+    await db!.execute(sql);
     console.log("ok:", sql.slice(0, 60).replace(/\s+/g, " "));
   }
 
   for (const [table, columns] of Object.entries(columnMaps)) {
-    const present = await columnsOf(table);
-    for (const [column, type] of Object.entries(columns)) {
-      if (present.has(column)) continue;
-      await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    const added = table === "capture_share_tokens"
+      ? await migrateCaptureShareTokenColumns(db!)
+      : await ensureAdditiveColumns(db!, table, columns);
+    for (const column of added) {
       console.log(`${table} += `, column);
     }
   }
 
   for (const sql of lateIndexes) {
-    await db.execute(sql);
+    await db!.execute(sql);
     console.log("ok:", sql.slice(0, 60));
   }
 
   for (const sql of seeds) {
-    await db.execute(sql);
+    await db!.execute(sql);
     console.log("ok:", sql.slice(0, 60));
   }
 
-  const tables = await db.execute(
+  const tables = await db!.execute(
     "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name",
   );
   console.log("TABELAS:", tables.rows.map((r) => r.name).join(", "));
-  const leadCount = await db.execute("SELECT count(*) as n FROM leads");
+  const leadCount = await db!.execute("SELECT count(*) as n FROM leads");
   console.log("LEADS PRESERVADOS:", leadCount.rows[0]?.n);
 }

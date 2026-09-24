@@ -17,6 +17,7 @@ import { adminLeadProfile } from "./routes/admin-lead-profile";
 import { adminClients } from "./routes/admin-clients";
 import { adminOwners } from "./routes/admin-owners";
 import { adminCaptures } from "./routes/admin-captures";
+import { adminCaptureLinks, captureShareLinks } from "./routes/capture-share-links";
 import { adminStreets } from "./routes/admin-streets";
 import { adminDocuments } from "./routes/admin-documents";
 import { adminCapturePhotos } from "./routes/admin-capture-photos";
@@ -73,6 +74,8 @@ export const router = {
   adminClients,
   adminOwners,
   adminCaptures,
+  adminCaptureLinks,
+  captureShareLinks,
   adminStreets,
   adminDocuments,
   adminCapturePhotos,

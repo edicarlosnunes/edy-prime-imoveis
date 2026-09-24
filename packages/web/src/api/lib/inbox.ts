@@ -251,6 +251,7 @@ export async function aiTurn(
   db: AdminDb,
   conversationId: number,
   baseUrl: string,
+  options: { trustedWhatsappMedia?: boolean } = {},
 ): Promise<AiTurnResult> {
   const [conversation] = await db
     .select()
@@ -274,6 +275,7 @@ export async function aiTurn(
        vem do canal. */
     const reply = await agentReply(db, agent, turns, baseUrl, {
       phone: conversation.contactPhone,
+      trustedWhatsappMedia: options.trustedWhatsappMedia,
     });
     await addMessage(db, conversationId, {
       direction: "out",

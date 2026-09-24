@@ -23,7 +23,7 @@ import { readConfig } from "../lib/integrations";
 import { ownerPhoneKey } from "../lib/owner-identity";
 import { captureFlowPrompt, captureSnapshot, captureTools } from "./owner-capture";
 import { classifyContactIntent, INTENT_QUESTION } from "./capture-intent";
-import { linkCaptacaoReply, linkCaptacaoState } from "./link-captacao";
+import { hasLinkToken, linkCaptacaoReply, linkCaptacaoState } from "./link-captacao";
 import { handoffAllowance, looksLikeHandoffText } from "./handoff-guard";
 
 export interface AgentRow {
@@ -216,6 +216,8 @@ export interface AgentReplyOptions {
    * telefone nunca é perguntado.
    */
   phone?: string | null;
+  /** True only when the WhatsApp adapter downloaded an actual inbound image. */
+  trustedWhatsappMedia?: boolean;
 }
 
 /** Gera a resposta da IA para uma conversa. Lança erro se o gateway não existir. */
@@ -251,7 +253,25 @@ export async function agentReply(
   if (phone) {
     const linkState = await linkCaptacaoState(db, phone, turns);
     if (linkState?.active) {
-      return linkCaptacaoReply(db, agent, turns, phone, linkState, configured);
+       return linkCaptacaoReply(
+         db,
+         agent,
+         turns,
+         phone,
+         linkState,
+         configured,
+         options.trustedWhatsappMedia === true,
+       );
+    }
+    const lastMessage = [...turns].reverse().find((turn) => turn.role === "user")?.content;
+    if (hasLinkToken(lastMessage)) {
+      return {
+        text: "Solicite outro link para cadastro.",
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls: [],
+      };
     }
   }
 

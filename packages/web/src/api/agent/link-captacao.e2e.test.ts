@@ -5,10 +5,10 @@
  *  2. salvamento progressivo (resposta por resposta, na ordem do roteiro)
  *  3. retomada pelo mesmo telefone, sem repetir pergunta já respondida
  *  4. frase neutra exata quando a pergunta sai do roteiro
- *  5. observações finais e fechamento exato
+ *  5. foto de fachada e fechamento exato
  *  6. ausência de duplicidade (proprietário, imóvel, unidade do mesmo prédio)
  *
- * Como roda: SQLite em memória + o caminho real de produção
+ * Como roda: SQLite temporário + o caminho real de produção
  * (`inbox#aiTurn` → `agent/broker#agentReply` → `agent/link-captacao` →
  * `owner-capture#saveCaptureAnswer` → `owner-intake`/`property_captures`).
  * Só o modelo é simulado: `generateText` é trocado por um dublê que recebe as
@@ -21,7 +21,8 @@
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { sql } from "drizzle-orm";
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { rm } from "node:fs/promises";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 import * as schema from "../database/schema";
 import type { AdminDb } from "../lib/admin-base";
@@ -30,9 +31,11 @@ import {
   LINK_CAPTACAO_MESSAGE,
   LINK_CAPTACAO_ORIGIN,
   OFF_SCRIPT_REPLY,
+  linkCaptacaoState,
   linkCaptacaoUrl,
   linkQuestion,
 } from "./link-captacao";
+import { issueCaptureShareToken, redeemCaptureShareToken } from "../lib/capture-share-tokens";
 
 /* O broker só chama o modelo quando o gateway parece configurado. */
 process.env.AI_GATEWAY_BASE_URL ||= "https://gateway.test";
@@ -60,6 +63,10 @@ let lastTools: string[] = [];
 let db: AdminDb;
 let app: Hono;
 let webhookMessageSeq = 0;
+let testDbSeq = 0;
+let testDatabasePath = "";
+let testClient: ReturnType<typeof createClient>;
+let issuedShareTokens: string[] = [];
 const APP_SECRET = "segredo-de-teste";
 const graphCalls: { url: string; body: string }[] = [];
 
@@ -391,6 +398,28 @@ const DDL = [
     completeness INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER)`,
+  `CREATE TABLE media (
+    id TEXT PRIMARY KEY NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    name TEXT,
+    alt TEXT,
+    original_id TEXT,
+    variant TEXT,
+    created_at INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE capture_share_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active',
+    sender_phone TEXT,
+    capture_id INTEGER,
+    created_by INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL DEFAULT 0,
+    revoked_at INTEGER,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    redeemed_at INTEGER,
+    completed_at INTEGER)`,
 ];
 
 /** Telefone do WhatsApp: identidade do proprietário, nunca perguntado. */
@@ -398,8 +427,11 @@ const PHONE = "(13) 99714-1174";
 const BASE_URL = "https://teste.local";
 
 beforeEach(async () => {
-  const client = createClient({ url: ":memory:" });
-  const instance = drizzle(client, { schema });
+  testDatabasePath = `/tmp/link-captacao-e2e-${process.pid}-${++testDbSeq}-${crypto.randomUUID()}.db`;
+  testClient = createClient({
+    url: `file:${testDatabasePath}`,
+  });
+  const instance = drizzle(testClient, { schema });
   for (const statement of DDL) await instance.run(sql.raw(statement));
   db = instance as unknown as AdminDb;
   await db.run(sql`INSERT INTO ai_agents (name, active, channels, transfer_message, created_at, updated_at)
@@ -416,16 +448,26 @@ beforeEach(async () => {
   lastSystem = "";
   lastTools = [];
   webhookMessageSeq = 0;
+  issuedShareTokens = [];
   graphCalls.length = 0;
+});
+
+afterEach(async () => {
+  await testClient.close();
+  await Promise.all([
+    rm(testDatabasePath, { force: true }),
+    rm(`${testDatabasePath}-wal`, { force: true }),
+    rm(`${testDatabasePath}-shm`, { force: true }),
+  ]);
 });
 
 /* ------------------------------------------------------------ utilidades */
 
-const conversation = async (externalId: string) =>
+const conversation = async (externalId: string, contactPhone = PHONE) =>
   ensureConversation(db, {
     channel: "whatsapp",
     externalId,
-    contactPhone: PHONE,
+    contactPhone,
     contactName: null,
   });
 
@@ -452,12 +494,30 @@ async function linkTurn(
   conversationId: number,
   body: string,
   save?: Record<string, unknown>,
+  trustedWhatsappMedia = false,
 ): Promise<{
   reply: string | undefined;
   saved: SaveResult | null;
   skipped?: string;
   replied: boolean;
 }> {
+  const [conversationRow] = await db.all<{ contact_phone: string | null }>(
+    sql`SELECT contact_phone FROM conversations WHERE id = ${conversationId}`,
+  );
+  const sender = (conversationRow?.contact_phone ?? PHONE).replace(/\D/g, "");
+  const [completedShare] = await db.all<{ id: number }>(
+    sql`SELECT id FROM capture_share_tokens WHERE sender_phone = ${sender.startsWith("55") ? sender : `55${sender}`} AND status = 'completed' ORDER BY id DESC LIMIT 1`,
+  );
+  if (
+    /^LINK_CAPTACAO:/i.test(body) ||
+    (body === LINK_CAPTACAO_MESSAGE && !completedShare)
+  ) {
+    const token = await issueCaptureShareToken(db, 1);
+    issuedShareTokens.push(token);
+    const redemption = await redeemCaptureShareToken(db, token, conversationRow?.contact_phone ?? PHONE);
+    expect(redemption.ok).toBe(true);
+    body = `LINK_CAPTACAO:${token}`;
+  }
   let saved: SaveResult | null = null;
   behavior = async (call) => {
     if (!save) return { text: "TEXTO DO MODELO (não deve chegar ao cliente)", steps: [] };
@@ -468,14 +528,16 @@ async function linkTurn(
     };
   };
   await addMessage(db, conversationId, { direction: "in", author: "cliente", body });
-  const result = await aiTurn(db, conversationId, BASE_URL);
+  const result = await aiTurn(db, conversationId, BASE_URL, {
+    trustedWhatsappMedia,
+  });
   return { reply: result.text, saved, skipped: result.skipped, replied: result.replied };
 }
 
 /** O clique identifica o perfil antes de pedir o nome do proprietário. */
 async function entrarPeloLink(conversationId: number) {
   const abertura = await linkTurn(conversationId, LINK_CAPTACAO_MESSAGE);
-  expect(abertura.reply).toBe("Você é o proprietário do imóvel ou corretor?");
+  expect(abertura.reply).toBe("Você é proprietário, locador ou corretor do imóvel?");
   return linkTurn(conversationId, "proprietário");
 }
 
@@ -531,14 +593,21 @@ async function signWebhook(raw: string) {
   return `sha256=${Array.from(new Uint8Array(mac), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
-async function postWhatsapp(text: string) {
-  const id = `wamid.capture.${++webhookMessageSeq}`;
+async function postWhatsapp(
+  text: string,
+  image = false,
+  from = "5513997141174",
+  messageId?: string,
+) {
+  const id = messageId ?? `wamid.capture.${++webhookMessageSeq}`;
   const message = {
-    from: "5513997141174",
+    from,
     id,
     timestamp: "1757400000",
-    type: "text",
-    text: { body: text },
+    type: image ? "image" : "text",
+    ...(image
+      ? { image: { id: "media-facade-test", mime_type: "image/jpeg" } }
+      : { text: { body: text } }),
   };
   const payload = {
     object: "whatsapp_business_account",
@@ -576,8 +645,8 @@ const ABERTURA = "Qual é o seu nome completo?";
 const Q_ENDERECO = "Qual é o endereço completo do imóvel?";
 const Q_CONDOMINIO = "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)";
 const Q_DOCUMENTACAO = "Qual é a situação da documentação do imóvel? Se não souber, digite NÃO SEI.";
-const Q_OBSERVACAO = "Antes de finalizar: tem algo importante sobre o imóvel que gostaria de informar? Se não tiver mais nada a acrescentar, digite OK.";
-const FECHAMENTO = "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
+const Q_FOTO = "Para finalizar, envie uma foto da frente ou fachada do imóvel.";
+const FECHAMENTO = "Seu cadastro foi finalizado com sucesso. Nosso atendimento entrará em contato.";
 const NEUTRA = "Certo, vamos verificar essa informação e, se necessário, nossa equipe te dá um retorno.";
 
 /**
@@ -644,16 +713,19 @@ const SCRIPT: { step: string; body: string; save: Record<string, unknown>; next:
     step: "custos",
     body: "IPTU 1200 por ano",
     save: { custos: "IPTU R$ 1.200/ano" },
-    next: Q_OBSERVACAO,
+    next: Q_FOTO,
   },
 ];
 
-/** Percorre o roteiro até a pergunta de observação final (exclusive). */
+/** Percorre o roteiro até a pergunta terminal de foto. */
 async function percorrerRoteiro(conversationId: number, steps = SCRIPT) {
   const perguntas: (string | undefined)[] = [];
   for (const item of steps) {
     const turn = await linkTurn(conversationId, item.body, item.save);
-    if (item.step !== "nome") expect(turn.saved?.salvo, `passo ${item.step}`).toBe(true);
+    const deterministicNumber = ["dormitorios", "suites", "banheiros", "vagas"].includes(item.step);
+    if (item.step !== "nome" && !deterministicNumber) {
+      expect(turn.saved?.salvo, `passo ${item.step}`).toBe(true);
+    }
     perguntas.push(turn.reply);
   }
   return perguntas;
@@ -715,6 +787,52 @@ describe("1. entrada pelo link de captação", () => {
 });
 
 describe("webhook Vercel legado → IA → persistência CRM", () => {
+  test("aceita somente token emitido, protege replay e vincula cada link a um remetente", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("graph.facebook.com")) {
+        graphCalls.push({ url: String(input), body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.out.token" }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    try {
+      app = new Hono();
+      registerWebhookRoutes(app);
+
+      const staticMessage = await postWhatsapp(LINK_CAPTACAO_MESSAGE, false, "5513997141174");
+      expect(staticMessage.body.processed).toBe(1);
+      const staticReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(staticReply.text.body).toBe("Solicite outro link para cadastro.");
+      expect(await counts()).toEqual({ owners: 0, captures: 0 });
+
+      const firstToken = await issueCaptureShareToken(db, 1);
+      const firstMessageId = "wamid.capture.replay";
+      const first = await postWhatsapp(`LINK_CAPTACAO:${firstToken}`, false, "5513997141174", firstMessageId);
+      expect(first.body.processed).toBe(1);
+      const replay = await postWhatsapp(`LINK_CAPTACAO:${firstToken}`, false, "5513997141174", firstMessageId);
+      expect(replay.body.duplicated).toBe(1);
+      expect(replay.body.processed).toBe(0);
+
+      const stolen = await postWhatsapp(`LINK_CAPTACAO:${firstToken}`, false, "5513997000001");
+      expect(stolen.body.processed).toBe(1);
+      const secondToken = await issueCaptureShareToken(db, 1);
+      const second = await postWhatsapp(`LINK_CAPTACAO:${secondToken}`, false, "5513997000001");
+      expect(second.body.processed).toBe(1);
+
+      const rows = await db.all<{ status: string; sender_phone: string | null }>(
+        sql`SELECT status, sender_phone FROM capture_share_tokens ORDER BY id`,
+      );
+      expect(rows).toEqual([
+        { status: "redeemed", sender_phone: "5513997141174" },
+        { status: "redeemed", sender_phone: "5513997000001" },
+      ]);
+      expect(await counts()).toEqual({ owners: 0, captures: 0 });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
   test("a mensagem WhatsApp assinada percorre a rota real e grava a captação no CRM", async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -745,12 +863,13 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       app = new Hono();
       registerWebhookRoutes(app);
 
-      for (const text of [LINK_CAPTACAO_MESSAGE, "proprietário", "Maria Souza"]) {
+       const shareToken = await issueCaptureShareToken(db, 1);
+       for (const text of [`LINK_CAPTACAO:${shareToken}`, "proprietário", "Maria Souza"]) {
         const response = await postWhatsapp(text);
         expect(response.status).toBe(200);
         expect(response.body.processed).toBe(1);
       }
-      const address = await postWhatsapp(
+       const address = await postWhatsapp(
         "Rua das Flores, 88, Boqueirão, Praia Grande - SP",
       );
 
@@ -764,17 +883,22 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       expect(sent.text.body).not.toContain("TEXTO DO MODELO");
 
       const [capture] = await db.all<{
+        id: number;
         source: string;
         intention: string | null;
         street: string | null;
         number: string | null;
         notes: string | null;
-      }>(sql`SELECT source, intention, street, number, notes FROM property_captures`);
+      }>(sql`SELECT id, source, intention, street, number, notes FROM property_captures`);
       expect(capture?.source).toBe("link_captacao");
       expect(capture?.intention).toBe("venda");
       expect(capture?.street).toBe("Rua das Flores");
       expect(capture?.number).toBe("88");
       expect(capture?.notes).toContain(`Origem do cadastro: ${LINK_CAPTACAO_ORIGIN}`);
+      const [boundShare] = await db.all<{ capture_id: number | null; status: string }>(
+        sql`SELECT capture_id, status FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(boundShare).toEqual({ capture_id: capture?.id, status: "redeemed" });
 
       const [lead] = await db.all<{ source: string; channel: string }>(
         sql`SELECT source, channel FROM leads`,
@@ -782,6 +906,311 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       expect(lead?.source).toBe("whatsapp");
       expect(lead?.channel).toBe("whatsapp");
       expect(await counts()).toEqual({ owners: 1, captures: 1 });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test("duas respostas de endereço simultâneas só podem criar uma ficha para o mesmo token", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("graph.facebook.com")) {
+        graphCalls.push({ url, body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.out.concurrent" }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      app = new Hono();
+      registerWebhookRoutes(app);
+      const token = await issueCaptureShareToken(db, 1);
+      for (const text of [`LINK_CAPTACAO:${token}`, "proprietário", "Maria Souza"]) {
+        const response = await postWhatsapp(text);
+        expect(response.status).toBe(200);
+        expect(response.body.processed).toBe(1);
+      }
+      const [before] = await db.all<{ capture_id: number | null }>(
+        sql`SELECT capture_id FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(before?.capture_id).toBeNull();
+
+      const results = await Promise.all([
+        postWhatsapp("Rua Concorrente A, 10"),
+        postWhatsapp("Avenida Concorrente B, 20"),
+      ]);
+      expect(results.every((result) => result.status === 200)).toBe(true);
+      expect(results.every((result) => result.body.processed === 1)).toBe(true);
+
+      const captures = await db.all<{ id: number; street: string; number: string }>(
+        sql`SELECT id, street, number FROM property_captures`,
+      );
+      expect(captures).toHaveLength(1);
+      expect(["Rua Concorrente A", "Avenida Concorrente B"]).toContain(captures[0]?.street);
+      const [share] = await db.all<{ capture_id: number | null; status: string }>(
+        sql`SELECT capture_id, status FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(share).toEqual({ capture_id: captures[0]?.id, status: "redeemed" });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test("token vinculado retoma somente sua ficha mesmo quando outra ficha é a mais recente", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("graph.facebook.com")) {
+        graphCalls.push({ url, body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.out.bound" }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      app = new Hono();
+      registerWebhookRoutes(app);
+      const token = await issueCaptureShareToken(db, 1);
+      behavior = async (call) => {
+        const save = {
+          rua: "Rua Vinculada",
+          numero: "88",
+          bairro: "Boqueirão",
+          cidade: "Praia Grande",
+          estado: "SP",
+        };
+        await call.tools.salvarCadastroVenda!.execute(save, toolOptions);
+        return {
+          text: "TEXTO DO MODELO (não deve ser enviado)",
+          steps: [{ toolCalls: [{ toolName: "salvarCadastroVenda", input: save }] }],
+        };
+      };
+      for (const text of [
+        `LINK_CAPTACAO:${token}`,
+        "proprietário",
+        "Maria Souza",
+        "Rua Vinculada, 88, Boqueirão, Praia Grande - SP",
+      ]) {
+        const response = await postWhatsapp(text);
+        expect(response.status).toBe(200);
+        expect(response.body.processed).toBe(1);
+      }
+
+      const [bound] = await db.all<{ id: number; owner_id: number; street: string; number: string }>(
+        sql`SELECT id, owner_id, street, number FROM property_captures LIMIT 1`,
+      );
+      expect(bound?.street).toBe("Rua Vinculada");
+      const [share] = await db.all<{ capture_id: number | null }>(
+        sql`SELECT capture_id FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(share?.capture_id).toBe(bound?.id);
+
+      await db.run(sql`
+        INSERT INTO property_captures
+          (owner_id, city, address, street, number, source, stage, created_at, updated_at)
+        VALUES
+          (${bound!.owner_id}, 'Praia Grande', 'Avenida Sombra, 101', 'Avenida Sombra', '101',
+           'manual', 'novo_contato', 0, 0)
+      `);
+      const [shadow] = await db.all<{ id: number; street: string; number: string }>(
+        sql`SELECT id, street, number FROM property_captures WHERE id <> ${bound!.id} LIMIT 1`,
+      );
+      expect(shadow?.street).toBe("Avenida Sombra");
+
+      const replay = await postWhatsapp(`LINK_CAPTACAO:${token}`);
+      expect(replay.body.processed).toBe(1);
+      const reply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(reply.text.body).toBe(Q_DOCUMENTACAO);
+
+      behavior = async (call) => {
+        const hostileAddress = {
+          rua: "Avenida Invasora",
+          numero: "999",
+          bairro: "Outro bairro",
+          cidade: "Outra cidade",
+          estado: "RJ",
+        };
+        await call.tools.salvarCadastroVenda!.execute(hostileAddress, toolOptions);
+        return {
+          text: "TEXTO DO MODELO (não deve ser enviado)",
+          steps: [{ toolCalls: [{ toolName: "salvarCadastroVenda", input: hostileAddress }] }],
+        };
+      };
+      await postWhatsapp("Avenida Invasora, 999, Outro bairro, Outra cidade - RJ");
+
+      const captures = await db.all<{ id: number; street: string; number: string }>(
+        sql`SELECT id, street, number FROM property_captures ORDER BY id`,
+      );
+      expect(captures).toHaveLength(2);
+      expect(captures).toEqual([
+        { id: bound!.id, street: "Rua Vinculada", number: "88" },
+        { id: shadow!.id, street: "Avenida Sombra", number: "101" },
+      ]);
+      const [stillBound] = await db.all<{ capture_id: number | null; status: string }>(
+        sql`SELECT capture_id, status FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(stillBound).toEqual({ capture_id: bound!.id, status: "redeemed" });
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test("imagem real do WhatsApp conclui a captação no mesmo turno", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("media-facade-test")) {
+        return new Response(JSON.stringify({
+          url: "https://media.test/fachada.jpg",
+          mime_type: "image/jpeg",
+          file_size: 3,
+        }), { status: 200 });
+      }
+      if (url === "https://media.test/fachada.jpg") {
+        return new Response(new Uint8Array([1, 2, 3]), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      if (url.includes("graph.facebook.com")) {
+        graphCalls.push({ url, body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.out.photo" }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+
+    try {
+      app = new Hono();
+      registerWebhookRoutes(app);
+      const shareToken = await issueCaptureShareToken(db, 1);
+      issuedShareTokens.push(shareToken);
+      behavior = async (call) => {
+        const last = call.messages.at(-1)?.content ?? "";
+        const item = SCRIPT.find((step) => step.body === last);
+        if (!item) return { text: "TEXTO DO MODELO (não deve ser enviado)", steps: [] };
+        const saved = await call.tools.salvarCadastroVenda!.execute(item.save, toolOptions) as SaveResult;
+        expect(saved.salvo).toBe(true, `salvamento do passo ${item.step}`);
+        return {
+          text: "TEXTO DO MODELO (não deve ser enviado)",
+          steps: [{ toolCalls: [{ toolName: "salvarCadastroVenda", input: item.save }] }],
+        };
+      };
+      const opened = await postWhatsapp(`LINK_CAPTACAO:${shareToken}`);
+      expect(opened.status).toBe(200);
+      expect(opened.body.processed).toBe(1);
+      const unboundImageGraphCalls = graphCalls.length;
+      const unboundImage = await postWhatsapp("", true);
+      expect(unboundImage.status).toBe(200);
+      expect(unboundImage.body.processed).toBe(1);
+      expect(graphCalls).toHaveLength(unboundImageGraphCalls);
+      const [unboundMedia] = await db.all<{ n: number }>(sql`SELECT COUNT(*) AS n FROM media`);
+      expect(unboundMedia?.n).toBe(0);
+
+      for (const text of ["proprietário", SCRIPT[0]!.body, SCRIPT[1]!.body]) {
+        const response = await postWhatsapp(text);
+        expect(response.status).toBe(200);
+        expect(response.body.processed).toBe(1);
+      }
+
+      const [boundShare] = await db.all<{ capture_id: number | null; status: string }>(
+        sql`SELECT capture_id, status FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(boundShare?.status).toBe("redeemed");
+      expect(boundShare?.capture_id).not.toBeNull();
+      const [boundCapture] = await db.all<{ id: number; owner_photos: string | null }>(
+        sql`SELECT id, owner_photos FROM property_captures LIMIT 1`,
+      );
+      expect(boundCapture?.id).toBe(boundShare?.capture_id);
+
+      const replay = await postWhatsapp(`LINK_CAPTACAO:${shareToken}`);
+      expect(replay.body.processed).toBe(1);
+      const replayReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(replayReply.text.body).toBe(Q_DOCUMENTACAO);
+      await postWhatsapp("proprietário");
+      await postWhatsapp("Avenida invadida, 999, Boqueirão, Praia Grande - SP");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+      const [stillBound] = await db.all<{ capture_id: number | null }>(
+        sql`SELECT capture_id FROM capture_share_tokens LIMIT 1`,
+      );
+      expect(stillBound?.capture_id).toBe(boundShare?.capture_id);
+
+      const earlyImageGraphCalls = graphCalls.length;
+      const earlyImage = await postWhatsapp("", true);
+      expect(earlyImage.status).toBe(200);
+      expect(earlyImage.body.processed).toBe(1);
+      expect(graphCalls).toHaveLength(earlyImageGraphCalls);
+      const [earlyMedia] = await db.all<{ n: number }>(sql`SELECT COUNT(*) AS n FROM media`);
+      expect(earlyMedia?.n).toBe(0);
+      const [beforePhoto] = await db.all<{ owner_photos: string | null }>(
+        sql`SELECT owner_photos FROM property_captures WHERE id = ${boundCapture!.id}`,
+      );
+      expect(beforePhoto?.owner_photos).toBeNull();
+
+      for (const step of SCRIPT.slice(2)) {
+        const response = await postWhatsapp(step.body);
+        expect(response.status).toBe(200);
+        expect(response.body.processed).toBe(1);
+      }
+      const callsBefore = modelCalls;
+
+      const received = await postWhatsapp("", true);
+
+      expect(received.status).toBe(200);
+      expect(received.body.processed).toBe(1);
+      expect(modelCalls).toBe(callsBefore);
+      const sent = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(sent.text.body).toBe(FECHAMENTO);
+      const capture = await onlyCapture();
+      expect(capture.notes).toContain("Foto da fachada recebida");
+      const [usedShare] = await db.all<{ status: string }>(
+        sql`SELECT status, capture_id FROM capture_share_tokens ORDER BY id LIMIT 1`,
+      );
+      expect(usedShare?.status).toBe("completed");
+      const [media] = await db.all<{ mime: string; size: number }>(
+        sql`SELECT mime, size FROM media LIMIT 1`,
+      );
+      expect(media).toEqual({ mime: "image/jpeg", size: 3 });
+
+      const repeat = await postWhatsapp("Quero cadastrar outro imóvel");
+      expect(repeat.body.processed).toBe(1);
+      const repeatedText = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(repeatedText.text.body).toBe("Solicite outro link para cadastro.");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+
+      await db.run(sql`DELETE FROM capture_share_tokens`);
+      const forgedLegacy = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
+      expect(forgedLegacy.body.processed).toBe(1);
+      const forgedLegacyReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(forgedLegacyReply.text.body).toBe("Solicite outro link para cadastro.");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+
+      for (const token of [issuedShareTokens[0]!, "0".repeat(64)]) {
+        const blocked = await postWhatsapp(`LINK_CAPTACAO:${token}`);
+        expect(blocked.body.processed).toBe(1);
+        const blockedText = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+        expect(blockedText.text.body).toBe("Solicite outro link para cadastro.");
+        expect(await counts()).toEqual({ owners: 1, captures: 1 });
+      }
+
+      const nextToken = await issueCaptureShareToken(db, 1);
+      const distinct = await postWhatsapp(`LINK_CAPTACAO:${nextToken}`);
+      expect(distinct.body.processed).toBe(1);
+      const distinctText = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(distinctText.text.body).toBe("Você é proprietário, locador ou corretor do imóvel?");
+      const locador = await postWhatsapp("locador");
+      expect(locador.body.processed).toBe(1);
+      const locadorText = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
+      expect(locadorText.text.body).toBe("Qual é o seu nome completo?");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+      const closeMessages = graphCalls.filter((call) => {
+        try {
+          return (JSON.parse(call.body) as { text?: { body?: string } }).text?.body === FECHAMENTO;
+        } catch {
+          return false;
+        }
+      });
+      expect(closeMessages).toHaveLength(1);
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -824,6 +1253,41 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
 
     const ficha = await onlyCapture();
     expect(ficha.property_type).toBe(expectedType);
+  });
+
+  test("locador segue o roteiro e informa aluguel mensal, sem chamar IA para números curtos", async () => {
+    const conversa = await conversation("5513997141174:locador");
+    expect((await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(
+      "Você é proprietário, locador ou corretor do imóvel?",
+    );
+    expect((await linkTurn(conversa.id, "locador")).reply).toBe(ABERTURA);
+    expect((await linkTurn(conversa.id, "Maria Souza")).reply).toBe(Q_ENDERECO);
+    expect((await linkTurn(conversa.id, "Rua Guimarães Rosa 492")).reply).toBe(
+      Q_DOCUMENTACAO,
+    );
+    await linkTurn(conversa.id, SCRIPT[2]!.body, SCRIPT[2]!.save);
+    expect((await linkTurn(conversa.id, "Apartamento")).reply).toBe(
+      linkQuestion("dormitorios"),
+    );
+
+    const beforeNumbers = modelCalls;
+    expect((await linkTurn(conversa.id, "3")).reply).toBe(linkQuestion("suites"));
+    expect((await linkTurn(conversa.id, "1")).reply).toBe(linkQuestion("banheiros"));
+    expect((await linkTurn(conversa.id, "2")).reply).toBe(linkQuestion("vagas"));
+    expect((await linkTurn(conversa.id, "1")).reply).toBe(linkQuestion("metragem"));
+    expect(modelCalls).toBe(beforeNumbers);
+
+    const metragem = await linkTurn(conversa.id, "92 m²", { metragem: "92 m²" });
+    expect(metragem.reply).toBe(
+      "Qual é o valor mensal do aluguel pretendido? Se ainda não souber, digite NÃO SEI.",
+    );
+    const beforePrice = modelCalls;
+    const aluguel = await linkTurn(conversa.id, "R$ 1.200,00");
+    expect(aluguel.reply).toBe(linkQuestion("condominio"));
+    expect(modelCalls).toBe(beforePrice);
+    const ficha = await onlyCapture();
+    expect(ficha.intention).toBe("locacao");
+    expect(ficha.asking_price).toBe(1200);
   });
 
   test("cada resposta é gravada na hora, sem esperar o fim do roteiro", async () => {
@@ -883,7 +1347,7 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
     await entrarPeloLink(conversa.id);
     await percorrerRoteiro(conversa.id);
 
-    const permitidas = new Set<string>(["Você é o proprietário do imóvel ou corretor?", ABERTURA, ...SCRIPT.map((item) => item.next)]);
+    const permitidas = new Set<string>(["Você é proprietário, locador ou corretor do imóvel?", ABERTURA, ...SCRIPT.map((item) => item.next)]);
     for (const message of await outbound(conversa.id)) {
       expect(permitidas.has(message.body), message.body).toBe(true);
       expect(message.body).not.toContain("TEXTO DO MODELO");
@@ -970,57 +1434,55 @@ describe("4. pergunta fora do roteiro", () => {
   });
 });
 
-/* --------------------------------------- 5. observações finais e fechamento */
+/* --------------------------------------- 5. foto da fachada e fechamento */
 
-describe("5. observações finais e fechamento", () => {
-  /** Roteiro inteiro, faltando apenas observações finais e confirmação. */
-  async function atéObservacaoFinal(externalId = "5513997141174") {
+describe("5. foto da fachada e fechamento", () => {
+  /** Roteiro inteiro, faltando apenas a foto terminal. */
+  async function atéFotoFrente(externalId = "5513997141174") {
     const conversa = await conversation(externalId);
     await entrarPeloLink(conversa.id);
     const perguntas = await percorrerRoteiro(conversa.id);
-    expect(perguntas.at(-1)).toBe(Q_OBSERVACAO);
+    expect(perguntas.at(-1)).toBe(Q_FOTO);
     return conversa;
   }
 
-  test("OK sem observações encerra com o texto exato e remove a sessão", async () => {
-    const conversa = await atéObservacaoFinal();
+  test("a foto recebida encerra sem OK/observação e remove a sessão", async () => {
+    const conversa = await atéFotoFrente();
     const antes = modelCalls;
 
-    const fim = await linkTurn(conversa.id, "OK");
+    const fim = await linkTurn(conversa.id, "[imagem:/api/media/teste]", undefined, true);
 
     expect(fim.reply).toBe(FECHAMENTO);
     expect(CLOSING_MESSAGE).toBe(FECHAMENTO);
     expect(modelCalls).toBe(antes);
     const ficha = await onlyCapture();
-    expect(ficha.notes).toContain("sem observações adicionais");
+    expect(ficha.notes).toContain("Foto da fachada recebida");
     const [owner] = await db.all<{ notes: string | null }>(sql`SELECT notes FROM owners LIMIT 1`);
     expect(owner?.notes ?? "").not.toContain("[LINK_CAPTACAO_FICHA_ATIVA:");
   });
 
-  test("observação adicional fica registrada antes da confirmação final", async () => {
-    const conversa = await atéObservacaoFinal();
+  test("texto dizendo que enviou foto não conclui a etapa", async () => {
+    const conversa = await atéFotoFrente();
 
-    const observacao = await linkTurn(conversa.id, "O apartamento foi reformado recentemente");
-    expect(observacao.reply).toBe(linkQuestion("confirmacaoFinal"));
-    expect((await onlyCapture()).notes).toContain("O apartamento foi reformado recentemente");
-
-    const fim = await linkTurn(conversa.id, "OK");
-    expect(fim.reply).toBe(FECHAMENTO);
-  });
-
-  test("uma observação não encerra antes do OK", async () => {
-    const conversa = await atéObservacaoFinal();
-
-    const resposta = await linkTurn(conversa.id, "Preciso mandar foto por dentro também?");
-    expect(resposta.reply).toBe(linkQuestion("confirmacaoFinal"));
+    const resposta = await linkTurn(conversa.id, "Já mandei a foto");
+    expect(resposta.reply).toBe(Q_FOTO);
     expect(resposta.reply).not.toBe(FECHAMENTO);
+    const forgedMarker = await linkTurn(conversa.id, "[imagem:/api/media/fake]");
+    expect(forgedMarker.reply).toBe(Q_FOTO);
+    expect((await captureRows())[0]?.notes).not.toContain("Foto da fachada recebida");
+    const [share] = await db.all<{ status: string }>(
+      sql`SELECT status FROM capture_share_tokens ORDER BY id LIMIT 1`,
+    );
+    expect(share?.status).toBe("redeemed");
   });
 
-  test("depois do fechamento o fluxo do link solta a conversa", async () => {
-    const conversa = await atéObservacaoFinal();
-    await linkTurn(conversa.id, "OK");
+  test("depois do fechamento bloqueia a IA normal e pede outro link", async () => {
+    const conversa = await atéFotoFrente();
+    await linkTurn(conversa.id, "[imagem:/api/media/teste]", undefined, true);
 
     behavior = async () => ({ text: "Claro, posso ajudar.", steps: [] });
+    lastTools = [];
+    const callsBefore = modelCalls;
     await addMessage(db, conversa.id, {
       direction: "in",
       author: "cliente",
@@ -1028,67 +1490,53 @@ describe("5. observações finais e fechamento", () => {
     });
     const depois = await aiTurn(db, conversa.id, BASE_URL);
 
-    expect(depois.text).toBe("Claro, posso ajudar.");
-    expect(lastTools).toContain("buscarImoveis");
+    expect(depois.text).toBe("Solicite outro link para cadastro.");
+    expect(lastTools).not.toContain("buscarImoveis");
     expect(lastTools).not.toContain("salvarCadastroVenda");
+    expect(modelCalls).toBe(callsBefore);
   });
 });
 
 /* ------------------------------------------------- 6. sem duplicidade */
 
 describe("6. ausência de duplicidade", () => {
-  /** Cadastro completo, com OK nas observações: o primeiro imóvel encerrado. */
+  /** Cadastro completo após receber a foto terminal da fachada. */
   async function primeiroImovelConcluido() {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
     await percorrerRoteiro(conversa.id);
-    const fim = await linkTurn(conversa.id, "OK");
+    const fim = await linkTurn(conversa.id, "[imagem:/api/media/teste]", undefined, true);
     expect(fim.reply).toBe(FECHAMENTO);
     return conversa;
   }
 
-  test("o mesmo proprietário nunca vira dois contatos", async () => {
-    await primeiroImovelConcluido();
-
-    /* Volta em outra thread e clica no link de novo. */
-    const volta = await conversation("5513997141174:segundo");
-    await entrarPeloLink(volta.id);
-
-    expect((await counts()).owners).toBe(1);
-  });
-
-  test("clique novo depois do fechamento confirma perfil e nome antes do outro endereço", async () => {
+  test("o link repetido após conclusão pede outro link", async () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
 
-    const novo = await entrarPeloLink(volta.id);
+    const novo = await linkTurn(volta.id, LINK_CAPTACAO_MESSAGE);
 
-    expect(novo.reply).toBe(ABERTURA);
-    const nome = await linkTurn(volta.id, "Maria Souza");
-    expect(nome.reply).toBe(Q_ENDERECO);
+    expect(novo.reply).toBe("Solicite outro link para cadastro.");
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
-  test("nos turnos seguintes ao clique, o roteiro insiste no endereço do novo imóvel", async () => {
+  test("token de entrada distinto permite futura retomada de outro cadastro", async () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
-    await entrarPeloLink(volta.id);
-    await linkTurn(volta.id, "Maria Souza");
 
-    /* Turno seguinte ao clique, sem nada aproveitável: a ficha lida do banco
-       ainda é a anterior (concluída). O fluxo NÃO pode repetir o fechamento
-       do cadastro antigo — a pergunta pendente é o endereço do novo imóvel. */
-    const conversa = await linkTurn(volta.id, "Oi, tudo bem?");
+    const novo = await linkTurn(volta.id, "LINK_CAPTACAO:cadastro-distinto-123");
 
-    expect(conversa.reply).toBe(Q_ENDERECO);
-    expect(conversa.reply).not.toBe(FECHAMENTO);
+    expect(novo.reply).toBe("Você é proprietário, locador ou corretor do imóvel?");
+    expect((await linkTurn(volta.id, "proprietário")).reply).toBe(ABERTURA);
+    expect((await linkTurn(volta.id, "Maria Souza")).reply).toBe(Q_ENDERECO);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
   test("mesmo prédio com unidade diferente é outro imóvel", async () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
-    await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "LINK_CAPTACAO:cadastro-distinto-123");
+    await linkTurn(volta.id, "proprietário");
     await linkTurn(volta.id, "Maria Souza");
 
     const endereco = await linkTurn(
@@ -1119,7 +1567,8 @@ describe("6. ausência de duplicidade", () => {
   test("o MESMO imóvel informado de novo não abre segunda ficha", async () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
-    await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "LINK_CAPTACAO:cadastro-distinto-123");
+    await linkTurn(volta.id, "proprietário");
     await linkTurn(volta.id, "Maria Souza");
 
     /* Mesmo endereço e mesma unidade do cadastro que já existe. */
@@ -1151,7 +1600,7 @@ describe("6. ausência de duplicidade", () => {
 describe("7. respostas após a identificação no link genérico", () => {
   async function iniciarCadastro(conversationId: number) {
     expect((await linkTurn(conversationId, LINK_CAPTACAO_MESSAGE)).reply).toBe(
-      "Você é o proprietário do imóvel ou corretor?",
+      "Você é proprietário, locador ou corretor do imóvel?",
     );
     expect((await linkTurn(conversationId, "proprietário")).reply).toBe(
       linkQuestion("nome"),
@@ -1168,6 +1617,76 @@ describe("7. respostas após a identificação no link genérico", () => {
 
     expect(perfil.reply).toBe("Qual é o seu CRECI?");
     expect(await counts()).toEqual({ owners: 0, captures: 0 });
+  });
+
+  test("novo token de corretor após fechamento reinicia o contexto sem herdar a ficha anterior", async () => {
+    const conversa = await conversation("5513997141174:corretor-relink");
+    await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE);
+    await linkTurn(conversa.id, "proprietário");
+    for (const item of SCRIPT) {
+      await linkTurn(conversa.id, item.body, item.save);
+    }
+    const fechado = await linkTurn(conversa.id, "[imagem:/api/media/fachada]", undefined, true);
+    expect(fechado.reply).toBe(CLOSING_MESSAGE);
+
+    const [oldCapture] = await db.all<{ id: number; owner_id: number; address: string }>(
+      sql`SELECT id, owner_id, address FROM property_captures LIMIT 1`,
+    );
+    expect(oldCapture?.address).toContain("Rua Guimarães Rosa");
+
+    const distinctEntry = await linkTurn(conversa.id, "LINK_CAPTACAO:novo-token-corretor");
+    expect(distinctEntry.reply).toBe("Você é proprietário, locador ou corretor do imóvel?");
+    const noHistoricalRoleLeak = await linkCaptacaoState(db, PHONE, [
+      { role: "user", content: `LINK_CAPTACAO:${issuedShareTokens[0]}` },
+      { role: "user", content: "corretor" },
+      { role: "assistant", content: "Qual é o seu CRECI?" },
+      { role: "user", content: "CRECI ANTIGO" },
+      { role: "user", content: "Corretor Antigo" },
+      { role: "assistant", content: CLOSING_MESSAGE },
+      { role: "user", content: `LINK_CAPTACAO:${issuedShareTokens.at(-1)}` },
+    ]);
+    expect(noHistoricalRoleLeak?.presenter).toBe("proprietario");
+    expect(noHistoricalRoleLeak?.broker).toBeNull();
+    expect((await linkTurn(conversa.id, "corretor")).reply).toBe("Qual é o seu CRECI?");
+    expect((await linkTurn(conversa.id, "CRECI 12345")).reply).toBe("Qual é o seu nome completo?");
+    expect((await linkTurn(conversa.id, "Corretora Nova")).reply).toBe(linkQuestion("endereco"));
+
+    const state = await linkCaptacaoState(db, PHONE, [
+      { role: "user", content: `LINK_CAPTACAO:${issuedShareTokens.at(-1)}` },
+      { role: "user", content: "corretor" },
+      { role: "user", content: "CRECI 12345" },
+      { role: "user", content: "Corretora Nova" },
+    ]);
+    expect(state?.active).toBe(true);
+    expect(state?.presenter).toBe("corretor");
+    expect(state?.broker).toEqual({
+      creci: "CRECI 12345",
+      name: "Corretora Nova",
+      phone: PHONE,
+    });
+    expect(state?.snapshot.address).toBeNull();
+    expect(state?.snapshot.ownerName).toBe("Corretora Nova");
+
+    const address = await linkTurn(conversa.id, "Rua Broker Nova, 55");
+    expect(address.reply).toBe(Q_DOCUMENTACAO);
+    const captures = await db.all<{ id: number; owner_id: number; address: string; street: string; notes: string }>(
+      sql`SELECT id, owner_id, address, street, notes FROM property_captures ORDER BY id`,
+    );
+    expect(captures).toHaveLength(2);
+    expect(captures[0]?.id).toBe(oldCapture?.id);
+    expect(captures[0]?.address).toBe(oldCapture?.address);
+    expect(captures[1]?.owner_id).toBe(oldCapture?.owner_id);
+    expect(captures[1]?.street).toBe("Rua Broker Nova");
+    expect(captures[1]?.notes).toContain("Corretora Nova");
+    expect(captures[1]?.notes).toContain("CRECI 12345");
+    const [owner] = await db.all<{ name: string }>(
+      sql`SELECT name FROM owners WHERE id = ${oldCapture!.owner_id} LIMIT 1`,
+    );
+    expect(owner?.name).toBe("Maria Souza");
+    const [share] = await db.all<{ capture_id: number | null; status: string }>(
+      sql`SELECT capture_id, status FROM capture_share_tokens ORDER BY id DESC LIMIT 1`,
+    );
+    expect(share).toEqual({ capture_id: captures[1]?.id, status: "redeemed" });
   });
 
   test("nome em minúsculas e rua com número são gravados antes da próxima pergunta", async () => {
@@ -1385,7 +1904,7 @@ describe("7. respostas após a identificação no link genérico", () => {
     expect(novaDepois?.property_type).toBe("apartamento");
   });
 
-  test("o identificador da ficha ativa é removido ao encerrar a captação", async () => {
+  test("a foto terminal remove o identificador da ficha ativa", async () => {
     const conversa = await conversation("5513997141174:encerramento");
     await iniciarCadastro(conversa.id);
     await linkTurn(conversa.id, "Rua das Flores 88");
@@ -1398,7 +1917,7 @@ describe("7. respostas após a identificação no link genérico", () => {
       phone: PHONE,
       targetCaptureId: ficha.id,
       origem: LINK_CAPTACAO_ORIGIN,
-      confirmacaoFinal: "OK",
+      fotoFrente: "Foto da fachada recebida",
     });
     expect(salvo.saved).toBe(true);
     const [depois] = await db.all<{ notes: string | null }>(sql`SELECT notes FROM owners LIMIT 1`);

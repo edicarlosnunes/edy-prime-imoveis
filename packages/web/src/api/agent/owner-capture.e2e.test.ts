@@ -271,6 +271,16 @@ const DDL = [
     detail TEXT,
     ip TEXT,
     created_at INTEGER NOT NULL DEFAULT 0)`,
+  `CREATE TABLE capture_share_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active',
+    sender_phone TEXT,
+    capture_id INTEGER,
+    created_by INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    redeemed_at INTEGER,
+    completed_at INTEGER)`,
 ];
 
 let db: AdminDb;

@@ -752,7 +752,8 @@ export async function saveCaptureAnswer(
     }
   }
 
-  if (captureId !== null && clean(input.confirmacaoFinal, 40)?.toLowerCase() === "ok" &&
+  if (captureId !== null &&
+      (clean(input.confirmacaoFinal, 40)?.toLowerCase() === "ok" || clean(input.fotoFrente, 300)) &&
       clean(input.origem, 300) === "LINK_CAPTACAO") {
     const [target] = await db.select({ ownerId: schema.propertyCaptures.ownerId })
       .from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, captureId)).limit(1);

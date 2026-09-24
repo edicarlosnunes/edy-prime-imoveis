@@ -20,7 +20,7 @@ import { DOC_KIND_LABELS, DOC_TRACK_LABELS } from "../../../api/lib/capture-docu
 import { REGISTRATION_STATUSES, REGISTRATION_STATUS_LABEL, REGISTRATION_STATUS_TONE, normalizeRegistrationStatus } from "../../../api/lib/capture-registration";
 import { DEFAULT_PRIORITY_CITIES, OUTSIDE_PRIORITY_LABEL } from "../../../api/lib/priority-area";
 import { useSetCaptureRegistrationStatus } from "../../queries/admin";
-import { useAdminCaptures, useCapture, useCreateCapture, useMarkCaptureLost, useReopenCapture, useSetCaptureDocStatus, useSetCaptureNextAction, useSetCaptureStage, useSaveCaptureAppraisal, useMarkCaptureConverted, useSetCaptureChecklist, useAddCapturePhotos, useRemoveCapturePhoto, useCaptureDocuments, useGenerateCaptureDocument, useSetOwnerIdentity, useClearOwnerDuplicate, useCapturePromotedPhotos, usePromoteCapturePhoto, useDemoteCapturePhoto, useSetCapturePhotoPrimary, useMoveCapturePhoto } from "../../queries/admin";
+import { useAdminCaptures, useCapture, useCreateCapture, useMarkCaptureLost, useReopenCapture, useSetCaptureDocStatus, useSetCaptureNextAction, useSetCaptureStage, useSaveCaptureAppraisal, useMarkCaptureConverted, useSetCaptureChecklist, useAddCapturePhotos, useRemoveCapturePhoto, useCaptureDocuments, useGenerateCaptureDocument, useSetOwnerIdentity, useClearOwnerDuplicate, useCapturePromotedPhotos, usePromoteCapturePhoto, useDemoteCapturePhoto, useSetCapturePhotoPrimary, useMoveCapturePhoto, useIssueCaptureShareLink, useRevokeCaptureShareLink } from "../../queries/admin";
 
 /* Item 7 — a lista é PRIORIDADE, não limite: cidade de fora não é bloqueada,
    entra pelo mesmo fluxo e aparece marcada. Fonte única em `priority-area`. */
@@ -90,6 +90,9 @@ function Content() {
   latestView.current = view;
   const [newOpen, setNewOpen] = useState(false);
   const [shareLinkStatus, setShareLinkStatus] = useState("");
+  const [exclusiveLink, setExclusiveLink] = useState<{ id: number; url: string } | null>(null);
+  const issueCaptureLink = useIssueCaptureShareLink();
+  const revokeCaptureLink = useRevokeCaptureShareLink();
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
     if (!params.has("source") && !params.has("capture")) return;
@@ -137,15 +140,42 @@ function Content() {
   const lost = data.filter((x) => st(x) === "perdido");
   const overdue = active.filter((x) => x.nextActionAt && new Date(x.nextActionAt).getTime() < Date.now()).length;
   const sourceLabel = source ? captureSourceLabel(source) : null;
-  const publicCaptureUrl = PUBLIC_CAPTURE_URL;
   const isOfficialDomain = typeof window !== "undefined" &&
     ["www.edyprimeimoveis.com.br", "edyprimeimoveis.com.br"].includes(window.location.hostname);
-  async function copyPublicCaptureLink() {
+  const canIssueExclusiveLinks = isOfficialDomain;
+  async function generateExclusiveCaptureLink() {
+    if (!canIssueExclusiveLinks) {
+      setShareLinkStatus("Geração indisponível na prévia protegida. Gere e compartilhe o link pelo domínio público oficial.");
+      return;
+    }
+    setShareLinkStatus("");
     try {
-      await navigator.clipboard.writeText(publicCaptureUrl);
+      const result = await issueCaptureLink.mutateAsync({});
+      setExclusiveLink({ id: result.id, url: `${PUBLIC_CAPTURE_URL}/${result.token}` });
+      setShareLinkStatus("Link exclusivo gerado. Ele expira em 30 dias se não for usado.");
+    } catch (error) {
+      setShareLinkStatus(errorMessage(error));
+    }
+  }
+  async function copyExclusiveCaptureLink() {
+    if (!exclusiveLink) return;
+    try {
+      await navigator.clipboard.writeText(exclusiveLink.url);
       setShareLinkStatus("Link copiado.");
     } catch {
       setShareLinkStatus("Não foi possível copiar automaticamente. Copie o endereço exibido.");
+    }
+  }
+  async function revokeExclusiveCaptureLink() {
+    if (!exclusiveLink) return;
+    try {
+      const result = await revokeCaptureLink.mutateAsync({ id: exclusiveLink.id });
+      setExclusiveLink(null);
+      setShareLinkStatus(result.revoked
+        ? "Link revogado. O endereço não será mais exibido."
+        : "Este link já foi utilizado ou revogado; o endereço foi removido da tela.");
+    } catch (error) {
+      setShareLinkStatus(errorMessage(error));
     }
   }
   function showSource(next: CaptureSourceFilter | undefined) {
@@ -180,12 +210,16 @@ function Content() {
         <button type="button" onClick={() => showSource(undefined)} className="font-medium text-brass hover:underline">Limpar filtro</button>
       </div>}
       {source === "link_captacao" && <Card title="Link público de captação">
-        <p className="mb-3 text-sm text-muted">Este endereço abre o atendimento pelo WhatsApp com a mensagem de cadastro preenchida. Os novos cadastros deste fluxo são registrados com a origem Link de captação.</p>
-        {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está em uma prévia protegida. O link abaixo usa o domínio oficial público, não o endereço temporário da prévia.</p>}
+        <p className="mb-3 text-sm text-muted">Gere um link exclusivo para este compartilhamento. A referência fica embutida na mensagem pré-preenchida do WhatsApp e nunca é reutilizada.</p>
+        {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está em uma prévia protegida, que pode usar outro banco de dados. Não gere nem compartilhe links aqui. A emissão está disponível somente no domínio público oficial para evitar links que não validem no ambiente do cliente.</p>}
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Input aria-label="Endereço público do link de captação" readOnly value={publicCaptureUrl}/>
-          <Btn tone="outline" onClick={() => void copyPublicCaptureLink()}>Copiar link</Btn>
-          <a href={publicCaptureUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded border border-line px-4 py-2 text-sm text-deep hover:bg-bone/50">Abrir link</a>
+          <Btn data-testid="button-generate-exclusive-capture-link" tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink()}>{issueCaptureLink.isPending ? "Gerando…" : "Gerar link exclusivo"}</Btn>
+          {exclusiveLink && <>
+            <Input data-testid="input-exclusive-capture-link" aria-label="Endereço exclusivo do link de captação" readOnly value={exclusiveLink.url}/>
+            <Btn data-testid="button-copy-exclusive-capture-link" tone="outline" onClick={() => void copyExclusiveCaptureLink()}>Copiar link</Btn>
+            <a data-testid="link-open-exclusive-capture-link" href={exclusiveLink.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded border border-line px-4 py-2 text-sm text-deep hover:bg-bone/50">Abrir link</a>
+            <Btn data-testid="button-revoke-exclusive-capture-link" tone="outline" disabled={revokeCaptureLink.isPending} onClick={() => void revokeExclusiveCaptureLink()}>{revokeCaptureLink.isPending ? "Revogando…" : "Revogar link"}</Btn>
+          </>}
         </div>
         {shareLinkStatus && <p role="status" className="mt-2 text-xs text-muted">{shareLinkStatus}</p>}
       </Card>}

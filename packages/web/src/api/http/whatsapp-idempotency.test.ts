@@ -194,6 +194,16 @@ const DDL = [
   `CREATE INDEX inbound_events_status_idx ON inbound_events (status, claimed_at)`,
   `CREATE INDEX inbound_events_created_idx ON inbound_events (created_at)`,
   `CREATE UNIQUE INDEX messages_conversation_external_uk ON messages (conversation_id, external_id)`,
+  `CREATE TABLE capture_share_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'active',
+    sender_phone TEXT,
+    capture_id INTEGER,
+    created_by INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT 0,
+    redeemed_at INTEGER,
+    completed_at INTEGER)`,
 ];
 
 /* ------------------------------------------------------------ fixture */

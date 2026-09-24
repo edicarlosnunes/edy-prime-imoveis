@@ -472,6 +472,30 @@ export const propertyCaptures = sqliteTable(
 
 export type PropertyCapture = typeof propertyCaptures.$inferSelect;
 
+/**
+ * Links exclusivos de captação. O token em texto puro só existe no navegador
+ * e na URL emitida uma única vez; no banco fica apenas o SHA-256.
+ */
+export const captureShareTokens = sqliteTable(
+  "capture_share_tokens",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    tokenHash: text("token_hash").notNull().unique(),
+    status: text("status").notNull().default("active"),
+    senderPhone: text("sender_phone"),
+    captureId: integer("capture_id"),
+    createdBy: integer("created_by").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp" }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    redeemedAt: integer("redeemed_at", { mode: "timestamp" }),
+    completedAt: integer("completed_at", { mode: "timestamp" }),
+  },
+  (t) => [index("capture_share_tokens_sender_idx").on(t.senderPhone, t.status)],
+);
+
 /* ------------------------------------- V4: central de logradouros */
 
 /**
