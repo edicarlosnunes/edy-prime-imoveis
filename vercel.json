@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "bun run build:api && cd packages/web && bunx vite build",
+  "buildCommand": "bun packages/web/scripts/ensure-capture-share-tokens.ts && bun run build:api && cd packages/web && bunx vite build",
   "outputDirectory": "packages/web/dist",
   "rewrites": [
     {
