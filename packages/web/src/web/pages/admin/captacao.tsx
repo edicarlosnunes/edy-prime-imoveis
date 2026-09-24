@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, Phone, MessageCircle, FileText, Building2, Link2, Radar, Globe2, ArrowRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
-import { captureSourceFromSearch, captureSourceLabel, CAPTURE_SOURCE_OPTIONS } from "../../lib/capture-sources";
+import { captureSourceFromSearch, captureSourceLabel, CAPTURE_SOURCE_OPTIONS, type CaptureSourceFilter } from "../../lib/capture-sources";
+import { captureIdFromSearch, readCaptureView, saveCaptureView } from "../../lib/capture-view-state";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import { Badge, Btn, Card, Field, Input, Modal, Select, Stat, Textarea, dateTimeLabel, money, waLink } from "../../components/admin/ui";
@@ -66,26 +67,77 @@ const CRECI = "134718-F";
 const TEAM_SOURCE_OPTIONS = CAPTURE_SOURCE_OPTIONS.filter(
   ([value]) => value === "manual" || value === "prospeccao" || value === "indicacao" || value === "portal",
 );
+const PUBLIC_CAPTURE_URL = "https://www.edyprimeimoveis.com.br/link-captacao";
 
 export default function Captacao() { return <AdminGuard><Content /></AdminGuard>; }
 
 function Content() {
   const [, navigate] = useLocation();
   const searchParams = useSearch();
-  const [search, setSearch] = useState("");
-  const [city, setCity] = useState("");
+  const [view, setView] = useState(() => {
+    const saved = readCaptureView();
+    const incomingSource = captureSourceFromSearch(searchParams);
+    return {
+      ...saved,
+      source: incomingSource ?? saved.source,
+      selected: captureIdFromSearch(searchParams) ??
+        (incomingSource && incomingSource !== saved.source ? null : saved.selected),
+    };
+  });
+  const { search, city, selected, source } = view;
+  const scrollRef = useRef(view.scrollY);
+  const latestView = useRef(view);
+  latestView.current = view;
   const [newOpen, setNewOpen] = useState(false);
-  const [selected, setSelected] = useState<number | null>(null);
   const [shareLinkStatus, setShareLinkStatus] = useState("");
-  const source = captureSourceFromSearch(searchParams);
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams);
+    if (!params.has("source") && !params.has("capture")) return;
+    setView((current) => {
+      const nextSource = params.has("source") ? captureSourceFromSearch(searchParams) : current.source;
+      const nextSelected = params.has("capture")
+        ? captureIdFromSearch(searchParams)
+        : nextSource !== current.source ? null : current.selected;
+      if (current.source === nextSource && current.selected === nextSelected) return current;
+      return { ...current, source: nextSource, selected: nextSelected };
+    });
+  }, [searchParams]);
+  useEffect(() => {
+    saveCaptureView({ ...view, scrollY: scrollRef.current });
+  }, [view]);
+  useEffect(() => {
+    let frame = 0;
+    const rememberScroll = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        scrollRef.current = window.scrollY;
+        saveCaptureView({ ...latestView.current, scrollY: scrollRef.current });
+        frame = 0;
+      });
+    };
+    window.addEventListener("scroll", rememberScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", rememberScroll);
+      if (frame) cancelAnimationFrame(frame);
+      saveCaptureView({ ...latestView.current, scrollY: scrollRef.current });
+    };
+  }, []);
   const filters = useMemo(() => ({ search: search || undefined, city: city || undefined, source }), [search, city, source]);
   const captures = useAdminCaptures(filters);
+  const restoredScroll = useRef(false);
+  useEffect(() => {
+    if (restoredScroll.current || captures.isLoading) return;
+    restoredScroll.current = true;
+    if (scrollRef.current <= 0) return;
+    const frame = requestAnimationFrame(() => window.scrollTo(0, scrollRef.current));
+    return () => cancelAnimationFrame(frame);
+  }, [captures.isLoading]);
   const data = captures.data ?? [];
   const active = data.filter((x) => st(x) !== "perdido");
   const lost = data.filter((x) => st(x) === "perdido");
   const overdue = active.filter((x) => x.nextActionAt && new Date(x.nextActionAt).getTime() < Date.now()).length;
   const sourceLabel = source ? captureSourceLabel(source) : null;
-  const publicCaptureUrl = typeof window === "undefined" ? "/link-captacao" : `${window.location.origin}/link-captacao`;
+  const publicCaptureUrl = PUBLIC_CAPTURE_URL;
   const isOfficialDomain = typeof window !== "undefined" &&
     ["www.edyprimeimoveis.com.br", "edyprimeimoveis.com.br"].includes(window.location.hostname);
   async function copyPublicCaptureLink() {
@@ -96,6 +148,18 @@ function Content() {
       setShareLinkStatus("Não foi possível copiar automaticamente. Copie o endereço exibido.");
     }
   }
+  function showSource(next: CaptureSourceFilter | undefined) {
+    setView((current) => ({ ...current, source: next, selected: null }));
+    navigate(next ? `/admin/captacao?source=${next}` : "/admin/captacao");
+  }
+  function closeCapture() {
+    setView((current) => ({ ...current, selected: null }));
+    const params = new URLSearchParams(searchParams);
+    if (params.has("capture")) {
+      params.delete("capture");
+      navigate(`/admin/captacao${params.size ? `?${params.toString()}` : ""}`, { replace: true });
+    }
+  }
   return <AdminLayout title="Captação" subtitle="Proprietários e imóveis antes de entrarem na carteira" actions={<Btn tone="brass" onClick={() => setNewOpen(true)}><Plus className="h-4 w-4"/> Nova captação</Btn>}>
     <div className="space-y-5">
       <section aria-labelledby="capture-hub-title" className="space-y-4">
@@ -104,24 +168,24 @@ function Content() {
           <p className="mt-1 text-sm text-muted">Acesse as entradas existentes ou acompanhe cadastros por origem.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <HubCard icon={Link2} title="Link de captação" description="Consulte as fichas originadas pelo link e compartilhe o início do atendimento pelo WhatsApp." action="Ver registros e link" onClick={() => navigate("/admin/captacao?source=link_captacao")} />
+          <HubCard icon={Link2} title="Link de captação" description="Consulte as fichas originadas pelo link e compartilhe o início do atendimento pelo WhatsApp." action="Ver registros e link" onClick={() => showSource("link_captacao")} />
           <HubCard icon={Radar} title="Radar de captação" description="Acompanhe as captações e etapas já registradas no CRM." action="Ver radar" onClick={() => document.getElementById("radar-section")?.scrollIntoView({ behavior: "smooth" })} />
-          <HubCard icon={Globe2} title="Captação pelo site" description="Consulte cadastros cuja origem está registrada como site." action="Ver captações" onClick={() => navigate("/admin/captacao?source=site")} />
-          <HubCard icon={Plus} title="Cadastro pela equipe" description="Abra a ficha completa do imóvel e vincule um proprietário já cadastrado." action="Abrir ficha" onClick={() => navigate("/admin/imoveis/novo")} />
-          <HubCard icon={MessageCircle} title="Captação pelo WhatsApp" description="Consulte cadastros cuja origem está registrada como WhatsApp." action="Ver captações" onClick={() => navigate("/admin/captacao?source=whatsapp")} />
+          <HubCard icon={Globe2} title="Captação pelo site" description="Consulte cadastros cuja origem está registrada como site." action="Ver captações" onClick={() => showSource("site")} />
+          <HubCard icon={Plus} title="Cadastro pela equipe" description="Abra a ficha completa do imóvel e vincule um proprietário já cadastrado." action="Abrir ficha" onClick={() => navigate("/admin/imoveis/novo?from=captacao")} />
+          <HubCard icon={MessageCircle} title="Captação pelo WhatsApp" description="Consulte cadastros cuja origem está registrada como WhatsApp." action="Ver captações" onClick={() => showSource("whatsapp")} />
         </div>
       </section>
       {sourceLabel && <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-white px-4 py-3 text-sm">
         <span>Origem do CRM: <b className="text-deep">{sourceLabel}</b> · este filtro usa a origem gravada no servidor.</span>
-        <button type="button" onClick={() => navigate("/admin/captacao")} className="font-medium text-brass hover:underline">Limpar filtro</button>
+        <button type="button" onClick={() => showSource(undefined)} className="font-medium text-brass hover:underline">Limpar filtro</button>
       </div>}
       {source === "link_captacao" && <Card title="Link público de captação">
         <p className="mb-3 text-sm text-muted">Este endereço abre o atendimento pelo WhatsApp com a mensagem de cadastro preenchida. Os novos cadastros deste fluxo são registrados com a origem Link de captação.</p>
-        {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está em uma prévia. Não compartilhe este endereço temporário com clientes; confirme o domínio oficial antes de usar o link.</p>}
+        {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está em uma prévia protegida. O link abaixo usa o domínio oficial público, não o endereço temporário da prévia.</p>}
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input aria-label="Endereço público do link de captação" readOnly value={publicCaptureUrl}/>
           <Btn tone="outline" onClick={() => void copyPublicCaptureLink()}>Copiar link</Btn>
-          <a href="/link-captacao" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded border border-line px-4 py-2 text-sm text-deep hover:bg-bone/50">Abrir link</a>
+          <a href={publicCaptureUrl} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded border border-line px-4 py-2 text-sm text-deep hover:bg-bone/50">Abrir link</a>
         </div>
         {shareLinkStatus && <p role="status" className="mt-2 text-xs text-muted">{shareLinkStatus}</p>}
       </Card>}
@@ -132,14 +196,14 @@ function Content() {
       </p>}
       <div id="radar-section" className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><Stat label="Ativas" value={active.length}/><Stat label="Captadas" value={active.filter(x=>st(x)==="captado").length}/><Stat label="Atrasadas" value={overdue}/><Stat label="Perdidas" value={lost.length}/></div>
-      <Card><div className="grid gap-3 md:grid-cols-[1fr_220px]"><Input placeholder="Buscar proprietário, telefone, bairro..." value={search} onChange={e=>setSearch(e.target.value)}/><Select value={city} onChange={e=>setCity(e.target.value)}><option value="">Todas as regiões</option>{CITIES.map(c=><option key={c}>{c}</option>)}</Select></div></Card>
-      <div className="grid gap-4 xl:grid-cols-4">{STAGES.map(([key,label])=>{const rows=active.filter(x=>st(x)===key);return <Card key={key} title={`${label} · ${rows.length}`}><div className="space-y-3">{rows.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} className="w-full rounded border border-line bg-bone/30 p-3 text-left hover:bg-bone/60">{isOutside(c.outsidePriorityArea)&&<div className="mb-2"><OutsideBand compact/></div>}<div className="font-medium text-deep">{c.owner?.name ?? `Proprietário #${c.ownerId}`}</div><div className="mt-1 text-xs text-muted">{c.propertyType || "Imóvel"} · {c.district || c.city}</div><div className="mt-2 flex flex-wrap items-center gap-1"><RegBadge status={c.registrationStatus}/><span className="text-[10px] text-muted">{c.completeness ?? 0}% preenchido</span><span className="text-[10px] text-muted">Origem: {captureSourceLabel(c.source,c.notes)}</span></div><div className="mt-1 text-sm">{money(c.askingPrice)}</div>{c.nextAction && <div className="mt-2 text-[11px] text-muted">{c.nextAction} · {dateTimeLabel(c.nextActionAt)}</div>}</button>)}{rows.length===0&&<p className="text-xs text-muted">{sourceLabel ? `Nenhuma captação desta origem em ${label.toLowerCase()}.` : `Nenhuma captação em ${label.toLowerCase()}.`}</p>}</div></Card>})}</div>
-      {lost.length>0 && <Card title={`Arquivo de perdidos · ${lost.length}`}><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{lost.map(c=><button key={c.id} onClick={()=>setSelected(c.id)} className="rounded border border-line p-3 text-left"><b>{c.owner?.name}</b><div className="text-xs text-muted">{c.lostReason || "Motivo não informado"}</div><div className="mt-1 text-[10px] text-muted">Origem: {captureSourceLabel(c.source,c.notes)}</div></button>)}</div></Card>}
+      <Card><div className="grid gap-3 md:grid-cols-[1fr_220px]"><Input placeholder="Buscar proprietário, telefone, bairro..." value={search} onChange={e=>setView(current=>({...current,search:e.target.value}))}/><Select value={city} onChange={e=>setView(current=>({...current,city:e.target.value}))}><option value="">Todas as regiões</option>{CITIES.map(c=><option key={c}>{c}</option>)}</Select></div></Card>
+      <div className="grid gap-4 xl:grid-cols-4">{STAGES.map(([key,label])=>{const rows=active.filter(x=>st(x)===key);return <Card key={key} title={`${label} · ${rows.length}`}><div className="space-y-3">{rows.map(c=><button key={c.id} onClick={()=>setView(current=>({...current,selected:c.id}))} className="w-full rounded border border-line bg-bone/30 p-3 text-left hover:bg-bone/60">{isOutside(c.outsidePriorityArea)&&<div className="mb-2"><OutsideBand compact/></div>}<div className="font-medium text-deep">{c.owner?.name ?? `Proprietário #${c.ownerId}`}</div><div className="mt-1 text-xs text-muted">{c.propertyType || "Imóvel"} · {c.district || c.city}</div><div className="mt-2 flex flex-wrap items-center gap-1"><RegBadge status={c.registrationStatus}/><span className="text-[10px] text-muted">{c.completeness ?? 0}% preenchido</span><span className="text-[10px] text-muted">Origem: {captureSourceLabel(c.source,c.notes)}</span></div><div className="mt-1 text-sm">{money(c.askingPrice)}</div>{c.nextAction && <div className="mt-2 text-[11px] text-muted">{c.nextAction} · {dateTimeLabel(c.nextActionAt)}</div>}</button>)}{rows.length===0&&<p className="text-xs text-muted">{sourceLabel ? `Nenhuma captação desta origem em ${label.toLowerCase()}.` : `Nenhuma captação em ${label.toLowerCase()}.`}</p>}</div></Card>})}</div>
+      {lost.length>0 && <Card title={`Arquivo de perdidos · ${lost.length}`}><div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">{lost.map(c=><button key={c.id} onClick={()=>setView(current=>({...current,selected:c.id}))} className="rounded border border-line p-3 text-left"><b>{c.owner?.name}</b><div className="text-xs text-muted">{c.lostReason || "Motivo não informado"}</div><div className="mt-1 text-[10px] text-muted">Origem: {captureSourceLabel(c.source,c.notes)}</div></button>)}</div></Card>}
       {lost.length===0&&data.length>0&&<p className="text-xs text-muted">Nenhuma captação perdida nesta consulta.</p>}
       </div>
     </div>
-    <NewCapture open={newOpen} onClose={()=>setNewOpen(false)} onCreated={(id)=>{setNewOpen(false);setSelected(id)}}/>
-    <Detail id={selected} onClose={()=>setSelected(null)}/>
+    <NewCapture open={newOpen} onClose={()=>setNewOpen(false)} onCreated={(id)=>{setNewOpen(false);setView(current=>({...current,selected:id}))}}/>
+    <Detail id={selected} onClose={closeCapture}/>
   </AdminLayout>;
 }
 

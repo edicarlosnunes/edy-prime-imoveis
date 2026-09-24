@@ -36,7 +36,7 @@ import {
 } from "../../../api/lib/commercial-status";
 import { PropertyForm } from "./property-form";
 import { readCaptureId } from "../../lib/capture-conversion-flow";
-import { isPropertyCreateRoute } from "../../lib/property-create-route";
+import { isPropertyCreateRoute, propertyFormReturnPath } from "../../lib/property-create-route";
 
 type StatusFilter = (typeof propertyStatuses)[number] | "";
 
@@ -68,6 +68,7 @@ function Content() {
   const [path, navigate] = useLocation();
   const isCreateRoute = isPropertyCreateRoute(path);
   const captureId = readCaptureId(search_);
+  const fromCaptureHub = new URLSearchParams(search_).get("from") === "captacao";
   useEffect(() => {
     if (isCreateRoute || captureId !== null) setEditing("new");
     else setEditing((current) => current === "new" ? null : current);
@@ -313,8 +314,10 @@ function Content() {
           captureId={editing === "new" ? captureId : null}
           onClose={() => {
             setEditing(null);
-            /* Sai da ficha sem deixar /novo ou capture_id preso na rota. */
-            if (isCreateRoute || captureId !== null) navigate("/admin/imoveis");
+            /* O cadastro iniciado na Captação volta à mesma área e ficha. */
+            if (isCreateRoute || captureId !== null || fromCaptureHub) {
+              navigate(propertyFormReturnPath(captureId, fromCaptureHub));
+            }
           }}
         />
       )}
