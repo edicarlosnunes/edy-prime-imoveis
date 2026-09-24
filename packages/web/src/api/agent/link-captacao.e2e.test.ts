@@ -5,7 +5,7 @@
  *  2. salvamento progressivo (resposta por resposta, na ordem do roteiro)
  *  3. retomada pelo mesmo telefone, sem repetir pergunta já respondida
  *  4. frase neutra exata quando a pergunta sai do roteiro
- *  5. foto final e fechamento exato
+ *  5. observações finais e fechamento exato
  *  6. ausência de duplicidade (proprietário, imóvel, unidade do mesmo prédio)
  *
  * Como roda: SQLite em memória + o caminho real de produção
@@ -353,8 +353,12 @@ async function linkTurn(
   return { reply: result.text, saved, skipped: result.skipped, replied: result.replied };
 }
 
-/** O clique no link: chega como mensagem com o texto pré-preenchido. */
-const entrarPeloLink = (conversationId: number) => linkTurn(conversationId, LINK_CAPTACAO_MESSAGE);
+/** O clique identifica o perfil antes de pedir o nome do proprietário. */
+async function entrarPeloLink(conversationId: number) {
+  const abertura = await linkTurn(conversationId, LINK_CAPTACAO_MESSAGE);
+  expect(abertura.reply).toBe("Você é o proprietário do imóvel ou corretor?");
+  return linkTurn(conversationId, "proprietário");
+}
 
 async function counts() {
   const [owners] = await db.all<{ n: number }>(sql`SELECT COUNT(*) as n FROM owners`);
@@ -400,26 +404,23 @@ async function outbound(conversationId: number) {
 
 /* Escritos aqui letra por letra, de propósito: é o que o cliente pediu. Se
    alguém mexer no roteiro do módulo, estes testes caem. */
-const ABERTURA = "Olá! Vamos cadastrar seu imóvel.\n\nQual é o seu nome completo?";
-const Q_ENDERECO = "Nos informe o endereço do imóvel que deseja vender.";
-const Q_CONDOMINIO =
-  "O imóvel faz parte de algum condomínio? Se sim, informe o nome e a unidade: ap., bloco, torre, casa ou lote.";
-const Q_DOCUMENTACAO = "E a documentação do seu imóvel, como está? Está em seu nome?";
-const Q_FOTO = "Pra finalizar, nos manda uma foto da frente do seu imóvel.";
-const FECHAMENTO =
-  "Pronto, seu cadastro foi concluído. As informações ficaram registradas e em breve entraremos em contato.";
+const ABERTURA = "Qual é o seu nome completo?";
+const Q_ENDERECO = "Qual é o endereço completo do imóvel?";
+const Q_CONDOMINIO = "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)";
+const Q_DOCUMENTACAO = "Qual é a situação da documentação do imóvel? Se não souber, digite NÃO SEI.";
+const Q_OBSERVACAO = "Antes de finalizar: tem algo importante sobre o imóvel que gostaria de informar? Se não tiver mais nada a acrescentar, digite OK.";
+const FECHAMENTO = "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
 const NEUTRA = "Certo, vamos verificar essa informação e, se necessário, nossa equipe te dá um retorno.";
 
 /**
  * O roteiro respondido, na ordem, com a pergunta que deve vir DEPOIS de cada
- * resposta. A última linha do roteiro (a foto) é tratada à parte, porque o
- * reconhecimento dela não passa pelo modelo.
+ * resposta. A confirmação final é tratada à parte e não depende do modelo.
  */
 const SCRIPT: { step: string; body: string; save: Record<string, unknown>; next: string }[] = [
   { step: "nome", body: "Maria Souza", save: { nome: "Maria Souza" }, next: Q_ENDERECO },
   {
     step: "endereco",
-    body: "Rua Guimarães Rosa, 492, Boqueirão, Praia Grande - SP",
+    body: "Rua Guimarães Rosa, 492, Boqueirão, Praia Grande - SP, apartamento 163 bloco B",
     save: {
       rua: "Rua Guimarães Rosa",
       numero: "492",
@@ -427,14 +428,6 @@ const SCRIPT: { step: string; body: string; save: Record<string, unknown>; next:
       cidade: "Praia Grande",
       estado: "SP",
       cep: "11701-000",
-    },
-    next: Q_CONDOMINIO,
-  },
-  {
-    step: "condominio",
-    body: "Sim, Condomínio Vista Azul, apartamento 163, bloco B",
-    save: {
-      condominio: "Condomínio Vista Azul, apartamento 163, bloco B",
       unidade: "163",
       bloco: "B",
     },
@@ -465,34 +458,34 @@ const SCRIPT: { step: string; body: string; save: Record<string, unknown>; next:
     step: "metragem",
     body: "92 m² úteis",
     save: { metragem: "92 m²" },
-    next: linkQuestion("custos", { propertyType: "apartamento" }),
-  },
-  {
-    step: "custos",
-    body: "Condomínio 850 e IPTU 1200 por ano",
-    save: { custos: "Condomínio R$ 850, IPTU R$ 1.200/ano" },
     next: linkQuestion("valor"),
   },
   {
     step: "valor",
     body: "Quero 780 mil",
     save: { valorPretendido: 780000 },
-    next: linkQuestion("caracteristicas"),
+    next: Q_CONDOMINIO,
   },
   {
-    step: "caracteristicas",
-    body: "Vista para o mar e varanda gourmet",
-    save: { caracteristicas: "Vista para o mar, varanda gourmet" },
-    next: Q_FOTO,
+    step: "condominio",
+    body: "850 reais",
+    save: { condominio: "R$ 850" },
+    next: linkQuestion("custos"),
+  },
+  {
+    step: "custos",
+    body: "IPTU 1200 por ano",
+    save: { custos: "IPTU R$ 1.200/ano" },
+    next: Q_OBSERVACAO,
   },
 ];
 
-/** Percorre o roteiro até a pergunta da foto (exclusive). */
+/** Percorre o roteiro até a pergunta de observação final (exclusive). */
 async function percorrerRoteiro(conversationId: number, steps = SCRIPT) {
   const perguntas: (string | undefined)[] = [];
   for (const item of steps) {
     const turn = await linkTurn(conversationId, item.body, item.save);
-    expect(turn.saved?.salvo, `passo ${item.step}`).toBe(true);
+    if (item.step !== "nome") expect(turn.saved?.salvo, `passo ${item.step}`).toBe(true);
     perguntas.push(turn.reply);
   }
   return perguntas;
@@ -501,11 +494,11 @@ async function percorrerRoteiro(conversationId: number, steps = SCRIPT) {
 /* -------------------------------------------------- 1. entrada pelo link */
 
 describe("1. entrada pelo link de captação", () => {
-  test("o link aponta para o WhatsApp da imobiliária com o texto que marca a origem", () => {
+  test("o link aponta para o WhatsApp da imobiliária com a frase exata de entrada", () => {
     expect(linkCaptacaoUrl("(13) 99714-1174")).toBe(
       `https://wa.me/5513997141174?text=${encodeURIComponent(LINK_CAPTACAO_MESSAGE)}`,
     );
-    expect(LINK_CAPTACAO_MESSAGE).toContain("LINK_CAPTACAO");
+    expect(LINK_CAPTACAO_MESSAGE).toBe("Vamos cadastrar seu imóvel?");
   });
 
   test("abre com o texto exato e não pergunta intenção, compra nem locação", async () => {
@@ -528,6 +521,8 @@ describe("1. entrada pelo link de captação", () => {
     await entrarPeloLink(conversa.id);
 
     await linkTurn(conversa.id, SCRIPT[0]!.body, SCRIPT[0]!.save);
+    expect(modelCalls).toBe(0);
+    await linkTurn(conversa.id, SCRIPT[1]!.body, SCRIPT[1]!.save);
 
     expect(modelCalls).toBe(1);
     expect(lastTools).toEqual(["salvarCadastroVenda"]);
@@ -574,7 +569,7 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
     await entrarPeloLink(conversa.id);
 
     /* Avança até a pergunta de tipo usando o extrator já coberto pelo roteiro. */
-    for (const item of SCRIPT.slice(0, 4)) {
+    for (const item of SCRIPT.slice(0, 3)) {
       await linkTurn(conversa.id, item.body, item.save);
     }
 
@@ -608,10 +603,10 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
     expect(ficha.district).toBe("Boqueirão");
     expect(ficha.city).toBe("Praia Grande");
 
-    /* Condomínio e unidade: texto completo no bloco, unidade nos complementos. */
+    /* Unidade veio com o endereço; documentação é a pergunta seguinte. */
     await linkTurn(conversa.id, SCRIPT[2]!.body, SCRIPT[2]!.save);
     ficha = await onlyCapture();
-    expect(ficha.notes).toContain("Condomínio e unidade: Condomínio Vista Azul");
+    expect(ficha.notes).toContain("Imóvel registrado em nome do proprietário: Escritura registrada");
     expect(ficha.complements).toContain("163");
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
@@ -637,8 +632,8 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
     expect(ficha.notes).toContain("Banheiros: 2");
     expect(ficha.notes).toContain("Vagas de garagem: 1");
     expect(ficha.notes).toContain("Metragem: 92 m²");
-    expect(ficha.notes).toContain("Condomínio e IPTU: Condomínio R$ 850");
-    expect(ficha.notes).toContain("Características e diferenciais: Vista para o mar");
+    expect(ficha.notes).toContain("Condomínio e unidade: R$ 850");
+    expect(ficha.notes).toContain("IPTU R$ 1.200/ano");
   });
 
   test("a IA não escreve o texto do cliente: só as frases do roteiro saem", async () => {
@@ -646,7 +641,7 @@ describe("2. salvamento progressivo, uma pergunta por vez", () => {
     await entrarPeloLink(conversa.id);
     await percorrerRoteiro(conversa.id);
 
-    const permitidas = new Set<string>([ABERTURA, ...SCRIPT.map((item) => item.next)]);
+    const permitidas = new Set<string>(["Você é o proprietário do imóvel ou corretor?", ABERTURA, ...SCRIPT.map((item) => item.next)]);
     for (const message of await outbound(conversa.id)) {
       expect(permitidas.has(message.body), message.body).toBe(true);
       expect(message.body).not.toContain("TEXTO DO MODELO");
@@ -669,8 +664,8 @@ describe("3. retomada pelo mesmo telefone", () => {
     const retomada = await linkTurn(volta.id, "Oi, voltei para continuar");
 
     expect(retomada.skipped).toBeUndefined();
-    /* Retoma no ponto exato: condomínio, não o nome nem o endereço de novo. */
-    expect(retomada.reply).toBe(Q_CONDOMINIO);
+    /* Retoma no ponto exato: documentação, não o nome nem o endereço de novo. */
+    expect(retomada.reply).toBe(Q_DOCUMENTACAO);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
@@ -699,7 +694,7 @@ describe("3. retomada pelo mesmo telefone", () => {
     expect(vazio.reply).toBe(Q_ENDERECO);
 
     const depois = await linkTurn(conversa.id, SCRIPT[1]!.body, SCRIPT[1]!.save);
-    expect(depois.reply).toBe(Q_CONDOMINIO);
+    expect(depois.reply).toBe(Q_DOCUMENTACAO);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 });
@@ -718,7 +713,7 @@ describe("4. pergunta fora do roteiro", () => {
     });
 
     expect(fora.saved?.salvo).toBe(true);
-    expect(fora.reply).toBe(`${NEUTRA}\n\n${Q_CONDOMINIO}`);
+    expect(fora.reply).toBe(`${NEUTRA}\n\n${Q_DOCUMENTACAO}`);
     expect(OFF_SCRIPT_REPLY).toBe(NEUTRA);
     /* Nada de negociação, avaliação ou promessa na resposta. */
     expect(fora.reply).not.toMatch(/comiss[ãa]o|%|vale|garanto|prometo/i);
@@ -729,64 +724,60 @@ describe("4. pergunta fora do roteiro", () => {
 
     /* A pergunta pendente não foi perdida: a resposta seguinte é gravada nela. */
     const seguinte = await linkTurn(conversa.id, SCRIPT[2]!.body, SCRIPT[2]!.save);
-    expect(seguinte.reply).toBe(Q_DOCUMENTACAO);
+    expect(seguinte.reply).toBe(linkQuestion("tipo"));
   });
 });
 
-/* -------------------------------------------------------- 5. foto final */
+/* --------------------------------------- 5. observações finais e fechamento */
 
-describe("5. foto da frente e fechamento", () => {
-  /** Roteiro inteiro, faltando só a foto. */
-  async function atéAFoto(externalId = "5513997141174") {
+describe("5. observações finais e fechamento", () => {
+  /** Roteiro inteiro, faltando apenas observações finais e confirmação. */
+  async function atéObservacaoFinal(externalId = "5513997141174") {
     const conversa = await conversation(externalId);
     await entrarPeloLink(conversa.id);
     const perguntas = await percorrerRoteiro(conversa.id);
-    expect(perguntas[perguntas.length - 1]).toBe(Q_FOTO);
+    expect(perguntas.at(-1)).toBe(Q_OBSERVACAO);
     return conversa;
   }
 
-  test("imagem entregue pelo canal encerra com o texto exato", async () => {
-    const conversa = await atéAFoto();
+  test("OK sem observações encerra com o texto exato e remove a sessão", async () => {
+    const conversa = await atéObservacaoFinal();
     const antes = modelCalls;
 
-    const foto = await linkTurn(conversa.id, "[foto] frente do prédio");
+    const fim = await linkTurn(conversa.id, "OK");
 
-    expect(foto.reply).toBe(FECHAMENTO);
+    expect(fim.reply).toBe(FECHAMENTO);
     expect(CLOSING_MESSAGE).toBe(FECHAMENTO);
-    /* Reconhecimento determinístico: o último passo não depende do modelo. */
     expect(modelCalls).toBe(antes);
     const ficha = await onlyCapture();
-    expect(ficha.notes).toContain("Foto da frente: imagem recebida pelo WhatsApp");
+    expect(ficha.notes).toContain("sem observações adicionais");
+    const [owner] = await db.all<{ notes: string | null }>(sql`SELECT notes FROM owners LIMIT 1`);
+    expect(owner?.notes ?? "").not.toContain("[LINK_CAPTACAO_FICHA_ATIVA:");
   });
 
-  test("proprietário que avisa o envio também encerra, e a ficha diz que foi aviso", async () => {
-    const conversa = await atéAFoto();
+  test("observação adicional fica registrada antes da confirmação final", async () => {
+    const conversa = await atéObservacaoFinal();
 
-    const foto = await linkTurn(conversa.id, "Segue a foto da frente");
+    const observacao = await linkTurn(conversa.id, "O apartamento foi reformado recentemente");
+    expect(observacao.reply).toBe(linkQuestion("confirmacaoFinal"));
+    expect((await onlyCapture()).notes).toContain("O apartamento foi reformado recentemente");
 
-    expect(foto.reply).toBe(FECHAMENTO);
-    const ficha = await onlyCapture();
-    expect(ficha.notes).toContain("Foto da frente: proprietário informou o envio da foto");
+    const fim = await linkTurn(conversa.id, "OK");
+    expect(fim.reply).toBe(FECHAMENTO);
   });
 
-  test("pergunta no lugar da foto não encerra o cadastro: a foto continua pendente", async () => {
-    const conversa = await atéAFoto();
+  test("uma observação não encerra antes do OK", async () => {
+    const conversa = await atéObservacaoFinal();
 
-    const duvida = await linkTurn(conversa.id, "Preciso mandar foto por dentro também?", {
-      observacao: "Perguntou se precisa de foto interna",
-    });
-
-    expect(duvida.reply).toBe(`${NEUTRA}\n\n${Q_FOTO}`);
-    const ficha = await onlyCapture();
-    expect(ficha.notes ?? "").not.toContain("Foto da frente:");
+    const resposta = await linkTurn(conversa.id, "Preciso mandar foto por dentro também?");
+    expect(resposta.reply).toBe(linkQuestion("confirmacaoFinal"));
+    expect(resposta.reply).not.toBe(FECHAMENTO);
   });
 
   test("depois do fechamento o fluxo do link solta a conversa", async () => {
-    const conversa = await atéAFoto();
-    await linkTurn(conversa.id, "[foto] frente do prédio");
+    const conversa = await atéObservacaoFinal();
+    await linkTurn(conversa.id, "OK");
 
-    /* Roteiro concluído e sem clique novo: volta a ser atendimento normal, com
-       as ferramentas de sempre — o fluxo do link não sequestra a conversa. */
     behavior = async () => ({ text: "Claro, posso ajudar.", steps: [] });
     await addMessage(db, conversa.id, {
       direction: "in",
@@ -804,12 +795,12 @@ describe("5. foto da frente e fechamento", () => {
 /* ------------------------------------------------- 6. sem duplicidade */
 
 describe("6. ausência de duplicidade", () => {
-  /** Cadastro completo, com a foto: o primeiro imóvel encerrado. */
+  /** Cadastro completo, com OK nas observações: o primeiro imóvel encerrado. */
   async function primeiroImovelConcluido() {
     const conversa = await conversation("5513997141174");
     await entrarPeloLink(conversa.id);
     await percorrerRoteiro(conversa.id);
-    const fim = await linkTurn(conversa.id, "[foto] frente do prédio");
+    const fim = await linkTurn(conversa.id, "OK");
     expect(fim.reply).toBe(FECHAMENTO);
     return conversa;
   }
@@ -824,14 +815,15 @@ describe("6. ausência de duplicidade", () => {
     expect((await counts()).owners).toBe(1);
   });
 
-  test("clique novo depois do fechamento pede o endereço do OUTRO imóvel, não o nome", async () => {
+  test("clique novo depois do fechamento confirma perfil e nome antes do outro endereço", async () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
 
     const novo = await entrarPeloLink(volta.id);
 
-    /* O nome já é conhecido: o roteiro do segundo imóvel começa no endereço. */
-    expect(novo.reply).toBe(Q_ENDERECO);
+    expect(novo.reply).toBe(ABERTURA);
+    const nome = await linkTurn(volta.id, "Maria Souza");
+    expect(nome.reply).toBe(Q_ENDERECO);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
@@ -839,6 +831,7 @@ describe("6. ausência de duplicidade", () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
     await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "Maria Souza");
 
     /* Turno seguinte ao clique, sem nada aproveitável: a ficha lida do banco
        ainda é a anterior (concluída). O fluxo NÃO pode repetir o fechamento
@@ -854,6 +847,7 @@ describe("6. ausência de duplicidade", () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
     await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "Maria Souza");
 
     const endereco = await linkTurn(
       volta.id,
@@ -870,7 +864,7 @@ describe("6. ausência de duplicidade", () => {
     );
 
     expect(endereco.saved?.salvo).toBe(true);
-    expect(endereco.reply).toBe(Q_CONDOMINIO);
+    expect(endereco.reply).toBe(Q_DOCUMENTACAO);
     /* Um proprietário, dois imóveis: a unidade é o que os separa. */
     expect(await counts()).toEqual({ owners: 1, captures: 2 });
     const [primeiro, segundo] = await captureRows();
@@ -884,6 +878,7 @@ describe("6. ausência de duplicidade", () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
     await entrarPeloLink(volta.id);
+    await linkTurn(volta.id, "Maria Souza");
 
     /* Mesmo endereço e mesma unidade do cadastro que já existe. */
     const repetido = await linkTurn(volta.id, SCRIPT[1]!.body, {
@@ -906,7 +901,7 @@ describe("6. ausência de duplicidade", () => {
       observacao: "Proprietário tem outro imóvel para cadastrar",
     });
 
-    expect(turn.reply).toBe(`${NEUTRA}\n\n${Q_CONDOMINIO}`);
+    expect(turn.reply).toBe(`${NEUTRA}\n\n${Q_DOCUMENTACAO}`);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 });
