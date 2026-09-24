@@ -352,7 +352,7 @@ export function PropertyForm({
   const progress = useMemo(
     () =>
       propertyProgress({
-        code: form.code,
+        code: form.code || (propertyId === null ? "EPI gerado ao salvar" : ""),
         title: form.title,
         city: form.city,
         district: form.district,
@@ -366,7 +366,7 @@ export function PropertyForm({
         ownerId: form.ownerId,
         imageCount: images.length,
       }),
-    [form, images.length],
+    [form, images.length, propertyId],
   );
 
   const pendingBySection = useMemo(() => {
@@ -481,7 +481,9 @@ export function PropertyForm({
 
     if (captureBlock) return void fail("basico", captureBlock);
 
-    if (!form.code.trim()) return void fail("basico", "Informe o código do imóvel.");
+    if (propertyId !== null && !form.code.trim()) {
+      return void fail("basico", "Informe o código do imóvel.");
+    }
     if (form.title.trim().length < 3) {
       return void fail("basico", "Informe um título com pelo menos 3 caracteres.");
     }
@@ -616,7 +618,7 @@ export function PropertyForm({
                         /* Mesmo número impresso na Ficha Técnica e na
                            Autorização: o imóvel HERDA, não recebe outro. */
                         <div className="mt-1 font-mono text-xs text-deep">
-                          Serial {capture.data.serial}
+                          EPI {capture.data.serial}
                         </div>
                       )}
                       {/* Observações ficam à vista, não são copiadas para campos
@@ -629,12 +631,21 @@ export function PropertyForm({
                       )}
                     </div>
                   )}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Field label="Código">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="Código" hint={propertyId === null ? "Opcional: se ficar vazio, será o EPI gerado ao salvar." : undefined}>
                       <Input
                         value={form.code}
                         onChange={(e) => set("code", e.target.value)}
-                        placeholder="EP-1042"
+                        placeholder={propertyId === null ? "Usar EPI automático" : "Código do imóvel"}
+                      />
+                    </Field>
+                    <Field label="EPI · código rotativo" hint="O sequencial é gerado no servidor; fichas antigas não são renumeradas.">
+                      <Input
+                        value={propertyId === null
+                          ? (capture.data?.serial ?? "Gerado ao salvar")
+                          : (detail.data?.serial ?? "Ficha antiga sem EPI")}
+                        readOnly
+                        aria-label="EPI do imóvel"
                       />
                     </Field>
                     <Field label="Finalidade">

@@ -107,7 +107,7 @@ function Content() {
           <HubCard icon={Link2} title="Link de captação" description="Consulte as fichas originadas pelo link e compartilhe o início do atendimento pelo WhatsApp." action="Ver registros e link" onClick={() => navigate("/admin/captacao?source=link_captacao")} />
           <HubCard icon={Radar} title="Radar de captação" description="Acompanhe as captações e etapas já registradas no CRM." action="Ver radar" onClick={() => document.getElementById("radar-section")?.scrollIntoView({ behavior: "smooth" })} />
           <HubCard icon={Globe2} title="Captação pelo site" description="Consulte cadastros cuja origem está registrada como site." action="Ver captações" onClick={() => navigate("/admin/captacao?source=site")} />
-          <HubCard icon={Plus} title="Cadastro pela equipe" description="Registre um proprietário e imóvel diretamente no CRM." action="Novo cadastro" onClick={() => setNewOpen(true)} />
+          <HubCard icon={Plus} title="Cadastro pela equipe" description="Abra a ficha completa do imóvel e vincule um proprietário já cadastrado." action="Abrir ficha" onClick={() => navigate("/admin/imoveis/novo")} />
           <HubCard icon={MessageCircle} title="Captação pelo WhatsApp" description="Consulte cadastros cuja origem está registrada como WhatsApp." action="Ver captações" onClick={() => navigate("/admin/captacao?source=whatsapp")} />
         </div>
       </section>

@@ -61,9 +61,15 @@ const propertyInput = z.object({
   images: z.array(imageInput).max(40).default([]),
 });
 
-function toRow(input: z.infer<typeof propertyInput>) {
+const createPropertyInput = propertyInput.extend({
+  /* Blank code is only allowed on create; update still requires an explicit code. */
+  code: z.string().max(40),
+  captureId: z.number().int().positive().nullable().optional(),
+});
+
+function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().toUpperCase()) {
   return {
-    code: input.code.trim().toUpperCase(),
+    code,
     title: input.title.trim(),
     purpose: input.purpose,
     type: input.type,
@@ -89,7 +95,7 @@ function toRow(input: z.infer<typeof propertyInput>) {
     watermarkOff: input.watermarkOff ? 1 : 0,
     youtubeUrl: input.youtubeUrl?.trim() || null,
     slug: propertySlug({
-      code: input.code.trim().toUpperCase(),
+      code,
       title: input.title.trim(),
       type: input.type,
       district: input.district,
@@ -127,6 +133,15 @@ async function loadImages(db: AdminDb, propertyId: number) {
     .from(schema.propertyImages)
     .where(eq(schema.propertyImages.propertyId, propertyId))
     .orderBy(asc(schema.propertyImages.sortOrder), asc(schema.propertyImages.id));
+}
+
+async function ensurePropertyCodeAvailable(db: AdminDb, code: string) {
+  const [existing] = await db
+    .select({ id: schema.properties.id })
+    .from(schema.properties)
+    .where(eq(schema.properties.code, code))
+    .limit(1);
+  if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
 }
 
 export const adminProperties = {
@@ -206,82 +221,83 @@ export const adminProperties = {
     }),
 
   create: adminBase
-    .input(propertyInput.extend({ captureId: z.number().int().positive().nullable().optional() }))
+    .input(createPropertyInput)
     .handler(async ({ input, context }) => {
-    const row = toRow(input);
-    const [existing] = await context.db
-      .select({ id: schema.properties.id })
-      .from(schema.properties)
-      .where(eq(schema.properties.code, row.code))
-      .limit(1);
-    if (existing) throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
+      const requestedCode = input.code.trim().toUpperCase();
+      const codeIsBlank = requestedCode.length === 0;
+      if (!codeIsBlank) await ensurePropertyCodeAvailable(context.db, requestedCode);
 
-    /* Cadastro aberto pela captação (`/admin/imoveis/novo?capture_id=`).
-       As mesmas regras do Radar valem aqui: sem documentação fechada e sem
-       preço validado o imóvel nem chega a ser criado, para não sobrar imóvel
-       órfão no banco. */
-    let capture: typeof schema.propertyCaptures.$inferSelect | null = null;
-    let inherited: string | null = null;
-    if (input.captureId) {
-      const [found] = await context.db
-        .select()
-        .from(schema.propertyCaptures)
-        .where(eq(schema.propertyCaptures.id, input.captureId))
-        .limit(1);
-      if (!found) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
-      /* A REGRA vive em lib/capture-conversion.ts (pura e testada). Aqui só a
-         execução: liberar, herdar serial e nascer fora do ar. */
-      const plan = planPropertyFromCapture(found);
-      if (!plan.ok) throw new ORPCError(plan.code, { message: plan.message });
-      capture = found;
-      inherited = plan.serial;
-      row.published = plan.published;
-    }
+      /* Cadastro aberto pela captação (`/admin/imoveis/novo?capture_id=`).
+         As mesmas regras do Radar valem aqui: sem documentação fechada e sem
+         preço validado o imóvel nem chega a ser criado, para não sobrar imóvel
+         órfão no banco. */
+      let capture: typeof schema.propertyCaptures.$inferSelect | null = null;
+      let inherited: string | null = null;
+      let publishedOverride: 0 | null = null;
+      if (input.captureId) {
+        const [found] = await context.db
+          .select()
+          .from(schema.propertyCaptures)
+          .where(eq(schema.propertyCaptures.id, input.captureId))
+          .limit(1);
+        if (!found) throw new ORPCError("NOT_FOUND", { message: "Captação não encontrada" });
+        /* A REGRA vive em lib/capture-conversion.ts (pura e testada). Aqui só a
+           execução: liberar, herdar serial e nascer fora do ar. */
+        const plan = planPropertyFromCapture(found);
+        if (!plan.ok) throw new ORPCError(plan.code, { message: plan.message });
+        capture = found;
+        inherited = plan.serial;
+        publishedOverride = plan.published;
+      }
 
-    /* Serial global: herdado da ficha quando existe, senão reservado agora.
-       O sequencial é global e nunca reiniciado. */
-    const serial = inherited ?? (await allocateSerial(context.db, input.type));
+      /* Só depois de validar a captação reservamos serial. O sequencial global
+         é herdado quando disponível; caso contrário é reservado uma única vez. */
+      const serial = inherited ?? (await allocateSerial(context.db, input.type));
+      const code = codeIsBlank ? serial : requestedCode;
+      if (codeIsBlank) await ensurePropertyCodeAvailable(context.db, code);
+      const row = toRow(input, code);
+      if (publishedOverride !== null) row.published = publishedOverride;
 
-    /* Data de entrada na carteira: todo imóvel novo nasce com ela preenchida,
-       no momento da criação, para a revalidação de 4 meses e a regra dos 12
-       meses passarem a contar desde já. Ajuste manual posterior (seção de
-       revalidação da ficha) continua mandando: aqui só se define na criação. */
-    const [created] = await context.db
-      .insert(schema.properties)
-      .values({ ...row, serial, portfolioEntryAt: new Date() })
-      .returning();
-    if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
-    await syncImages(context.db, created.id, input.images);
+      /* Data de entrada na carteira: todo imóvel novo nasce com ela preenchida,
+         no momento da criação, para a revalidação de 4 meses e a regra dos 12
+         meses passarem a contar desde já. Ajuste manual posterior (seção de
+         revalidação da ficha) continua mandando: aqui só se define na criação. */
+      const [created] = await context.db
+        .insert(schema.properties)
+        .values({ ...row, serial, portfolioEntryAt: new Date() })
+        .returning();
+      if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
+      await syncImages(context.db, created.id, input.images);
 
-    if (capture) {
-      const now = new Date();
-      /* Grava o serial de volta na captação quando ela ainda não tinha, para
-         ficha e imóvel mostrarem o MESMO número. */
-      await context.db
-        .update(schema.propertyCaptures)
-        .set({
-          serial,
-          convertedPropertyId: created.id,
-          convertedAt: now,
-          stage: "captado",
-          stageChangedAt: now,
-          nextAction: null,
-          nextActionAt: null,
-          updatedAt: now,
-        })
-        .where(eq(schema.propertyCaptures.id, capture.id));
-      await context.db.insert(schema.auditLog).values({
-        userId: context.user.id,
-        userName: context.user.name,
-        action: "capture_converted",
-        entity: "capture",
-        entityId: String(capture.id),
-        detail: `property:${created.id} serial:${serial}`,
-      });
-    }
+      if (capture) {
+        const now = new Date();
+        /* Grava o serial de volta na captação quando ela ainda não tinha, para
+           ficha e imóvel mostrarem o MESMO número. */
+        await context.db
+          .update(schema.propertyCaptures)
+          .set({
+            serial,
+            convertedPropertyId: created.id,
+            convertedAt: now,
+            stage: "captado",
+            stageChangedAt: now,
+            nextAction: null,
+            nextActionAt: null,
+            updatedAt: now,
+          })
+          .where(eq(schema.propertyCaptures.id, capture.id));
+        await context.db.insert(schema.auditLog).values({
+          userId: context.user.id,
+          userName: context.user.name,
+          action: "capture_converted",
+          entity: "capture",
+          entityId: String(capture.id),
+          detail: `property:${created.id} serial:${serial}`,
+        });
+      }
 
-    return { id: created.id, serial };
-  }),
+      return { id: created.id, serial };
+    }),
 
   update: adminBase
     .input(propertyInput.extend({ id: z.number().int() }))

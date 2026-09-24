@@ -36,6 +36,7 @@ import {
 } from "../../../api/lib/commercial-status";
 import { PropertyForm } from "./property-form";
 import { readCaptureId } from "../../lib/capture-conversion-flow";
+import { isPropertyCreateRoute } from "../../lib/property-create-route";
 
 type StatusFilter = (typeof propertyStatuses)[number] | "";
 
@@ -64,11 +65,13 @@ function Content() {
    * Ler da rota (e não de estado em memória) faz o prefill sobreviver a refresh.
    */
   const search_ = useSearch();
-  const [, navigate] = useLocation();
+  const [path, navigate] = useLocation();
+  const isCreateRoute = isPropertyCreateRoute(path);
   const captureId = readCaptureId(search_);
   useEffect(() => {
-    if (captureId !== null) setEditing("new");
-  }, [captureId]);
+    if (isCreateRoute || captureId !== null) setEditing("new");
+    else setEditing((current) => current === "new" ? null : current);
+  }, [isCreateRoute, captureId]);
   const [error, setError] = useState<string | null>(null);
 
   const filters = useMemo(
@@ -95,15 +98,15 @@ function Content() {
 
   return (
     <AdminLayout
-      title="Imóveis"
-      subtitle="Cadastro que alimenta a vitrine do site"
+      title={isCreateRoute ? "Cadastro de Imóvel" : "Imóveis"}
+      subtitle={isCreateRoute ? "Preencha a ficha completa do imóvel" : "Cadastro que alimenta a vitrine do site"}
       actions={
-        <Btn tone="brass" onClick={() => setEditing("new")}>
+        !isCreateRoute && <Btn tone="brass" onClick={() => navigate("/admin/imoveis/novo")}>
           <Plus className="h-3.5 w-3.5" /> Novo imóvel
         </Btn>
       }
     >
-      <div className="space-y-4">
+      <div className={isCreateRoute ? "hidden" : "space-y-4"}>
         <Card>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_220px]">
             <Input
@@ -144,6 +147,7 @@ function Content() {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Badge tone="deep">{property.code}</Badge>
+                  {property.serial && <Badge tone="brass">EPI {property.serial}</Badge>}
                   <Badge
                     tone={
                       property.status === "disponivel"
@@ -309,8 +313,8 @@ function Content() {
           captureId={editing === "new" ? captureId : null}
           onClose={() => {
             setEditing(null);
-            /* Sai do fluxo de captação: a query string não fica presa na tela. */
-            if (captureId !== null) navigate("/admin/imoveis");
+            /* Sai da ficha sem deixar /novo ou capture_id preso na rota. */
+            if (isCreateRoute || captureId !== null) navigate("/admin/imoveis");
           }}
         />
       )}
