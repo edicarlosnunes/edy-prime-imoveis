@@ -6,7 +6,7 @@
     ".": "./src/api/index.ts"
   },
   "scripts": {
-    "build": "bun vercel-api/build.ts && tsc --noEmit && vite build",
+    "build": "bun scripts/ensure-capture-share-tokens.ts && bun vercel-api/build.ts && tsc --noEmit && vite build",
     "dev": "vite",
     "start": "bun src/__server.ts",
     "typecheck": "tsc --noEmit",
