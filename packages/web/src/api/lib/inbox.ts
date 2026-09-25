@@ -12,6 +12,7 @@ import { gatewayConfigured } from "../agent/gateway";
 import { fireTrigger } from "./automations";
 import { logLeadEvent, qualifyLeadFromText } from "./lead-profile";
 import type { AdminDb } from "./admin-base";
+import { publicBrandText } from "./public-identity";
 
 export type Channel = "whatsapp" | "instagram" | "facebook" | "site" | "teste";
 
@@ -292,7 +293,9 @@ export async function aiTurn(
        Humano. Somente a ação manual "Humano" no painel altera o modo. */
     return {
       replied: true,
-      text: reply.text,
+      // Só a saída para os canais externos recebe a nova identidade;
+      // histórico e decisões da IA permanecem intactos.
+      text: publicBrandText(reply.text),
       handoff: reply.handoff,
       reason: reply.handoffReason ?? undefined,
       usedProperties: reply.usedProperties,

@@ -65,7 +65,7 @@ function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
   return {
     buscarImoveis: tool({
       description:
-        "Busca imóveis REAIS no banco da Edy Prime. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
+        "Busca imóveis REAIS no banco de E. Santos. Use sempre antes de falar de qualquer imóvel. Retorna vazio quando não há imóvel compatível.",
       inputSchema: z.object({
         bairro: z.string().optional().describe("bairro ou região"),
         cidade: z.string().optional(),
@@ -183,7 +183,7 @@ function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
 
 function systemPrompt(agent: AgentRow) {
   return [
-    `Você é ${agent.name}, atendente virtual da Edy Prime Imóveis (imóveis de médio e alto padrão em Praia Grande/SP).`,
+    `Você é ${agent.name}, atendente virtual de E. Santos, Gestor Imobiliário, CRECI 134718-F (imóveis de médio e alto padrão em Praia Grande/SP).`,
     agent.tone ? `Tom de voz: ${agent.tone}` : "Tom sofisticado, direto e humano.",
     agent.instructions ? `Instruções do corretor: ${agent.instructions}` : "",
     agent.qualification ? `Qualifique o cliente coletando: ${agent.qualification}` : "",

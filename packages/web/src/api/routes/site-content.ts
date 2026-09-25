@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
+import { previewPublicSiteContent } from "../lib/public-identity";
 
 /**
  * Conteúdo PUBLICADO do site (Editor do Site / CMS) — rota pública.
@@ -21,7 +22,7 @@ export const siteContent = {
       if (!row) return null;
       return {
         publishedAt: row.publishedAt,
-        data: JSON.parse(row.data) as unknown,
+        data: previewPublicSiteContent(JSON.parse(row.data) as unknown),
       };
     } catch {
       return null;

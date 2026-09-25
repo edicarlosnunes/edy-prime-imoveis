@@ -1,6 +1,7 @@
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
+import { PUBLIC_IDENTITY } from "../lib/public-identity";
 
 /**
  * Dados públicos da imobiliária (editáveis em /admin → Configurações).
@@ -14,11 +15,11 @@ export const siteConfig = {
       const [row] = await db.select().from(schema.settings).limit(1);
       if (!row) return null;
       return {
-        brand: row.companyName,
-        broker: row.brokerName,
+        brand: PUBLIC_IDENTITY.name,
+        broker: PUBLIC_IDENTITY.name,
         whatsapp: row.whatsapp,
         email: row.email,
-        creci: row.creci,
+        creci: PUBLIC_IDENTITY.creci,
         address: row.address,
         instagram: row.instagram,
         facebook: row.facebook,

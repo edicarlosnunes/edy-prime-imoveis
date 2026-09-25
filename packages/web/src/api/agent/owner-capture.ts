@@ -73,7 +73,7 @@ export const CAPTURE_STEPS = [
     label: "Nome completo",
     store: "owner",
     verbatim: true,
-    question: "Olá! Seja bem-vindo à Edy Prime Imóveis. Para começarmos, qual é o seu nome completo?",
+    question: "Olá! Seja bem-vindo ao atendimento de E. Santos. Para começarmos, qual é o seu nome completo?",
   },
   {
     key: "endereco",

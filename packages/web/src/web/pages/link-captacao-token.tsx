@@ -18,7 +18,7 @@ export default function LinkCaptacaoToken() {
       <main className="mx-auto flex min-h-screen max-w-5xl items-center px-5 py-12">
         <section className="w-full overflow-hidden rounded-[24px] border border-line bg-white shadow-[0_24px_80px_rgba(18,20,15,.10)]">
           <div className="bg-deep px-6 py-8 text-white sm:px-10">
-            <div className="label-xs mb-4 text-brass-soft">EDY PRIME · CAPTAÇÃO EXCLUSIVA</div>
+            <div className="label-xs mb-4 text-brass-soft">E. SANTOS · CAPTAÇÃO EXCLUSIVA</div>
             <h1 className="display max-w-3xl text-4xl sm:text-5xl">Cadastre seu imóvel de forma rápida.</h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75">
               O ED fará algumas perguntas objetivas pelo WhatsApp para iniciar o pré-cadastro.
@@ -48,7 +48,7 @@ export default function LinkCaptacaoToken() {
           </div>
           <footer className="flex flex-col gap-3 border-t border-line px-6 py-5 text-xs text-muted sm:flex-row sm:items-center sm:justify-between sm:px-10">
             <span className="inline-flex items-center gap-2"><BadgeCheck className="h-4 w-4 text-brass" /> Atendimento imobiliário · dados usados para o cadastro solicitado.</span>
-            <span>Edicarlos Nunes Santos Ferreira · Corretor de Imóveis · CRECI 134718-F</span>
+            <span>E. Santos · Gestor Imobiliário · CRECI 134718-F</span>
           </footer>
         </section>
       </main>

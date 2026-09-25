@@ -37,7 +37,7 @@ import { allocateSerial } from "../lib/serial-counter";
    usado, o documento sai marcado como CONFIGURAÇÃO PENDENTE, para ninguém
    assinar um papel com dado jurídico vindo de fallback escondido. */
 const BROKER_FALLBACK = {
-  name: "Edy Prime Imóveis",
+  name: "E. Santos",
   creci: "CRECI 134718-F",
   cnai: "PERITO CNAI 55.918",
   phone: "(13) 99772-6767",
@@ -62,7 +62,8 @@ async function brokerOf(context: any): Promise<BrokerHeader> {
     missing.push(label);
     return fallback;
   };
-  const name = pick(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
+  const storedName = pick(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
+  const name = /^Edy Prime(?: Im[oó]veis)?$/i.test(storedName) ? "E. Santos" : storedName;
   const creci = pick(row?.creci, BROKER_FALLBACK.creci, "CRECI");
   /* CNAI NÃO é dado obrigatório da imobiliária: pertence ao profissional
      avaliador/perito e será tratado à parte. Sai impresso quando existe, mas
@@ -380,7 +381,7 @@ export const adminDocuments = {
         canFinalize: finalize.ok,
         finalizeMessage: finalize.message,
         signedAuthorization: signed,
-        qr: qrTarget(input.baseUrl?.trim() || "https://www.edyprimeimoveis.com.br", capture.id),
+        qr: qrTarget(input.baseUrl?.trim() || "https://esantoscorretor.com.br", capture.id),
       };
     }),
 };

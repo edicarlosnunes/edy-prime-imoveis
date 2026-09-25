@@ -465,11 +465,11 @@ describe("1. cadastro novo pelo WhatsApp", () => {
     const primeiro = await ownerTurn(conversa.id, "Olá, quero cadastrar meu apartamento para venda");
 
     expect(primeiro.reply).toBe(
-      "Olá! Seja bem-vindo à Edy Prime Imóveis. Para começarmos, qual é o seu nome completo?",
+      "Olá! Seja bem-vindo ao atendimento de E. Santos. Para começarmos, qual é o seu nome completo?",
     );
     /* A pergunta exata e a proibição do telefone estão no prompt do turno. */
     expect(lastSystem).toContain(
-      "Olá! Seja bem-vindo à Edy Prime Imóveis. Para começarmos, qual é o seu nome completo?",
+      "Olá! Seja bem-vindo ao atendimento de E. Santos. Para começarmos, qual é o seu nome completo?",
     );
     expect(lastSystem).toContain("NUNCA pergunte telefone");
     /* Nada respondido ainda: nenhuma ficha criada. */

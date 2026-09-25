@@ -193,7 +193,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
             setIdentityDone(true);
             setIdentityFeedback(
               data.crm
-                ? "WhatsApp registrado. Um corretor da Edy Prime Imóveis vai te chamar por ele."
+              ? "WhatsApp registrado. E. Santos, Gestor Imobiliário, vai te chamar por ele."
                 : "Anotei seu WhatsApp na conversa. Um corretor já consegue ver e responder aqui.",
             );
           } else {
@@ -229,7 +229,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          aria-label="Abrir chat com a Edy Prime"
+          aria-label="Abrir chat com E. Santos"
           className="fixed right-5 bottom-24 z-50 flex items-center gap-3 border border-brass/40 bg-deep px-5 py-4 text-white shadow-lg transition-colors hover:bg-brass"
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
         >
@@ -243,7 +243,7 @@ export function ChatWidget({ propertySlug }: { propertySlug?: string }) {
           className="fixed inset-x-3 bottom-3 z-[60] flex max-h-[82vh] flex-col border border-line bg-paper shadow-2xl sm:inset-x-auto sm:right-5 sm:bottom-5 sm:w-[380px]"
           style={{ marginBottom: "env(safe-area-inset-bottom)" }}
           role="dialog"
-          aria-label="Chat Edy Prime Imóveis"
+          aria-label="Chat E. Santos"
         >
           <header className="flex items-center justify-between gap-3 bg-deep px-5 py-4 text-white">
             <div>

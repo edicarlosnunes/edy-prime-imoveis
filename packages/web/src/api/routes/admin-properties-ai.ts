@@ -171,7 +171,7 @@ export const adminPropertyContent = {
 
     const sheet = buildSheet(input);
     const prompt = [
-      "Você redige anúncios de imóveis para a Edy Prime Imóveis, em Praia Grande (SP), com foco em médio e alto padrão.",
+      "Você redige anúncios de imóveis para E. Santos, Gestor Imobiliário (CRECI 134718-F), em Praia Grande (SP), com foco em médio e alto padrão.",
       RULES,
       "FICHA DO IMÓVEL (única fonte de verdade):",
       sheet,

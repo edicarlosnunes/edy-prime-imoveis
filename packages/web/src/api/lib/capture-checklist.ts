@@ -135,7 +135,7 @@ export function documentRequestMessage(input: {
   const missing = missingChecklistItems(input.done);
   const hello = first ? `Olá, ${first}!` : "Olá!";
   const lines = [
-    `${hello} Aqui é da Edy Prime Imóveis${input.creci ? ` (CRECI ${input.creci})` : ""}.`,
+    `${hello} Aqui é E. Santos, Gestor Imobiliário${input.creci ? ` (CRECI ${input.creci})` : ""}.`,
     "",
     missing.length > 0
       ? "Para seguir com a captação do seu imóvel, preciso destes documentos:"

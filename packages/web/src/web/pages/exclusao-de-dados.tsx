@@ -13,7 +13,7 @@ const ChatWidget = lazy(() => import("../components/site/chat-widget"));
    exclusivo das páginas legais — o restante do site usa `site` (lib/site.ts). */
 const CONTROLLER = {
   legalName: "EDY BOA SORTE LTDA",
-  tradeName: "Edy Prime Imóveis",
+  tradeName: "E. Santos",
   cnpj: "54.312.317/0001-92",
 };
 
@@ -33,7 +33,7 @@ function ExclusaoDeDados() {
       <main>
         <LegalPage
           title="Exclusão de Dados Pessoais"
-          intro="Como pedir a exclusão dos seus dados pessoais tratados pela Edy Prime Imóveis, o que informar no pedido e o que pode precisar ser mantido por obrigação legal."
+          intro="Como pedir a exclusão dos seus dados pessoais tratados por E. Santos, o que informar no pedido e o que pode precisar ser mantido por obrigação legal."
         >
           <Section title="Quem trata os seus dados">
             <Paragraph>
@@ -67,8 +67,8 @@ function ExclusaoDeDados() {
             <Paragraph>
               <strong>1. Seu nome</strong>, como você o informou no contato.
               <br />
-              <strong>2. O telefone e/ou o e-mail</strong> que você usou para falar com a Edy Prime
-              Imóveis — é por eles que o seu registro é localizado.
+              <strong>2. O telefone e/ou o e-mail</strong> que você usou para falar com E. Santos —
+              é por eles que o seu registro é localizado.
               <br />
               <strong>3. Por qual canal você entrou em contato</strong>: formulário do site,
               WhatsApp ou assistente virtual.
@@ -115,7 +115,7 @@ function ExclusaoDeDados() {
 
           <Section title="Conversas de WhatsApp">
             <Paragraph>
-              As mensagens de WhatsApp trocadas com a Edy Prime Imóveis são apagadas dos nossos
+              As mensagens de WhatsApp trocadas com E. Santos são apagadas dos nossos
               registros de atendimento junto com o restante dos seus dados. A cópia que existe no
               seu próprio aplicativo pertence a você e pode ser apagada por você a qualquer momento,
               diretamente no WhatsApp. O tratamento realizado pela plataforma de mensagens é regido

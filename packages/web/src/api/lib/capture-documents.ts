@@ -267,7 +267,7 @@ export function buildSnapshot(
     if (!String(source.owner?.document ?? "").trim()) blanks.push("CPF/CNPJ do proprietário");
     if (!String(source.owner?.rg ?? "").trim()) blanks.push("RG/documento de identidade do proprietário");
     clauses.push(
-      "O(A) proprietário(a) autoriza a Edy Prime Imóveis a intermediar a negociação do imóvel identificado nesta autorização.",
+      "O(A) proprietário(a) autoriza E. Santos a intermediar a negociação do imóvel identificado nesta autorização.",
       "Autoriza a divulgação do imóvel nos canais da imobiliária, incluindo site, portais e redes sociais.",
       "Autoriza o uso das fotos e das informações do imóvel exclusivamente para fins de divulgação da venda.",
       "Autoriza a apresentação do imóvel a interessados e o recebimento e a apresentação de propostas.",

@@ -2,10 +2,10 @@
  * Dados do negócio — edite aqui e o site inteiro se atualiza.
  */
 export const site = {
-  brand: "Edy Prime",
-  brandSuffix: "Imóveis",
-  broker: "Edy Prime",
-  role: "Consultor de imóveis · Praia Grande/SP",
+  brand: "E. Santos",
+  brandSuffix: "",
+  broker: "E. Santos",
+  role: "Gestor Imobiliário",
   creci: "CRECI 134718-F",
   city: "Praia Grande",
   state: "SP",
@@ -77,7 +77,8 @@ export function configureSite(patch: SiteConfigPatch | null | undefined) {
   const name = text(patch.name);
   if (name) target.brand = name;
   const suffix = text(patch.brandSuffix);
-  if (suffix) target.brandSuffix = suffix;
+  // Um sufixo vazio publicado remove o antigo nome fantasia.
+  if (patch.brandSuffix !== undefined) target.brandSuffix = patch.brandSuffix.trim();
   const broker = text(patch.broker);
   if (broker) target.broker = broker;
   const role = text(patch.role);

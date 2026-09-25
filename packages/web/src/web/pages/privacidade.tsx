@@ -12,7 +12,7 @@ const ChatWidget = lazy(() => import("../components/site/chat-widget"));
    exclusivo desta página — o restante do site usa `site` (lib/site.ts). */
 const CONTROLLER = {
   legalName: "EDY BOA SORTE LTDA",
-  tradeName: "Edy Prime Imóveis",
+  tradeName: "E. Santos",
   cnpj: "54.312.317/0001-92",
 };
 
@@ -32,7 +32,7 @@ function Privacidade() {
       <main>
         <LegalPage
           title="Política de Privacidade"
-          intro="Como os seus dados pessoais são coletados, usados, armazenados e protegidos quando você usa este site ou fala com a Edy Prime Imóveis."
+          intro="Como os seus dados pessoais são coletados, usados, armazenados e protegidos quando você usa este site ou fala com E. Santos."
         >
           <Section title="1. Quem é o controlador dos seus dados">
             <Paragraph>
@@ -113,7 +113,7 @@ function Privacidade() {
             <Paragraph>
               O sistema identifica contatos repetidos pelo número de telefone, para não duplicar seu
               cadastro, e cria tarefas internas de retorno para o corretor responsável. O CRM é uma
-              área restrita, protegida por login, acessível apenas à Edy Prime Imóveis, e as ações
+              área restrita, protegida por login, acessível apenas à E. Santos, e as ações
               realizadas nele ficam registradas para fins de auditoria interna.
             </Paragraph>
           </Section>
@@ -202,7 +202,7 @@ function Privacidade() {
           <Section title="11. Como solicitar acesso, correção ou exclusão">
             <Paragraph>
               Basta enviar o pedido para {mail}, indicando o que você deseja e o telefone ou e-mail
-              usado no contato com a Edy Prime Imóveis, para que possamos localizar o seu registro.
+              usado no contato com E. Santos, para que possamos localizar o seu registro.
               Podemos solicitar informações adicionais para confirmar sua identidade antes de
               atender ao pedido — isso protege você contra solicitações feitas por terceiros.
               Respondemos no menor prazo possível.

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
+import { publicBrandText } from "../lib/public-identity";
 import { clientIp, siteBaseUrl } from "../lib/base-url";
 import { gatewayConfigured } from "../agent/gateway";
 import {
@@ -84,7 +85,12 @@ async function loadMessages(db: Awaited<ReturnType<typeof getDb>>, conversationI
     .limit(80);
   /* Mensagens internas ("sistema") nunca vão para o visitante: podem carregar
      motivo de transferência e outros textos administrativos. */
-  return rows.map(toPublicMessage);
+  return rows.map((row) => {
+    const message = toPublicMessage(row);
+    return message.author === "cliente"
+      ? message
+      : { ...message, body: publicBrandText(message.body) };
+  });
 }
 
 function countClientMessages(messages: PublicChatMessage[]) {
@@ -152,9 +158,10 @@ export const siteChat = {
 
       return {
         available,
-        greeting:
+        greeting: publicBrandText(
           agent?.greeting?.trim() ||
-          "Olá! Sou o atendimento da Edy Prime. Me conte o que você procura em Praia Grande.",
+            "Olá! Sou o atendimento de E. Santos, Gestor Imobiliário. Me conte o que você procura em Praia Grande.",
+        ),
         notice: available ? null : FALLBACK_UNAVAILABLE,
         state,
         messages,

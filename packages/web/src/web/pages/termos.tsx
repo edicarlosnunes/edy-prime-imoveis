@@ -12,7 +12,7 @@ const ChatWidget = lazy(() => import("../components/site/chat-widget"));
    exclusivo das páginas legais — o restante do site usa `site` (lib/site.ts). */
 const CONTROLLER = {
   legalName: "EDY BOA SORTE LTDA",
-  tradeName: "Edy Prime Imóveis",
+  tradeName: "E. Santos",
   cnpj: "54.312.317/0001-92",
 };
 
