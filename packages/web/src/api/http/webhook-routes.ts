@@ -31,7 +31,11 @@ import {
   redeemCaptureShareToken,
 } from "../lib/capture-share-tokens";
 import { captureSnapshot, linkCaptureSession } from "../agent/owner-capture";
-import { CLOSING_MESSAGE, linkCaptacaoState } from "../agent/link-captacao";
+import {
+  CLOSING_MESSAGE,
+  isReusableGenericLinkEntry,
+  linkCaptacaoState,
+} from "../agent/link-captacao";
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
@@ -202,7 +206,16 @@ export function registerWebhookRoutes(app: Hono) {
           contactPhone: message.from,
         });
         const senderShare = await latestCaptureShareForSender(db, message.from);
-        const completionGuard = senderShare?.status === "completed";
+        const priorCaptureState = senderShare?.status === "completed"
+          ? await linkCaptacaoState(
+              db,
+              message.from,
+              await conversationTurns(db, conversation.id),
+            )
+          : null;
+        const completionGuard = senderShare?.status === "completed" &&
+          !isReusableGenericLinkEntry(message.text) &&
+          !priorCaptureState?.genericPublic;
         const snapshotBeforeInbound = senderShare?.status === "redeemed"
           ? await captureSnapshot(db, message.from, senderShare.captureId ?? undefined)
           : null;

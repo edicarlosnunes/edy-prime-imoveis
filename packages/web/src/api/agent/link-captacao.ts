@@ -142,6 +142,10 @@ const isGenericLinkStart = (text: string | null | undefined) => {
   return value.split(start).join("").trim() === "";
 };
 
+/** Public reusable entry is exact text, never an opaque exclusive bearer token. */
+export const isReusableGenericLinkEntry = (text: string | null | undefined) =>
+  isGenericLinkStart(text);
+
 /**
  * Identifica a classe do token de entrada para proteger fichas concluídas.
  * Um futuro emissor pode introduzir um identificador distinto depois de
@@ -274,6 +278,10 @@ export interface LinkCaptacaoState {
   complete: boolean;
   /** Bloqueia o atendimento normal após encerrar a captação deste link. */
   completionGuard: boolean;
+  /** Reusable public phrase flow; deliberately has no facade-photo step. */
+  genericPublic?: boolean;
+  /** Generic flow has all requested details and is waiting for an explicit OK. */
+  genericAwaitingConfirmation?: boolean;
   /** Current redeemed bearer row authorizing this flow. */
   shareTokenId?: number | null;
   /** Capture id permanently bound to the redeemed link, when present. */
@@ -385,6 +393,37 @@ function buildState(input: {
     complete: nextStep === null,
     completionGuard: false,
     intention,
+  };
+}
+
+function reusableGenericState(
+  state: LinkCaptacaoState,
+): LinkCaptacaoState {
+  const route = applicableLinkSteps(state.snapshot.propertyType)
+    .filter((step) => step.key !== "fotoFrente");
+  const nextStep = route.find((step) => !state.answered.includes(step.key))?.key ?? null;
+  if (!nextStep) {
+    return {
+      ...state,
+      genericPublic: true,
+      startNewProperty: state.snapshot.captureId === null,
+      genericAwaitingConfirmation: true,
+      complete: false,
+      nextStep: null,
+      nextQuestion: "Responda OK para finalizar o cadastro.",
+    };
+  }
+  return {
+    ...state,
+    genericPublic: true,
+    startNewProperty: state.snapshot.captureId === null,
+    genericAwaitingConfirmation: false,
+    complete: false,
+    nextStep,
+    nextQuestion: linkQuestion(nextStep, {
+      propertyType: state.snapshot.propertyType,
+      intention: state.intention,
+    }),
   };
 }
 
@@ -556,25 +595,6 @@ export async function linkCaptacaoState(
   if (!ownerPhoneKey(phone)) return null;
   const userMessages = turns.filter((turn) => turn.role === "user");
   const currentShare = await latestCaptureShareForSender(db, phone!);
-  if (currentShare?.status === "completed") {
-    const snapshot = await captureSnapshot(db, phone);
-    return {
-      active: true,
-      presenter: "proprietario",
-      ownerPhone: phone,
-      broker: null,
-      freshEntry: false,
-      fromLink: true,
-      startNewProperty: false,
-      snapshot,
-      answered: linkAnswered(snapshot),
-      nextStep: null,
-      nextQuestion: null,
-      complete: true,
-      completionGuard: true,
-      intention: snapshot.intention === "locacao" ? "locacao" : "venda",
-    };
-  }
   const verifiedTokens = new Map<string, { id: number; captureId: number | null }>();
   for (const turn of userMessages) {
     const token = shareTokenFromMessage(turn.content);
@@ -620,8 +640,8 @@ export async function linkCaptacaoState(
     !captureWasCompleted &&
     turns.some((turn) => turn.role === "assistant" && turn.content.includes(ROLE_QUESTION));
   const trustedLegacyEntry = (text: string) =>
+    isGenericLinkStart(text) ||
     legacyEntryIsActive && (
-      isGenericLinkStart(text) ||
       fold(text) === fold(OWNER_ENTRY_MESSAGE) ||
       fold(text) === fold(BROKER_ENTRY_MESSAGE) ||
       fold(text).includes(fold(LINK_CAPTACAO_BROKER_TOKEN))
@@ -630,12 +650,18 @@ export async function linkCaptacaoState(
     verifiedTokens.has(text) || trustedLegacyEntry(text);
   let latestGeneric = -1;
   const seenEntryKeys = new Set<string>();
+  let closingAtEntry = -1;
   turns.forEach((turn, index) => {
+    if (turn.role === "assistant" && turn.content.includes(CLOSING_MESSAGE)) {
+      closingAtEntry = index;
+    }
     if (turn.role !== "user" || !trustedEntry(turn.content)) return;
     const share = verifiedTokens.get(turn.content);
     const key = share
       ? `SHARE:${share.id}`
-      : `LEGACY:${linkEntryToken(turn.content) ?? fold(turn.content)}`;
+      : isGenericLinkStart(turn.content)
+        ? `GENERIC:${closingAtEntry}`
+        : `LEGACY:${linkEntryToken(turn.content) ?? fold(turn.content)}`;
     if (seenEntryKeys.has(key)) return;
     seenEntryKeys.add(key);
     latestGeneric = index;
@@ -677,10 +703,25 @@ export async function linkCaptacaoState(
   /* Posição do último clique e do último fechamento na conversa. */
   let lastLink = -1;
   let lastClosing = -1;
+  let lastExplicitToken = -1;
   turns.forEach((turn, index) => {
     if (turn.role === "user" && trustedEntry(turn.content)) lastLink = index;
+    if (turn.role === "user" && shareTokenFromMessage(turn.content)) lastExplicitToken = index;
     if (turn.role === "assistant" && turn.content.includes(CLOSING_MESSAGE)) lastClosing = index;
   });
+  const firstReusableEntryAfterClose = turns.findIndex(
+    (turn, index) =>
+      index > lastClosing &&
+      turn.role === "user" &&
+      isGenericLinkStart(turn.content),
+  );
+  const genericPublicActive =
+    currentShare?.status !== "redeemed" &&
+    firstReusableEntryAfterClose > lastClosing &&
+    firstReusableEntryAfterClose > lastExplicitToken &&
+    turns.slice(firstReusableEntryAfterClose + 1).every(
+      (turn) => turn.role !== "user" || !shareTokenFromMessage(turn.content),
+    );
   const relink = lastLink >= 0 && lastLink > lastClosing;
   const latestUserIndex = turns.reduce(
     (latest, turn, index) => turn.role === "user" ? index : latest,
@@ -721,7 +762,11 @@ export async function linkCaptacaoState(
       lastClosing >= 0
         ? latestUserIndex > lastClosing
         : captureWasCompleted && latestUserIndex >= 0;
-    if (currentShare?.status === "completed" || (!completedBeforeThisTurn || distinctTokenBypass || currentVerifiedNewLink)) return state;
+    if (genericPublicActive) return state;
+    if (
+      currentShare?.status !== "completed" &&
+      (!completedBeforeThisTurn || distinctTokenBypass || currentVerifiedNewLink)
+    ) return state;
     return {
       ...state,
       active: true,
@@ -807,19 +852,24 @@ export async function linkCaptacaoState(
       replayQuestion: replayedToken && !selectedRole ? ROLE_QUESTION : cleanState.nextQuestion,
       ...(nameAnswered ? { startNewProperty: true, intention } : { intention }),
     };
-    return guardCompleted(prepared);
+    return guardCompleted(genericPublicActive
+      ? reusableGenericState({ ...prepared, startNewProperty: true })
+      : prepared);
   }
 
   const state = buildState({ snapshot, freshEntry, fromLink, sticky, relink, intention });
+  const genericState = genericPublicActive
+    ? reusableGenericState(state)
+    : state;
   return guardCompleted({
-    ...state,
+    ...genericState,
     shareTokenId: activeShareId,
     shareCaptureId,
     replayedToken,
     replayQuestion:
       replayedToken && shareCaptureId === null && !selectedRole
         ? ROLE_QUESTION
-        : state.nextQuestion,
+        : genericState.nextQuestion,
   });
 }
 
@@ -1173,19 +1223,38 @@ export async function linkCaptacaoReply(
     };
   }
 
+  if (
+    state.genericPublic &&
+    state.genericAwaitingConfirmation &&
+    /^ok[.! ]*$/i.test(String(lastUser ?? "").trim())
+  ) {
+    return finish(
+      { ...state, complete: true, nextQuestion: null, genericAwaitingConfirmation: false },
+      { offScript: false, toolCalls },
+    );
+  }
+
   /* Entrada genérica: o ED primeiro identifica o perfil. */
   let genericIndex = -1;
+  let sawGenericEntry = false;
+  let closingIndex = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role === "assistant" && turn.content.includes(CLOSING_MESSAGE)) closingIndex = index;
+  });
   const seenTokenEntries = new Set<number>();
   for (let index = 0; index < turns.length; index++) {
     const turn = turns[index]!;
     if (turn.role !== "user") continue;
     if (
       isGenericLinkStart(turn.content) &&
+      state.genericPublic &&
       state.fromLink &&
+      index > closingIndex &&
       !state.completionGuard &&
       !state.complete
     ) {
-      genericIndex = index;
+      if (!sawGenericEntry) genericIndex = index;
+      sawGenericEntry = true;
       continue;
     }
     const token = shareTokenFromMessage(turn.content);
@@ -1203,7 +1272,10 @@ export async function linkCaptacaoReply(
   }
   if (genericIndex >= 0) {
     const replies = turns.slice(genericIndex + 1).filter(
-      (turn) => turn.role === "user" && !shareTokenFromMessage(turn.content),
+      (turn) =>
+        turn.role === "user" &&
+        !shareTokenFromMessage(turn.content) &&
+        !isGenericLinkStart(turn.content),
     );
     if (replies.length === 0) {
       return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
@@ -1282,7 +1354,7 @@ export async function linkCaptacaoReply(
         const nextState: LinkCaptacaoState = {
           ...state,
           freshEntry: false,
-          startNewProperty: false,
+          startNewProperty: Boolean(state.genericPublic),
           snapshot: saved.snapshot,
           answered: ["nome"],
           nextStep: "endereco",
@@ -1307,7 +1379,7 @@ export async function linkCaptacaoReply(
       });
       if (saved.saved) {
         return finish(
-          await reload(db, state.ownerPhone ?? phone, state.startNewProperty),
+          await reload(db, state.ownerPhone ?? phone, state.startNewProperty, state.genericPublic),
           { offScript: false, toolCalls },
         );
       }
@@ -1332,7 +1404,7 @@ export async function linkCaptacaoReply(
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
     return finish(
       saved.saved
-        ? await reload(db, state.ownerPhone ?? phone, state.startNewProperty)
+        ? await reload(db, state.ownerPhone ?? phone, state.startNewProperty, state.genericPublic)
         : state,
       { offScript: false, toolCalls },
     );
@@ -1370,7 +1442,7 @@ export async function linkCaptacaoReply(
     await saveAnswer(skipInput);
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(skipInput) });
     return finish(
-      await reload(db, state.ownerPhone ?? phone, state.startNewProperty),
+      await reload(db, state.ownerPhone ?? phone, state.startNewProperty, state.genericPublic),
       { offScript: false, toolCalls },
     );
   }
@@ -1411,7 +1483,10 @@ export async function linkCaptacaoReply(
       toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(address) });
       if (shareBindingConflict) return rejectedShareConflict();
       if (saved.saved) {
-        return finish(await reload(db, state.ownerPhone ?? phone, false), { offScript: false, toolCalls });
+        return finish(
+          await reload(db, state.ownerPhone ?? phone, false, state.genericPublic),
+          { offScript: false, toolCalls },
+        );
       }
     }
   }
@@ -1488,7 +1563,15 @@ export async function linkCaptacaoReply(
     };
   }
 
-  return finish(await reload(db, state.ownerPhone ?? phone, state.startNewProperty && !addressSaved), { offScript, toolCalls });
+  return finish(
+    await reload(
+      db,
+      state.ownerPhone ?? phone,
+      state.startNewProperty && !addressSaved,
+      state.genericPublic,
+    ),
+    { offScript, toolCalls },
+  );
 }
 
 /**
@@ -1498,13 +1581,19 @@ export async function linkCaptacaoReply(
  * segunda ficha — sem isso, uma extração que não gravou nada faria o fluxo
  * repetir o fechamento do cadastro ANTERIOR em vez de insistir no endereço.
  */
-async function reload(db: AdminDb, phone: string, relink: boolean): Promise<LinkCaptacaoState> {
+async function reload(
+  db: AdminDb,
+  phone: string,
+  relink: boolean,
+  genericPublic = false,
+): Promise<LinkCaptacaoState> {
   const baseSnapshot = await captureSnapshot(db, phone);
   const session = await linkCaptureSession(db, baseSnapshot.ownerId);
   const snapshot = session.activeCaptureId !== null
     ? await captureSnapshot(db, phone, session.activeCaptureId)
     : baseSnapshot;
-  return buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink });
+  const state = buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink });
+  return genericPublic ? reusableGenericState(state) : state;
 }
 
 /** A frase que vai para o cliente. Sempre uma das três do roteiro. */

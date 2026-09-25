@@ -803,7 +803,7 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       const staticMessage = await postWhatsapp(LINK_CAPTACAO_MESSAGE, false, "5513997141174");
       expect(staticMessage.body.processed).toBe(1);
       const staticReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
-      expect(staticReply.text.body).toBe("Solicite outro link para cadastro.");
+      expect(staticReply.text.body).toBe("Você é proprietário, locador ou corretor do imóvel?");
       expect(await counts()).toEqual({ owners: 0, captures: 0 });
 
       const firstToken = await issueCaptureShareToken(db, 1);
@@ -1178,19 +1178,107 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       expect(repeatedText.text.body).toBe("Solicite outro link para cadastro.");
       expect(await counts()).toEqual({ owners: 1, captures: 1 });
 
+      /* The public reusable phrase is a separate session, even after this
+         sender's exclusive token has completed. It persists another capture
+         progressively and ends on OK without ever requesting a facade photo. */
+      const genericSaveByText: Record<string, Record<string, unknown>> = {
+        "Escritura registrada": { documentacao: "Escritura registrada" },
+        "92 m²": { metragem: "92 m²" },
+        "780 mil": { valorPretendido: 780000 },
+        "R$ 850 de condomínio": { condominio: "R$ 850" },
+        "IPTU R$ 1.200 por ano": { custos: "IPTU R$ 1.200/ano" },
+      };
+      behavior = async (call) => {
+        const body = call.messages.at(-1)?.content ?? "";
+        const save = genericSaveByText[body];
+        if (!save) return { text: "TEXTO DO MODELO (não deve ser enviado)", steps: [] };
+        const result = await call.tools.salvarCadastroVenda!.execute(save, toolOptions) as SaveResult;
+        expect(result.salvo).toBe(true, `salvamento genérico ${body}`);
+        return {
+          text: "TEXTO DO MODELO (não deve ser enviado)",
+          steps: [{ toolCalls: [{ toolName: "salvarCadastroVenda", input: save }] }],
+        };
+      };
+      const genericStart = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
+      expect(genericStart.body.processed).toBe(1);
+      expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
+        .toBe("Você é proprietário, locador ou corretor do imóvel?");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+      const repeatedStart = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
+      expect(repeatedStart.body.processed).toBe(1);
+      expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
+        .toBe("Você é proprietário, locador ou corretor do imóvel?");
+      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+
+      for (const [text, expected] of [
+        ["proprietário", "Qual é o seu nome completo?"],
+        ["Ana Souza", Q_ENDERECO],
+        ["Avenida Brasil, 210", Q_DOCUMENTACAO],
+      ] as const) {
+        await postWhatsapp(text);
+        expect(JSON.parse(graphCalls.at(-1)!.body).text.body).toBe(expected);
+      }
+      const [newCaptureAfterAddress] = await db.all<{ id: number; street: string | null }>(
+        sql`SELECT id, street FROM property_captures ORDER BY id DESC LIMIT 1`,
+      );
+      expect(newCaptureAfterAddress?.id).not.toBe(boundCapture?.id);
+      expect(newCaptureAfterAddress?.street).toBe("Avenida Brasil");
+      expect(await counts()).toEqual({ owners: 1, captures: 2 });
+
+      const genericAnswers: [string, string][] = [
+        ["Escritura registrada", linkQuestion("tipo")],
+        ["apartamento", linkQuestion("dormitorios")],
+        ["3", linkQuestion("suites")],
+        ["1", linkQuestion("banheiros")],
+        ["2", linkQuestion("vagas")],
+        ["1", linkQuestion("metragem")],
+        ["92 m²", linkQuestion("valor")],
+        ["780 mil", Q_CONDOMINIO],
+        ["R$ 850 de condomínio", linkQuestion("custos")],
+        ["IPTU R$ 1.200 por ano", "Responda OK para finalizar o cadastro."],
+      ];
+      for (const [text, expected] of genericAnswers) {
+        await postWhatsapp(text);
+        expect(JSON.parse(graphCalls.at(-1)!.body).text.body).toBe(expected);
+      }
+      const [progressiveCapture] = await db.all<{
+        id: number;
+        street: string | null;
+        owner_photos: string | null;
+        notes: string | null;
+      }>(
+        sql`SELECT id, street, owner_photos, notes FROM property_captures ORDER BY id DESC LIMIT 1`,
+      );
+      expect(progressiveCapture?.id).toBe(newCaptureAfterAddress?.id);
+      expect(progressiveCapture?.owner_photos).toBeNull();
+      expect(progressiveCapture?.notes).not.toContain("Foto da fachada recebida");
+      expect(await counts()).toEqual({ owners: 1, captures: 2 });
+
+      await postWhatsapp("OK");
+      expect(JSON.parse(graphCalls.at(-1)!.body).text.body).toBe(FECHAMENTO);
+      const genericReplay = await postWhatsapp(`LINK_CAPTACAO:${shareToken}`);
+      expect(genericReplay.body.processed).toBe(1);
+      expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
+        .toBe("Solicite outro link para cadastro.");
+      const afterGenericArbitrary = await postWhatsapp("Quero cadastrar outro imóvel");
+      expect(afterGenericArbitrary.body.processed).toBe(1);
+      expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
+        .toBe("Solicite outro link para cadastro.");
+      expect(await counts()).toEqual({ owners: 1, captures: 2 });
+
       await db.run(sql`DELETE FROM capture_share_tokens`);
       const forgedLegacy = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
       expect(forgedLegacy.body.processed).toBe(1);
       const forgedLegacyReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
-      expect(forgedLegacyReply.text.body).toBe("Solicite outro link para cadastro.");
-      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+      expect(forgedLegacyReply.text.body).toBe("Você é proprietário, locador ou corretor do imóvel?");
+      expect(await counts()).toEqual({ owners: 1, captures: 2 });
 
       for (const token of [issuedShareTokens[0]!, "0".repeat(64)]) {
         const blocked = await postWhatsapp(`LINK_CAPTACAO:${token}`);
         expect(blocked.body.processed).toBe(1);
         const blockedText = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
         expect(blockedText.text.body).toBe("Solicite outro link para cadastro.");
-        expect(await counts()).toEqual({ owners: 1, captures: 1 });
+        expect(await counts()).toEqual({ owners: 1, captures: 2 });
       }
 
       const nextToken = await issueCaptureShareToken(db, 1);
@@ -1202,7 +1290,7 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       expect(locador.body.processed).toBe(1);
       const locadorText = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
       expect(locadorText.text.body).toBe("Qual é o seu nome completo?");
-      expect(await counts()).toEqual({ owners: 1, captures: 1 });
+      expect(await counts()).toEqual({ owners: 1, captures: 2 });
       const closeMessages = graphCalls.filter((call) => {
         try {
           return (JSON.parse(call.body) as { text?: { body?: string } }).text?.body === FECHAMENTO;
@@ -1210,11 +1298,11 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
           return false;
         }
       });
-      expect(closeMessages).toHaveLength(1);
+      expect(closeMessages).toHaveLength(2);
     } finally {
       globalThis.fetch = realFetch;
     }
-  });
+  }, 30_000);
 });
 
 /* --------------------------------------------- 2. salvamento progressivo */
@@ -1510,13 +1598,13 @@ describe("6. ausência de duplicidade", () => {
     return conversa;
   }
 
-  test("o link repetido após conclusão pede outro link", async () => {
+  test("a frase pública exata abre outra sessão após conclusão", async () => {
     await primeiroImovelConcluido();
     const volta = await conversation("5513997141174:segundo");
 
     const novo = await linkTurn(volta.id, LINK_CAPTACAO_MESSAGE);
 
-    expect(novo.reply).toBe("Solicite outro link para cadastro.");
+    expect(novo.reply).toBe("Você é proprietário, locador ou corretor do imóvel?");
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
