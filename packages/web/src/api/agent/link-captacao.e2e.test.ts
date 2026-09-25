@@ -1253,9 +1253,31 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       expect(progressiveCapture?.owner_photos).toBeNull();
       expect(progressiveCapture?.notes).not.toContain("Foto da fachada recebida");
       expect(await counts()).toEqual({ owners: 1, captures: 2 });
+      const [ownerBeforeConfirmation] = await db.all<{ notes: string | null }>(
+        sql`SELECT notes FROM owners LIMIT 1`,
+      );
+      expect(ownerBeforeConfirmation?.notes)
+        .toContain(`[LINK_CAPTACAO_FICHA_ATIVA:${newCaptureAfterAddress!.id}:`);
 
       await postWhatsapp("OK");
       expect(JSON.parse(graphCalls.at(-1)!.body).text.body).toBe(FECHAMENTO);
+      const [confirmedCapture] = await db.all<{ notes: string | null }>(
+        sql`SELECT notes FROM property_captures WHERE id = ${newCaptureAfterAddress!.id}`,
+      );
+      expect(confirmedCapture?.notes).toContain("- Confirmação final: OK");
+      const [ownerAfterConfirmation] = await db.all<{ notes: string | null }>(
+        sql`SELECT notes FROM owners LIMIT 1`,
+      );
+      expect(ownerAfterConfirmation?.notes ?? "").not.toContain("[LINK_CAPTACAO_FICHA_ATIVA:");
+      const truncatedConversation = await conversation("5513997141174:generic-after-ok");
+      await addMessage(db, truncatedConversation.id, {
+        direction: "in",
+        author: "cliente",
+        body: "Oi",
+      });
+      const afterTruncatedHistory = await aiTurn(db, truncatedConversation.id, BASE_URL);
+      expect(afterTruncatedHistory.text).toBe("Solicite outro link para cadastro.");
+      expect(afterTruncatedHistory.text).not.toBe(Q_FOTO);
       const genericReplay = await postWhatsapp(`LINK_CAPTACAO:${shareToken}`);
       expect(genericReplay.body.processed).toBe(1);
       expect(JSON.parse(graphCalls.at(-1)!.body).text.body)

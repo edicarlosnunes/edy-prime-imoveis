@@ -321,6 +321,8 @@ function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
   ] as const) {
     if (filled(answers[key])) done.add(key);
   }
+  /* Reusable public captures finish on a persisted OK instead of a photo. */
+  if (fold(answers.confirmacaoFinal) === "ok") done.add("fotoFrente");
   return LINK_STEPS.filter((step) => done.has(step.key)).map((step) => step.key);
 }
 
@@ -1228,8 +1230,46 @@ export async function linkCaptacaoReply(
     state.genericAwaitingConfirmation &&
     /^ok[.! ]*$/i.test(String(lastUser ?? "").trim())
   ) {
+    const captureId = state.snapshot.captureId;
+    const ownerId = state.snapshot.ownerId;
+    if (captureId === null || ownerId === null) {
+      return {
+        text: "Não foi possível finalizar este cadastro. Solicite atendimento para continuar.",
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
+    }
+    const confirmation = await saveCaptureAnswer(db, {
+      phone: state.ownerPhone ?? phone,
+      confirmacaoFinal: "OK",
+      negociacao: state.intention,
+      origem: LINK_CAPTACAO_ORIGIN,
+      targetCaptureId: captureId,
+    });
+    if (
+      !confirmation.saved ||
+      confirmation.captureId !== captureId ||
+      confirmation.snapshot.ownerId !== ownerId
+    ) {
+      return {
+        text: "Não foi possível finalizar este cadastro. Solicite atendimento para continuar.",
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
+    }
     return finish(
-      { ...state, complete: true, nextQuestion: null, genericAwaitingConfirmation: false },
+      {
+        ...state,
+        snapshot: confirmation.snapshot,
+        answered: linkAnswered(confirmation.snapshot),
+        complete: true,
+        nextQuestion: null,
+        genericAwaitingConfirmation: false,
+      },
       { offScript: false, toolCalls },
     );
   }
