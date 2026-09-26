@@ -28,7 +28,6 @@ import { parseChecklist } from "../lib/capture-checklist";
 import { parseComplements } from "../lib/capture-intake";
 import { parseOwnerPhotos } from "../lib/capture-photos";
 import { allocateSerial } from "../lib/serial-counter";
-import { PUBLIC_SITE_URL } from "../../shared/public-site-url";
 
 /* Dados da imobiliária usados no cabeçalho do documento.
 
@@ -38,7 +37,7 @@ import { PUBLIC_SITE_URL } from "../../shared/public-site-url";
    usado, o documento sai marcado como CONFIGURAÇÃO PENDENTE, para ninguém
    assinar um papel com dado jurídico vindo de fallback escondido. */
 const BROKER_FALLBACK = {
-  name: "E. Santos",
+  name: "Edy Prime Imóveis",
   creci: "CRECI 134718-F",
   cnai: "PERITO CNAI 55.918",
   phone: "(13) 99772-6767",
@@ -63,8 +62,7 @@ async function brokerOf(context: any): Promise<BrokerHeader> {
     missing.push(label);
     return fallback;
   };
-  const storedName = pick(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
-  const name = /^Edy Prime(?: Im[oó]veis)?$/i.test(storedName) ? "E. Santos" : storedName;
+  const name = pick(row?.companyName, BROKER_FALLBACK.name, "nome da imobiliária");
   const creci = pick(row?.creci, BROKER_FALLBACK.creci, "CRECI");
   /* CNAI NÃO é dado obrigatório da imobiliária: pertence ao profissional
      avaliador/perito e será tratado à parte. Sai impresso quando existe, mas
@@ -382,7 +380,7 @@ export const adminDocuments = {
         canFinalize: finalize.ok,
         finalizeMessage: finalize.message,
         signedAuthorization: signed,
-        qr: qrTarget(input.baseUrl?.trim() || PUBLIC_SITE_URL, capture.id),
+        qr: qrTarget(input.baseUrl?.trim() || "https://www.edyprimeimoveis.com.br", capture.id),
       };
     }),
 };

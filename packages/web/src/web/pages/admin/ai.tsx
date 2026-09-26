@@ -62,10 +62,10 @@ interface FormState {
 
 const empty: FormState = {
   id: null,
-  name: "Atendimento E. Santos",
+  name: "Atendimento Edy Prime",
   model: "openai/gpt-5.4-mini",
   active: false,
-  greeting: "Olá! Sou o atendimento de E. Santos, Gestor Imobiliário. Como posso ajudar?",
+  greeting: "Olá! Sou o atendimento da Edy Prime Imóveis. Como posso ajudar?",
   instructions:
     "Ajude o cliente a encontrar imóveis do nosso cadastro em Praia Grande. Seja objetivo e elegante.",
   tone: "Sofisticado, direto e humano.",

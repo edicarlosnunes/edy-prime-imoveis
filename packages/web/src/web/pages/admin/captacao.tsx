@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isPublicSiteHostname, PUBLIC_SITE_URL } from "../../../shared/public-site-url";
 import { Plus, Phone, MessageCircle, FileText, Building2, Link2, Radar, Globe2, ArrowRight } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useLocation, useSearch } from "wouter";
@@ -68,7 +67,7 @@ const CRECI = "134718-F";
 const TEAM_SOURCE_OPTIONS = CAPTURE_SOURCE_OPTIONS.filter(
   ([value]) => value === "manual" || value === "prospeccao" || value === "indicacao" || value === "portal",
 );
-const PUBLIC_CAPTURE_URL = `${PUBLIC_SITE_URL}/link-captacao`;
+const PUBLIC_CAPTURE_URL = "https://www.edyprimeimoveis.com.br/link-captacao";
 
 export default function Captacao() { return <AdminGuard><Content /></AdminGuard>; }
 
@@ -142,7 +141,7 @@ function Content() {
   const overdue = active.filter((x) => x.nextActionAt && new Date(x.nextActionAt).getTime() < Date.now()).length;
   const sourceLabel = source ? captureSourceLabel(source) : null;
   const isOfficialDomain = typeof window !== "undefined" &&
-    isPublicSiteHostname(window.location.hostname);
+    ["www.edyprimeimoveis.com.br", "edyprimeimoveis.com.br"].includes(window.location.hostname);
   const canIssueExclusiveLinks = isOfficialDomain;
   async function generateExclusiveCaptureLink() {
     if (!canIssueExclusiveLinks) {

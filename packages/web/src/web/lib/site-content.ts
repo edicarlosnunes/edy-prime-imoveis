@@ -14,7 +14,6 @@ import {
   type TypographyMap,
   type TypographyScopeMap,
 } from "./site-typography";
-import { PUBLIC_SITE_URL } from "../../shared/public-site-url";
 
 export interface MenuItem {
   id: string;
@@ -523,7 +522,7 @@ export const defaultSiteContent: SiteContent = {
     title: "E. Santos | Gestor Imobiliário em Praia Grande/SP",
     description:
       "E. Santos — Gestor Imobiliário · CRECI 134718-F. Assessoria em imóveis de médio e alto padrão em Praia Grande/SP.",
-    ogImageUrl: `${PUBLIC_SITE_URL}/og-esantos.png`,
+    ogImageUrl: "/og-esantos.png",
     shareTitle: "E. Santos | Gestor Imobiliário · CRECI 134718-F",
     shareDescription:
       "Imóveis de médio e alto padrão em Praia Grande/SP com curadoria e atendimento direto pelo WhatsApp.",
