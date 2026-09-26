@@ -522,7 +522,7 @@ export const defaultSiteContent: SiteContent = {
     title: "E. Santos | Gestor Imobiliário em Praia Grande/SP",
     description:
       "E. Santos — Gestor Imobiliário · CRECI 134718-F. Assessoria em imóveis de médio e alto padrão em Praia Grande/SP.",
-    ogImageUrl: "https://esantoscorretor.com.br/og-esantos.png",
+    ogImageUrl: "https://www.edyprimeimoveis.com.br/og-esantos.png",
     shareTitle: "E. Santos | Gestor Imobiliário · CRECI 134718-F",
     shareDescription:
       "Imóveis de médio e alto padrão em Praia Grande/SP com curadoria e atendimento direto pelo WhatsApp.",

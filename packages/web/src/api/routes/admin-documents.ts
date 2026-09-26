@@ -381,7 +381,7 @@ export const adminDocuments = {
         canFinalize: finalize.ok,
         finalizeMessage: finalize.message,
         signedAuthorization: signed,
-        qr: qrTarget(input.baseUrl?.trim() || "https://esantoscorretor.com.br", capture.id),
+        qr: qrTarget(input.baseUrl?.trim() || "https://www.edyprimeimoveis.com.br", capture.id),
       };
     }),
 };

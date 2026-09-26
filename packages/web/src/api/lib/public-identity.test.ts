@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { siteBaseUrl } from "./base-url";
 import { previewPublicSiteContent, publicBrandText } from "./public-identity";
 
 describe("identidade pública da prévia", () => {
@@ -27,7 +28,7 @@ describe("identidade pública da prévia", () => {
     });
     expect(result.theme.logoUrl).toBe("/esantos-logo.png");
     expect(result.theme.faviconUrl).toBe("/esantos-logo.png");
-    expect(result.seo.ogImageUrl).toBe("https://esantoscorretor.com.br/og-esantos.png");
+    expect(result.seo.ogImageUrl).toBe("https://www.edyprimeimoveis.com.br/og-esantos.png");
     expect(old.company.name).toBe("Edy Prime");
     expect(old.theme.logoUrl).toBe("/api/media/old");
   });
@@ -36,7 +37,27 @@ describe("identidade pública da prévia", () => {
     expect(publicBrandText("Olá, aqui é da Edy Prime Imóveis.")).toBe("Olá, aqui é da E. Santos.");
     expect(publicBrandText("edyprimeimoveis@gmail.com")).toBe("edyprimeimoveis@gmail.com");
     expect(publicBrandText("Veja https://www.edyprimeimoveis.com.br/imovel/123")).toBe(
-      "Veja https://esantoscorretor.com.br/imovel/123",
+      "Veja https://www.edyprimeimoveis.com.br/imovel/123",
     );
+    expect(publicBrandText("Veja https://esantoscorretor.com.br/imovel/123")).toBe(
+      "Veja https://www.edyprimeimoveis.com.br/imovel/123",
+    );
+  });
+
+  test("mantém links públicos no domínio ativo enquanto o novo não resolve", () => {
+    const original = process.env.WEBSITE_URL;
+    try {
+      delete process.env.WEBSITE_URL;
+      expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(
+        "https://www.edyprimeimoveis.com.br",
+      );
+      process.env.WEBSITE_URL = "https://esantoscorretor.com.br";
+      expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(
+        "https://www.edyprimeimoveis.com.br",
+      );
+    } finally {
+      if (original === undefined) delete process.env.WEBSITE_URL;
+      else process.env.WEBSITE_URL = original;
+    }
   });
 });
