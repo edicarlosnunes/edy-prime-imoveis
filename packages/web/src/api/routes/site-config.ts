@@ -1,7 +1,7 @@
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
-import { PUBLIC_IDENTITY } from "../lib/public-identity";
+import { PUBLIC_IDENTITY, previewPublicEmail } from "../lib/public-identity";
 
 /**
  * Dados públicos da imobiliária (editáveis em /admin → Configurações).
@@ -18,7 +18,7 @@ export const siteConfig = {
         brand: PUBLIC_IDENTITY.name,
         broker: PUBLIC_IDENTITY.name,
         whatsapp: row.whatsapp,
-        email: row.email,
+        email: previewPublicEmail(row.email),
         creci: PUBLIC_IDENTITY.creci,
         address: row.address,
         instagram: row.instagram,

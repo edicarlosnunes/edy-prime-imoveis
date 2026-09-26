@@ -484,7 +484,7 @@ export const defaultSiteContent: SiteContent = {
     creci: "CRECI 134718-F",
     whatsapp: "5513997726767",
     phone: "(13) 99772-6767",
-    email: "edyprimeimoveis@gmail.com",
+    email: "esantosgestorimobiliario@gmail.com",
     address: "Rua Guimarães Rosa, 492/163 — CEP 11704-160 — Praia Grande/SP",
     instagram: "https://instagram.com/edy_prime_imoveis",
     facebook: "https://facebook.com/edy_prime_imoveis",

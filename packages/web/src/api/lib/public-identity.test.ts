@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { previewPublicSiteContent, publicBrandText } from "./public-identity";
+import { previewPublicEmail, previewPublicSiteContent, publicBrandText } from "./public-identity";
 
 describe("identidade pública da prévia", () => {
   test("substitui só a apresentação, sem alterar os dados recebidos ou contatos", () => {
@@ -22,14 +22,21 @@ describe("identidade pública da prévia", () => {
       name: "E. Santos",
       brandSuffix: "",
       broker: "E. Santos",
-      email: old.company.email,
+      email: "esantosgestorimobiliario@gmail.com",
       whatsapp: old.company.whatsapp,
     });
     expect(result.theme.logoUrl).toBe("/esantos-logo.png");
     expect(result.theme.faviconUrl).toBe("/esantos-logo.png");
     expect(result.seo.ogImageUrl).toBe("https://www.edyprimeimoveis.com.br/og-esantos.png");
     expect(old.company.name).toBe("Edy Prime");
+    expect(old.company.email).toBe("edyprimeimoveis@gmail.com");
     expect(old.theme.logoUrl).toBe("/api/media/old");
+  });
+
+  test("troca apenas o antigo e-mail na saída pública", () => {
+    expect(previewPublicEmail("edyprimeimoveis@gmail.com")).toBe("esantosgestorimobiliario@gmail.com");
+    expect(previewPublicEmail("contato@example.org")).toBe("contato@example.org");
+    expect(previewPublicEmail(null)).toBeNull();
   });
 
   test("não substitui identificadores e contatos técnicos", () => {

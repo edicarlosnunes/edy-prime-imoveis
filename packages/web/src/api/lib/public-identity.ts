@@ -14,6 +14,11 @@ export const PUBLIC_IDENTITY = {
   shareTitle: "E. Santos | Gestor Imobiliário · CRECI 134718-F",
 } as const;
 
+/** Troca apenas o endereço antigo na apresentação pública, sem editar registros. */
+export function previewPublicEmail(value: string | null | undefined) {
+  return value === "edyprimeimoveis@gmail.com" ? "esantosgestorimobiliario@gmail.com" : value;
+}
+
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...value as Record<string, unknown> }
@@ -38,6 +43,7 @@ export function previewPublicSiteContent(value: unknown): unknown {
     broker: PUBLIC_IDENTITY.name,
     role: PUBLIC_IDENTITY.role,
     creci: PUBLIC_IDENTITY.creci,
+    email: typeof company.email === "string" ? previewPublicEmail(company.email) : company.email,
   };
 
   data.theme = {

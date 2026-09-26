@@ -12,7 +12,7 @@ export const site = {
   /** Somente números, com DDI e DDD. Ex: 5513991234567 */
   whatsapp: "5513997726767",
   whatsappLabel: "(13) 99772-6767",
-  email: "edyprimeimoveis@gmail.com",
+  email: "esantosgestorimobiliario@gmail.com",
   instagram: "https://instagram.com/edy_prime_imoveis",
   instagramHandle: "@edy_prime_imoveis",
   facebook: "https://facebook.com/edy_prime_imoveis",
