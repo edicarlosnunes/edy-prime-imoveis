@@ -28,6 +28,7 @@ import { parseChecklist } from "../lib/capture-checklist";
 import { parseComplements } from "../lib/capture-intake";
 import { parseOwnerPhotos } from "../lib/capture-photos";
 import { allocateSerial } from "../lib/serial-counter";
+import { PUBLIC_SITE_URL } from "../../shared/public-site-url";
 
 /* Dados da imobiliária usados no cabeçalho do documento.
 
@@ -381,7 +382,7 @@ export const adminDocuments = {
         canFinalize: finalize.ok,
         finalizeMessage: finalize.message,
         signedAuthorization: signed,
-        qr: qrTarget(input.baseUrl?.trim() || "https://www.edyprimeimoveis.com.br", capture.id),
+        qr: qrTarget(input.baseUrl?.trim() || PUBLIC_SITE_URL, capture.id),
       };
     }),
 };

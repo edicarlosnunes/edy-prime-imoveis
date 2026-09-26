@@ -2,12 +2,14 @@
  * Identidade exibida na prévia. Os registros publicados no CMS e nas
  * Configurações permanecem intactos até a aprovação da publicação.
  */
+import { PUBLIC_SITE_URL } from "../../shared/public-site-url";
+
 export const PUBLIC_IDENTITY = {
   name: "E. Santos",
   role: "Gestor Imobiliário",
   creci: "CRECI 134718-F",
   logo: "/esantos-logo.png",
-  shareImage: "https://www.edyprimeimoveis.com.br/og-esantos.png",
+  shareImage: `${PUBLIC_SITE_URL}/og-esantos.png`,
   title: "E. Santos | Gestor Imobiliário em Praia Grande/SP",
   description:
     "E. Santos — Gestor Imobiliário · CRECI 134718-F. Assessoria em imóveis de médio e alto padrão em Praia Grande/SP.",
@@ -56,8 +58,8 @@ export function previewPublicSiteContent(value: unknown): unknown {
 }
 
 /** Somente para textos de saída: não altera instruções ou regras do agente. */
-export function publicBrandText(value: string) {
+export function publicBrandText(value: string, publicUrl: string = PUBLIC_SITE_URL) {
   return value
     .replace(/Edy Prime(?: Im[oó]veis)?/gi, PUBLIC_IDENTITY.name)
-    .replace(/https?:\/\/(?:www\.)?esantoscorretor\.com\.br/gi, "https://www.edyprimeimoveis.com.br");
+    .replace(/https?:\/\/(?:www\.)?(?:edyprimeimoveis|esantoscorretor)\.com\.br/gi, publicUrl);
 }

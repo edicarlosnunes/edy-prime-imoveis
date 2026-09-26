@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { siteBaseUrl } from "./base-url";
 import { previewPublicSiteContent, publicBrandText } from "./public-identity";
+import { isPublicSiteHostname, PUBLIC_SITE_URL } from "../../shared/public-site-url";
 
 describe("identidade pública da prévia", () => {
   test("substitui só a apresentação, sem alterar os dados recebidos ou contatos", () => {
@@ -28,7 +32,7 @@ describe("identidade pública da prévia", () => {
     });
     expect(result.theme.logoUrl).toBe("/esantos-logo.png");
     expect(result.theme.faviconUrl).toBe("/esantos-logo.png");
-    expect(result.seo.ogImageUrl).toBe("https://www.edyprimeimoveis.com.br/og-esantos.png");
+    expect(result.seo.ogImageUrl).toBe(`${PUBLIC_SITE_URL}/og-esantos.png`);
     expect(old.company.name).toBe("Edy Prime");
     expect(old.theme.logoUrl).toBe("/api/media/old");
   });
@@ -37,27 +41,38 @@ describe("identidade pública da prévia", () => {
     expect(publicBrandText("Olá, aqui é da Edy Prime Imóveis.")).toBe("Olá, aqui é da E. Santos.");
     expect(publicBrandText("edyprimeimoveis@gmail.com")).toBe("edyprimeimoveis@gmail.com");
     expect(publicBrandText("Veja https://www.edyprimeimoveis.com.br/imovel/123")).toBe(
-      "Veja https://www.edyprimeimoveis.com.br/imovel/123",
+      `Veja ${PUBLIC_SITE_URL}/imovel/123`,
     );
     expect(publicBrandText("Veja https://esantoscorretor.com.br/imovel/123")).toBe(
-      "Veja https://www.edyprimeimoveis.com.br/imovel/123",
+      `Veja ${PUBLIC_SITE_URL}/imovel/123`,
+    );
+    expect(publicBrandText("Veja https://www.edyprimeimoveis.com.br/imovel/123", "https://esantoscorretor.com.br")).toBe(
+      "Veja https://esantoscorretor.com.br/imovel/123",
     );
   });
 
-  test("mantém links públicos no domínio ativo enquanto o novo não resolve", () => {
-    const original = process.env.WEBSITE_URL;
-    try {
-      delete process.env.WEBSITE_URL;
-      expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(
-        "https://www.edyprimeimoveis.com.br",
-      );
-      process.env.WEBSITE_URL = "https://esantoscorretor.com.br";
-      expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(
-        "https://www.edyprimeimoveis.com.br",
-      );
-    } finally {
-      if (original === undefined) delete process.env.WEBSITE_URL;
-      else process.env.WEBSITE_URL = original;
-    }
+  test("a URL canônica configurada é usada sem proibir o próximo domínio", () => {
+    expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(PUBLIC_SITE_URL);
+    expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }), "https://esantoscorretor.com.br"))
+      .toBe("https://esantoscorretor.com.br");
+    expect(isPublicSiteHostname(new URL(PUBLIC_SITE_URL).hostname)).toBe(true);
+  });
+
+  test("fontes públicas não têm URLs absolutas de marca divergentes ou hardcoded", () => {
+    const webRoot = fileURLToPath(new URL("../../../", import.meta.url));
+    const html = readFileSync(join(webRoot, "index.html"), "utf8");
+    expect(html).toContain("__PUBLIC_SITE_URL__");
+    const sourceRoot = join(webRoot, "src");
+    const visit = (directory: string) => {
+      for (const item of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, item.name);
+        if (item.isDirectory()) visit(path);
+        else if (/\.[cm]?[jt]sx?$/.test(item.name) && !/\.test\.[jt]sx?$/.test(item.name) && item.name !== "public-site-url.ts") {
+          expect(readFileSync(path, "utf8"), path)
+            .not.toMatch(/https?:\/\/(?:www\.)?(?:edyprimeimoveis|esantoscorretor)\.com\.br/i);
+        }
+      }
+    };
+    visit(sourceRoot);
   });
 });
