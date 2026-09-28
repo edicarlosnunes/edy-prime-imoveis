@@ -40,21 +40,25 @@ describe("identidade pública da prévia", () => {
       "Veja https://www.edyprimeimoveis.com.br/imovel/123",
     );
     expect(publicBrandText("Veja https://esantoscorretor.com.br/imovel/123")).toBe(
-      "Veja https://www.edyprimeimoveis.com.br/imovel/123",
+      "Veja https://esantoscorretor.com.br/imovel/123",
     );
   });
 
-  test("mantém links públicos no domínio ativo enquanto o novo não resolve", () => {
+  test("gera URLs canônicas no domínio novo, mesmo com WEBSITE_URL legado", () => {
     const original = process.env.WEBSITE_URL;
     try {
       delete process.env.WEBSITE_URL;
       expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(
-        "https://www.edyprimeimoveis.com.br",
+        "https://www.esantoscorretor.com.br",
       );
-      process.env.WEBSITE_URL = "https://esantoscorretor.com.br";
-      expect(siteBaseUrl(new Headers({ host: "www.edyprimeimoveis.com.br" }))).toBe(
-        "https://www.edyprimeimoveis.com.br",
+      process.env.WEBSITE_URL = "https://www.edyprimeimoveis.com.br";
+      expect(siteBaseUrl(new Headers({ host: "www.esantoscorretor.com.br" }))).toBe(
+        "https://www.esantoscorretor.com.br",
       );
+      process.env.WEBSITE_URL = "https://esantoscorretor.com.br/";
+      expect(siteBaseUrl()).toBe("https://www.esantoscorretor.com.br");
+      process.env.WEBSITE_URL = "https://www.esantoscorretor.com.br";
+      expect(siteBaseUrl()).toBe("https://www.esantoscorretor.com.br");
     } finally {
       if (original === undefined) delete process.env.WEBSITE_URL;
       else process.env.WEBSITE_URL = original;
