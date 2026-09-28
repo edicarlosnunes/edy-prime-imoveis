@@ -58,6 +58,5 @@ export function previewPublicSiteContent(value: unknown): unknown {
 /** Somente para textos de saída: não altera instruções ou regras do agente. */
 export function publicBrandText(value: string) {
   return value
-    .replace(/Edy Prime(?: Im[oó]veis)?/gi, PUBLIC_IDENTITY.name)
-    .replace(/https?:\/\/(?:www\.)?esantoscorretor\.com\.br/gi, "https://www.edyprimeimoveis.com.br");
+    .replace(/Edy Prime(?: Im[oó]veis)?/gi, PUBLIC_IDENTITY.name);
 }
