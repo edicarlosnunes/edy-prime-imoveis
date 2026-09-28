@@ -20,6 +20,7 @@ import { DOC_KIND_LABELS, DOC_TRACK_LABELS } from "../../../api/lib/capture-docu
 import { REGISTRATION_STATUSES, REGISTRATION_STATUS_LABEL, REGISTRATION_STATUS_TONE, normalizeRegistrationStatus } from "../../../api/lib/capture-registration";
 import { DEFAULT_PRIORITY_CITIES, OUTSIDE_PRIORITY_LABEL } from "../../../api/lib/priority-area";
 import { useSetCaptureRegistrationStatus } from "../../queries/admin";
+import { captureShareUrl, isOfficialCaptureHost } from "../../lib/capture-public-url";
 import { useAdminCaptures, useCapture, useCreateCapture, useMarkCaptureLost, useReopenCapture, useSetCaptureDocStatus, useSetCaptureNextAction, useSetCaptureStage, useSaveCaptureAppraisal, useMarkCaptureConverted, useSetCaptureChecklist, useAddCapturePhotos, useRemoveCapturePhoto, useCaptureDocuments, useGenerateCaptureDocument, useSetOwnerIdentity, useClearOwnerDuplicate, useCapturePromotedPhotos, usePromoteCapturePhoto, useDemoteCapturePhoto, useSetCapturePhotoPrimary, useMoveCapturePhoto, useIssueCaptureShareLink, useRevokeCaptureShareLink } from "../../queries/admin";
 
 /* Item 7 — a lista é PRIORIDADE, não limite: cidade de fora não é bloqueada,
@@ -67,7 +68,6 @@ const CRECI = "134718-F";
 const TEAM_SOURCE_OPTIONS = CAPTURE_SOURCE_OPTIONS.filter(
   ([value]) => value === "manual" || value === "prospeccao" || value === "indicacao" || value === "portal",
 );
-const PUBLIC_CAPTURE_URL = "https://www.edyprimeimoveis.com.br/link-captacao";
 
 export default function Captacao() { return <AdminGuard><Content /></AdminGuard>; }
 
@@ -141,7 +141,7 @@ function Content() {
   const overdue = active.filter((x) => x.nextActionAt && new Date(x.nextActionAt).getTime() < Date.now()).length;
   const sourceLabel = source ? captureSourceLabel(source) : null;
   const isOfficialDomain = typeof window !== "undefined" &&
-    ["www.edyprimeimoveis.com.br", "edyprimeimoveis.com.br"].includes(window.location.hostname);
+    isOfficialCaptureHost(window.location.hostname);
   const canIssueExclusiveLinks = isOfficialDomain;
   async function generateExclusiveCaptureLink() {
     if (!canIssueExclusiveLinks) {
@@ -151,7 +151,7 @@ function Content() {
     setShareLinkStatus("");
     try {
       const result = await issueCaptureLink.mutateAsync({});
-      setExclusiveLink({ id: result.id, url: `${PUBLIC_CAPTURE_URL}/${result.token}` });
+      setExclusiveLink({ id: result.id, url: captureShareUrl(result.token) });
       setShareLinkStatus("Link exclusivo gerado. Ele expira em 30 dias se não for usado.");
     } catch (error) {
       setShareLinkStatus(errorMessage(error));
@@ -211,7 +211,7 @@ function Content() {
       </div>}
       {source === "link_captacao" && <Card title="Link público de captação">
         <p className="mb-3 text-sm text-muted">Gere um link exclusivo para este compartilhamento. A referência fica embutida na mensagem pré-preenchida do WhatsApp e nunca é reutilizada.</p>
-        {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está em uma prévia protegida, que pode usar outro banco de dados. Não gere nem compartilhe links aqui. A emissão está disponível somente no domínio público oficial para evitar links que não validem no ambiente do cliente.</p>}
+        {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está fora dos domínios oficiais autorizados para emissão. Não gere nem compartilhe links em prévias; a emissão está disponível apenas nos domínios públicos de produção.</p>}
         <div className="flex flex-col gap-2 sm:flex-row">
           <Btn data-testid="button-generate-exclusive-capture-link" tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink()}>{issueCaptureLink.isPending ? "Gerando…" : "Gerar link exclusivo"}</Btn>
           {exclusiveLink && <>
