@@ -3,7 +3,9 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { sql } from "drizzle-orm";
 import {
+  completeCaptureShareLead,
   completeCaptureShareToken,
+  completeCaptureShareTokenForCapture,
   completeCurrentCaptureShareForSender,
   bindCaptureShareToCapture,
   issueCaptureShareToken,
@@ -135,6 +137,71 @@ describe("links exclusivos de captação", () => {
     expect(await bindCaptureShareToCapture(db, "5513966664444", 32)).toEqual({ ok: false, status: "conflict" });
     expect(await latestCaptureShareForSender(db, "13966664444")).toMatchObject({ captureId: 31, status: "redeemed" });
     expect(await bindCaptureShareToCapture(db, "5513000000000", 99)).toEqual({ ok: false, status: "not_found" });
+  });
+
+  test("finalização exige token, remetente, estado e captura exatos", async () => {
+    const token = await issueCaptureShareToken(db, 1);
+    await redeemCaptureShareToken(db, token, "5513933332222");
+    const [row] = await db.all<{ id: number }>(sql`SELECT id FROM capture_share_tokens`);
+    await bindCaptureShareToCapture(db, "5513933332222", 41);
+
+    expect(await completeCaptureShareTokenForCapture(db, row.id, "5513933332222", 42)).toBe(false);
+    expect(await completeCaptureShareTokenForCapture(db, row.id, "5513944441111", 41)).toBe(false);
+    expect(await completeCaptureShareTokenForCapture(db, row.id, "5513933332222", 41)).toBe(true);
+    expect(await completeCaptureShareTokenForCapture(db, row.id, "5513933332222", 41)).toBe(false);
+    expect(await latestCaptureShareForSender(db, "5513933332222")).toMatchObject({
+      id: row.id,
+      captureId: 41,
+      status: "completed",
+    });
+  });
+
+  test("finaliza lead pelo token exato e somente com captura NULL", async () => {
+    const leadToken = await issueCaptureShareToken(db, 1);
+    await redeemCaptureShareToken(db, leadToken, "5513933332222");
+    const [lead] = await db.all<{ id: number }>(sql`SELECT id FROM capture_share_tokens`);
+
+    const unrelatedToken = await issueCaptureShareToken(db, 1);
+    await redeemCaptureShareToken(db, unrelatedToken, "5513933332222");
+    const [unrelated] = await db.all<{ id: number }>(
+      sql`SELECT id FROM capture_share_tokens WHERE id <> ${lead.id}`,
+    );
+
+    expect(await completeCaptureShareLead(db, lead.id, "5513944441111")).toBe(false);
+    expect(await completeCaptureShareLead(db, lead.id, "5513933332222")).toBe(true);
+    expect(await completeCaptureShareLead(db, lead.id, "5513933332222")).toBe(false);
+    expect(await latestCaptureShareForSender(db, "5513933332222")).toMatchObject({
+      id: unrelated.id,
+      status: "redeemed",
+      captureId: null,
+    });
+
+    await bindCaptureShareToCapture(db, "5513933332222", 41);
+    expect(await completeCaptureShareLead(db, unrelated.id, "5513933332222")).toBe(false);
+  });
+
+  test("um link mais antigo não pode concluir após a intercalação de um novo resgate", async () => {
+    const older = await issueCaptureShareToken(db, 1);
+    await redeemCaptureShareToken(db, older, "5513933332222");
+    const [oldRow] = await db.all<{ id: number }>(sql`SELECT id FROM capture_share_tokens`);
+    await bindCaptureShareToCapture(db, "5513933332222", 41);
+
+    const newer = await issueCaptureShareToken(db, 1);
+    await redeemCaptureShareToken(db, newer, "5513933332222");
+    const [newRow] = await db.all<{ id: number }>(
+      sql`SELECT id FROM capture_share_tokens ORDER BY id DESC LIMIT 1`,
+    );
+    await bindCaptureShareToCapture(db, "5513933332222", 42);
+
+    expect(await completeCaptureShareTokenForCapture(db, oldRow.id, "5513933332222", 41)).toBe(false);
+    expect(await latestCaptureShareForSender(db, "5513933332222")).toMatchObject({
+      id: newRow.id,
+      captureId: 42,
+      status: "redeemed",
+    });
+    expect(await completeCaptureShareTokenForCapture(db, newRow.id, "5513933332222", 41)).toBe(false);
+    expect(await completeCaptureShareTokenForCapture(db, newRow.id, "5513944441111", 42)).toBe(false);
+    expect(await completeCaptureShareTokenForCapture(db, newRow.id, "5513933332222", 42)).toBe(true);
   });
 
   test("compare-and-set impede dois cadastros de tomarem a mesma origem", async () => {

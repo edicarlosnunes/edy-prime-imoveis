@@ -175,6 +175,11 @@ const BLOCK_KEYS = BLOCK_STEPS.map((step) => step.key) as readonly string[];
 const EXTRA_BLOCK_FIELDS = [
   { key: "origem", label: "Origem do cadastro" },
   { key: "condominio", label: "Condomínio e unidade" },
+  { key: "condominioPresenca", label: "Presença de condomínio" },
+  { key: "nomeCondominio", label: "Nome do condomínio" },
+  { key: "corretorNome", label: "Nome do corretor" },
+  { key: "corretorCreci", label: "CRECI do corretor" },
+  { key: "proprietarioNome", label: "Nome do proprietário indicado" },
   { key: "fotoFrente", label: "Foto da frente" },
   { key: "valorPretendidoStatus", label: "Valor pretendido - situação" },
   { key: "observacaoFinal", label: "Informação adicional do proprietário" },
@@ -524,6 +529,11 @@ export interface CaptureAnswerInput {
   /* campos do bloco que não são perguntas do roteiro do WhatsApp */
   origem?: string | null;
   condominio?: string | null;
+  condominioPresenca?: "yes" | "no" | "unknown" | null;
+  nomeCondominio?: string | null;
+  corretorNome?: string | null;
+  corretorCreci?: string | null;
+  proprietarioNome?: string | null;
   fotoFrente?: string | null;
   valorPretendidoStatus?: string | null;
   observacaoFinal?: string | null;
@@ -725,6 +735,11 @@ export async function saveCaptureAnswer(
       disponibilidade: clean(input.disponibilidade, 300),
       origem: clean(input.origem, 300),
       condominio: clean(input.condominio, 300),
+      condominioPresenca: input.condominioPresenca ?? null,
+      nomeCondominio: clean(input.nomeCondominio, 120),
+      corretorNome: clean(input.corretorNome, 120),
+      corretorCreci: clean(input.corretorCreci, 60),
+      proprietarioNome: clean(input.proprietarioNome, 120),
       fotoFrente: clean(input.fotoFrente, 300),
       valorPretendidoStatus: clean(input.valorPretendidoStatus, 300),
       observacaoFinal: clean(input.observacaoFinal, 500),

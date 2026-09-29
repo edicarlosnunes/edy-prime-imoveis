@@ -26,13 +26,11 @@ import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-tok
 import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
 import {
   bindCaptureShareToCapture,
-  completeCurrentCaptureShareForSender,
   latestCaptureShareForSender,
   redeemCaptureShareToken,
 } from "../lib/capture-share-tokens";
 import { captureSnapshot, linkCaptureSession } from "../agent/owner-capture";
 import {
-  CLOSING_MESSAGE,
   isReusableGenericLinkEntry,
   linkCaptacaoState,
 } from "../agent/link-captacao";
@@ -223,40 +221,68 @@ export function registerWebhookRoutes(app: Hono) {
           ? await linkCaptureSession(db, snapshotBeforeInbound.ownerId)
           : null;
 
+        /* O marcador de imagem é interno: texto digitado não prova que
+           a Meta entregou uma mídia, nem pode avançar o lead do corretor. */
+        if (!message.mediaId && /^\[imagem:/i.test(message.text.trim())) {
+          message.text = "[texto de imagem não verificado]";
+        }
         let trustedCaptureMedia = false;
         if (message.mediaId) {
           if (completionGuard) {
             message.text = "[imagem recebida]";
           } else {
-            if (senderShare?.status !== "redeemed" || senderShare.captureId === null) {
-              await completeInboundEvent(db, claim.eventId);
-              processed++;
-              continue;
-            }
-            const snapshot = await captureSnapshot(db, message.from, senderShare.captureId);
-            const origin = String(
-              (snapshot.answers as Record<string, string | undefined>).origem ?? "",
-            ).trim().toUpperCase();
+            const priorTurns = await conversationTurns(db, conversation.id);
             const captureState = await linkCaptacaoState(
               db,
               message.from,
-              await conversationTurns(db, conversation.id),
+              priorTurns,
             );
+            const activeShare = senderShare?.status === "redeemed" ? senderShare : null;
+            const authorizedShare = activeShare?.id === captureState?.shareTokenId
+              ? activeShare
+              : null;
+            const brokerMedia = captureState?.presenter === "corretor" &&
+              captureState.active && !captureState.completionGuard &&
+              captureState.nextStep === "fotoFrente" &&
+              (captureState.shareTokenId == null ||
+                (activeShare?.id === captureState.shareTokenId && activeShare.captureId === null));
+            let validatedCaptureId: number | null = null;
+            if (!brokerMedia) {
+              const publicCaptureId = captureState?.genericPublic && captureState.active &&
+                !captureState.completionGuard
+                ? captureState.snapshot.captureId
+                : null;
+              const captureId = authorizedShare?.captureId ?? publicCaptureId;
+              if (captureId == null) {
+                await completeInboundEvent(db, claim.eventId);
+                processed++;
+                continue;
+              }
+              const snapshot = await captureSnapshot(db, message.from, captureId);
+              const origin = String(
+                (snapshot.answers as Record<string, string | undefined>).origem ?? "",
+              ).trim().toUpperCase();
+              const validCaptureBinding = authorizedShare
+                ? captureState?.shareTokenId === authorizedShare.id &&
+                  captureState.shareCaptureId === captureId
+                : captureState?.genericPublic === true &&
+                  captureState.snapshot.captureId === captureId;
 
-            /* Imagem fora do LINK_CAPTACAO continua sendo ignorada pelo canal,
-               como antes desta funcionalidade. */
-            if (
-              snapshot.captureId !== senderShare.captureId ||
-              origin !== "LINK_CAPTACAO" ||
-              !captureState?.active ||
-              captureState.shareTokenId !== senderShare.id ||
-              captureState.shareCaptureId !== senderShare.captureId ||
-              captureState?.completionGuard ||
-              captureState?.nextStep !== "fotoFrente"
-            ) {
-              await completeInboundEvent(db, claim.eventId);
-              processed++;
-              continue;
+              /* Imagem só entra na ficha ativa deste remetente, na pergunta
+                 de fachada. Lead de corretor não cria ficha de imóvel. */
+              if (
+                snapshot.captureId !== captureId ||
+                origin !== "LINK_CAPTACAO" ||
+                !captureState?.active ||
+                !validCaptureBinding ||
+                captureState.completionGuard ||
+                captureState.nextStep !== "fotoFrente"
+              ) {
+                await completeInboundEvent(db, claim.eventId);
+                processed++;
+                continue;
+              }
+              validatedCaptureId = captureId;
             }
 
             const media = await downloadWhatsappMedia(wa, message.mediaId);
@@ -267,18 +293,19 @@ export function registerWebhookRoutes(app: Hono) {
               size: media.size,
               data: media.data,
               name: "fachada-whatsapp",
-              alt: "Foto provisória enviada pelo proprietário via WhatsApp",
+              alt: "Foto provisória enviada pelo contato via WhatsApp",
             }).onConflictDoNothing();
             const url = `/api/media/${mediaKey}`;
             message.text = `[imagem:${url}]`;
             trustedCaptureMedia = true;
 
-            const [capture] = await db
-              .select()
-              .from(schema.propertyCaptures)
-              .where(eq(schema.propertyCaptures.id, snapshot.captureId))
-              .limit(1);
-            if (capture) {
+            if (validatedCaptureId !== null) {
+              const [capture] = await db
+                .select()
+                .from(schema.propertyCaptures)
+                .where(eq(schema.propertyCaptures.id, validatedCaptureId))
+                .limit(1);
+              if (!capture) throw new Error("Ficha ativa não encontrada para a foto da fachada");
               const photos = addOwnerPhotos(
                 capture.ownerPhotos,
                 [{ url, caption: "Fachada" }],
@@ -287,7 +314,7 @@ export function registerWebhookRoutes(app: Hono) {
               await db
                 .update(schema.propertyCaptures)
                 .set({ ownerPhotos: serializeOwnerPhotos(photos), updatedAt: new Date() })
-                .where(eq(schema.propertyCaptures.id, snapshot.captureId));
+                .where(eq(schema.propertyCaptures.id, validatedCaptureId));
             }
           }
         }
@@ -343,6 +370,11 @@ export function registerWebhookRoutes(app: Hono) {
             });
           }
           if (snapshotBeforeInbound) {
+            const authorizedState = await linkCaptacaoState(
+              db,
+              message.from,
+              await conversationTurns(db, conversation.id),
+            );
             const snapshot = await captureSnapshot(
               db,
               message.from,
@@ -366,23 +398,26 @@ export function registerWebhookRoutes(app: Hono) {
               snapshot.captureId &&
               snapshot.address &&
               origin === "LINK_CAPTACAO" &&
+              authorizedState?.presenter === "proprietario" &&
+              authorizedState?.shareTokenId === senderShare?.id &&
+              authorizedState?.genericPublic !== true &&
               redeemedShare?.ok !== false
             ) {
-              const binding = await bindCaptureShareToCapture(db, message.from, snapshot.captureId);
+              const binding = await bindCaptureShareToCapture(
+                db,
+                message.from,
+                snapshot.captureId,
+                senderShare!.id,
+              );
               if (!binding.ok) {
                 turn = { ...turn, text: "Solicite outro link para cadastro." };
               }
             }
           }
-          if (turn.text === CLOSING_MESSAGE) {
-            const share = await latestCaptureShareForSender(db, message.from);
-            if (share?.status === "redeemed") {
-              const completed = await completeCurrentCaptureShareForSender(db, message.from);
-              if (!completed) {
-                turn = { ...turn, text: "Solicite outro link para cadastro." };
-              }
-            }
-          }
+          /* A conclusão do link exclusivo é feita no próprio fluxo de
+             captação, vinculada ao token e à ficha que autorizaram o turno.
+             Concluir aqui pelo "último token" poderia encerrar outro link
+             resgatado pelo mesmo remetente entre o cadastro e a resposta. */
           if (turn.replied && turn.text) {
             try {
               await sendWhatsappText(wa, message.from, turn.text);

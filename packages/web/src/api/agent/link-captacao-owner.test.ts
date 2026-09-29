@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { CaptureSnapshot } from "./owner-capture";
 import {
+  CLOSING_MESSAGE,
+  LINK_STEPS,
   OWNER_ENTRY_INTRO,
-  buildState,
   applicableLinkSteps,
+  brokerAwaitingFacadePhoto,
   classifyOptionalAnswer,
   finalOk,
   linkAnswered,
@@ -15,7 +17,7 @@ function snapshot(answers: Record<string, string> = {}): CaptureSnapshot {
   return {
     ownerName: "Proprietário Teste",
     answered: ["endereco"],
-    propertyType: "casa",
+    propertyType: "apartamento",
     askingPrice: 890000,
     answers: {
       documentacao: "sim",
@@ -25,102 +27,119 @@ function snapshot(answers: Record<string, string> = {}): CaptureSnapshot {
       vagas: "2",
       metragem: "87,25",
       caracteristicas: "12 x 28",
-      condominio: "0",
+      condominioPresenca: "yes",
+      nomeCondominio: "Residencial Teste",
+      condominio: "R$ 450",
       custos: "482,10",
+      fotoFrente: "Foto da fachada recebida",
+      observacaoFinal: "Sem observações adicionais",
       ...answers,
     },
   } as unknown as CaptureSnapshot;
 }
 
-function nextOwnerStep(data: CaptureSnapshot) {
-  const answered = linkAnswered(data, true);
-  return applicableLinkSteps(data.propertyType, true).find((step) => !answered.includes(step.key))?.key ?? null;
+function nextStep(data: CaptureSnapshot) {
+  const answered = linkAnswered(data);
+  return applicableLinkSteps(
+    data.propertyType,
+    false,
+    data.answers as Record<string, string | undefined>,
+  ).find((step) => !answered.includes(step.key))?.key ?? null;
 }
 
-describe("LINK_CAPTACAO — proprietário exclusivo", () => {
-  test("apresentação e pergunta objetiva sobre titularidade", () => {
-    expect(OWNER_ENTRY_INTRO).toBe("Vamos iniciar o cadastro do seu imóvel.");
-    expect(linkQuestion("documentacao", { ownerExclusive: true })).toContain("O imóvel está registrado em seu nome?");
-    expect(linkQuestion("documentacao")).toContain("situação da documentação");
+describe("LINK_CAPTACAO — roteiro unificado", () => {
+  test("abre com uma única mensagem e espera uma função, sem pergunta sim/não", () => {
+    expect(OWNER_ENTRY_INTRO).toBe(
+      "Vamos iniciar o cadastro do seu imóvel?\n\nVocê é proprietário, locador ou corretor de imóveis?",
+    );
+    expect(OWNER_ENTRY_INTRO).not.toMatch(/sim ou não|sim\/não/i);
   });
 
-  test("o roteiro do proprietário exige fachada, observação e OK nessa ordem", () => {
-    const keys = applicableLinkSteps("casa", true).map((step) => step.key);
-    expect(keys.slice(-3)).toEqual(["fotoFrente", "observacaoFinal", "confirmacaoFinal"]);
-    expect(nextOwnerStep(snapshot())).toBe("fotoFrente");
-    expect(nextOwnerStep(snapshot({ fotoFrente: "PENDENTE: foto não enviada" }))).toBe("observacaoFinal");
-    expect(nextOwnerStep(snapshot({ fotoFrente: "Foto recebida", observacaoFinal: "Sem observações adicionais" }))).toBe("confirmacaoFinal");
-    expect(nextOwnerStep(snapshot({ fotoFrente: "Foto recebida", observacaoFinal: "Há reforma", confirmacaoFinal: "OK" }))).toBeNull();
+  test("todos os perfis encerram somente após observação final, sem passo OK", () => {
+    expect(LINK_STEPS.map((step) => step.key).slice(-2)).toEqual([
+      "fotoFrente",
+      "observacaoFinal",
+    ]);
+    expect(LINK_STEPS.map((step) => step.key)).not.toContain("confirmacaoFinal");
+    expect(CLOSING_MESSAGE).toBe(
+      "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.",
+    );
+    expect(nextStep(snapshot({ observacaoFinal: "" }))).toBe("observacaoFinal");
   });
 
-  test("estado real do proprietário não conclui antes da foto, das observações e do OK", () => {
-    const progress = (data: CaptureSnapshot) => buildState({
-      snapshot: data, freshEntry: false, fromLink: true, sticky: true, relink: false,
-      intention: "venda", ownerExclusive: true,
-    });
-    const beforePhoto = progress(snapshot());
-    expect(beforePhoto.active).toBe(true);
-    expect(beforePhoto.ownerExclusive).toBe(true);
-    expect(beforePhoto.nextStep).toBe("fotoFrente");
-    expect(beforePhoto.complete).toBe(false);
+  test("condomínio vem logo após o endereço e controla perguntas condicionais", () => {
+    expect(LINK_STEPS.findIndex((step) => step.key === "condominioPresenca")).toBe(
+      LINK_STEPS.findIndex((step) => step.key === "endereco") + 1,
+    );
+    expect(linkQuestion("condominioPresenca")).toContain("SIM, NÃO ou NÃO SEI");
 
-    const beforeNotes = progress(snapshot({ fotoFrente: "Foto recebida" }));
-    expect(beforeNotes.nextStep).toBe("observacaoFinal");
-    expect(beforeNotes.complete).toBe(false);
+    const noCondo = applicableLinkSteps("apartamento", false, {
+      condominioPresenca: "no",
+    }).map((step) => step.key);
+    expect(noCondo).not.toContain("nomeCondominio");
+    expect(noCondo).not.toContain("condominio");
 
-    const beforeOk = progress(snapshot({ fotoFrente: "PENDENTE", observacaoFinal: "Sem observações adicionais" }));
-    expect(beforeOk.nextStep).toBe("confirmacaoFinal");
-    expect(beforeOk.complete).toBe(false);
-
-    const closed = progress(snapshot({ fotoFrente: "Foto recebida", observacaoFinal: "Pintura recente", confirmacaoFinal: "OK" }));
-    expect(closed.nextStep).toBeNull();
-    expect(closed.complete).toBe(true);
-    expect(closed.active).toBe(false);
+    const hasCondo = applicableLinkSteps("apartamento", false, {
+      condominioPresenca: "yes",
+    }).map((step) => step.key);
+    expect(hasCondo).toContain("nomeCondominio");
+    expect(hasCondo).toContain("condominio");
   });
 
-  test("OK antigo não substitui a fotografia do proprietário", () => {
-    expect(nextOwnerStep(snapshot({ confirmacaoFinal: "OK" }))).toBe("fotoFrente");
-    expect(linkAnswered(snapshot({ confirmacaoFinal: "OK" }), true)).not.toContain("fotoFrente");
+  test("locador recebe valor mensal e venda mantém o valor pretendido", () => {
+    expect(linkQuestion("valor", { intention: "locacao" })).toContain("mensal do aluguel");
+    expect(linkQuestion("valor", { intention: "venda" })).toContain("valor pretendido");
   });
 
-  test("os outros perfis mantêm a rota anterior, inclusive sem tipo preenchido", () => {
-    expect(applicableLinkSteps("casa").map((step) => step.key)).not.toContain("observacaoFinal");
-    expect(applicableLinkSteps("casa").map((step) => step.key)).not.toContain("confirmacaoFinal");
-    expect(applicableLinkSteps(null).map((step) => step.key)).not.toContain("observacaoFinal");
-    expect(applicableLinkSteps(null).map((step) => step.key)).not.toContain("confirmacaoFinal");
-  });
-
-  test("respostas negativas naturais e desconhecidas não são confundidas", () => {
-    for (const input of ["não tem", "nao tenho", "nenhum", "sem condomínio", "não pago", "zero", "0", "isento", "Não tem."]) {
-      expect(classifyOptionalAnswer(input)).toBe("0");
-    }
-    for (const input of ["não sei", "n sei", "sei lá", "não lembro", "desconheço"]) {
-      expect(classifyOptionalAnswer(input)).toBe("não informado");
-    }
-    expect(classifyOptionalAnswer("não se aplica")).toBe("não se aplica");
-    expect(classifyOptionalAnswer("1100,20")).toBeNull();
-  });
-
-  test("ausência de foto gera pendência, não confirmação de mídia", () => {
-    for (const input of ["não tenho", "não tenho foto", "sem foto", "não consigo enviar agora"]) {
-      expect(missingFacadePhoto(input)).toBe(true);
-    }
+  test("foto textual nunca é prova de mídia; NÃO SEI mantém pendência", () => {
+    expect(missingFacadePhoto("NÃO SEI")).toBe(true);
+    expect(missingFacadePhoto("não tenho foto")).toBe(true);
     expect(missingFacadePhoto("[imagem:/api/media/abc]")).toBe(false);
-    expect(missingFacadePhoto("OK")).toBe(false);
+    expect(missingFacadePhoto("Já enviei a foto")).toBe(false);
+    expect(nextStep(snapshot({
+      fotoFrente: "PENDENTE: foto não enviada",
+      observacaoFinal: "",
+    }))).toBe("observacaoFinal");
   });
 
-  test("encerramento somente aceita a confirmação final explícita", () => {
-    expect(finalOk("ok")).toBe(true);
-    expect(finalOk("OK.")).toBe(true);
-    expect(finalOk("não tenho")).toBe(false);
-    expect(finalOk("foto")).toBe(false);
+  test("respostas opcionais distinguem desconhecido, ausência e não aplicável", () => {
+    expect(classifyOptionalAnswer("não sei")).toBe("não informado");
+    expect(classifyOptionalAnswer("sem condomínio")).toBe("0");
+    expect(classifyOptionalAnswer("não se aplica")).toBe("não se aplica");
+    expect(classifyOptionalAnswer("1.200,50")).toBeNull();
+    expect(finalOk("OK")).toBe(true);
   });
 
-  test("tipo apartamento preserva suas dispensas de metragem do terreno, sem dispensar foto", () => {
-    const keys = applicableLinkSteps("apartamento", true).map((step) => step.key);
+  test("tipo de imóvel mantém dispensa de terreno quando não aplicável", () => {
+    const keys = applicableLinkSteps("apartamento", false, { condominioPresenca: "no" })
+      .map((step) => step.key);
     expect(keys).not.toContain("caracteristicas");
+    expect(keys).not.toContain("condominio");
     expect(keys).toContain("fotoFrente");
     expect(keys).toContain("observacaoFinal");
-    expect(keys).toContain("confirmacaoFinal");
+  });
+
+  test("helper de mídia identifica somente a pergunta pendente de fachada do corretor", () => {
+    const turns = [
+      { role: "user" as const, content: "Vamos cadastrar seu imóvel?" },
+      { role: "user" as const, content: "corretor" },
+      { role: "user" as const, content: "CRECI 12345" },
+      { role: "user" as const, content: "Corretor Teste" },
+      { role: "user" as const, content: "venda" },
+      { role: "user" as const, content: "NÃO SEI" },
+      { role: "user" as const, content: "Rua A, 10" },
+      { role: "user" as const, content: "não" },
+      { role: "user" as const, content: "Escritura" },
+      { role: "user" as const, content: "apartamento" },
+      { role: "user" as const, content: "2" },
+      { role: "user" as const, content: "1" },
+      { role: "user" as const, content: "2" },
+      { role: "user" as const, content: "1" },
+      { role: "user" as const, content: "75 m²" },
+      { role: "user" as const, content: "R$ 500.000" },
+      { role: "user" as const, content: "R$ 300" },
+    ];
+    expect(brokerAwaitingFacadePhoto(turns)).toBe(true);
+    expect(brokerAwaitingFacadePhoto([...turns, { role: "user" as const, content: "NÃO SEI" }])).toBe(false);
   });
 });
