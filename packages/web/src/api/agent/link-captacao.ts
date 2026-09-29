@@ -239,7 +239,7 @@ export const CLOSING_MESSAGE =
 
 /** Respostas naturais não exigem que o cliente escreva literalmente NÃO SEI. */
 export function classifyOptionalAnswer(text: string | null | undefined): "0" | "não informado" | "não se aplica" | null {
-  const value = fold(text).replace(/[.!?]+$/g, "").replace(/\\s+/g, " ").trim();
+  const value = fold(text).replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
   if (/^(?:nao sei|n sei|sei la|nao lembro|nao conheco|nao tenho certeza|desconheco|pular|pula|passar)$/.test(value)) return "não informado";
   if (/^(?:nao se aplica|nao aplica)$/.test(value)) return "não se aplica";
   if (/^(?:nenhum|nenhuma|nao tem|nao tenho|nao possui|nao tem condominio|nao pago condominio|nao pago|sem|sem condominio|sem cobranca|zero|0|isento|isenta)$/.test(value)) return "0";
@@ -357,8 +357,8 @@ export function linkAnswered(snapshot: CaptureSnapshot, ownerExclusive = false):
 
 export function applicableLinkSteps(propertyType: string | null | undefined, ownerExclusive = false) {
   const type = fold(propertyType);
-  if (!type) return [...LINK_STEPS];
   const skip = new Set<LinkStepKey>(ownerExclusive ? [] : ["observacaoFinal", "confirmacaoFinal"]);
+  if (!type) return LINK_STEPS.filter((step) => !skip.has(step.key));
   if (/apartamento|apto|studio|flat|kitnet/.test(type)) skip.add("caracteristicas");
   if (/terreno|lote/.test(type)) {
     ["dormitorios", "suites", "banheiros", "vagas", "metragem", "condominio"].forEach((key) => skip.add(key as LinkStepKey));
@@ -1538,12 +1538,12 @@ export async function linkCaptacaoReply(
     if (!saved.saved) return finish(state, { offScript: false, toolCalls });
     const next = await reload(db, state.ownerPhone ?? phone, state.startNewProperty, false);
     const response = finish(next, { offScript: false, toolCalls });
-    return { ...response, text: "A foto da fachada ficou pendente para conferência da nossa equipe.\\n\\n".replace(/\\\\n/g, "\\n") + response.text };
+    return { ...response, text: ["A foto da fachada ficou pendente para conferência da nossa equipe.", response.text].join("\n\n") };
   }
 
   if (state.ownerExclusive && state.nextStep === "observacaoFinal") {
     const answer = String(lastUser ?? "").trim();
-    if (!answer || shareTokenFromMessage(answer) || /^\\[imagem:/i.test(answer)) return finish(state, { offScript: false, toolCalls });
+    if (!answer || shareTokenFromMessage(answer) || /^\[imagem:/i.test(answer)) return finish(state, { offScript: false, toolCalls });
     const immediateOk = finalOk(answer);
     const noNotes = immediateOk || /^(?:nao|nada|nenhuma|nenhum|nao tenho|sem observacoes|pular|nao se aplica)$/i.test(fold(answer));
     const patch: SaveToolInput = {
@@ -1569,8 +1569,7 @@ export async function linkCaptacaoReply(
     if (!trustedWhatsappMedia) {
       return finish(state, { offScript: false, toolCalls });
     }
-    /* A imagem real já foi baixada e anexada pelo webhook. Registramos a etapa
-       final e fechamos no mesmo turno, sem pedir OK ou observação. */
+    /* A mídia validada no webhook é anotada. O proprietário segue para observações e OK; os outros perfis mantêm seu fluxo anterior. */
     const input = { fotoFrente: state.ownerExclusive
       ? "Foto recebida — pendente de conferência humana da fachada" : "Foto da fachada recebida" };
     const saved = await saveAnswer(input);
