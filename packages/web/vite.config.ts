@@ -22,6 +22,14 @@ export default defineConfig(({ mode }) => {
 				"@": path.resolve(__dirname, "./src/web"),
 			},
 		},
+		build: {
+			rollupOptions: {
+				input: {
+					main: path.resolve(__dirname, "index.html"),
+					cadastro: path.resolve(__dirname, "cadastro.html"),
+				},
+			},
+		},
 		server: {
 			allowedHosts: true,
 			hmr: { overlay: false, },
