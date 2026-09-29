@@ -1336,6 +1336,15 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
         sql`SELECT notes FROM owners LIMIT 1`,
       );
       expect(ownerAfterConfirmation?.notes ?? "").not.toContain("[LINK_CAPTACAO_FICHA_ATIVA:");
+      const callsAfterClose = modelCalls;
+      for (const message of ["oi", "oi", "Quero continuar o cadastro"]) {
+        const followup = await postWhatsapp(message);
+        expect(followup.body.processed).toBe(1);
+        expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
+          .toBe("Solicite outro link para cadastro.");
+        expect(modelCalls).toBe(callsAfterClose);
+      }
+      expect(await counts()).toEqual({ owners: 1, captures: 2 });
       const truncatedConversation = await conversation("5513997141174:generic-after-ok");
       await addMessage(db, truncatedConversation.id, {
         direction: "in",
@@ -1801,6 +1810,41 @@ describe("6. ausência de duplicidade", () => {
 });
 
 describe("7. respostas após a identificação no link genérico", () => {
+  test("frase pública sem token encerra e repete somente a orientação de outro link", async () => {
+    const conversa = await conversation("5513997141174:publico-sem-token");
+    expect((await genericPublicTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(Q_PUBLIC_ENTRY);
+    expect((await genericPublicTurn(conversa.id, "proprietário")).reply).toBe(ABERTURA);
+    for (const item of SCRIPT) {
+      expect((await genericPublicTurn(conversa.id, item.body, item.save)).reply).toBe(item.next);
+    }
+    expect((await genericPublicTurn(conversa.id, "[imagem:/api/media/teste]", undefined, true)).reply)
+      .toBe(Q_OBSERVACAO_FINAL);
+    expect((await genericPublicTurn(conversa.id, "NÃO SEI")).reply).toBe(FECHAMENTO);
+    const callsAfterClose = modelCalls;
+    for (const message of ["oi", "oi", "Quero continuar"]) {
+      expect((await genericPublicTurn(conversa.id, message)).reply)
+        .toBe("Solicite outro link para cadastro.");
+      expect(modelCalls).toBe(callsAfterClose);
+    }
+    expect(await counts()).toEqual({ owners: 1, captures: 1 });
+  });
+
+  test("fechamento no histórico bloqueia a IA mesmo sem ficha selecionada", async () => {
+    const conversa = await conversation("5513997141174:fechamento-sem-ficha");
+    await addMessage(db, conversa.id, {
+      direction: "out", author: "ia", body: FECHAMENTO,
+    });
+    const callsBefore = modelCalls;
+    for (const message of ["oi", "oi de novo", "Quero continuar"]) {
+      await addMessage(db, conversa.id, {
+        direction: "in", author: "cliente", body: message,
+      });
+      expect((await aiTurn(db, conversa.id, BASE_URL)).text)
+        .toBe("Solicite outro link para cadastro.");
+      expect(modelCalls).toBe(callsBefore);
+    }
+  });
+
   async function iniciarCadastro(conversationId: number) {
     expect((await linkTurn(conversationId, LINK_CAPTACAO_MESSAGE)).reply).toBe(
       Q_ENTRY,

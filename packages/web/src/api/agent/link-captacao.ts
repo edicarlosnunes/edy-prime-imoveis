@@ -1067,7 +1067,8 @@ export async function linkCaptacaoState(
   const sticky =
     session.activeCaptureId !== null ||
     fromLinkCapture ||
-    currentShare?.status === "completed";
+    currentShare?.status === "completed" ||
+    lastClosing >= 0;
   const pendingAddress =
     !freshEntry && !fromLink && looksLikeStreetAddress(lastUser) &&
     session.awaitingAddress;
