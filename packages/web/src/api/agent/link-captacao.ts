@@ -64,6 +64,7 @@ export type LinkPresenter = "proprietario" | "corretor";
 
 const GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
 const ROLE_QUESTION = "Você é proprietário, locador ou corretor do imóvel?";
+export const OWNER_ENTRY_INTRO = "Vamos iniciar o cadastro do seu imóvel.";
 const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário, locador ou corretor do imóvel, pois teremos algumas informações que somente eles poderão confirmar.";
 
 const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
@@ -221,7 +222,9 @@ export const LINK_STEPS = [
   { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel? Se ainda não souber, digite NÃO SEI." },
   { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)" },
   { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? (0 se não houver/isento • NÃO SEI se não souber)" },
-  { key: "fotoFrente", label: "Foto da fachada", verbatim: true, question: "Para finalizar, envie uma foto da frente ou fachada do imóvel." },
+  { key: "fotoFrente", label: "Foto da fachada", verbatim: true, question: "Para continuar, envie uma foto real da frente ou fachada do imóvel. É apenas para identificação rápida. Se não tiver uma foto agora, digite NÃO TENHO; nossa equipe solicitará depois." },
+  { key: "observacaoFinal", label: "Observações finais", verbatim: true, question: "Antes de finalizar: tem algo importante sobre o imóvel que gostaria de informar? Se não tiver mais nada a acrescentar, digite OK." },
+  { key: "confirmacaoFinal", label: "Confirmação final", verbatim: true, question: "Responda OK para finalizar o cadastro." },
 ] as const;
 
 export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
@@ -234,6 +237,25 @@ export const OFF_SCRIPT_REPLY =
 export const CLOSING_MESSAGE =
   "Seu cadastro foi finalizado com sucesso. Nosso atendimento entrará em contato.";
 
+/** Respostas naturais não exigem que o cliente escreva literalmente NÃO SEI. */
+export function classifyOptionalAnswer(text: string | null | undefined): "0" | "não informado" | "não se aplica" | null {
+  const value = fold(text).replace(/[.!?]+$/g, "").replace(/\\s+/g, " ").trim();
+  if (/^(?:nao sei|n sei|sei la|nao lembro|nao conheco|nao tenho certeza|desconheco|pular|pula|passar)$/.test(value)) return "não informado";
+  if (/^(?:nao se aplica|nao aplica)$/.test(value)) return "não se aplica";
+  if (/^(?:nenhum|nenhuma|nao tem|nao tenho|nao possui|nao tem condominio|nao pago condominio|nao pago|sem|sem condominio|sem cobranca|zero|0|isento|isenta)$/.test(value)) return "0";
+  return null;
+}
+
+/** Um texto nunca comprova uma foto; este fallback cria pendência para a equipe. */
+export function missingFacadePhoto(text: string | null | undefined): boolean {
+  const value = fold(text).replace(/[.!?]+$/g, "").trim();
+  return /^(?:nao tenho|nao tenho foto|nao tenho a foto|nao tenho agora|nao tenho no momento|sem foto|estou sem foto|nao consigo enviar agora|nao posso enviar agora)$/.test(value);
+}
+
+export function finalOk(text: string | null | undefined): boolean {
+  return /^ok[.! ]*$/i.test(String(text ?? "").trim());
+}
+
 /** Imóvel sem condomínio: a pergunta de custos vira só IPTU. */
 const NO_CONDO = ["terreno", "casa", "chacara", "sitio", "galpao", "area", "lote"];
 const NO_CONDO_ANSWER = /^(nao|nenhum|sem condominio|n)\b/;
@@ -241,9 +263,12 @@ const NO_CONDO_ANSWER = /^(nao|nenhum|sem condominio|n)\b/;
 /** Perguntas exatas; valor muda por perfil e custos pode variar por imóvel. */
 export function linkQuestion(
   key: LinkStepKey,
-  context: { propertyType?: string | null; condominio?: string | null; intention?: string | null } = {},
+  context: { propertyType?: string | null; condominio?: string | null; intention?: string | null; ownerExclusive?: boolean } = {},
 ): string {
   const step = LINK_STEPS.find((item) => item.key === key)!;
+  if (key === "documentacao" && context.ownerExclusive) {
+    return "O imóvel está registrado em seu nome? Responda SIM, NÃO ou NÃO SEI.";
+  }
   if (key === "valor" && fold(context.intention) === "locacao") {
     return "Qual é o valor mensal do aluguel pretendido? Se ainda não souber, digite NÃO SEI.";
   }
@@ -291,10 +316,12 @@ export interface LinkCaptacaoState {
   replayQuestion?: string | null;
   /** Intenção definida pelo perfil: locador = locação; proprietário = venda. */
   intention: "venda" | "locacao";
+  /** Somente link exclusivo com perfil proprietário: exige fachada, observações e OK. */
+  ownerExclusive?: boolean;
 }
 
 /** Passos já respondidos — lidos do que está GRAVADO, nunca da conversa. */
-function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
+export function linkAnswered(snapshot: CaptureSnapshot, ownerExclusive = false): LinkStepKey[] {
   const answers = snapshot.answers as Record<string, string | undefined>;
   const filled = (value: unknown) => typeof value === "string" && value.trim().length > 0;
   const done = new Set<LinkStepKey>();
@@ -318,18 +345,20 @@ function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
     "custos",
     "caracteristicas",
     "fotoFrente",
+    "observacaoFinal",
+    "confirmacaoFinal",
   ] as const) {
     if (filled(answers[key])) done.add(key);
   }
   /* Reusable public captures finish on a persisted OK instead of a photo. */
-  if (fold(answers.confirmacaoFinal) === "ok") done.add("fotoFrente");
+  if (!ownerExclusive && fold(answers.confirmacaoFinal) === "ok") done.add("fotoFrente");
   return LINK_STEPS.filter((step) => done.has(step.key)).map((step) => step.key);
 }
 
-function applicableLinkSteps(propertyType: string | null | undefined) {
+export function applicableLinkSteps(propertyType: string | null | undefined, ownerExclusive = false) {
   const type = fold(propertyType);
   if (!type) return [...LINK_STEPS];
-  const skip = new Set<LinkStepKey>();
+  const skip = new Set<LinkStepKey>(ownerExclusive ? [] : ["observacaoFinal", "confirmacaoFinal"]);
   if (/apartamento|apto|studio|flat|kitnet/.test(type)) skip.add("caracteristicas");
   if (/terreno|lote/.test(type)) {
     ["dormitorios", "suites", "banheiros", "vagas", "metragem", "condominio"].forEach((key) => skip.add(key as LinkStepKey));
@@ -349,10 +378,13 @@ function buildState(input: {
   /** Clique no link depois do fechamento do cadastro anterior. */
   relink: boolean;
   intention?: "venda" | "locacao";
+  ownerExclusive?: boolean;
 }): LinkCaptacaoState {
   const { snapshot, freshEntry } = input;
-  const answersAll = linkAnswered(snapshot);
-  const previousRoute = applicableLinkSteps(snapshot.propertyType);
+  const intention = input.intention ?? (snapshot.intention === "locacao" ? "locacao" : "venda");
+  const ownerExclusive = Boolean(input.ownerExclusive && intention === "venda");
+  const answersAll = linkAnswered(snapshot, ownerExclusive);
+  const previousRoute = applicableLinkSteps(snapshot.propertyType, ownerExclusive);
   const completeBefore = previousRoute.every((step) => answersAll.includes(step.key));
 
   /* Uma entrada aceita depois do fechamento cadastra OUTRO imóvel. O nome já
@@ -363,13 +395,13 @@ function buildState(input: {
     ? answersAll.filter((key) => key === "nome")
     : answersAll;
 
-  const nextStep = applicableLinkSteps(startNewProperty ? null : snapshot.propertyType)
+  const nextStep = applicableLinkSteps(startNewProperty ? null : snapshot.propertyType, ownerExclusive)
     .find((step) => !answered.includes(step.key))?.key ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
-  const intention = input.intention ?? (snapshot.intention === "locacao" ? "locacao" : "venda");
 
   return {
     presenter: "proprietario",
+    ownerExclusive,
     ownerPhone: snapshot.phone,
     broker: null,
     /* Atende o turno quando: clicou no link agora; ou está cadastrando outro
@@ -390,6 +422,7 @@ function buildState(input: {
           propertyType: startNewProperty ? null : snapshot.propertyType,
           condominio: startNewProperty ? null : condominio,
           intention,
+          ownerExclusive,
         })
       : null,
     complete: nextStep === null,
@@ -402,7 +435,7 @@ function reusableGenericState(
   state: LinkCaptacaoState,
 ): LinkCaptacaoState {
   const route = applicableLinkSteps(state.snapshot.propertyType)
-    .filter((step) => step.key !== "fotoFrente");
+    .filter((step) => !["fotoFrente", "observacaoFinal", "confirmacaoFinal"].includes(step.key));
   const nextStep = route.find((step) => !state.answered.includes(step.key))?.key ?? null;
   if (!nextStep) {
     return {
@@ -633,10 +666,11 @@ export async function linkCaptacaoState(
   if (session.activeCaptureId !== null && shareCaptureId === null && snapshot.captureId !== session.activeCaptureId) return null;
   const origin = (snapshot.answers as Record<string, string | undefined>).origem ?? null;
   const fromLinkCapture = fold(origin) === fold(LINK_CAPTACAO_ORIGIN);
-  const snapshotAnswers = linkAnswered(snapshot);
+  const ownerExclusiveFromShare = currentShare?.status === "redeemed" && snapshot.intention !== "locacao";
+  const snapshotAnswers = linkAnswered(snapshot, ownerExclusiveFromShare);
   const captureWasCompleted =
     fromLinkCapture &&
-    applicableLinkSteps(snapshot.propertyType).every((step) => snapshotAnswers.includes(step.key));
+    applicableLinkSteps(snapshot.propertyType, ownerExclusiveFromShare).every((step) => snapshotAnswers.includes(step.key));
   const legacyEntryIsActive =
     fromLinkCapture &&
     !captureWasCompleted &&
@@ -845,6 +879,8 @@ export async function linkCaptacaoState(
       fromLink: true,
       sticky: false,
       relink: false,
+      intention,
+      ownerExclusive: activeShareId !== null && selectedRole === "proprietario",
     });
     const prepared = {
       ...cleanState,
@@ -859,7 +895,9 @@ export async function linkCaptacaoState(
       : prepared);
   }
 
-  const state = buildState({ snapshot, freshEntry, fromLink, sticky, relink, intention });
+  const state = buildState({ snapshot, freshEntry, fromLink, sticky, relink, intention,
+    ownerExclusive: activeShareId !== null && intention === "venda",
+  });
   const genericState = genericPublicActive
     ? reusableGenericState(state)
     : state;
@@ -959,6 +997,8 @@ function saveInput(
       condominio: ["condominio"],
       custos: ["custos"],
       fotoFrente: ["fotoFrente"],
+      observacaoFinal: ["observacaoFinal", "confirmacaoFinal"],
+      confirmacaoFinal: ["confirmacaoFinal"],
     };
     const allowed = new Set([...stepFields[state.nextStep ?? "nome"] ?? [], "observacao"]);
     const scopedPatch = Object.fromEntries(
@@ -970,6 +1010,7 @@ function saveInput(
       negociacao: state.intention,
       origem: LINK_CAPTACAO_ORIGIN,
       targetCaptureId: state.shareCaptureId,
+      deferLinkCompletion: Boolean(state.ownerExclusive && state.nextStep === "fotoFrente"),
     } satisfies CaptureAnswerInput;
   }
   const addressish = Boolean(
@@ -989,6 +1030,7 @@ function saveInput(
        endereço decide qual imóvel reutilizar ou abrir na entrada única. */
     novaSessaoLink: state.startNewProperty && state.snapshot.captureId === null && addressish ? true : undefined,
     targetCaptureId: !state.startNewProperty && !addressish ? state.snapshot.captureId ?? undefined : undefined,
+    deferLinkCompletion: Boolean(state.ownerExclusive && state.nextStep === "fotoFrente"),
   } satisfies CaptureAnswerInput;
 }
 
@@ -1318,7 +1360,9 @@ export async function linkCaptacaoReply(
         !isGenericLinkStart(turn.content),
     );
     if (replies.length === 0) {
-      return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+      return { text: state.shareTokenId !== null && state.shareTokenId !== undefined
+        ? `${OWNER_ENTRY_INTRO}\n\n${ROLE_QUESTION}` : ROLE_QUESTION,
+        handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
 
     /* Enquanto o contato não informar um perfil válido, cada nova resposta
@@ -1450,11 +1494,9 @@ export async function linkCaptacaoReply(
     );
   }
 
-  const skipValue = fold(lastUser);
-  const skipRequested =
-    /^(nao sei|nao lembro|nao conheco|nao tenho certeza|desconheco|pular|pula|passar|nao se aplica|nao tenho)$/.test(skipValue);
-  const noneRequested =
-    /^(nenhum|nenhuma|nao tem|nao possui|zero|0|sem|isento|isenta)$/.test(skipValue);
+  const optionalValue = classifyOptionalAnswer(lastUser);
+  const skipRequested = optionalValue === "não informado" || optionalValue === "não se aplica";
+  const noneRequested = optionalValue === "0";
 
   let skipInput: SaveToolInput | null = null;
   if (state.nextStep === "documentacao" && skipRequested) {
@@ -1474,7 +1516,7 @@ export async function linkCaptacaoReply(
     };
     const optionalField = state.nextStep ? optionalMap[state.nextStep] : undefined;
     if (optionalField && (skipRequested || noneRequested)) {
-      skipInput = { [optionalField]: noneRequested ? "0" : "não informado" } as SaveToolInput;
+      skipInput = { [optionalField]: optionalValue! } as SaveToolInput;
     }
   }
 
@@ -1487,6 +1529,39 @@ export async function linkCaptacaoReply(
     );
   }
 
+  if (state.ownerExclusive && state.nextStep === "fotoFrente" && missingFacadePhoto(lastUser)) {
+    const saved = await saveAnswer({
+      fotoFrente: "PENDENTE: foto da fachada não enviada pelo proprietário",
+      observacao: "Foto da fachada não disponível; equipe deve solicitar e conferir a imagem antes da aprovação.",
+    });
+    toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify({ fotoFrente: "PENDENTE" }) });
+    if (!saved.saved) return finish(state, { offScript: false, toolCalls });
+    const next = await reload(db, state.ownerPhone ?? phone, state.startNewProperty, false);
+    const response = finish(next, { offScript: false, toolCalls });
+    return { ...response, text: "A foto da fachada ficou pendente para conferência da nossa equipe.\\n\\n".replace(/\\\\n/g, "\\n") + response.text };
+  }
+
+  if (state.ownerExclusive && state.nextStep === "observacaoFinal") {
+    const answer = String(lastUser ?? "").trim();
+    if (!answer || shareTokenFromMessage(answer) || /^\\[imagem:/i.test(answer)) return finish(state, { offScript: false, toolCalls });
+    const immediateOk = finalOk(answer);
+    const noNotes = immediateOk || /^(?:nao|nada|nenhuma|nenhum|nao tenho|sem observacoes|pular|nao se aplica)$/i.test(fold(answer));
+    const patch: SaveToolInput = {
+      observacaoFinal: noNotes ? "Sem observações adicionais" : answer.slice(0, 500),
+      ...(immediateOk ? { confirmacaoFinal: "OK" } : {}),
+    };
+    const saved = await saveAnswer(patch);
+    if (!saved.saved) return finish(state, { offScript: false, toolCalls });
+    return finish(await reload(db, state.ownerPhone ?? phone, false, false), { offScript: false, toolCalls });
+  }
+
+  if (state.ownerExclusive && state.nextStep === "confirmacaoFinal") {
+    if (!finalOk(lastUser)) return finish(state, { offScript: false, toolCalls });
+    const saved = await saveAnswer({ confirmacaoFinal: "OK" });
+    if (!saved.saved) return finish(state, { offScript: false, toolCalls });
+    return finish(await reload(db, state.ownerPhone ?? phone, false, false), { offScript: false, toolCalls });
+  }
+
   if (
     state.nextStep === "fotoFrente" &&
     /^\[imagem:/i.test(String(lastUser ?? "").trim())
@@ -1496,10 +1571,14 @@ export async function linkCaptacaoReply(
     }
     /* A imagem real já foi baixada e anexada pelo webhook. Registramos a etapa
        final e fechamos no mesmo turno, sem pedir OK ou observação. */
-    const input = { fotoFrente: "Foto da fachada recebida" };
+    const input = { fotoFrente: state.ownerExclusive
+      ? "Foto recebida — pendente de conferência humana da fachada" : "Foto da fachada recebida" };
     const saved = await saveAnswer(input);
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
     if (!saved.saved) return finish(state, { offScript: false, toolCalls });
+    if (state.ownerExclusive) {
+      return finish(await reload(db, state.ownerPhone ?? phone, false, false), { offScript: false, toolCalls });
+    }
     const share = await latestCaptureShareForSender(db, state.ownerPhone ?? phone);
     if (share?.status === "redeemed") {
       const completed = await completeCurrentCaptureShareForSender(db, state.ownerPhone ?? phone);
@@ -1632,7 +1711,10 @@ async function reload(
   const snapshot = session.activeCaptureId !== null
     ? await captureSnapshot(db, phone, session.activeCaptureId)
     : baseSnapshot;
-  const state = buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink });
+  const currentShare = await latestCaptureShareForSender(db, phone);
+  const state = buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink,
+    ownerExclusive: !genericPublic && currentShare?.status === "redeemed" && snapshot.intention !== "locacao",
+  });
   return genericPublic ? reusableGenericState(state) : state;
 }
 
