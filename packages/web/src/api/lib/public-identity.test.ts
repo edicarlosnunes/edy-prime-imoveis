@@ -28,7 +28,7 @@ describe("identidade pública da prévia", () => {
     });
     expect(result.theme.logoUrl).toBe("/esantos-logo.png");
     expect(result.theme.faviconUrl).toBe("/esantos-logo.png");
-    expect(result.seo.ogImageUrl).toBe("https://www.edyprimeimoveis.com.br/og-esantos.png");
+    expect(result.seo.ogImageUrl).toBe("https://www.esantoscorretor.com.br/og-esantos.png");
     expect(old.company.name).toBe("Edy Prime");
     expect(old.theme.logoUrl).toBe("/api/media/old");
   });
