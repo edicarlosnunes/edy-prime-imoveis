@@ -76,7 +76,8 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 
 export type LinkPresenter = "proprietario" | "corretor";
 
-const GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
+const GENERIC_ENTRY_MESSAGE = "Vamos iniciar o cadastro do seu imóvel?";
+const LEGACY_GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
 const ROLE_QUESTION = "Você é proprietário, locador ou corretor de imóveis?";
 export const OWNER_ENTRY_INTRO = "Vamos iniciar o cadastro do seu imóvel?\n\nVocê é proprietário, locador ou corretor de imóveis?";
 const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário, locador ou corretor do imóvel, pois teremos algumas informações que somente eles poderão confirmar.";
@@ -294,13 +295,15 @@ function linkRole(value: string | null | undefined): "proprietario" | "locador" 
  */
 const isGenericLinkStart = (text: string | null | undefined) => {
   const value = fold(text);
-  const start = fold(GENERIC_ENTRY_MESSAGE);
-  if (!value || !start || !value.includes(start)) return false;
+  if (!value) return false;
 
   /* Alguns clientes do WhatsApp podem duplicar o texto pré-preenchido quando
      o link é aberto mais de uma vez antes do envio. Aceitamos apenas repetições
      exatas da frase completa, com ou sem espaços entre elas. */
-  return value.split(start).join("").trim() === "";
+  return [GENERIC_ENTRY_MESSAGE, LEGACY_GENERIC_ENTRY_MESSAGE].some((message) => {
+    const start = fold(message);
+    return value.includes(start) && value.split(start).join("").trim() === "";
+  });
 };
 
 /**
@@ -1590,7 +1593,9 @@ export async function linkCaptacaoReply(
         !isGenericLinkStart(turn.content),
     );
     if (replies.length === 0) {
-      return { text: OWNER_ENTRY_INTRO,
+      const newPublicEntry = fold(turns[genericIndex]?.content)
+        .startsWith(fold(GENERIC_ENTRY_MESSAGE));
+      return { text: newPublicEntry ? ROLE_QUESTION : OWNER_ENTRY_INTRO,
         handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
 

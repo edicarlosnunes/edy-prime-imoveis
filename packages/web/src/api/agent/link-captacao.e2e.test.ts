@@ -670,6 +670,7 @@ async function postWhatsapp(
    alguém mexer no roteiro do módulo, estes testes caem. */
 const ABERTURA = "Qual é o seu nome completo?";
 const Q_ENTRY = "Vamos iniciar o cadastro do seu imóvel?\n\nVocê é proprietário, locador ou corretor de imóveis?";
+const Q_PUBLIC_ENTRY = "Você é proprietário, locador ou corretor de imóveis?";
 const Q_ENDERECO = "Qual é o endereço completo do imóvel?";
 const Q_CONDOMINIO_PRESENCA = "O imóvel fica em condomínio? Responda SIM, NÃO ou NÃO SEI.";
 const Q_NOME_CONDOMINIO = "Qual é o nome do condomínio e, se aplicável, a unidade do imóvel?";
@@ -786,7 +787,7 @@ describe("1. entrada pelo link de captação", () => {
     expect(linkCaptacaoUrl("(13) 99714-1174")).toBe(
       `https://wa.me/5513997141174?text=${encodeURIComponent(LINK_CAPTACAO_MESSAGE)}`,
     );
-    expect(LINK_CAPTACAO_MESSAGE).toBe("Vamos cadastrar seu imóvel?");
+    expect(LINK_CAPTACAO_MESSAGE).toBe("Vamos iniciar o cadastro do seu imóvel?");
   });
 
   test("abre com o texto exato e não pergunta intenção, compra nem locação", async () => {
@@ -851,7 +852,7 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       const staticMessage = await postWhatsapp(LINK_CAPTACAO_MESSAGE, false, "5513997141174");
       expect(staticMessage.body.processed).toBe(1);
       const staticReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
-      expect(staticReply.text.body).toBe(Q_ENTRY);
+      expect(staticReply.text.body).toBe(Q_PUBLIC_ENTRY);
       expect(await counts()).toEqual({ owners: 0, captures: 0 });
 
       const firstToken = await issueCaptureShareToken(db, 1);
@@ -1263,12 +1264,12 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       const genericStart = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
       expect(genericStart.body.processed).toBe(1);
       expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
-        .toBe(Q_ENTRY);
+        .toBe(Q_PUBLIC_ENTRY);
       expect(await counts()).toEqual({ owners: 1, captures: 1 });
       const repeatedStart = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
       expect(repeatedStart.body.processed).toBe(1);
       expect(JSON.parse(graphCalls.at(-1)!.body).text.body)
-        .toBe(Q_ENTRY);
+        .toBe(Q_PUBLIC_ENTRY);
       expect(await counts()).toEqual({ owners: 1, captures: 1 });
 
       for (const [text, expected] of [
@@ -1358,7 +1359,7 @@ describe("webhook Vercel legado → IA → persistência CRM", () => {
       const forgedLegacy = await postWhatsapp(LINK_CAPTACAO_MESSAGE);
       expect(forgedLegacy.body.processed).toBe(1);
       const forgedLegacyReply = JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
-      expect(forgedLegacyReply.text.body).toBe(Q_ENTRY);
+      expect(forgedLegacyReply.text.body).toBe(Q_PUBLIC_ENTRY);
       expect(await counts()).toEqual({ owners: 1, captures: 2 });
 
       for (const token of [issuedShareTokens[0]!, "0".repeat(64)]) {
@@ -1718,7 +1719,7 @@ describe("6. ausência de duplicidade", () => {
 
     const novo = await linkTurn(volta.id, LINK_CAPTACAO_MESSAGE);
 
-    expect(novo.reply).toBe(Q_ENTRY);
+    expect(novo.reply).toBe(Q_PUBLIC_ENTRY);
     expect(await counts()).toEqual({ owners: 1, captures: 1 });
   });
 
@@ -1814,7 +1815,7 @@ describe("7. respostas após a identificação no link genérico", () => {
 
   test("entrada pública conclui apenas o rascunho e deixa intacto token resgatado não relacionado", async () => {
     const conversa = await conversation("5513997141174:publico-token-nao-relacionado");
-    expect((await genericPublicTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(Q_ENTRY);
+    expect((await genericPublicTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(Q_PUBLIC_ENTRY);
     expect((await genericPublicTurn(conversa.id, "proprietário")).reply).toBe(linkQuestion("nome"));
     for (const item of SCRIPT) {
       await genericPublicTurn(conversa.id, item.body, item.save);
@@ -1866,7 +1867,7 @@ describe("7. respostas após a identificação no link genérico", () => {
     expect(tokenBefore?.capture_id).toBe(999);
     expect(tokenBefore?.status).toBe("redeemed");
 
-    expect((await genericPublicTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(Q_ENTRY);
+    expect((await genericPublicTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(Q_PUBLIC_ENTRY);
     expect((await genericPublicTurn(conversa.id, "proprietário")).reply).toBe(linkQuestion("nome"));
     for (const item of SCRIPT) {
       const body = item.step === "endereco"
@@ -2091,7 +2092,7 @@ describe("7. respostas após a identificação no link genérico", () => {
         expect(result.body.processed).toBe(1);
         return JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
       };
-      expect((await submit(LINK_CAPTACAO_MESSAGE)).text.body).toBe(Q_ENTRY);
+      expect((await submit(LINK_CAPTACAO_MESSAGE)).text.body).toBe(Q_PUBLIC_ENTRY);
       expect((await submit("corretor")).text.body).toBe("Qual é o seu CRECI?");
 
       const earlyGraphCalls = graphCalls.length;
@@ -2242,7 +2243,7 @@ describe("7. respostas após a identificação no link genérico", () => {
       expect(unboundToken?.capture_id).toBeNull();
       expect(unboundToken?.status).toBe("redeemed");
 
-      expect((await submit(LINK_CAPTACAO_MESSAGE)).text.body).toBe(Q_ENTRY);
+      expect((await submit(LINK_CAPTACAO_MESSAGE)).text.body).toBe(Q_PUBLIC_ENTRY);
       expect((await submit("proprietário")).text.body).toBe(linkQuestion("nome"));
       for (const item of SCRIPT) {
         const response = await submit(item.body);
@@ -2318,7 +2319,7 @@ describe("7. respostas após a identificação no link genérico", () => {
         expect(result.body.processed).toBe(1);
         return JSON.parse(graphCalls.at(-1)!.body) as { text: { body: string } };
       };
-      expect((await submit(LINK_CAPTACAO_MESSAGE)).text.body).toBe(Q_ENTRY);
+      expect((await submit(LINK_CAPTACAO_MESSAGE)).text.body).toBe(Q_PUBLIC_ENTRY);
       expect((await submit("corretor")).text.body).toBe("Qual é o seu CRECI?");
       expect((await submit("134718-F")).text.body).toBe("Qual é o seu nome completo?");
       expect((await submit("Edson Muniz")).text.body).toBe("O imóvel é para venda ou locação?");
