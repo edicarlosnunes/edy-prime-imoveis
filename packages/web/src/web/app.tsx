@@ -35,6 +35,7 @@ function App() {
         <Route path="/" component={Index} />
         <Route path="/link-captacao/:token" component={LinkCaptacaoToken} />
         <Route path="/link-captacao" component={LinkCaptacao} />
+        <Route path="/cadastro" component={LinkCaptacao} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/imoveis" component={AdminProperties} />
