@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CaptureSnapshot } from "./owner-capture";
 import {
   OWNER_ENTRY_INTRO,
+  buildState,
   applicableLinkSteps,
   classifyOptionalAnswer,
   finalOk,
@@ -50,6 +51,31 @@ describe("LINK_CAPTACAO — proprietário exclusivo", () => {
     expect(nextOwnerStep(snapshot({ fotoFrente: "PENDENTE: foto não enviada" }))).toBe("observacaoFinal");
     expect(nextOwnerStep(snapshot({ fotoFrente: "Foto recebida", observacaoFinal: "Sem observações adicionais" }))).toBe("confirmacaoFinal");
     expect(nextOwnerStep(snapshot({ fotoFrente: "Foto recebida", observacaoFinal: "Há reforma", confirmacaoFinal: "OK" }))).toBeNull();
+  });
+
+  test("estado real do proprietário não conclui antes da foto, das observações e do OK", () => {
+    const progress = (data: CaptureSnapshot) => buildState({
+      snapshot: data, freshEntry: false, fromLink: true, sticky: true, relink: false,
+      intention: "venda", ownerExclusive: true,
+    });
+    const beforePhoto = progress(snapshot());
+    expect(beforePhoto.active).toBe(true);
+    expect(beforePhoto.ownerExclusive).toBe(true);
+    expect(beforePhoto.nextStep).toBe("fotoFrente");
+    expect(beforePhoto.complete).toBe(false);
+
+    const beforeNotes = progress(snapshot({ fotoFrente: "Foto recebida" }));
+    expect(beforeNotes.nextStep).toBe("observacaoFinal");
+    expect(beforeNotes.complete).toBe(false);
+
+    const beforeOk = progress(snapshot({ fotoFrente: "PENDENTE", observacaoFinal: "Sem observações adicionais" }));
+    expect(beforeOk.nextStep).toBe("confirmacaoFinal");
+    expect(beforeOk.complete).toBe(false);
+
+    const closed = progress(snapshot({ fotoFrente: "Foto recebida", observacaoFinal: "Pintura recente", confirmacaoFinal: "OK" }));
+    expect(closed.nextStep).toBeNull();
+    expect(closed.complete).toBe(true);
+    expect(closed.active).toBe(false);
   });
 
   test("OK antigo não substitui a fotografia do proprietário", () => {
