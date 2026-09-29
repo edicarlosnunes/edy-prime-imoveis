@@ -370,7 +370,7 @@ export function applicableLinkSteps(propertyType: string | null | undefined, own
   return LINK_STEPS.filter((step) => !skip.has(step.key));
 }
 
-function buildState(input: {
+export function buildState(input: {
   snapshot: CaptureSnapshot;
   freshEntry: boolean;
   fromLink: boolean;
