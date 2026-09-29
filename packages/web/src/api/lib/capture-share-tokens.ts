@@ -132,6 +132,60 @@ export async function completeCaptureShareToken(
 }
 
 /**
+ * Completes the sender's current exact link only while it still targets the
+ * expected capture. Pair this with its capture writes in a DB transaction.
+ */
+export async function completeCaptureShareTokenForCapture(
+  db: CaptureShareDb,
+  id: number,
+  senderPhone: string,
+  captureId: number,
+): Promise<boolean> {
+  if (!Number.isSafeInteger(id) || !Number.isSafeInteger(captureId)) return false;
+  const sender = normalizeSenderPhone(senderPhone);
+  const current = await latestCaptureShareForSender(db, sender);
+  if (
+    current?.id !== id ||
+    current.status !== "redeemed" ||
+    current.captureId !== captureId
+  ) return false;
+  const rows = await db.update(schema.captureShareTokens)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(
+      eq(schema.captureShareTokens.id, id),
+      eq(schema.captureShareTokens.senderPhone, sender),
+      eq(schema.captureShareTokens.status, "redeemed"),
+      eq(schema.captureShareTokens.captureId, captureId),
+    ))
+    .returning({ id: schema.captureShareTokens.id });
+  return rows.length > 0;
+}
+
+/**
+ * Completes the exact redeemed token that produced a lead-only submission.
+ * A broker lead must never have a capture binding, so a non-NULL capture ID
+ * is a conflict. The conditional update also makes replays harmless.
+ */
+export async function completeCaptureShareLead(
+  db: CaptureShareDb,
+  id: number,
+  senderPhone: string,
+): Promise<boolean> {
+  if (!Number.isSafeInteger(id)) return false;
+  const sender = normalizeSenderPhone(senderPhone);
+  const rows = await db.update(schema.captureShareTokens)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(and(
+      eq(schema.captureShareTokens.id, id),
+      eq(schema.captureShareTokens.senderPhone, sender),
+      eq(schema.captureShareTokens.status, "redeemed"),
+      isNull(schema.captureShareTokens.captureId),
+    ))
+    .returning({ id: schema.captureShareTokens.id });
+  return rows.length > 0;
+}
+
+/**
  * The latest redeemed/completed share for this sender, ordered by redemption
  * time then row ID. Raw tokens and hashes are intentionally never returned.
  */
@@ -164,10 +218,14 @@ export async function bindCaptureShareToCapture(
   db: CaptureShareDb,
   senderPhone: string,
   captureId: number,
+  expectedTokenId?: number,
 ): Promise<{ ok: boolean; status: "bound" | "already_bound" | "not_found" | "conflict" }> {
   const sender = normalizeSenderPhone(senderPhone);
   const current = await latestCaptureShareForSender(db, sender);
   if (!current) return { ok: false, status: "not_found" };
+  if (expectedTokenId !== undefined && current.id !== expectedTokenId) {
+    return { ok: false, status: "conflict" };
+  }
   if (current.captureId !== null) {
     return current.captureId === captureId
       ? { ok: true, status: "already_bound" }

@@ -7,7 +7,7 @@ export const PUBLIC_IDENTITY = {
   role: "Gestor Imobiliário",
   creci: "CRECI 134718-F",
   logo: "/esantos-logo.png",
-  shareImage: "https://www.edyprimeimoveis.com.br/og-esantos.png",
+  shareImage: "https://www.esantoscorretor.com.br/og-esantos.png",
   title: "E. Santos | Gestor Imobiliário em Praia Grande/SP",
   description:
     "E. Santos — Gestor Imobiliário · CRECI 134718-F. Assessoria em imóveis de médio e alto padrão em Praia Grande/SP.",

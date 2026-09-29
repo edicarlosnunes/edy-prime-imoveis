@@ -3,6 +3,7 @@
  * Os links recém-emitidos sempre usam o endereço oficial novo.
  */
 export const PUBLIC_CAPTURE_URL = "https://www.esantoscorretor.com.br/link-captacao";
+export const PERMANENT_CAPTURE_URL = "https://esantoscorretor.com.br/cadastro";
 
 const PRODUCTION_HOSTS = new Set([
   "www.esantoscorretor.com.br",

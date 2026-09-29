@@ -8,6 +8,7 @@ import {
   validateCaptureShareToken,
 } from "../lib/capture-share-tokens";
 import * as schema from "../database/schema";
+import { LINK_CAPTACAO_MESSAGE } from "../agent/link-captacao";
 
 /** Admin-only issuance: token value is returned once and never stored in DB. */
 export const adminCaptureLinks = {
@@ -43,7 +44,7 @@ export const captureShareLinks = {
       return {
         valid: true as const,
         whatsapp: phone,
-        message: `LINK_CAPTACAO:${input.token}`,
+        message: LINK_CAPTACAO_MESSAGE,
       };
     }),
 };

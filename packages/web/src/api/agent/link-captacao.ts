@@ -1,14 +1,13 @@
 /**
- * LINK_CAPTACAO — cadastro de imóvel iniciado pelo proprietário ou locador.
+ * LINK_CAPTACAO — roteiro unificado de cadastro de imóvel iniciado pelo link.
  *
- * Fluxo exclusivo de quem entra pelo link de captação. Quem entra por aqui já
- * declarou o que quer: cadastrar um imóvel. O perfil define venda (proprietário)
- * ou locação (locador). Este fluxo nunca oferece imóvel nem chama a busca.
+ * O perfil informado no início separa proprietário (venda), locador (locação)
+ * e corretor apresentante, sem confundir o corretor com o proprietário.
  *
  * Diferenças em relação ao roteiro do WhatsApp (`agent/owner-capture.ts`),
  * que continua intacto:
- *  - a pergunta de negociação não existe: a intenção vem do perfil declarado;
- *  - o roteiro tem pergunta de condomínio/unidade e termina na foto da frente;
+ *  - a intenção vem do perfil declarado ou da finalidade informada pelo corretor;
+ *  - condomínio, fachada e observação final são passos do mesmo roteiro;
  *  - o texto que vai para o cliente é DETERMINÍSTICO: quem escolhe a frase é
  *    este módulo, não o modelo. O modelo entra só como extrator — lê a
  *    resposta do proprietário e chama a ferramenta que grava. Foi assim que a
@@ -22,12 +21,13 @@
  */
 import { generateText, stepCountIs, tool } from "ai";
 import { z } from "zod";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import * as schema from "../database/schema";
 import type { AdminDb } from "../lib/admin-base";
 import { sha256Hex } from "../lib/auth";
 import {
-  completeCurrentCaptureShareForSender,
+  completeCaptureShareLead,
+  completeCaptureShareTokenForCapture,
   latestCaptureShareForSender,
 } from "../lib/capture-share-tokens";
 import { ownerPhoneKey } from "../lib/owner-identity";
@@ -43,6 +43,20 @@ import { gateway, gatewayConfigured } from "./gateway";
 import { pickModel } from "./model";
 import { handoffAllowance } from "./handoff-guard";
 import type { AgentReply, AgentRow, AgentTurn } from "./broker";
+import { intakeLead } from "../lib/lead-intake";
+import {
+  beginBrokerLeadDraft,
+  brokerDraftPhoneVariants,
+  loadActiveBrokerLeadDraftSession,
+  loadBrokerLeadDraftSession,
+  loadLatestBrokerLeadDraft,
+  loadLatestActiveBrokerLeadDraft,
+  recordBrokerLeadDraftAnswer,
+  markBrokerLeadDraftComplete,
+  type BrokerDraftSession,
+  type BrokerDraftStepKey,
+  type BrokerLeadDraft,
+} from "./broker-lead-draft";
 
 /* ------------------------------------------------------------- entrada */
 
@@ -62,8 +76,10 @@ export const LINK_CAPTACAO_BROKER_TOKEN = "LINK_CAPTACAO_CORRETOR";
 
 export type LinkPresenter = "proprietario" | "corretor";
 
-const GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
-const ROLE_QUESTION = "Você é proprietário, locador ou corretor do imóvel?";
+const GENERIC_ENTRY_MESSAGE = "Vamos iniciar o cadastro do seu imóvel?";
+const LEGACY_GENERIC_ENTRY_MESSAGE = "Vamos cadastrar seu imóvel?";
+const ROLE_QUESTION = "Você é proprietário, locador ou corretor de imóveis?";
+export const OWNER_ENTRY_INTRO = "Vamos iniciar o cadastro do seu imóvel?\n\nVocê é proprietário, locador ou corretor de imóveis?";
 const ROLE_REJECTED = "Nos desculpe, este cadastro precisa ser realizado pelo proprietário, locador ou corretor do imóvel, pois teremos algumas informações que somente eles poderão confirmar.";
 
 const OWNER_ENTRY_MESSAGE = "Quero cadastrar meu imóvel para venda";
@@ -92,6 +108,152 @@ const brokerUserReplies = (turns: readonly AgentTurn[]) => {
     .filter(Boolean);
 };
 
+function brokerPurpose(value: string | null | undefined): "venda" | "locacao" | null {
+  const normalized = fold(value);
+  if (/\b(?:nao|nunca|sem)\b/.test(normalized)) return null;
+  const sale = /\b(?:venda|vender|vendo)\b/.test(normalized);
+  const rent = /\b(?:locacao|locar|aluguel|alugar)\b/.test(normalized);
+  if (sale === rent) return null;
+  return rent ? "locacao" : "venda";
+}
+
+export const BROKER_LEAD_CLOSING_MESSAGE =
+  "Lead recebido! Obrigado pelas informações. O cadastro do imóvel será aberto somente depois que o proprietário confirmar os dados e o interesse. Nossa equipe entrará em contato para dar continuidade.";
+
+function brokerCondominiumPresence(value: string | null | undefined): "yes" | "no" | "unknown" | null {
+  const answer = fold(value).replace(/[.!?]+$/g, "").trim();
+  if (/^(?:sim|s|tem|fica em condominio)$/.test(answer)) return "yes";
+  if (/^(?:nao|n|nao tem|sem condominio)$/.test(answer)) return "no";
+  if (/^(?:nao sei|n sei|nao tenho certeza|desconheco)$/.test(answer)) return "unknown";
+  return null;
+}
+
+function brokerOnboarding(turns: readonly AgentTurn[]) {
+  const replies = brokerUserReplies(turns);
+  const roleIndex = replies.findIndex((reply) => linkRole(reply) === "corretor");
+  const answers = roleIndex < 0 ? [] : replies.slice(roleIndex + 1);
+  const creci = answers[0]?.slice(0, 80) ?? "";
+  const name = answers[1]?.slice(0, 120) ?? "";
+  let cursor = 2;
+  let purpose: "venda" | "locacao" | null = null;
+  while (cursor < answers.length && purpose === null) {
+    purpose = brokerPurpose(answers[cursor]);
+    cursor++;
+  }
+  const ownerName = purpose === null ? null : answers[cursor++] ?? null;
+  const answered: LinkStepKey[] = [];
+  const acceptedAnswers: Partial<Record<BrokerDraftStepKey, string>> = {};
+  if (roleIndex >= 0) acceptedAnswers.role = replies[roleIndex]!;
+  if (creci) acceptedAnswers.creci = creci;
+  if (name) acceptedAnswers.nome = name;
+  if (purpose !== null) acceptedAnswers.intencao = purpose;
+  if (ownerName !== null) acceptedAnswers.proprietarioNome = ownerName;
+  let pendingQuestion: string | null = null;
+  let nextStep: LinkStepKey | null = null;
+
+  if (!creci) {
+    pendingQuestion = "Qual é o seu CRECI?";
+  } else if (!name) {
+    pendingQuestion = "Qual é o seu nome completo?";
+  } else if (!purpose) {
+    pendingQuestion = "O imóvel é para venda ou locação?";
+  } else if (ownerName === null) {
+    pendingQuestion = "Qual é o nome do proprietário do imóvel, se souber? Responda NÃO SEI se não souber.";
+  } else {
+    answered.push("nome");
+    const takeAnswer = (
+      key: LinkStepKey,
+      question: string,
+      valid: (value: string) => boolean = (value) => Boolean(value.trim()),
+    ) => {
+      const value = answers[cursor];
+      if (value === undefined || !valid(value)) {
+        pendingQuestion = question;
+        nextStep = key;
+        return false;
+      }
+      cursor++;
+      answered.push(key);
+      if (key !== "confirmacaoFinal") {
+        acceptedAnswers[key as BrokerDraftStepKey] = value;
+      }
+      return true;
+    };
+
+    if (takeAnswer("endereco", linkQuestion("endereco"))) {
+      /* A presença do condomínio é uma escolha enumerada: descarte tentativas
+         inválidas para que a resposta válida posterior ocupe este mesmo passo. */
+      while (
+        cursor < answers.length &&
+        brokerCondominiumPresence(answers[cursor]) === null
+      ) cursor++;
+      if (takeAnswer(
+        "condominioPresenca",
+        linkQuestion("condominioPresenca"),
+        (value) => brokerCondominiumPresence(value) !== null,
+      )) {
+        const presence = brokerCondominiumPresence(answers[cursor - 1]);
+        if (presence === "yes" && takeAnswer("nomeCondominio", linkQuestion("nomeCondominio"))) {
+          // The condominium name and unit are kept as one conversation answer.
+        }
+        if (pendingQuestion === null && takeAnswer("documentacao", linkQuestion("documentacao"))) {
+          if (takeAnswer("tipo", linkQuestion("tipo"))) {
+            const propertyType = answers[cursor - 1];
+            const route = applicableLinkSteps(propertyType, false, {
+              condominioPresenca: presence ?? undefined,
+            }).filter((step) => [
+              "dormitorios",
+              "suites",
+              "banheiros",
+              "vagas",
+              "metragem",
+              "caracteristicas",
+              "valor",
+              "condominio",
+              "custos",
+              "fotoFrente",
+              "observacaoFinal",
+            ].includes(step.key));
+            for (const step of route) {
+              const question = linkQuestion(step.key, { propertyType, intention: purpose });
+              const valid = step.key === "fotoFrente"
+                ? (value: string) => /^\[imagem:/i.test(value.trim()) || missingFacadePhoto(value)
+                : (value: string) => Boolean(value.trim());
+              if (step.key === "fotoFrente") {
+                while (cursor < answers.length && !valid(answers[cursor]!)) cursor++;
+              }
+              if (!takeAnswer(step.key, question, valid)) break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const photoStep = nextStep === "fotoFrente";
+
+  return {
+    replies,
+    roleIndex,
+    answers,
+    creci,
+    name,
+    purpose,
+    ownerName,
+    pendingQuestion,
+    nextStep,
+    answered,
+    acceptedAnswers,
+    photoStep,
+    complete: pendingQuestion === null && ownerName !== null,
+  };
+}
+
+/** Pure media gate for the broker questionnaire's facade-photo prompt. */
+export function brokerAwaitingFacadePhoto(turns: readonly AgentTurn[]): boolean {
+  return brokerOnboarding(turns).photoStep;
+}
+
 const phoneFromText = (text: string | null | undefined) => {
   const digits = String(text ?? "").replace(/\D/g, "");
   return digits.length >= 10 ? digits : null;
@@ -118,7 +280,7 @@ const fold = (value: string | null | undefined) =>
 function linkRole(value: string | null | undefined): "proprietario" | "locador" | "corretor" | null {
   const normalized = fold(value)
     .replace(/^(?:eu\s+)?sou\s+(?:(?:o|a)\s+)?/, "")
-    .replace(/\s+(?:do|da)\s+imovel$/, "")
+    .replace(/\s+(?:(?:do|da)\s+imovel|de\s+imoveis?)$/, "")
     .trim();
   if (/^(?:proprietario|proprietaria|dono|dona)$/.test(normalized)) return "proprietario";
   if (/^(?:locador|locadora)$/.test(normalized)) return "locador";
@@ -133,18 +295,25 @@ function linkRole(value: string | null | undefined): "proprietario" | "locador" 
  */
 const isGenericLinkStart = (text: string | null | undefined) => {
   const value = fold(text);
-  const start = fold(GENERIC_ENTRY_MESSAGE);
-  if (!value || !start || !value.includes(start)) return false;
+  if (!value) return false;
 
   /* Alguns clientes do WhatsApp podem duplicar o texto pré-preenchido quando
      o link é aberto mais de uma vez antes do envio. Aceitamos apenas repetições
      exatas da frase completa, com ou sem espaços entre elas. */
-  return value.split(start).join("").trim() === "";
+  return [GENERIC_ENTRY_MESSAGE, LEGACY_GENERIC_ENTRY_MESSAGE].some((message) => {
+    const start = fold(message);
+    return value.includes(start) && value.split(start).join("").trim() === "";
+  });
 };
 
-/** Public reusable entry is exact text, never an opaque exclusive bearer token. */
+/**
+ * Public reusable entry is exact text, never an opaque exclusive bearer token.
+ * The webhook also uses this guard before sending a completed-link response;
+ * an empty-caption media event must bypass that text-only response so its
+ * sender-scoped media gate can ignore it without an unsolicited reply.
+ */
 export const isReusableGenericLinkEntry = (text: string | null | undefined) =>
-  isGenericLinkStart(text);
+  isGenericLinkStart(text) || /^(?:\[imagem\])?$/i.test(String(text ?? "").trim());
 
 /**
  * Identifica a classe do token de entrada para proteger fichas concluídas.
@@ -210,6 +379,8 @@ export const hasLinkToken = (text: string | null | undefined) => {
 export const LINK_STEPS = [
   { key: "nome", label: "Nome completo", verbatim: true, question: "Qual é o seu nome completo?" },
   { key: "endereco", label: "Endereço do imóvel", verbatim: true, question: "Qual é o endereço completo do imóvel?" },
+  { key: "condominioPresenca", label: "Presença de condomínio", verbatim: true, question: "O imóvel fica em condomínio? Responda SIM, NÃO ou NÃO SEI." },
+  { key: "nomeCondominio", label: "Nome do condomínio e unidade", verbatim: true, question: "Qual é o nome do condomínio e, se aplicável, a unidade do imóvel?" },
   { key: "documentacao", label: "Documentação", verbatim: true, question: "Qual é a situação da documentação do imóvel? Se não souber, digite NÃO SEI." },
   { key: "tipo", label: "Tipo de imóvel", question: "Qual é o tipo do imóvel? Ex.: apartamento, casa, terreno, sítio ou outro." },
   { key: "dormitorios", label: "Dormitórios", question: "Quantos dormitórios? (0 se não tiver • NÃO SEI se não souber)" },
@@ -221,7 +392,8 @@ export const LINK_STEPS = [
   { key: "valor", label: "Valor pretendido", question: "Qual é o valor pretendido do imóvel? Se ainda não souber, digite NÃO SEI." },
   { key: "condominio", label: "Valor do condomínio", question: "Qual é o valor do condomínio? (0 se não houver • NÃO SEI se não souber)" },
   { key: "custos", label: "Valor do IPTU", question: "Qual é o valor do IPTU? (0 se não houver/isento • NÃO SEI se não souber)" },
-  { key: "fotoFrente", label: "Foto da fachada", verbatim: true, question: "Para finalizar, envie uma foto da frente ou fachada do imóvel." },
+  { key: "fotoFrente", label: "Foto da fachada", verbatim: true, question: "Envie uma foto real da frente ou fachada do imóvel. Se não tiver agora, digite NÃO SEI; a foto ficará pendente para nossa equipe." },
+  { key: "observacaoFinal", label: "Observações finais", verbatim: true, question: "Tem algo importante sobre o imóvel que gostaria de informar? Se não souber ou não tiver mais nada a acrescentar, digite NÃO SEI." },
 ] as const;
 
 export type LinkStepKey = (typeof LINK_STEPS)[number]["key"];
@@ -232,7 +404,26 @@ export const OFF_SCRIPT_REPLY =
 
 /** Fechamento do cadastro. */
 export const CLOSING_MESSAGE =
-  "Seu cadastro foi finalizado com sucesso. Nosso atendimento entrará em contato.";
+  "Cadastro concluído com sucesso! Em breve entraremos em contato para dar continuidade ao atendimento.";
+
+/** Respostas naturais não exigem que o cliente escreva literalmente NÃO SEI. */
+export function classifyOptionalAnswer(text: string | null | undefined): "0" | "não informado" | "não se aplica" | null {
+  const value = fold(text).replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+  if (/^(?:nao sei|n sei|sei la|nao lembro|nao conheco|nao tenho certeza|desconheco|pular|pula|passar)$/.test(value)) return "não informado";
+  if (/^(?:nao se aplica|nao aplica)$/.test(value)) return "não se aplica";
+  if (/^(?:nenhum|nenhuma|nao tem|nao tenho|nao possui|nao tem condominio|nao pago condominio|nao pago|sem|sem condominio|sem cobranca|zero|0|isento|isenta)$/.test(value)) return "0";
+  return null;
+}
+
+/** Um texto nunca comprova uma foto; este fallback cria pendência para a equipe. */
+export function missingFacadePhoto(text: string | null | undefined): boolean {
+  const value = fold(text).replace(/[.!?]+$/g, "").trim();
+  return /^(?:nao sei|n sei|nao tenho|nao tenho foto|nao tenho a foto|nao tenho agora|nao tenho no momento|sem foto|estou sem foto|nao consigo enviar agora|nao posso enviar agora)$/.test(value);
+}
+
+export function finalOk(text: string | null | undefined): boolean {
+  return /^ok[.! ]*$/i.test(String(text ?? "").trim());
+}
 
 /** Imóvel sem condomínio: a pergunta de custos vira só IPTU. */
 const NO_CONDO = ["terreno", "casa", "chacara", "sitio", "galpao", "area", "lote"];
@@ -241,7 +432,7 @@ const NO_CONDO_ANSWER = /^(nao|nenhum|sem condominio|n)\b/;
 /** Perguntas exatas; valor muda por perfil e custos pode variar por imóvel. */
 export function linkQuestion(
   key: LinkStepKey,
-  context: { propertyType?: string | null; condominio?: string | null; intention?: string | null } = {},
+  context: { propertyType?: string | null; condominio?: string | null; intention?: string | null; ownerExclusive?: boolean } = {},
 ): string {
   const step = LINK_STEPS.find((item) => item.key === key)!;
   if (key === "valor" && fold(context.intention) === "locacao") {
@@ -278,10 +469,8 @@ export interface LinkCaptacaoState {
   complete: boolean;
   /** Bloqueia o atendimento normal após encerrar a captação deste link. */
   completionGuard: boolean;
-  /** Reusable public phrase flow; deliberately has no facade-photo step. */
+  /** Entry came through the reusable public phrase; the schedule is unchanged. */
   genericPublic?: boolean;
-  /** Generic flow has all requested details and is waiting for an explicit OK. */
-  genericAwaitingConfirmation?: boolean;
   /** Current redeemed bearer row authorizing this flow. */
   shareTokenId?: number | null;
   /** Capture id permanently bound to the redeemed link, when present. */
@@ -290,16 +479,28 @@ export interface LinkCaptacaoState {
   replayedToken?: boolean;
   replayQuestion?: string | null;
   /** Intenção definida pelo perfil: locador = locação; proprietário = venda. */
-  intention: "venda" | "locacao";
+  intention: "venda" | "locacao" | null;
+  /** True only for historical exclusive owner links; the schedule remains shared. */
+  ownerExclusive?: boolean;
+  /** Durable broker-only questionnaire state; never used by owner capture. */
+  brokerDraft?: BrokerLeadDraft | null;
+  brokerDraftSession?: BrokerDraftSession;
+  brokerBaseTurns?: AgentTurn[];
+  brokerTurns?: AgentTurn[];
+  brokerInboundTurn?: string | null;
 }
 
 /** Passos já respondidos — lidos do que está GRAVADO, nunca da conversa. */
-function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
+export function linkAnswered(snapshot: CaptureSnapshot, ownerExclusive = false): LinkStepKey[] {
   const answers = snapshot.answers as Record<string, string | undefined>;
   const filled = (value: unknown) => typeof value === "string" && value.trim().length > 0;
   const done = new Set<LinkStepKey>();
   if (filled(snapshot.ownerName)) done.add("nome");
   if (snapshot.answered.includes("endereco")) done.add("endereco");
+  if (filled(answers.condominioPresenca)) done.add("condominioPresenca");
+  if (filled(answers.nomeCondominio) || ["no", "unknown", "não", "nao"].includes(fold(answers.condominioPresenca ?? ""))) {
+    done.add("nomeCondominio");
+  }
   if (filled(snapshot.propertyType)) done.add("tipo");
   if (
     (typeof snapshot.askingPrice === "number" && snapshot.askingPrice > 0) ||
@@ -318,18 +519,28 @@ function linkAnswered(snapshot: CaptureSnapshot): LinkStepKey[] {
     "custos",
     "caracteristicas",
     "fotoFrente",
+    "observacaoFinal",
   ] as const) {
     if (filled(answers[key])) done.add(key);
   }
-  /* Reusable public captures finish on a persisted OK instead of a photo. */
-  if (fold(answers.confirmacaoFinal) === "ok") done.add("fotoFrente");
+  if (filled(answers.condominio) && !done.has("condominioPresenca")) done.add("condominioPresenca");
   return LINK_STEPS.filter((step) => done.has(step.key)).map((step) => step.key);
 }
 
-function applicableLinkSteps(propertyType: string | null | undefined) {
+export function applicableLinkSteps(
+  propertyType: string | null | undefined,
+  ownerExclusive = false,
+  answers: Record<string, string | undefined> = {},
+) {
   const type = fold(propertyType);
-  if (!type) return [...LINK_STEPS];
   const skip = new Set<LinkStepKey>();
+  const condoPresence = fold(answers.condominioPresenca);
+  if (["no", "unknown", "não", "nao"].includes(condoPresence)) {
+    skip.add("nomeCondominio");
+    skip.add("condominio");
+  }
+  if (condoPresence !== "yes" && condoPresence !== "sim") skip.add("condominio");
+  if (!type) return LINK_STEPS.filter((step) => !skip.has(step.key));
   if (/apartamento|apto|studio|flat|kitnet/.test(type)) skip.add("caracteristicas");
   if (/terreno|lote/.test(type)) {
     ["dormitorios", "suites", "banheiros", "vagas", "metragem", "condominio"].forEach((key) => skip.add(key as LinkStepKey));
@@ -341,7 +552,7 @@ function applicableLinkSteps(propertyType: string | null | undefined) {
   return LINK_STEPS.filter((step) => !skip.has(step.key));
 }
 
-function buildState(input: {
+export function buildState(input: {
   snapshot: CaptureSnapshot;
   freshEntry: boolean;
   fromLink: boolean;
@@ -349,10 +560,17 @@ function buildState(input: {
   /** Clique no link depois do fechamento do cadastro anterior. */
   relink: boolean;
   intention?: "venda" | "locacao";
+  ownerExclusive?: boolean;
 }): LinkCaptacaoState {
   const { snapshot, freshEntry } = input;
-  const answersAll = linkAnswered(snapshot);
-  const previousRoute = applicableLinkSteps(snapshot.propertyType);
+  const intention = input.intention ?? (snapshot.intention === "locacao" ? "locacao" : "venda");
+  const ownerExclusive = Boolean(input.ownerExclusive && intention === "venda");
+  const answersAll = linkAnswered(snapshot, ownerExclusive);
+  const previousRoute = applicableLinkSteps(
+    snapshot.propertyType,
+    ownerExclusive,
+    snapshot.answers as Record<string, string | undefined>,
+  );
   const completeBefore = previousRoute.every((step) => answersAll.includes(step.key));
 
   /* Uma entrada aceita depois do fechamento cadastra OUTRO imóvel. O nome já
@@ -363,13 +581,17 @@ function buildState(input: {
     ? answersAll.filter((key) => key === "nome")
     : answersAll;
 
-  const nextStep = applicableLinkSteps(startNewProperty ? null : snapshot.propertyType)
+  const nextStep = applicableLinkSteps(
+    startNewProperty ? null : snapshot.propertyType,
+    ownerExclusive,
+    startNewProperty ? {} : snapshot.answers as Record<string, string | undefined>,
+  )
     .find((step) => !answered.includes(step.key))?.key ?? null;
   const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
-  const intention = input.intention ?? (snapshot.intention === "locacao" ? "locacao" : "venda");
 
   return {
     presenter: "proprietario",
+    ownerExclusive,
     ownerPhone: snapshot.phone,
     broker: null,
     /* Atende o turno quando: clicou no link agora; ou está cadastrando outro
@@ -390,6 +612,7 @@ function buildState(input: {
           propertyType: startNewProperty ? null : snapshot.propertyType,
           condominio: startNewProperty ? null : condominio,
           intention,
+          ownerExclusive,
         })
       : null,
     complete: nextStep === null,
@@ -401,31 +624,24 @@ function buildState(input: {
 function reusableGenericState(
   state: LinkCaptacaoState,
 ): LinkCaptacaoState {
-  const route = applicableLinkSteps(state.snapshot.propertyType)
-    .filter((step) => step.key !== "fotoFrente");
+  const route = applicableLinkSteps(
+    state.snapshot.propertyType,
+    false,
+    state.snapshot.answers as Record<string, string | undefined>,
+  );
   const nextStep = route.find((step) => !state.answered.includes(step.key))?.key ?? null;
-  if (!nextStep) {
-    return {
-      ...state,
-      genericPublic: true,
-      startNewProperty: state.snapshot.captureId === null,
-      genericAwaitingConfirmation: true,
-      complete: false,
-      nextStep: null,
-      nextQuestion: "Responda OK para finalizar o cadastro.",
-    };
-  }
   return {
     ...state,
     genericPublic: true,
     startNewProperty: state.snapshot.captureId === null,
-    genericAwaitingConfirmation: false,
-    complete: false,
+    complete: nextStep === null,
     nextStep,
-    nextQuestion: linkQuestion(nextStep, {
-      propertyType: state.snapshot.propertyType,
-      intention: state.intention,
-    }),
+    nextQuestion: nextStep
+      ? linkQuestion(nextStep, {
+          propertyType: state.snapshot.propertyType,
+          intention: state.intention,
+        })
+      : null,
   };
 }
 
@@ -448,145 +664,193 @@ async function brokerLinkState(
   phone: string,
   turns: readonly AgentTurn[],
 ): Promise<LinkCaptacaoState> {
-  const replies = brokerUserReplies(turns);
-  const genericFlow = Boolean(
-    replies[0] &&
-      /^(sim|s|claro|vamos|quero|nao|não|n)\b/i.test(fold(replies[0])) &&
-      replies[1] &&
-      /propriet|corretor/i.test(fold(replies[1])),
+  const lastCloseIndex = turns.reduce(
+    (latest, turn, index) =>
+      turn.role === "assistant" &&
+      (turn.content.includes(CLOSING_MESSAGE) || turn.content.includes(BROKER_LEAD_CLOSING_MESSAGE))
+        ? index
+        : latest,
+    -1,
   );
-  const offset = genericFlow ? 2 : (replies[0] && /propriet|corretor/i.test(replies[0]) ? 1 : 0);
-  const creci = replies[offset]?.slice(0, 80) ?? "";
-  const brokerName = replies[offset + 1]?.slice(0, 120) ?? "";
-  const ownerPhone = phone;
+  const lastEntryIndex = turns.reduce(
+    (latest, turn, index) =>
+      turn.role === "user" && hasBrokerToken(turn.content) ? index : latest,
+    -1,
+  );
+  const lastEntry = lastEntryIndex >= 0 ? turns[lastEntryIndex] : undefined;
+  const tokenEntry = lastEntry?.role === "user"
+    ? shareTokenFromMessage(lastEntry.content)
+    : null;
+  const genericEntry = lastEntry?.role === "user" && isGenericLinkStart(lastEntry.content);
+  let session: BrokerDraftSession | undefined;
+  let draft: BrokerLeadDraft | null = null;
+  let completedExactSession: BrokerLeadDraft | null = null;
+  let entryIsCurrent = false;
+
+  if (tokenEntry) {
+    session = { kind: "token", key: tokenEntry };
+    entryIsCurrent = true;
+    draft = await loadActiveBrokerLeadDraftSession(db, phone, session);
+    if (!draft) completedExactSession = await loadBrokerLeadDraftSession(db, phone, session);
+  } else if (genericEntry) {
+    entryIsCurrent = true;
+    if (lastCloseIndex > lastEntryIndex) {
+      completedExactSession = await loadLatestBrokerLeadDraft(db, phone, "generic");
+      session = completedExactSession?.session;
+      draft = completedExactSession;
+    } else {
+      const activeGeneric = await loadLatestActiveBrokerLeadDraft(db, phone, "generic");
+      draft = activeGeneric?.session.key.startsWith("generic:") ? activeGeneric : null;
+      session = draft?.session ?? { kind: "generic", key: `generic:${crypto.randomUUID()}` };
+    }
+  } else if (lastEntry?.role === "user") {
+    const legacyKey = linkEntryToken(lastEntry.content) ?? fold(lastEntry.content);
+    session = { kind: "generic", key: `legacy:${legacyKey}` };
+    entryIsCurrent = true;
+    draft = await loadActiveBrokerLeadDraftSession(db, phone, session);
+  }
+
+  if (!session) {
+    draft = await loadLatestActiveBrokerLeadDraft(db, phone);
+    session = draft?.session;
+  }
+  if (completedExactSession?.status === "complete") {
+    draft = completedExactSession;
+  }
+
+  const entryMarker = session?.kind === "token"
+    ? `LINK_CAPTACAO:${session.key}`
+    : GENERIC_ENTRY_MESSAGE;
+  const baseTurns: AgentTurn[] = draft
+    ? brokerDraftTurns(draft, entryMarker)
+    : lastEntry?.role === "user"
+      ? [lastEntry]
+      : [];
+  const latestUser = [...turns].reverse().find((turn) => turn.role === "user");
+  const latestIsEntry = Boolean(
+    lastEntryIndex >= 0 &&
+    turns.length - 1 === lastEntryIndex &&
+    latestUser === lastEntry,
+  );
+  /* A transcript ending in an assistant turn has already consumed its latest
+     user message. Replaying it beside the durable answers would shift it into
+     the following questionnaire step (notably a photo into final notes). */
+  const inboundTurn =
+    turns.at(-1)?.role === "user" && latestUser && !latestIsEntry
+      ? latestUser.content
+      : null;
+  const brokerTurns = [...baseTurns];
+  if (inboundTurn !== null) brokerTurns.push({ role: "user", content: inboundTurn });
+  const onboarding = brokerOnboarding(brokerTurns);
   const currentShare = await latestCaptureShareForSender(db, phone);
   let lastLink = -1;
   let lastClosing = -1;
-  let latestCurrentShareEntry = -1;
   for (let index = 0; index < turns.length; index++) {
     const turn = turns[index]!;
     if (turn.role === "user" && hasBrokerToken(turn.content)) lastLink = index;
-    if (turn.role === "assistant" && turn.content.includes(CLOSING_MESSAGE)) lastClosing = index;
-    if (turn.role === "user" && currentShare?.status === "redeemed") {
-      const token = shareTokenFromMessage(turn.content);
-      if (token && (await verifiedShareToken(db, phone, token))?.id === currentShare.id) {
-        latestCurrentShareEntry = index;
-      }
+    if (turn.role === "assistant" &&
+      (turn.content.includes(CLOSING_MESSAGE) || turn.content.includes(BROKER_LEAD_CLOSING_MESSAGE))) {
+      lastClosing = index;
     }
   }
-  const currentEntry = lastLink > lastClosing;
-  const storedSnapshot = currentShare?.captureId !== null && currentShare?.captureId !== undefined
-    ? await captureSnapshot(db, phone, currentShare.captureId)
-    : await captureSnapshot(db, phone);
-  const storedAnswers = storedSnapshot.answers as Record<string, string | undefined>;
-  const storedOrigin = storedAnswers.origem ?? null;
-  const storedAnswered = linkAnswered(storedSnapshot);
-  const previousCaptureCompleted =
-    fold(storedOrigin) === fold(LINK_CAPTACAO_ORIGIN) &&
-    applicableLinkSteps(storedSnapshot.propertyType).every((step) => storedAnswered.includes(step.key));
-  const resetForFreshShare = Boolean(
+  const currentEntry = entryIsCurrent || lastLink > lastClosing || Boolean(draft?.status === "active");
+  const snapshot = await captureSnapshot(db, phone);
+  let completedTokenReplay = false;
+  const lastTranscriptEntry = turns[lastLink];
+  const repeatedToken = lastTranscriptEntry?.role === "user"
+    ? shareTokenFromMessage(lastTranscriptEntry.content)
+    : null;
+  if (repeatedToken) {
+    const tokenHash = await sha256Hex(repeatedToken);
+    const [completedToken] = await db
+      .select({ id: schema.captureShareTokens.id })
+      .from(schema.captureShareTokens)
+      .where(and(
+        eq(schema.captureShareTokens.tokenHash, tokenHash),
+        eq(schema.captureShareTokens.senderPhone, senderKey(phone)),
+        eq(schema.captureShareTokens.status, "completed"),
+      ))
+      .limit(1);
+    completedTokenReplay = Boolean(completedToken);
+  }
+  /* Attach only the exact verified bearer entry. A generic public entry never
+     inherits a nearby token's authority. */
+  let shareTokenId: number | null = null;
+  if (
+    (currentEntry || draft?.status === "active") &&
     currentShare?.status === "redeemed" &&
-    currentShare.captureId === null &&
-    latestCurrentShareEntry > lastClosing &&
-    previousCaptureCompleted,
-  );
-  const snapshot: CaptureSnapshot = resetForFreshShare
-    ? {
-        ...storedSnapshot,
-        ownerName: brokerName || null,
-        captureId: null,
-        pending: false,
-        registrationStatus: null,
-        completeness: 0,
-        address: null,
-        propertyType: null,
-        intention: "venda",
-        askingPrice: null,
-        answers: {},
-        answered: [],
-        nextStep: brokerName ? "endereco" : "nome",
-        nextQuestion: linkQuestion(brokerName ? "endereco" : "nome"),
-        complete: false,
-        duplicateNote: null,
-        outsidePriorityArea: false,
-      }
-    : storedSnapshot;
-
-  const answered = linkAnswered(snapshot);
-  const nextStep = applicableLinkSteps(snapshot.propertyType)
-    .find((step) => !answered.includes(step.key))?.key ?? null;
-  const condominio = (snapshot.answers as Record<string, string | undefined>).condominio;
-
-  const latestUserIndex = turns.reduce(
-    (latest, turn, index) => turn.role === "user" ? index : latest,
-    -1,
-  );
-  const origin = (snapshot.answers as Record<string, string | undefined>).origem ?? null;
-  const completed = fold(origin) === fold(LINK_CAPTACAO_ORIGIN) &&
-    applicableLinkSteps(snapshot.propertyType).every((step) => answered.includes(step.key));
-  const priorToken = lastClosing >= 0
-    ? turns
-        .slice(0, lastClosing)
-        .filter((turn) => turn.role === "user")
-        .map((turn) => linkEntryToken(turn.content))
-        .filter((token): token is string => Boolean(token))
-        .at(-1) ?? null
-    : completed ? LINK_CAPTACAO_TOKEN : null;
-  const latestToken = turns
-    .filter((turn, index) => turn.role === "user" && index > lastClosing)
-    .map((turn) => linkEntryToken(turn.content))
-    .filter((token): token is string => Boolean(token))
-    .at(-1) ?? null;
-  const completedBeforeThisTurn =
-    lastClosing >= 0
-      ? latestUserIndex > lastClosing
-      : completed && latestUserIndex >= 0;
-  const completionGuard = currentShare?.status === "completed" || (completedBeforeThisTurn && !(
-    latestToken && priorToken && latestToken !== priorToken
-  ));
-  const shareTokenId = currentEntry && latestCurrentShareEntry >= 0 &&
-    currentShare?.status === "redeemed" ? currentShare.id : null;
+    session?.kind === "token" &&
+    (await verifiedShareToken(db, phone, session.key))?.id === currentShare.id
+  ) {
+    shareTokenId = currentShare.id;
+  }
+  const completionGuard =
+    completedExactSession?.status === "complete" ||
+    lastCloseIndex > lastLink ||
+    completedTokenReplay;
   const shareCaptureId = shareTokenId === null ? null : currentShare!.captureId;
 
   return {
-    active: completionGuard || (currentEntry && nextStep !== null),
+    active: completionGuard || (currentEntry && (onboarding.pendingQuestion !== null || onboarding.complete)) ||
+      Boolean(draft?.status === "active"),
     presenter: "corretor",
-    ownerPhone,
-    broker: creci && brokerName ? { creci, name: brokerName, phone } : null,
-    freshEntry: currentEntry && replies.length === 0,
-    fromLink: true,
-    startNewProperty: resetForFreshShare,
-    snapshot,
-    answered,
-    nextStep,
-    nextQuestion: nextStep
-      ? linkQuestion(nextStep, {
-          propertyType: snapshot.propertyType,
-          condominio,
-          intention: snapshot.intention,
-        })
+    ownerPhone: phone,
+    broker: onboarding.creci && onboarding.name
+      ? { creci: onboarding.creci, name: onboarding.name, phone }
       : null,
-    complete: completionGuard || nextStep === null,
+    freshEntry: currentEntry && onboarding.replies.length === 0,
+    fromLink: true,
+    startNewProperty: false,
+    snapshot,
+    answered: onboarding.answered,
+    nextStep: onboarding.nextStep,
+    nextQuestion: onboarding.pendingQuestion,
+    complete: completionGuard || onboarding.complete,
     completionGuard,
-    intention: snapshot.intention === "locacao" ? "locacao" : "venda",
+    intention: onboarding.purpose,
     shareTokenId,
     shareCaptureId,
+    brokerDraft: draft?.status === "active" ? draft : null,
+    brokerDraftSession: session,
+    brokerBaseTurns: baseTurns,
+    brokerTurns,
+    brokerInboundTurn: inboundTurn,
   };
 }
 
-function brokerPendingQuestion(turns: readonly AgentTurn[]): string | null {
-  const replies = brokerUserReplies(turns);
-  const genericFlow = Boolean(
-    replies[0] &&
-      /^(sim|s|claro|vamos|quero)\b/i.test(fold(replies[0])) &&
-      replies[1] &&
-      /corretor/i.test(fold(replies[1])),
-  );
-  const offset = genericFlow ? 2 : (replies[0] && /corretor/i.test(fold(replies[0])) ? 1 : 0);
-  const count = replies.length - offset;
-  if (count === 0) return "Qual é o seu CRECI?";
-  if (count === 1) return "Qual é o seu nome completo?";
-  return null;
+function brokerDraftTurns(draft: BrokerLeadDraft, entryMarker: string): AgentTurn[] {
+  const orderedKeys: BrokerDraftStepKey[] = [
+    "role", "creci", "nome", "intencao", "proprietarioNome", "endereco",
+    "condominioPresenca", "nomeCondominio", "documentacao", "tipo",
+    "dormitorios", "suites", "banheiros", "vagas", "metragem",
+    "caracteristicas", "valor", "condominio", "custos", "fotoFrente",
+    "observacaoFinal",
+  ];
+  return [
+    { role: "user", content: entryMarker },
+    ...orderedKeys
+      .filter((key) => draft.answers[key] !== undefined)
+      .map((key) => ({ role: "user" as const, content: draft.answers[key]! })),
+  ];
+}
+
+async function ensureBrokerLead(db: AdminDb, phone: string): Promise<number> {
+  const normalizedPhone = phone.replace(/\D/g, "").slice(0, 20);
+  const [existing] = await db.select({ id: schema.leads.id })
+    .from(schema.leads)
+    .where(inArray(schema.leads.phone, brokerDraftPhoneVariants(normalizedPhone)))
+    .orderBy(desc(schema.leads.createdAt))
+    .limit(1);
+  if (existing) return existing.id;
+  const lead = await intakeLead(db, {
+    name: "Contato de corretor",
+    phone: normalizedPhone,
+    interest: "Apresentação de imóvel por corretor",
+    message: "Questionário de captação iniciado pelo link.",
+    source: "whatsapp",
+    channel: "whatsapp",
+  });
+  return lead.id;
 }
 
 export async function linkCaptacaoState(
@@ -611,8 +875,17 @@ export async function linkCaptacaoState(
     }
   }
   const latestVerifiedShareId = [...verifiedTokens.values()].at(-1)?.id;
+  const latestVerifiedTokenIndex = turns.reduce(
+    (latest, turn, index) => turn.role === "user" && verifiedTokens.has(turn.content) ? index : latest,
+    -1,
+  );
+  const latestGenericEntryIndex = turns.reduce(
+    (latest, turn, index) => turn.role === "user" && isGenericLinkStart(turn.content) ? index : latest,
+    -1,
+  );
   const activeShareId =
     currentShare?.status === "redeemed" &&
+    latestVerifiedTokenIndex > latestGenericEntryIndex &&
     (latestVerifiedShareId === undefined || latestVerifiedShareId === currentShare.id)
       ? currentShare.id
       : null;
@@ -636,7 +909,8 @@ export async function linkCaptacaoState(
   const snapshotAnswers = linkAnswered(snapshot);
   const captureWasCompleted =
     fromLinkCapture &&
-    applicableLinkSteps(snapshot.propertyType).every((step) => snapshotAnswers.includes(step.key));
+    applicableLinkSteps(snapshot.propertyType, false, snapshot.answers as Record<string, string | undefined>)
+      .every((step) => snapshotAnswers.includes(step.key));
   const legacyEntryIsActive =
     fromLinkCapture &&
     !captureWasCompleted &&
@@ -676,20 +950,33 @@ export async function linkCaptacaoState(
    /* O envio da mensagem pré-preenchida já é a confirmação de entrada.
       A primeira resposta do contato é diretamente o perfil. */
   const roleAnswer = afterGeneric[0]?.content ?? "";
-  const brokerEntry =
-    verifiedTokens.size > 0 &&
-    (/\bcorretor(?:a)?\b/i.test(fold(roleAnswer)) ||
-      afterGeneric.some((turn) =>
-        turn.role === "user" &&
-        (fold(turn.content) === fold(BROKER_ENTRY_MESSAGE) ||
-          fold(turn.content).includes(fold(LINK_CAPTACAO_BROKER_TOKEN))),
-      ));
+  const brokerEntry = afterGeneric.some(
+    (turn) => turn.role === "user" && linkRole(turn.content) === "corretor",
+  );
   const grandfatheredBrokerEntry = legacyEntryIsActive && afterGeneric.some((turn) =>
     turn.role === "user" &&
     (fold(turn.content) === fold(BROKER_ENTRY_MESSAGE) ||
       fold(turn.content).includes(fold(LINK_CAPTACAO_BROKER_TOKEN))),
   );
-  if (brokerEntry || grandfatheredBrokerEntry) return brokerLinkState(db, phone!, turns);
+  const latestTrustedEntry = [...userMessages].reverse().find((turn) => trustedEntry(turn.content));
+  const latestEntryToken = latestTrustedEntry
+    ? shareTokenFromMessage(latestTrustedEntry.content)
+    : null;
+  const resumableBrokerDraft = latestTrustedEntry
+    ? isGenericLinkStart(latestTrustedEntry.content)
+      ? await loadLatestActiveBrokerLeadDraft(db, phone!, "generic")
+      : latestEntryToken
+        ? await loadActiveBrokerLeadDraftSession(db, phone!, {
+            kind: "token",
+            key: latestEntryToken,
+          })
+        : null
+    : await loadLatestActiveBrokerLeadDraft(db, phone!);
+  if (
+    brokerEntry ||
+    grandfatheredBrokerEntry ||
+    (resumableBrokerDraft !== null && userMessages.length > 0)
+  ) return brokerLinkState(db, phone!, turns);
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const lastUserShare = verifiedTokens.get(lastUser);
   const repeatedToken = Boolean(
@@ -718,7 +1005,6 @@ export async function linkCaptacaoState(
       isGenericLinkStart(turn.content),
   );
   const genericPublicActive =
-    currentShare?.status !== "redeemed" &&
     firstReusableEntryAfterClose > lastClosing &&
     firstReusableEntryAfterClose > lastExplicitToken &&
     turns.slice(firstReusableEntryAfterClose + 1).every(
@@ -781,7 +1067,8 @@ export async function linkCaptacaoState(
   const sticky =
     session.activeCaptureId !== null ||
     fromLinkCapture ||
-    currentShare?.status === "completed";
+    currentShare?.status === "completed" ||
+    lastClosing >= 0;
   const pendingAddress =
     !freshEntry && !fromLink && looksLikeStreetAddress(lastUser) &&
     session.awaitingAddress;
@@ -822,7 +1109,7 @@ export async function linkCaptacaoState(
     const nameAnswered = ownerDataReplies.length === 2 || pendingAddress || unboundShareAwaitingAddress;
     const cleanSnapshot: CaptureSnapshot = {
       ...snapshot,
-      ownerName: nameAnswered ? snapshot.ownerName ?? ownerDataReplies[0]?.content ?? null : null,
+      ownerName: nameAnswered ? ownerDataReplies[0]?.content ?? snapshot.ownerName ?? null : null,
       captureId: null,
       pending: false,
       registrationStatus: null,
@@ -845,6 +1132,8 @@ export async function linkCaptacaoState(
       fromLink: true,
       sticky: false,
       relink: false,
+      intention,
+      ownerExclusive: false,
     });
     const prepared = {
       ...cleanState,
@@ -859,7 +1148,9 @@ export async function linkCaptacaoState(
       : prepared);
   }
 
-  const state = buildState({ snapshot, freshEntry, fromLink, sticky, relink, intention });
+  const state = buildState({ snapshot, freshEntry, fromLink, sticky, relink, intention,
+    ownerExclusive: false,
+  });
   const genericState = genericPublicActive
     ? reusableGenericState(state)
     : state;
@@ -947,6 +1238,8 @@ function saveInput(
     const stepFields: Partial<Record<LinkStepKey, string[]>> = {
       nome: ["nome"],
       endereco: ["cep", "rua", "numero", "bairro", "cidade", "estado", "unidade", "bloco", "torre", "andar", "complemento"],
+      condominioPresenca: ["condominioPresenca"],
+      nomeCondominio: ["nomeCondominio", "unidade", "bloco", "torre", "andar"],
       documentacao: ["documentacao"],
       tipo: ["tipoImovel"],
       dormitorios: ["dormitorios"],
@@ -959,8 +1252,16 @@ function saveInput(
       condominio: ["condominio"],
       custos: ["custos"],
       fotoFrente: ["fotoFrente"],
+      observacaoFinal: ["observacaoFinal", "confirmacaoFinal"],
     };
-    const allowed = new Set([...stepFields[state.nextStep ?? "nome"] ?? [], "observacao"]);
+    const allowed = new Set([
+      ...stepFields[state.nextStep ?? "nome"] ?? [],
+      ...(state.presenter === "corretor" ? ["nome"] : []),
+      "corretorNome",
+      "corretorCreci",
+      "proprietarioNome",
+      "observacao",
+    ]);
     const scopedPatch = Object.fromEntries(
       Object.entries(patch).filter(([key]) => allowed.has(key)),
     ) as Omit<CaptureAnswerInput, "phone">;
@@ -969,7 +1270,8 @@ function saveInput(
       phone,
       negociacao: state.intention,
       origem: LINK_CAPTACAO_ORIGIN,
-      targetCaptureId: state.shareCaptureId,
+      targetCaptureId: state.shareCaptureId ?? undefined,
+      deferLinkCompletion: state.nextStep === "fotoFrente",
     } satisfies CaptureAnswerInput;
   }
   const addressish = Boolean(
@@ -989,6 +1291,7 @@ function saveInput(
        endereço decide qual imóvel reutilizar ou abrir na entrada única. */
     novaSessaoLink: state.startNewProperty && state.snapshot.captureId === null && addressish ? true : undefined,
     targetCaptureId: !state.startNewProperty && !addressish ? state.snapshot.captureId ?? undefined : undefined,
+    deferLinkCompletion: state.nextStep === "fotoFrente",
   } satisfies CaptureAnswerInput;
 }
 
@@ -1025,6 +1328,11 @@ const SAVE_SCHEMA = z.object({
   cidade: z.string().max(120).optional(),
   estado: z.string().max(2).optional().describe("UF, ex: SP"),
   condominio: z.string().max(300).optional().describe("valor do condomínio"),
+  condominioPresenca: z.enum(["yes", "no", "unknown"]).optional(),
+  nomeCondominio: z.string().max(120).optional(),
+  corretorNome: z.string().max(120).optional(),
+  corretorCreci: z.string().max(60).optional(),
+  proprietarioNome: z.string().max(120).optional(),
   unidade: z.string().max(60).optional().describe("apartamento, casa ou lote"),
   bloco: z.string().max(60).optional(),
   torre: z.string().max(60).optional(),
@@ -1131,20 +1439,37 @@ export async function linkCaptacaoReply(
   const saveAnswer = async (
     patch: Omit<CaptureAnswerInput, "phone">,
     options: Partial<CaptureAnswerInput> = {},
+    database: AdminDb = db,
   ): Promise<CaptureSaveResult> => {
     const addressCore = Boolean(
       patch.cep || patch.rua || patch.numero || patch.bairro || patch.cidade || patch.estado,
     );
-    const brokerObservation = state.presenter === "corretor" && state.broker && addressCore
-      ? `Apresentado por corretor: ${state.broker.name} · CRECI ${state.broker.creci} · WhatsApp ${state.broker.phone}`
+    const indicatedOwner = state.presenter === "corretor"
+      ? brokerOnboarding(turns).ownerName
       : null;
+    const actualOwnerName = indicatedOwner && classifyOptionalAnswer(indicatedOwner) !== "não informado"
+      ? indicatedOwner.slice(0, 120)
+      : null;
+    const brokerObservation = state.presenter === "corretor" && state.broker
+      ? `Apresentado por corretor: ${state.broker.name} · CRECI ${state.broker.creci}. Contato WhatsApp da captação: ${state.broker.phone}; este é o telefone do corretor/contato, não é o telefone confirmado do proprietário.`
+      : null;
+    const brokerPatch = brokerObservation
+      ? {
+          ...patch,
+          corretorNome: state.broker!.name,
+          corretorCreci: state.broker!.creci,
+          proprietarioNome: actualOwnerName ?? "Não informado",
+      ...(addressCore
+        ? { nome: state.snapshot.ownerId === null ? "Contato de corretor" : state.snapshot.ownerName ?? undefined }
+        : {}),
+          observacao: [patch.observacao, brokerObservation].filter(Boolean).join("\n"),
+        }
+      : patch;
     const input = {
       ...saveInput(
         state,
         state.ownerPhone ?? phone,
-        brokerObservation
-          ? { ...patch, observacao: [patch.observacao, brokerObservation].filter(Boolean).join("\n") }
-          : patch,
+        brokerPatch,
       ),
       ...options,
     };
@@ -1155,7 +1480,7 @@ export async function linkCaptacaoReply(
       state.nextStep === "endereco" &&
       addressCore,
     );
-    if (!reservesFirstAddress) return saveCaptureAnswer(db, input);
+    if (!reservesFirstAddress) return saveCaptureAnswer(database, input);
 
     const conflict = (): CaptureSaveResult => ({
       saved: false,
@@ -1163,7 +1488,7 @@ export async function linkCaptacaoReply(
       snapshot: state.snapshot,
     });
     try {
-      return await db.transaction(async (transaction) => {
+      return await database.transaction(async (transaction) => {
         const tx = transaction as unknown as AdminDb;
         /* This no-op conditional UPDATE is the SQLite write reservation. It
            serializes first-address writes across workers, not just this process. */
@@ -1225,56 +1550,7 @@ export async function linkCaptacaoReply(
     };
   }
 
-  if (
-    state.genericPublic &&
-    state.genericAwaitingConfirmation &&
-    /^ok[.! ]*$/i.test(String(lastUser ?? "").trim())
-  ) {
-    const captureId = state.snapshot.captureId;
-    const ownerId = state.snapshot.ownerId;
-    if (captureId === null || ownerId === null) {
-      return {
-        text: "Não foi possível finalizar este cadastro. Solicite atendimento para continuar.",
-        handoff: false,
-        handoffReason: null,
-        usedProperties: [],
-        toolCalls,
-      };
-    }
-    const confirmation = await saveCaptureAnswer(db, {
-      phone: state.ownerPhone ?? phone,
-      confirmacaoFinal: "OK",
-      negociacao: state.intention,
-      origem: LINK_CAPTACAO_ORIGIN,
-      targetCaptureId: captureId,
-    });
-    if (
-      !confirmation.saved ||
-      confirmation.captureId !== captureId ||
-      confirmation.snapshot.ownerId !== ownerId
-    ) {
-      return {
-        text: "Não foi possível finalizar este cadastro. Solicite atendimento para continuar.",
-        handoff: false,
-        handoffReason: null,
-        usedProperties: [],
-        toolCalls,
-      };
-    }
-    return finish(
-      {
-        ...state,
-        snapshot: confirmation.snapshot,
-        answered: linkAnswered(confirmation.snapshot),
-        complete: true,
-        nextQuestion: null,
-        genericAwaitingConfirmation: false,
-      },
-      { offScript: false, toolCalls },
-    );
-  }
-
-  /* Entrada genérica: o ED primeiro identifica o perfil. */
+  /* A mensagem de entrada identifica o perfil antes das perguntas cadastrais. */
   let genericIndex = -1;
   let sawGenericEntry = false;
   let closingIndex = -1;
@@ -1318,7 +1594,10 @@ export async function linkCaptacaoReply(
         !isGenericLinkStart(turn.content),
     );
     if (replies.length === 0) {
-      return { text: ROLE_QUESTION, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+      const newPublicEntry = fold(turns[genericIndex]?.content)
+        .startsWith(fold(GENERIC_ENTRY_MESSAGE));
+      return { text: newPublicEntry ? ROLE_QUESTION : OWNER_ENTRY_INTRO,
+        handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
 
     /* Enquanto o contato não informar um perfil válido, cada nova resposta
@@ -1326,7 +1605,7 @@ export async function linkCaptacaoReply(
        replies[0], então um primeiro erro deixava a conversa presa para sempre. */
     const roleReply = [...replies].reverse().find((turn) => linkRole(turn.content) !== null);
     if (!roleReply) {
-      return { text: ROLE_REJECTED, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+      return { text: `${ROLE_REJECTED}\n\n${ROLE_QUESTION}`, handoff: false, handoffReason: null, usedProperties: [], toolCalls };
     }
     const role = linkRole(roleReply.content);
     const isOwner = role === "proprietario" || role === "locador";
@@ -1342,7 +1621,78 @@ export async function linkCaptacaoReply(
   }
 
   if (state.presenter === "corretor") {
-    const pendingBroker = brokerPendingQuestion(turns);
+    const baseBrokerTurns = state.brokerBaseTurns ?? [];
+    const inboundBrokerTurn = state.brokerInboundTurn;
+    const beforeInbound = brokerOnboarding(baseBrokerTurns);
+    if (
+      !trustedWhatsappMedia &&
+      inboundBrokerTurn !== null &&
+      inboundBrokerTurn !== undefined &&
+      /^\[imagem:/i.test(inboundBrokerTurn.trim()) &&
+      beforeInbound.photoStep
+    ) {
+      return {
+        text: linkQuestion("fotoFrente"),
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
+    }
+    let draft = state.brokerDraft ?? null;
+    const session = state.brokerDraftSession;
+    let onboarding = brokerOnboarding(state.brokerTurns ?? turns);
+    if (session && inboundBrokerTurn !== null && inboundBrokerTurn !== undefined) {
+      const answerOrder: BrokerDraftStepKey[] = [
+        "role", "creci", "nome", "intencao", "proprietarioNome", "endereco",
+        "condominioPresenca", "nomeCondominio", "documentacao", "tipo",
+        "dormitorios", "suites", "banheiros", "vagas", "metragem",
+        "caracteristicas", "valor", "condominio", "custos", "fotoFrente",
+        "observacaoFinal",
+      ];
+      const acceptedStep = answerOrder.find((stepKey) => {
+        const value = onboarding.acceptedAnswers[stepKey];
+        return value !== undefined && draft?.answers[stepKey] !== value;
+      });
+      const value = acceptedStep ? onboarding.acceptedAnswers[acceptedStep] : undefined;
+      if (acceptedStep && value !== undefined) {
+        let leadId = draft?.leadId;
+        if (leadId === undefined) {
+          leadId = await ensureBrokerLead(db, phone);
+          draft = await beginBrokerLeadDraft(db, {
+            phone,
+            session,
+            leadId,
+          });
+        }
+        const dedupeKey = await sha256Hex(
+          `${session.kind}:${session.key}:${acceptedStep}:${fold(inboundBrokerTurn)}`,
+        );
+        const recorded = await recordBrokerLeadDraftAnswer(db, {
+          phone,
+          leadId,
+          session,
+          stepKey: acceptedStep,
+          value,
+          inboundTurnDedupeKey: dedupeKey,
+        });
+        draft = recorded.draft;
+        const entryMarker = session.kind === "token"
+          ? `LINK_CAPTACAO:${session.key}`
+          : GENERIC_ENTRY_MESSAGE;
+        onboarding = brokerOnboarding([
+          ...brokerDraftTurns(draft, entryMarker),
+        ]);
+      }
+      if (draft && onboarding.complete && draft.status === "active") {
+        draft = await markBrokerLeadDraftComplete(db, {
+          phone,
+          leadId: draft.leadId,
+          session,
+        });
+      }
+    }
+    const pendingBroker = onboarding.pendingQuestion;
     if (pendingBroker) {
       return {
         text: pendingBroker,
@@ -1352,21 +1702,26 @@ export async function linkCaptacaoReply(
         toolCalls,
       };
     }
-    if (!state.ownerPhone || !state.broker) {
-      return { text: "Qual é o seu nome completo?", handoff: false, handoffReason: null, usedProperties: [], toolCalls };
+    if (!onboarding.complete || !state.broker) {
+      return {
+        text: pendingBroker ?? "Qual é o seu CRECI?",
+        handoff: false,
+        handoffReason: null,
+        usedProperties: [],
+        toolCalls,
+      };
     }
-
-    /* Preserve a fresh pending session; broker identity is written with the
-       first property address, not onto the completed capture from this phone. */
-    if (state.answered.length === 0) {
-      await saveAnswer({
-        nome: state.broker.name,
-        negociacao: "venda",
-        origem: LINK_CAPTACAO_ORIGIN,
-      }, { novaSessaoLink: true });
-      const refreshed = await brokerLinkState(db, phone, turns);
-      return finish(refreshed, { offScript: false, toolCalls });
+    if (state.shareTokenId !== undefined && state.shareTokenId !== null) {
+      const finalized = await completeCaptureShareLead(db, state.shareTokenId, phone);
+      if (!finalized) return rejectedShareConflict();
     }
+    return {
+      text: BROKER_LEAD_CLOSING_MESSAGE,
+      handoff: false,
+      handoffReason: null,
+      usedProperties: [],
+      toolCalls,
+    };
   }
 
   /* Clique no link, ou primeiro contato deste telefone: não há resposta para
@@ -1427,6 +1782,46 @@ export async function linkCaptacaoReply(
     }
   }
 
+  if (state.nextStep === "condominioPresenca") {
+    const answer = fold(lastUser).replace(/[.!?]+$/g, "").trim();
+    const condominioPresenca =
+      /^(?:sim|s|tem|fica em condominio)$/.test(answer) ? "yes"
+        : /^(?:nao|n|nao tem|sem condominio)$/.test(answer) ? "no"
+          : /^(?:nao sei|n sei|nao tenho certeza|desconheco)$/.test(answer) ? "unknown"
+            : null;
+    if (condominioPresenca) {
+      const saved = await saveAnswer({ condominioPresenca });
+      toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify({ condominioPresenca }) });
+      return finish(
+        saved.saved
+          ? await reload(db, state.ownerPhone ?? phone, state.startNewProperty, state.genericPublic)
+          : state,
+        { offScript: false, toolCalls },
+      );
+    }
+  }
+
+  if (state.nextStep === "nomeCondominio") {
+    const answer = String(lastUser ?? "").trim();
+    if (!answer) return finish(state, { offScript: false, toolCalls });
+    const unknown = classifyOptionalAnswer(answer) === "não informado";
+    const unit = unknown ? undefined : /(?:unidade|apto?\.?|apartamento|casa|lote)\s*#?\s*([a-z0-9-]+)/i.exec(answer)?.[1];
+    const block = unknown ? undefined : /\bbloco\s+([a-z0-9-]+)/i.exec(answer)?.[1];
+    const patch = {
+      nomeCondominio: unknown ? "Não informado" : answer.slice(0, 120),
+      ...(unit ? { unidade: unit } : {}),
+      ...(block ? { bloco: block } : {}),
+    };
+    const saved = await saveAnswer(patch);
+    toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(patch) });
+    return finish(
+      saved.saved
+        ? await reload(db, state.ownerPhone ?? phone, state.startNewProperty, state.genericPublic)
+        : state,
+      { offScript: false, toolCalls },
+    );
+  }
+
   const countField: Partial<Record<LinkStepKey, keyof SaveToolInput>> = {
     dormitorios: "dormitorios",
     suites: "suites",
@@ -1450,11 +1845,9 @@ export async function linkCaptacaoReply(
     );
   }
 
-  const skipValue = fold(lastUser);
-  const skipRequested =
-    /^(nao sei|nao lembro|nao conheco|nao tenho certeza|desconheco|pular|pula|passar|nao se aplica|nao tenho)$/.test(skipValue);
-  const noneRequested =
-    /^(nenhum|nenhuma|nao tem|nao possui|zero|0|sem|isento|isenta)$/.test(skipValue);
+  const optionalValue = classifyOptionalAnswer(lastUser);
+  const skipRequested = optionalValue === "não informado" || optionalValue === "não se aplica";
+  const noneRequested = optionalValue === "0";
 
   let skipInput: SaveToolInput | null = null;
   if (state.nextStep === "documentacao" && skipRequested) {
@@ -1474,7 +1867,7 @@ export async function linkCaptacaoReply(
     };
     const optionalField = state.nextStep ? optionalMap[state.nextStep] : undefined;
     if (optionalField && (skipRequested || noneRequested)) {
-      skipInput = { [optionalField]: noneRequested ? "0" : "não informado" } as SaveToolInput;
+      skipInput = { [optionalField]: optionalValue! } as SaveToolInput;
     }
   }
 
@@ -1487,6 +1880,97 @@ export async function linkCaptacaoReply(
     );
   }
 
+  if (state.nextStep === "fotoFrente" && missingFacadePhoto(lastUser)) {
+    const saved = await saveAnswer({
+      fotoFrente: "PENDENTE: foto da fachada não enviada pelo proprietário",
+      observacao: "Foto da fachada não disponível; equipe deve solicitar e conferir a imagem antes da aprovação.",
+    });
+    toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify({ fotoFrente: "PENDENTE" }) });
+    if (!saved?.saved) return finish(state, { offScript: false, toolCalls });
+    const next = await reload(db, state.ownerPhone ?? phone, state.startNewProperty, state.genericPublic);
+    const response = finish(next, { offScript: false, toolCalls });
+    return { ...response, text: ["A foto da fachada ficou pendente para conferência da nossa equipe.", response.text].join("\n\n") };
+  }
+
+  if (state.nextStep === "fotoFrente" && !/^\[imagem:/i.test(String(lastUser ?? "").trim())) {
+    return finish(state, { offScript: false, toolCalls });
+  }
+
+  if (state.nextStep === "observacaoFinal") {
+    const answer = String(lastUser ?? "").trim();
+    if (!answer || shareTokenFromMessage(answer) || /^\[imagem:/i.test(answer)) return finish(state, { offScript: false, toolCalls });
+    const noNotes = classifyOptionalAnswer(answer) === "não informado" ||
+      /^(?:nao|nada|nenhuma|nenhum|nao tenho|sem observacoes|pular|nao se aplica|ok)$/i.test(fold(answer));
+    const patch: SaveToolInput = {
+      observacaoFinal: noNotes ? "Não informado" : answer.slice(0, 500),
+      /* Persisted completion marker only: the client never has an extra OK step. */
+      confirmacaoFinal: "OK",
+    };
+    let saved: CaptureSaveResult | null = null;
+    if (state.shareTokenId !== undefined && state.shareTokenId !== null && !state.genericPublic) {
+      const tokenId = state.shareTokenId;
+      const expectedCaptureId = state.shareCaptureId;
+      if (expectedCaptureId === undefined || expectedCaptureId === null) {
+        return rejectedShareConflict();
+      }
+      let saveFailure: CaptureSaveResult | null = null;
+      try {
+        saved = await db.transaction(async (transaction) => {
+          const tx = transaction as unknown as AdminDb;
+          /* Reserve the exact redeemed token row before touching the capture. */
+          const [reservation] = await transaction
+            .update(schema.captureShareTokens)
+            .set({ captureId: sql`${schema.captureShareTokens.captureId}` })
+            .where(and(
+              eq(schema.captureShareTokens.id, tokenId),
+              eq(schema.captureShareTokens.senderPhone, senderKey(state.ownerPhone ?? phone)),
+              eq(schema.captureShareTokens.status, "redeemed"),
+              eq(schema.captureShareTokens.captureId, expectedCaptureId),
+            ))
+            .returning({ id: schema.captureShareTokens.id });
+          if (!reservation) throw new Error("capture-share-finalization-conflict");
+
+          const current = await latestCaptureShareForSender(tx, state.ownerPhone ?? phone);
+          if (
+            current?.id !== tokenId ||
+            current.status !== "redeemed" ||
+            current.captureId !== expectedCaptureId
+          ) {
+            throw new Error("capture-share-finalization-conflict");
+          }
+
+          const result = await saveAnswer(patch, {}, tx);
+          if (!result.saved || result.captureId !== expectedCaptureId) {
+            saveFailure = result;
+            throw new Error("capture-share-finalization-save-failed");
+          }
+          if (!await completeCaptureShareTokenForCapture(
+            tx,
+            tokenId,
+            state.ownerPhone ?? phone,
+            expectedCaptureId,
+          )) {
+            throw new Error("capture-share-finalization-conflict");
+          }
+          return result;
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message === "capture-share-finalization-conflict") {
+          return rejectedShareConflict();
+        }
+        if (error instanceof Error && error.message === "capture-share-finalization-save-failed" && saveFailure) {
+          return finish(state, { offScript: false, toolCalls });
+        }
+        throw error;
+      }
+    } else {
+      /* A public entry finalizes only its draft, never a sender's unrelated bearer token. */
+      saved = await saveAnswer(patch);
+    }
+    if (!saved?.saved) return finish(state, { offScript: false, toolCalls });
+    return finish(await reload(db, state.ownerPhone ?? phone, false, state.genericPublic), { offScript: false, toolCalls });
+  }
+
   if (
     state.nextStep === "fotoFrente" &&
     /^\[imagem:/i.test(String(lastUser ?? "").trim())
@@ -1494,26 +1978,12 @@ export async function linkCaptacaoReply(
     if (!trustedWhatsappMedia) {
       return finish(state, { offScript: false, toolCalls });
     }
-    /* A imagem real já foi baixada e anexada pelo webhook. Registramos a etapa
-       final e fechamos no mesmo turno, sem pedir OK ou observação. */
+    /* A marca só chega aqui após validação de mídia real no webhook. */
     const input = { fotoFrente: "Foto da fachada recebida" };
     const saved = await saveAnswer(input);
     toolCalls.push({ tool: "salvarCadastroVenda", input: JSON.stringify(input) });
     if (!saved.saved) return finish(state, { offScript: false, toolCalls });
-    const share = await latestCaptureShareForSender(db, state.ownerPhone ?? phone);
-    if (share?.status === "redeemed") {
-      const completed = await completeCurrentCaptureShareForSender(db, state.ownerPhone ?? phone);
-      if (!completed) {
-        return {
-          text: "Solicite outro link para cadastro.",
-          handoff: false,
-          handoffReason: null,
-          usedProperties: [],
-          toolCalls,
-        };
-      }
-    }
-    return finish({ ...state, complete: true, nextStep: null, nextQuestion: null }, { offScript: false, toolCalls });
+    return finish(await reload(db, state.ownerPhone ?? phone, false, state.genericPublic), { offScript: false, toolCalls });
   }
 
   if (state.nextStep === "endereco") {
@@ -1629,10 +2099,13 @@ async function reload(
 ): Promise<LinkCaptacaoState> {
   const baseSnapshot = await captureSnapshot(db, phone);
   const session = await linkCaptureSession(db, baseSnapshot.ownerId);
-  const snapshot = session.activeCaptureId !== null
+  const snapshot = !genericPublic && session.activeCaptureId !== null
     ? await captureSnapshot(db, phone, session.activeCaptureId)
     : baseSnapshot;
-  const state = buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink });
+  const currentShare = await latestCaptureShareForSender(db, phone);
+  const state = buildState({ snapshot, freshEntry: false, fromLink: true, sticky: true, relink,
+    ownerExclusive: !genericPublic && currentShare?.status === "redeemed" && snapshot.intention !== "locacao",
+  });
   return genericPublic ? reusableGenericState(state) : state;
 }
 

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BadgeCheck, MessageCircle } from "lucide-react";
 import { orpc } from "../lib/api";
 
-const MESSAGE = "Vamos cadastrar seu imóvel?";
+const MESSAGE = "Vamos iniciar o cadastro do seu imóvel?";
 const AUTO_OPEN_KEY = "link-captacao-whatsapp-opened";
 const AUTO_OPEN_COOLDOWN_MS = 8_000;
 
@@ -56,7 +56,7 @@ export default function LinkCaptacao() {
         <section className="w-full overflow-hidden rounded-[24px] border border-line bg-white shadow-[0_24px_80px_rgba(18,20,15,.10)]">
           <div className="bg-deep px-6 py-8 text-white sm:px-10">
             <div className="label-xs mb-4 text-brass-soft">E. SANTOS · CAPTAÇÃO</div>
-            <h1 className="display max-w-3xl text-4xl sm:text-5xl">Vamos cadastrar seu imóvel?</h1>
+            <h1 className="display max-w-3xl text-4xl sm:text-5xl">Vamos iniciar o cadastro do seu imóvel?</h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-white/75">
               Fale com a equipe pelo WhatsApp para iniciar seu cadastro. Este é o caminho público e reutilizável.
             </p>

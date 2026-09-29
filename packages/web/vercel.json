@@ -22,6 +22,14 @@
       "destination": "/api/handler?__path=/api/prerender/imovel/:slug"
     },
     {
+      "source": "/cadastro",
+      "destination": "/cadastro.html"
+    },
+    {
+      "source": "/cadastro/",
+      "destination": "/cadastro.html"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
