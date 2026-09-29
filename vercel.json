@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "bun run build:api && cd packages/web && bunx vite build",
+  "buildCommand": "cd packages/web && bun test src/api/agent/link-captacao-owner.test.ts && bunx tsc --noEmit && cd ../.. && bun run build:api && cd packages/web && bunx vite build",
   "outputDirectory": "packages/web/dist",
   "rewrites": [
     {
