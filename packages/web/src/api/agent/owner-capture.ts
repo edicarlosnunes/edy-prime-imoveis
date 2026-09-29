@@ -528,6 +528,8 @@ export interface CaptureAnswerInput {
   valorPretendidoStatus?: string | null;
   observacaoFinal?: string | null;
   confirmacaoFinal?: string | null;
+  /** O link exclusivo do proprietário mantém a sessão até o OK após foto e observações. */
+  deferLinkCompletion?: boolean;
   /** informação espontânea, fora da pergunta atual */
   observacao?: string | null;
   /** proprietário quer cadastrar OUTRO imóvel */
@@ -753,7 +755,8 @@ export async function saveCaptureAnswer(
   }
 
   if (captureId !== null &&
-      (clean(input.confirmacaoFinal, 40)?.toLowerCase() === "ok" || clean(input.fotoFrente, 300)) &&
+      (clean(input.confirmacaoFinal, 40)?.toLowerCase() === "ok" ||
+       (clean(input.fotoFrente, 300) && !input.deferLinkCompletion)) &&
       clean(input.origem, 300) === "LINK_CAPTACAO") {
     const [target] = await db.select({ ownerId: schema.propertyCaptures.ownerId })
       .from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, captureId)).limit(1);
