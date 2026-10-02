@@ -26,6 +26,8 @@ import {
   Textarea,
 } from "../../components/admin/ui";
 import {
+  captureStatusLabel,
+  captureStatuses,
   propertyStatusLabel,
   propertyStatuses,
   propertyTypeLabel,
@@ -197,6 +199,9 @@ export function PropertyForm({
   const [newOwnerName, setNewOwnerName] = useState("");
   const [newOwnerPhone, setNewOwnerPhone] = useState("");
   const [newOwnerEmail, setNewOwnerEmail] = useState("");
+  const [newOwnerCaptureStatus, setNewOwnerCaptureStatus] =
+    useState<(typeof captureStatuses)[number]>("prospeccao");
+  const [newOwnerNotes, setNewOwnerNotes] = useState("");
   const [documentationDraft, setDocumentationDraft] = useState<PropertyDocumentationDraft>(
     EMPTY_PROPERTY_DOCUMENTATION_DRAFT,
   );
@@ -418,14 +423,16 @@ export function PropertyForm({
         name,
         phone: newOwnerPhone.trim() || null,
         email: newOwnerEmail.trim() || null,
-        notes: null,
-        captureStatus: "captado",
+        notes: newOwnerNotes.trim() || null,
+        captureStatus: newOwnerCaptureStatus,
       });
       if (!created.id) throw new Error("Proprietário não foi criado");
       set("ownerId", String(created.id));
       setNewOwnerName("");
       setNewOwnerPhone("");
       setNewOwnerEmail("");
+      setNewOwnerCaptureStatus("prospeccao");
+      setNewOwnerNotes("");
       await owners.refetch();
     } catch (caught) {
       setError(errorMessage(caught, "Não foi possível cadastrar o proprietário"));
@@ -993,29 +1000,49 @@ export function PropertyForm({
                     <p className="text-[11px] text-muted">
                       O novo proprietário será criado e vinculado automaticamente a este imóvel. Você não perde o preenchimento já feito.
                     </p>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-                      <Field label="Nome">
-                        <Input
-                          value={newOwnerName}
-                          onChange={(e) => setNewOwnerName(e.target.value)}
-                          placeholder="Nome completo"
-                        />
-                      </Field>
+                    <Field label="Nome">
+                      <Input
+                        value={newOwnerName}
+                        onChange={(e) => setNewOwnerName(e.target.value)}
+                        placeholder="Nome completo"
+                      />
+                    </Field>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <Field label="Telefone">
                         <Input
                           value={newOwnerPhone}
                           onChange={(e) => setNewOwnerPhone(e.target.value)}
-                          placeholder="Opcional"
                         />
                       </Field>
                       <Field label="E-mail">
                         <Input
                           value={newOwnerEmail}
                           onChange={(e) => setNewOwnerEmail(e.target.value)}
-                          placeholder="Opcional"
                         />
                       </Field>
                     </div>
+                    <Field label="Status de captação">
+                      <Select
+                        value={newOwnerCaptureStatus}
+                        onChange={(e) =>
+                          setNewOwnerCaptureStatus(
+                            e.target.value as (typeof captureStatuses)[number],
+                          )
+                        }
+                      >
+                        {captureStatuses.map((value) => (
+                          <option key={value} value={value}>
+                            {captureStatusLabel[value]}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                    <Field label="Observações">
+                      <Textarea
+                        value={newOwnerNotes}
+                        onChange={(e) => setNewOwnerNotes(e.target.value)}
+                      />
+                    </Field>
                     <Btn
                       type="button"
                       tone="outline"
