@@ -312,6 +312,7 @@ function Content() {
         <PropertyForm
           propertyId={editing === "new" ? null : editing}
           captureId={editing === "new" ? captureId : null}
+          onCreated={(id) => setEditing(id)}
           onClose={() => {
             setEditing(null);
             /* O cadastro iniciado na Captação volta à mesma área e ficha. */
