@@ -1955,6 +1955,160 @@ describe("7. respostas após a identificação no link genérico", () => {
     expect(await counts()).toEqual({ owners: 0, captures: 0 });
   });
 
+  test("encerramento público do corretor permanece fechado com histórico completo, truncado e conversa nova", async () => {
+    const conversa = await conversation("corretor-publico-encerramento");
+    await db.run(sql`INSERT INTO owners (name, phone, notes, created_at)
+      VALUES ('Dono anterior', ${PHONE}, 'nota preservada', 0)`);
+    await db.run(sql`INSERT INTO property_captures
+      (owner_id, city, address, street, notes, created_at, updated_at)
+      VALUES (1, 'Praia Grande', 'Rua Antiga, 10', 'Rua Antiga', 'ficha preservada', 0, 0)`);
+    const ownersBefore = await db.all(sql`SELECT * FROM owners`);
+    const capturesBefore = await db.all(sql`SELECT * FROM property_captures`);
+    const journey: [string, string][] = [
+      [LINK_CAPTACAO_MESSAGE, Q_PUBLIC_ENTRY],
+      ["corretor", "Qual é o seu CRECI?"],
+      ["134718-F", ABERTURA],
+      ["Corretor de Teste", "O imóvel é para venda ou locação?"],
+      ["locação", "Qual é o nome do proprietário do imóvel, se souber? Responda NÃO SEI se não souber."],
+      ["Dona de Teste", Q_ENDERECO],
+      ["Rua das Flores 88", Q_CONDOMINIO_PRESENCA],
+      ["não", Q_DOCUMENTACAO],
+      ["Escritura registrada", linkQuestion("tipo")],
+      ["terreno", linkQuestion("caracteristicas")],
+      ["10 x 40 metros", linkQuestion("valor", { intention: "locacao" })],
+      ["R$ 2.000 mensais", linkQuestion("custos")],
+      ["R$ 100", Q_FOTO],
+      ["NÃO SEI", Q_OBSERVACAO_FINAL],
+      ["Sem observações", BROKER_LEAD_CLOSING_MESSAGE],
+    ];
+    const transcript: { entrada: string; saida: string | undefined }[] = [];
+    for (const [answer, expected] of journey) {
+      const result = await genericPublicTurn(conversa.id, answer);
+      transcript.push({ entrada: answer, saida: result.reply });
+      expect(result.reply).toBe(expected);
+    }
+    const { loadLatestBrokerLeadDraft } = await import("./broker-lead-draft");
+    const closed = await loadLatestBrokerLeadDraft(db, PHONE, "generic");
+    expect(closed?.status).toBe("complete");
+    expect(closed?.answers).toMatchObject({
+      role: "corretor", creci: "134718-F", nome: "Corretor de Teste",
+      intencao: "locacao", proprietarioNome: "Dona de Teste",
+      endereco: "Rua das Flores 88", condominioPresenca: "não",
+      documentacao: "Escritura registrada", tipo: "terreno",
+      caracteristicas: "10 x 40 metros", valor: "R$ 2.000 mensais",
+      custos: "R$ 100", fotoFrente: "NÃO SEI", observacaoFinal: "Sem observações",
+    });
+    const callsBefore = modelCalls;
+    expect((await genericPublicTurn(conversa.id, "oi")).reply).toBe("Solicite outro link para cadastro.");
+    const [agent] = await db.select().from(schema.aiAgents).limit(1);
+    for (const turns of [
+      [{ role: "assistant" as const, content: BROKER_LEAD_CLOSING_MESSAGE }, { role: "user" as const, content: "Quero continuar" }],
+      [{ role: "user" as const, content: "oi" }],
+    ]) {
+      const state = await linkCaptacaoState(db, PHONE, turns);
+      expect(state?.presenter).toBe("corretor");
+      expect(state?.completionGuard).toBe(true);
+      expect(state?.nextQuestion).toBeNull();
+      expect((await linkCaptacaoReply(db, agent!, turns, PHONE, state!)).text)
+        .toBe("Solicite outro link para cadastro.");
+    }
+    const retorno = await conversation("corretor-publico-conversa-nova");
+    expect((await genericPublicTurn(retorno.id, "oi")).reply).toBe("Solicite outro link para cadastro.");
+    expect(modelCalls).toBe(callsBefore);
+    expect(await db.all(sql`SELECT * FROM owners`)).toEqual(ownersBefore);
+    expect(await db.all(sql`SELECT * FROM property_captures`)).toEqual(capturesBefore);
+    expect(await loadLatestBrokerLeadDraft(db, PHONE, "generic")).toEqual(closed);
+    expect(await db.all(sql`SELECT id FROM capture_share_tokens`)).toHaveLength(0);
+    const finalMessages = (await conversationTurns(db, conversa.id))
+      .filter((turn) => turn.role === "assistant" && turn.content === BROKER_LEAD_CLOSING_MESSAGE);
+    expect(finalMessages).toHaveLength(1);
+    console.log("FLUXO_CORRETOR_LITERAL", JSON.stringify(transcript));
+  }, 60000);
+
+  test("encerramento público do locador preserva dados e não reabre depois da conclusão", async () => {
+    const conversa = await conversation("locador-publico-encerramento");
+    await db.run(sql`INSERT INTO owners (name, phone, notes, created_at)
+      VALUES ('Maria Souza', ${PHONE}, 'nota anterior preservada', 0)`);
+    await db.run(sql`INSERT INTO property_captures
+      (owner_id, city, address, street, notes, registration_status, created_at, updated_at)
+      VALUES (1, 'Praia Grande', 'Rua Anterior, 10', 'Rua Anterior', 'cadastro anterior preservado', 'CONCLUIDO', 0, 0)`);
+    const oldCapture = await db.all(sql`SELECT * FROM property_captures WHERE id = 1`);
+    const transcript: { entrada: string; saida: string | undefined }[] = [];
+    const submit = async (body: string, expected: string, save?: Record<string, unknown>) => {
+      const result = await genericPublicTurn(conversa.id, body, save, body.startsWith("[imagem:"));
+      transcript.push({ entrada: body, saida: result.reply });
+      expect(result.reply).toBe(expected);
+    };
+    await submit(LINK_CAPTACAO_MESSAGE, Q_PUBLIC_ENTRY);
+    await submit("locador", ABERTURA);
+    for (const item of SCRIPT) {
+      const body = item.step === "valor" ? "R$ 2.500 mensais" : item.body;
+      const save = item.step === "valor" ? { valorPretendido: 2500 } : item.save;
+      const next = item.step === "metragem"
+        ? linkQuestion("valor", { intention: "locacao" })
+        : item.next;
+      await submit(body, next, save);
+    }
+    await submit("[imagem:https://cdn.example.test/locador-fachada.jpg]", Q_OBSERVACAO_FINAL);
+    await submit("Locação anual. Sem outras observações.", FECHAMENTO);
+    const fichas = await captureRows();
+    expect(fichas).toHaveLength(2);
+    const ficha = fichas[1]!;
+    expect(await db.all(sql`SELECT * FROM property_captures WHERE id = 1`)).toEqual(oldCapture);
+    expect(ficha.intention).toBe("locacao");
+    expect(ficha.asking_price).toBe(2500);
+    expect(ficha.property_type).toBe("apartamento");
+    const { captureSnapshot } = await import("./owner-capture");
+    const snapshot = await captureSnapshot(db, PHONE);
+    expect(snapshot.answers).toMatchObject({
+      origem: LINK_CAPTACAO_ORIGIN, condominioPresenca: "yes",
+      dormitorios: "3", suites: "1",
+      banheiros: "2", vagas: "1", metragem: "92 m²",
+      documentacao: "Escritura registrada no nome do proprietário",
+      condominio: "R$ 850", custos: "IPTU R$ 1.200/ano",
+      fotoFrente: "Foto da fachada recebida",
+      observacaoFinal: "Locação anual. Sem outras observações.",
+      confirmacaoFinal: "OK",
+    });
+    expect(snapshot.captureId).toBe(ficha.id);
+    const state = await linkCaptacaoState(db, PHONE, await conversationTurns(db, conversa.id));
+    expect(state?.complete).toBe(true);
+    expect(state?.nextQuestion).toBeNull();
+    const ownersBefore = await db.all(sql`SELECT * FROM owners`);
+    const capturesBefore = await db.all(sql`SELECT * FROM property_captures`);
+    const callsBefore = modelCalls;
+    for (const message of ["oi", "Quero continuar", "locador"]) {
+      expect((await genericPublicTurn(conversa.id, message)).reply).toBe("Solicite outro link para cadastro.");
+    }
+    const retorno = await conversation("locador-publico-conversa-nova");
+    expect((await genericPublicTurn(retorno.id, "oi")).reply).toBe("Solicite outro link para cadastro.");
+    expect(await db.all(sql`SELECT * FROM owners`)).toEqual(ownersBefore);
+    expect(await db.all(sql`SELECT * FROM property_captures`)).toEqual(capturesBefore);
+    expect(modelCalls).toBe(callsBefore);
+    expect(await counts()).toEqual({ owners: 1, captures: 2 });
+    expect(await db.all(sql`SELECT id FROM capture_share_tokens`)).toHaveLength(0);
+    expect((await outbound(conversa.id)).filter((message) => message.body === FECHAMENTO)).toHaveLength(1);
+    console.log("FLUXO_LOCADOR_LITERAL", JSON.stringify(transcript));
+  }, 60000);
+
+  test("locador público retoma a etapa pendente em outra conversa sem abrir outra ficha", async () => {
+    const inicio = await conversation("locador-publico-incompleto");
+    expect((await genericPublicTurn(inicio.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(Q_PUBLIC_ENTRY);
+    expect((await genericPublicTurn(inicio.id, "locador")).reply).toBe(ABERTURA);
+    expect((await genericPublicTurn(inicio.id, SCRIPT[0]!.body, SCRIPT[0]!.save)).reply).toBe(Q_ENDERECO);
+    expect((await genericPublicTurn(inicio.id, SCRIPT[1]!.body, SCRIPT[1]!.save)).reply).toBe(Q_CONDOMINIO_PRESENCA);
+    const antes = await onlyCapture();
+    const retorno = await conversation("locador-publico-retomada");
+    expect((await genericPublicTurn(retorno.id, "sim")).reply).toBe(Q_NOME_CONDOMINIO);
+    const depois = await onlyCapture();
+    expect(depois.id).toBe(antes.id);
+    expect(depois.intention).toBe("locacao");
+    const state = await linkCaptacaoState(db, PHONE, await conversationTurns(db, retorno.id));
+    expect(state?.complete).toBe(false);
+    expect(state?.completionGuard).toBe(false);
+    expect(state?.nextQuestion).toBe(Q_NOME_CONDOMINIO);
+  }, 60000);
+
   test("corretor preenche questionário de lead sem criar ficha nem proprietário", async () => {
     const conversa = await conversation("5513997141174:corretor-nome");
     expect((await linkTurn(conversa.id, LINK_CAPTACAO_MESSAGE)).reply).toBe(

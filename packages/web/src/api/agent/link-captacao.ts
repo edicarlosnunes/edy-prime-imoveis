@@ -713,6 +713,14 @@ async function brokerLinkState(
   if (!session) {
     draft = await loadLatestActiveBrokerLeadDraft(db, phone);
     session = draft?.session;
+    if (!draft) {
+      const latestDraft = await loadLatestBrokerLeadDraft(db, phone, "generic");
+      if (latestDraft?.status === "complete") {
+        completedExactSession = latestDraft;
+        draft = latestDraft;
+        session = latestDraft.session;
+      }
+    }
   }
   if (completedExactSession?.status === "complete") {
     draft = completedExactSession;
@@ -972,10 +980,25 @@ export async function linkCaptacaoState(
           })
         : null
     : await loadLatestActiveBrokerLeadDraft(db, phone!);
+  /* A sessão concluída continua sendo a autoridade quando a janela de
+     histórico perdeu o perfil/entrada. Não transformar um retorno em outro
+     roteiro; uma entrada explícita nova e uma sessão de proprietário ativa
+     continuam seguindo a seleção anterior. */
+  const brokerClosingAfterEntry = turns.some(
+    (turn, index) => index > latestGeneric &&
+      turn.role === "assistant" && turn.content.includes(BROKER_LEAD_CLOSING_MESSAGE),
+  );
+  const closedBrokerDraft =
+    resumableBrokerDraft === null &&
+    (brokerClosingAfterEntry ||
+      (!latestTrustedEntry && session.activeCaptureId === null && !session.awaitingAddress))
+      ? await loadLatestBrokerLeadDraft(db, phone!, "generic")
+      : null;
   if (
     brokerEntry ||
     grandfatheredBrokerEntry ||
-    (resumableBrokerDraft !== null && userMessages.length > 0)
+    (resumableBrokerDraft !== null && userMessages.length > 0) ||
+    (closedBrokerDraft?.status === "complete" && userMessages.length > 0)
   ) return brokerLinkState(db, phone!, turns);
   const lastUser = userMessages.length ? userMessages[userMessages.length - 1]!.content : "";
   const lastUserShare = verifiedTokens.get(lastUser);
