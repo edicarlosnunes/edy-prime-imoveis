@@ -45,12 +45,27 @@ export interface Property {
 }
 
 const FALLBACK_IMAGE = "/images/imovel-1.jpg";
+const OPPORTUNITY_FEATURE_PREFIX = "__opportunity_price:";
+
+function opportunityPriceFromFeatures(raw: string | null): number | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    const marker = parsed.map(String).find((item) => item.startsWith(OPPORTUNITY_FEATURE_PREFIX));
+    if (!marker) return null;
+    const amount = Number(marker.slice(OPPORTUNITY_FEATURE_PREFIX.length));
+    return Number.isFinite(amount) && amount > 0 ? amount : null;
+  } catch {
+    return null;
+  }
+}
 
 function parseFeatures(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String) : [];
+    return Array.isArray(parsed) ? parsed.map(String).filter((item) => !item.startsWith(OPPORTUNITY_FEATURE_PREFIX)) : [];
   } catch {
     return [];
   }
@@ -98,7 +113,7 @@ export const properties = {
         district: row.district,
         city: row.city,
         price: row.price,
-        opportunityPrice: row.opportunityPrice,
+        opportunityPrice: opportunityPriceFromFeatures(row.features),
         condoFee: row.condoFee,
         iptu: row.iptu,
         bedrooms: row.bedrooms,
@@ -165,7 +180,7 @@ export const properties = {
           district: item.district,
           city: item.city,
           price: item.price,
-          opportunityPrice: item.opportunityPrice,
+          opportunityPrice: opportunityPriceFromFeatures(item.features),
           condoFee: item.condoFee,
           iptu: item.iptu,
           bedrooms: item.bedrooms,
