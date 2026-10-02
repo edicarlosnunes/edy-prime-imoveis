@@ -40,6 +40,7 @@ import {
   useGeneratePropertyContent,
   useMarkCaptureConverted,
   useOwnerOptions,
+  useSaveOwner,
   useSaveProperty,
 } from "../../queries/admin";
 import {
@@ -184,6 +185,9 @@ export function PropertyForm({
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiContent, setAiContent] = useState<GeneratedContent | null>(null);
   const [aiUsedFields, setAiUsedFields] = useState<string[]>([]);
+  const [newOwnerName, setNewOwnerName] = useState("");
+  const [newOwnerPhone, setNewOwnerPhone] = useState("");
+  const [newOwnerEmail, setNewOwnerEmail] = useState("");
 
   /* Fluxo de captação: a captação só vira CAPTADO se o imóvel for criado. */
   const capture = useCapture(captureId);
@@ -210,6 +214,7 @@ export function PropertyForm({
 
   const generate = useGeneratePropertyContent();
   const owners = useOwnerOptions();
+  const createOwner = useSaveOwner("create");
   const save = useSaveProperty(propertyId ? "update" : "create");
   const allProperties = useAdminProperties();
 
@@ -381,6 +386,32 @@ export function PropertyForm({
   }, [progress.missing]);
 
   const ownerName = owners.data?.find((owner) => String(owner.id) === form.ownerId)?.name ?? null;
+
+  async function createAndLinkOwner() {
+    const name = newOwnerName.trim();
+    if (name.length < 2) {
+      setError("Informe o nome do proprietário.");
+      return;
+    }
+    setError(null);
+    try {
+      const created = await createOwner.mutateAsync({
+        name,
+        phone: newOwnerPhone.trim() || null,
+        email: newOwnerEmail.trim() || null,
+        notes: null,
+        captureStatus: "captado",
+      });
+      if (!created.id) throw new Error("Proprietário não foi criado");
+      set("ownerId", String(created.id));
+      setNewOwnerName("");
+      setNewOwnerPhone("");
+      setNewOwnerEmail("");
+      await owners.refetch();
+    } catch (caught) {
+      setError(errorMessage(caught, "Não foi possível cadastrar o proprietário"));
+    }
+  }
 
   async function pickFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -855,7 +886,7 @@ export function PropertyForm({
 
                   <Field
                     label="Proprietário"
-                    hint="Somente proprietários já cadastrados. Nenhum registro novo é criado aqui."
+                    hint="Selecione um proprietário já cadastrado ou cadastre um novo aqui, sem sair desta ficha."
                   >
                     <Select
                       value={form.ownerId}
@@ -869,6 +900,44 @@ export function PropertyForm({
                       ))}
                     </Select>
                   </Field>
+
+                  <div className="space-y-3 border-t border-line pt-4">
+                    <p className="label-xs text-muted">Cadastrar novo proprietário</p>
+                    <p className="text-[11px] text-muted">
+                      O novo proprietário será criado e vinculado automaticamente a este imóvel. Você não perde o preenchimento já feito.
+                    </p>
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                      <Field label="Nome">
+                        <Input
+                          value={newOwnerName}
+                          onChange={(e) => setNewOwnerName(e.target.value)}
+                          placeholder="Nome completo"
+                        />
+                      </Field>
+                      <Field label="Telefone">
+                        <Input
+                          value={newOwnerPhone}
+                          onChange={(e) => setNewOwnerPhone(e.target.value)}
+                          placeholder="Opcional"
+                        />
+                      </Field>
+                      <Field label="E-mail">
+                        <Input
+                          value={newOwnerEmail}
+                          onChange={(e) => setNewOwnerEmail(e.target.value)}
+                          placeholder="Opcional"
+                        />
+                      </Field>
+                    </div>
+                    <Btn
+                      type="button"
+                      tone="outline"
+                      onClick={() => void createAndLinkOwner()}
+                      disabled={createOwner.isPending}
+                    >
+                      {createOwner.isPending ? "Cadastrando…" : "Cadastrar e vincular proprietário"}
+                    </Btn>
+                  </div>
                 </>
               )}
 
