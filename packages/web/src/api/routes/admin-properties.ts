@@ -23,6 +23,34 @@ const typeEnum = z.enum([
   "outro",
 ]);
 
+const OPPORTUNITY_FEATURE_PREFIX = "__opportunity_price:";
+
+function decodeStoredFeatures(raw: string | null | undefined) {
+  if (!raw) return { features: [] as string[], opportunityPrice: null as number | null };
+  try {
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed.map(String) : [];
+    const marker = list.find((item) => item.startsWith(OPPORTUNITY_FEATURE_PREFIX));
+    const amount = marker ? Number(marker.slice(OPPORTUNITY_FEATURE_PREFIX.length)) : NaN;
+    return {
+      features: list.filter((item) => !item.startsWith(OPPORTUNITY_FEATURE_PREFIX)),
+      opportunityPrice: Number.isFinite(amount) && amount > 0 ? amount : null,
+    };
+  } catch {
+    return { features: [] as string[], opportunityPrice: null as number | null };
+  }
+}
+
+function encodeStoredFeatures(features: string[], opportunityPrice: number | null | undefined) {
+  const clean = features
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0 && !item.startsWith(OPPORTUNITY_FEATURE_PREFIX));
+  if (opportunityPrice && opportunityPrice > 0) {
+    clean.push(`${OPPORTUNITY_FEATURE_PREFIX}${opportunityPrice}`);
+  }
+  return JSON.stringify(clean);
+}
+
 const imageInput = z.object({
   url: z.string().min(1).max(2000),
   /** foto sem marca d'água — nunca é sobrescrita */
@@ -75,7 +103,6 @@ function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().to
     purpose: input.purpose,
     type: input.type,
     price: input.price,
-    opportunityPrice: input.opportunityPrice ?? null,
     condoFee: input.condoFee ?? null,
     iptu: input.iptu ?? null,
     district: input.district.trim(),
@@ -89,7 +116,7 @@ function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().to
     areaTotal: input.areaTotal ?? null,
     description: input.description?.trim() || null,
     highlight: input.highlight?.trim() || null,
-    features: JSON.stringify(input.features.filter((f) => f.trim().length > 0)),
+    features: encodeStoredFeatures(input.features, input.opportunityPrice),
     status: input.status,
     published: input.published ? 1 : 0,
     featured: input.featured ? 1 : 0,
@@ -196,8 +223,11 @@ export const adminProperties = {
       return rows.map((row) => {
         const own = images.filter((image) => image.propertyId === row.id);
         const showcase = showcaseDecision(row);
+        const decoded = decodeStoredFeatures(row.features);
         return {
           ...row,
+          features: JSON.stringify(decoded.features),
+          opportunityPrice: decoded.opportunityPrice,
           imageCount: own.length,
           cover: (own.find((image) => image.isPrimary === 1) ?? own[0])?.url ?? null,
           /* Eixos novos, informativos para a tela — o `status` antigo segue
@@ -219,7 +249,13 @@ export const adminProperties = {
         .where(eq(schema.properties.id, input.id))
         .limit(1);
       if (!row) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
-      return { ...row, images: await loadImages(context.db, row.id) };
+      const decoded = decodeStoredFeatures(row.features);
+      return {
+        ...row,
+        features: JSON.stringify(decoded.features),
+        opportunityPrice: decoded.opportunityPrice,
+        images: await loadImages(context.db, row.id),
+      };
     }),
 
   create: adminBase
