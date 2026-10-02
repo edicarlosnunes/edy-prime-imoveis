@@ -173,13 +173,17 @@ export function PropertyForm({
   propertyId,
   captureId = null,
   onClose,
+  onCreated,
 }: {
   propertyId: number | null;
   /** Vem de /admin/imoveis/novo?capture_id=<id>: cadastro que fecha uma captação. */
   captureId?: number | null;
   onClose: () => void;
+  /** No cadastro novo, mantém a ficha aberta depois da primeira gravação. */
+  onCreated?: (id: number) => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
+  const [guidedCreate] = useState(propertyId === null);
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [section, setSection] = useState<string>("basico");
   const [error, setError] = useState<string | null>(null);
@@ -607,6 +611,11 @@ export function PropertyForm({
             );
           }
         }
+        if (guidedCreate && onCreated) {
+          onCreated(created.id);
+          setSection("documentacao");
+          return;
+        }
       }
       onClose();
     } catch (caught) {
@@ -615,6 +624,22 @@ export function PropertyForm({
   }
 
   const activeSection = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0]!;
+  const sectionIndex = SECTIONS.findIndex((item) => item.id === section);
+  const nextSection = sectionIndex >= 0 ? SECTIONS[sectionIndex + 1] : undefined;
+
+  function advance() {
+    if (!nextSection) return;
+    setError(null);
+    setSection(nextSection.id);
+  }
+
+  const guidedNeedsInitialSave = guidedCreate && propertyId === null && section === "fotos";
+  const guidedFinalSave = guidedCreate && section === "publicacao";
+  const guidedCanAdvance =
+    guidedCreate &&
+    !guidedNeedsInitialSave &&
+    !guidedFinalSave &&
+    Boolean(nextSection);
 
   return (
     <Modal
@@ -1115,13 +1140,25 @@ export function PropertyForm({
             <Btn tone="outline" onClick={onClose}>
               Cancelar
             </Btn>
-            <Btn
-              type="submit"
-              tone="brass"
-              disabled={save.isPending || uploading || captureBlock !== null}
-            >
-              {save.isPending ? "Salvando…" : "Salvar imóvel"}
-            </Btn>
+            {guidedCanAdvance ? (
+              <Btn type="button" tone="brass" onClick={advance}>
+                Próximo
+              </Btn>
+            ) : (
+              <Btn
+                type="submit"
+                tone="brass"
+                disabled={save.isPending || uploading || captureBlock !== null}
+              >
+                {save.isPending
+                  ? "Salvando…"
+                  : guidedNeedsInitialSave
+                    ? "Salvar e continuar"
+                    : guidedFinalSave
+                      ? "Finalizar cadastro"
+                      : "Salvar imóvel"}
+              </Btn>
+            )}
           </div>
         </div>
       </form>
