@@ -23,6 +23,51 @@ const typeEnum = z.enum([
   "outro",
 ]);
 
+const checklistAnswerEnum = z.enum(["sim", "nao", "nao_sabe", "na"]);
+const docCategoryEnum = z.enum([
+  "matricula",
+  "iptu",
+  "escritura",
+  "condominio",
+  "inventario",
+  "procuracao",
+  "contrato",
+  "certidao",
+  "planta_habite_se",
+  "outros",
+]);
+
+const documentationDraftInput = z.object({
+  conditions: z.object({
+    inCondominium: z.boolean().nullable(),
+    hasHeranca: z.boolean().nullable(),
+    hasPosse: z.boolean().nullable(),
+    hasFinanciamento: z.boolean().nullable(),
+    hasAluguel: z.boolean().nullable(),
+  }),
+  checklist: z
+    .array(
+      z.object({
+        itemKey: z.string().min(1).max(60),
+        answer: checklistAnswerEnum,
+        note: z.string().max(1000).nullable().optional(),
+      }),
+    )
+    .max(60)
+    .default([]),
+  documents: z
+    .array(
+      z.object({
+        category: docCategoryEnum,
+        title: z.string().max(160).nullable().optional(),
+        fileId: z.string().max(64).nullable().optional(),
+        fileName: z.string().max(200).nullable().optional(),
+      }),
+    )
+    .max(40)
+    .default([]),
+});
+
 const OPPORTUNITY_FEATURE_PREFIX = "__opportunity_price:";
 const REFERRAL_FEATURE_PREFIX = "__referral_note:";
 
@@ -121,6 +166,10 @@ const createPropertyInput = propertyInput.extend({
   /* Blank code is only allowed on create; update still requires an explicit code. */
   code: z.string().max(40),
   captureId: z.number().int().positive().nullable().optional(),
+  /** Cadastro novo: checklist e documentos são enviados no único clique final. */
+  documentationDraft: documentationDraftInput.optional(),
+  /** Data escolhida na etapa Revalidação. Se ausente, usa o momento do cadastro. */
+  portfolioEntryDate: z.string().max(30).nullable().optional(),
 });
 
 function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().toUpperCase()) {
@@ -325,16 +374,54 @@ export const adminProperties = {
       const row = toRow(input, code);
       if (publishedOverride !== null) row.published = publishedOverride;
 
-      /* Data de entrada na carteira: todo imóvel novo nasce com ela preenchida,
-         no momento da criação, para a revalidação de 4 meses e a regra dos 12
-         meses passarem a contar desde já. Ajuste manual posterior (seção de
-         revalidação da ficha) continua mandando: aqui só se define na criação. */
+      /* No cadastro novo, documentação/revalidação ficam em memória no front e
+         chegam aqui somente no clique FINAL. Assim o imóvel não é salvo etapa
+         por etapa nem joga o usuário de volta para a listagem. */
+      const draft = input.documentationDraft;
+      const bit = (value: boolean | null | undefined) =>
+        value === null || value === undefined ? null : value ? 1 : 0;
+      let portfolioEntryAt = new Date();
+      if (input.portfolioEntryDate) {
+        const parsed = new Date(`${input.portfolioEntryDate}T12:00:00`);
+        if (!Number.isNaN(parsed.getTime())) portfolioEntryAt = parsed;
+      }
+
       const [created] = await context.db
         .insert(schema.properties)
-        .values({ ...row, serial, portfolioEntryAt: new Date() })
+        .values({
+          ...row,
+          serial,
+          portfolioEntryAt,
+          inCondominium: bit(draft?.conditions.inCondominium),
+          hasHeranca: bit(draft?.conditions.hasHeranca),
+          hasPosse: bit(draft?.conditions.hasPosse),
+          hasFinanciamento: bit(draft?.conditions.hasFinanciamento),
+          hasAluguel: bit(draft?.conditions.hasAluguel),
+        })
         .returning();
       if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
       await syncImages(context.db, created.id, input.images);
+
+      for (const item of draft?.checklist ?? []) {
+        await context.db.insert(schema.propertyChecklist).values({
+          propertyId: created.id,
+          itemKey: item.itemKey,
+          answer: item.answer,
+          note: item.note?.trim() || null,
+        });
+      }
+
+      for (const doc of draft?.documents ?? []) {
+        await context.db.insert(schema.propertyDocuments).values({
+          propertyId: created.id,
+          category: doc.category,
+          status: "recebido",
+          title: doc.title?.trim() || null,
+          fileId: doc.fileId || null,
+          fileName: doc.fileName?.trim() || null,
+          receivedAt: doc.fileId ? new Date() : null,
+        });
+      }
 
       if (capture) {
         const now = new Date();
