@@ -150,7 +150,15 @@ export function Showcase() {
             </div>
 
             <div className="mt-5 flex items-end justify-between gap-4">
-              <p data-t="price" className="display text-3xl text-deep">{formatBRL(property.price)}</p>
+              {property.opportunityPrice && property.opportunityPrice > 0 && property.opportunityPrice < property.price ? (
+                <div data-t="price">
+                  <p className="label-xs text-brass">OPORTUNIDADE</p>
+                  <p className="mt-1 text-sm text-muted">De <span className="line-through">{formatBRL(property.price)}</span></p>
+                  <p className="display text-3xl text-deep">Por {formatBRL(property.opportunityPrice)}</p>
+                </div>
+              ) : (
+                <p data-t="price" className="display text-3xl text-deep">{formatBRL(property.price)}</p>
+              )}
               {!isSold(property.status) && (
                 <Link
                   href={`/imovel/${property.slug}`}
