@@ -33,7 +33,7 @@ import {
   purposeLabel,
   purposes,
 } from "../../components/admin/labels";
-import { errorMessage, uploadImage } from "../../lib/admin-session";
+import { errorMessage, uploadDocument, uploadImage } from "../../lib/admin-session";
 import {
   useAdminProperties,
   useCapture,
@@ -60,6 +60,11 @@ import {
 } from "../../components/admin/property-form-nav";
 import { PropertyFormHeader } from "../../components/admin/property-form-header";
 import { PropertyDocsSection } from "../../components/admin/property-docs-section";
+import {
+  EMPTY_PROPERTY_DOCUMENTATION_DRAFT,
+  PropertyDocsDraftSection,
+  type PropertyDocumentationDraft,
+} from "../../components/admin/property-docs-draft-section";
 import { PropertyRevalidationSection } from "../../components/admin/property-revalidation-section";
 import {
   PropertyGallery,
@@ -173,14 +178,11 @@ export function PropertyForm({
   propertyId,
   captureId = null,
   onClose,
-  onCreated,
 }: {
   propertyId: number | null;
   /** Vem de /admin/imoveis/novo?capture_id=<id>: cadastro que fecha uma captação. */
   captureId?: number | null;
   onClose: () => void;
-  /** No cadastro novo, mantém a ficha aberta depois da primeira gravação. */
-  onCreated?: (id: number) => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
   const [guidedCreate] = useState(propertyId === null);
@@ -195,6 +197,15 @@ export function PropertyForm({
   const [newOwnerName, setNewOwnerName] = useState("");
   const [newOwnerPhone, setNewOwnerPhone] = useState("");
   const [newOwnerEmail, setNewOwnerEmail] = useState("");
+  const [documentationDraft, setDocumentationDraft] = useState<PropertyDocumentationDraft>(
+    EMPTY_PROPERTY_DOCUMENTATION_DRAFT,
+  );
+  const [portfolioEntryDate, setPortfolioEntryDate] = useState(() => {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${now.getFullYear()}-${month}-${day}`;
+  });
 
   /* Fluxo de captação: a captação só vira CAPTADO se o imóvel for criado. */
   const capture = useCapture(captureId);
@@ -523,6 +534,13 @@ export function PropertyForm({
 
     if (captureBlock) return void fail("basico", captureBlock);
 
+    /* Cadastro NOVO é um checklist único: nenhuma etapa intermediária cria o
+       imóvel. Enter ou submit antes da última aba apenas avança. */
+    if (guidedCreate && section !== "publicacao") {
+      advance();
+      return;
+    }
+
     if (propertyId !== null && !form.code.trim()) {
       return void fail("basico", "Informe o código do imóvel.");
     }
@@ -547,6 +565,41 @@ export function PropertyForm({
       return void fail("valores", message);
     }
     if (price === null) return void fail("valores", "Informe o preço do imóvel.");
+
+    let stagedDocuments: {
+      category: PropertyDocumentationDraft["documents"][number]["category"];
+      title: string | null;
+      fileId: string | null;
+      fileName: string | null;
+    }[] = [];
+
+    if (guidedCreate && documentationDraft.documents.length > 0) {
+      setUploading(true);
+      try {
+        for (const doc of documentationDraft.documents) {
+          let fileId: string | null = null;
+          let fileName: string | null = null;
+          if (doc.file) {
+            const uploaded = await uploadDocument(doc.file);
+            fileId = uploaded.id;
+            fileName = uploaded.name;
+          }
+          stagedDocuments.push({
+            category: doc.category,
+            title: doc.title.trim() || null,
+            fileId,
+            fileName,
+          });
+        }
+      } catch (caught) {
+        setUploading(false);
+        return void fail(
+          "documentacao",
+          errorMessage(caught, "Não foi possível preparar os documentos"),
+        );
+      }
+      setUploading(false);
+    }
 
     const payload = {
       code: form.code.trim(),
@@ -590,7 +643,21 @@ export function PropertyForm({
       if (propertyId) {
         await save.mutateAsync({ ...payload, id: propertyId });
       } else {
-        const created = await save.mutateAsync(payload);
+        const created = await save.mutateAsync({
+          ...payload,
+          documentationDraft: {
+            conditions: documentationDraft.conditions,
+            checklist: Object.entries(documentationDraft.checklist).map(
+              ([itemKey, entry]) => ({
+                itemKey,
+                answer: entry.answer,
+                note: entry.note.trim() || null,
+              }),
+            ),
+            documents: stagedDocuments,
+          },
+          portfolioEntryDate,
+        });
         const plan = planConversion(conversion, {
           type: "property_created",
           propertyId: created.id,
@@ -611,11 +678,6 @@ export function PropertyForm({
             );
           }
         }
-        if (guidedCreate && onCreated) {
-          onCreated(created.id);
-          setSection("documentacao");
-          return;
-        }
       }
       onClose();
     } catch (caught) {
@@ -633,13 +695,8 @@ export function PropertyForm({
     setSection(nextSection.id);
   }
 
-  const guidedNeedsInitialSave = guidedCreate && propertyId === null && section === "fotos";
   const guidedFinalSave = guidedCreate && section === "publicacao";
-  const guidedCanAdvance =
-    guidedCreate &&
-    !guidedNeedsInitialSave &&
-    !guidedFinalSave &&
-    Boolean(nextSection);
+  const guidedCanAdvance = guidedCreate && !guidedFinalSave && Boolean(nextSection);
 
   return (
     <Modal
@@ -1050,11 +1107,41 @@ export function PropertyForm({
                 </>
               )}
 
-              {section === "documentacao" && <PropertyDocsSection propertyId={propertyId} />}
+              {section === "documentacao" &&
+                (guidedCreate && propertyId === null ? (
+                  <PropertyDocsDraftSection
+                    value={documentationDraft}
+                    onChange={setDocumentationDraft}
+                  />
+                ) : (
+                  <PropertyDocsSection propertyId={propertyId} />
+                ))}
 
-              {section === "revalidacao" && (
-                <PropertyRevalidationSection propertyId={propertyId} />
-              )}
+              {section === "revalidacao" &&
+                (guidedCreate && propertyId === null ? (
+                  <div className="space-y-4">
+                    <div className="rounded-[10px] border border-brass/30 bg-brass/5 p-3">
+                      <p className="text-sm text-deep">Entrada na carteira</p>
+                      <p className="mt-1 text-[11px] text-muted">
+                        Esta data será gravada junto com o imóvel no clique final. Nenhum
+                        cadastro é criado nesta etapa.
+                      </p>
+                    </div>
+                    <Field label="Data de entrada na carteira">
+                      <Input
+                        type="date"
+                        value={portfolioEntryDate}
+                        onChange={(event) => setPortfolioEntryDate(event.target.value)}
+                      />
+                    </Field>
+                    <p className="text-[11px] text-muted">
+                      A primeira revalidação será calculada a partir desta data. Os contatos
+                      futuros de revalidação serão registrados depois, no imóvel já cadastrado.
+                    </p>
+                  </div>
+                ) : (
+                  <PropertyRevalidationSection propertyId={propertyId} />
+                ))}
 
               {section === "publicacao" && (
                 <>
@@ -1152,11 +1239,9 @@ export function PropertyForm({
               >
                 {save.isPending
                   ? "Salvando…"
-                  : guidedNeedsInitialSave
-                    ? "Salvar e continuar"
-                    : guidedFinalSave
-                      ? "Finalizar cadastro"
-                      : "Salvar imóvel"}
+                  : guidedFinalSave
+                    ? "Finalizar cadastro"
+                    : "Salvar imóvel"}
               </Btn>
             )}
           </div>
