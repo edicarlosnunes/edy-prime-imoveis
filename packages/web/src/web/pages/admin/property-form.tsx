@@ -92,6 +92,7 @@ interface FormState {
   type: (typeof propertyTypes)[number];
   /** texto em padrão BR — convertido com parseMoneyInput ao salvar */
   price: string;
+  opportunityPrice: string;
   condoFee: string;
   iptu: string;
   district: string;
@@ -122,6 +123,7 @@ const empty: FormState = {
   purpose: "venda",
   type: "apartamento",
   price: "",
+  opportunityPrice: "",
   condoFee: "",
   iptu: "",
   district: "",
@@ -231,6 +233,7 @@ export function PropertyForm({
       purpose: row.purpose as FormState["purpose"],
       type: row.type as FormState["type"],
       price: formatMoneyInput(row.price),
+      opportunityPrice: row.opportunityPrice === null ? "" : formatMoneyInput(row.opportunityPrice),
       condoFee: row.condoFee === null ? "" : formatMoneyInput(row.condoFee),
       iptu: row.iptu === null ? "" : formatMoneyInput(row.iptu),
       district: row.district,
@@ -489,10 +492,12 @@ export function PropertyForm({
     }
 
     let price: number | null;
+    let opportunityPrice: number | null;
     let condoFee: number | null;
     let iptu: number | null;
     try {
-      price = parseMoneyInput(form.price, "Preço");
+      price = parseMoneyInput(form.price, "Valor do imóvel");
+      opportunityPrice = parseMoneyInput(form.opportunityPrice, "Valor de oportunidade");
       condoFee = parseMoneyInput(form.condoFee, "Condomínio");
       iptu = parseMoneyInput(form.iptu, "IPTU");
     } catch (caught) {
@@ -510,6 +515,7 @@ export function PropertyForm({
       purpose: form.purpose,
       type: form.type,
       price,
+      opportunityPrice,
       condoFee,
       iptu,
       district: form.district.trim(),
@@ -801,12 +807,19 @@ export function PropertyForm({
 
               {section === "valores" && (
                 <>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <Field label="Preço">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Field label="Valor do imóvel">
                       <MoneyInput
                         value={form.price}
                         onChange={(next) => set("price", next)}
-                        placeholder="320.000,00"
+                        placeholder="410.000,00"
+                      />
+                    </Field>
+                    <Field label="Valor de oportunidade" hint="Opcional. Se preenchido, aparece no site como OPORTUNIDADE.">
+                      <MoneyInput
+                        value={form.opportunityPrice}
+                        onChange={(next) => set("opportunityPrice", next)}
+                        placeholder="310.000,00"
                       />
                     </Field>
                     <Field label="Condomínio">
