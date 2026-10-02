@@ -46,6 +46,7 @@ export interface Property {
 
 const FALLBACK_IMAGE = "/images/imovel-1.jpg";
 const OPPORTUNITY_FEATURE_PREFIX = "__opportunity_price:";
+const REFERRAL_FEATURE_PREFIX = "__referral_note:";
 
 function opportunityPriceFromFeatures(raw: string | null): number | null {
   if (!raw) return null;
@@ -65,7 +66,15 @@ function parseFeatures(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.map(String).filter((item) => !item.startsWith(OPPORTUNITY_FEATURE_PREFIX)) : [];
+    return Array.isArray(parsed)
+      ? parsed
+          .map(String)
+          .filter(
+            (item) =>
+              !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
+              !item.startsWith(REFERRAL_FEATURE_PREFIX),
+          )
+      : [];
   } catch {
     return [];
   }
