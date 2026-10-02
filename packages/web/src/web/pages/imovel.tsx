@@ -173,7 +173,7 @@ function PropertyPage() {
   useMeta(
     property ? `${property.title} — ${property.district}, ${property.city} | E. Santos` : null,
     property
-      ? `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.area} m² em ${property.district}. ${formatBRL(property.price)}. Código ${property.code}.`
+      ? `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.area} m² em ${property.district}. ${formatBRL(property.opportunityPrice && property.opportunityPrice > 0 && property.opportunityPrice < property.price ? property.opportunityPrice : property.price)}. Código ${property.code}.`
       : null,
   );
 
@@ -202,7 +202,7 @@ function PropertyPage() {
           ? {
               offers: {
                 "@type": "Offer",
-                price: property.price,
+                price: property.opportunityPrice && property.opportunityPrice > 0 && property.opportunityPrice < property.price ? property.opportunityPrice : property.price,
                 priceCurrency: "BRL",
                 availability:
                   property.status === "disponivel"
@@ -375,7 +375,15 @@ function PropertyPage() {
                   <p data-t="caption" className="label-xs text-muted">
                     {purposeLabel[property.purpose] ?? property.purpose}
                   </p>
-                  <p data-t="price" className="display mt-2 text-4xl text-deep">{formatBRL(property.price)}</p>
+                  {property.opportunityPrice && property.opportunityPrice > 0 && property.opportunityPrice < property.price ? (
+                    <div data-t="price" className="mt-2">
+                      <p className="label-xs text-brass">OPORTUNIDADE</p>
+                      <p className="mt-1 text-sm text-muted">De <span className="line-through">{formatBRL(property.price)}</span></p>
+                      <p className="display text-4xl text-deep">Por {formatBRL(property.opportunityPrice)}</p>
+                    </div>
+                  ) : (
+                    <p data-t="price" className="display mt-2 text-4xl text-deep">{formatBRL(property.price)}</p>
+                  )}
                   <div data-t="info" className="mt-4 space-y-1 text-xs text-muted">
                     {property.condoFee ? <p>Condomínio: {formatBRL(property.condoFee)}</p> : null}
                     {property.iptu ? <p>IPTU: {formatBRL(property.iptu)}</p> : null}
@@ -439,7 +447,15 @@ function PropertyPage() {
                         {item.district} · {item.code}
                       </p>
                       <h3 data-t="card" className="display mt-2 text-xl leading-snug text-deep">{item.title}</h3>
-                      <p data-t="price" className="display mt-2 text-2xl text-deep">{formatBRL(item.price)}</p>
+                      {item.opportunityPrice && item.opportunityPrice > 0 && item.opportunityPrice < item.price ? (
+                        <div data-t="price" className="mt-2">
+                          <p className="label-xs text-brass">OPORTUNIDADE</p>
+                          <p className="text-xs text-muted">De <span className="line-through">{formatBRL(item.price)}</span></p>
+                          <p className="display text-2xl text-deep">Por {formatBRL(item.opportunityPrice)}</p>
+                        </div>
+                      ) : (
+                        <p data-t="price" className="display mt-2 text-2xl text-deep">{formatBRL(item.price)}</p>
+                      )}
                     </Link>
                   ))}
                 </div>
