@@ -19,6 +19,7 @@ export interface Property {
   district: string;
   city: string;
   price: number;
+  opportunityPrice: number | null;
   condoFee: number | null;
   iptu: number | null;
   bedrooms: number;
@@ -97,6 +98,7 @@ export const properties = {
         district: row.district,
         city: row.city,
         price: row.price,
+        opportunityPrice: row.opportunityPrice,
         condoFee: row.condoFee,
         iptu: row.iptu,
         bedrooms: row.bedrooms,
@@ -163,6 +165,7 @@ export const properties = {
           district: item.district,
           city: item.city,
           price: item.price,
+          opportunityPrice: item.opportunityPrice,
           condoFee: item.condoFee,
           iptu: item.iptu,
           bedrooms: item.bedrooms,
