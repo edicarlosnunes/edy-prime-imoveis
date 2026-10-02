@@ -24,30 +24,56 @@ const typeEnum = z.enum([
 ]);
 
 const OPPORTUNITY_FEATURE_PREFIX = "__opportunity_price:";
+const REFERRAL_FEATURE_PREFIX = "__referral_note:";
 
 function decodeStoredFeatures(raw: string | null | undefined) {
-  if (!raw) return { features: [] as string[], opportunityPrice: null as number | null };
+  if (!raw) return { features: [] as string[], opportunityPrice: null as number | null, referralNote: null as string | null };
   try {
     const parsed = JSON.parse(raw);
     const list = Array.isArray(parsed) ? parsed.map(String) : [];
     const marker = list.find((item) => item.startsWith(OPPORTUNITY_FEATURE_PREFIX));
     const amount = marker ? Number(marker.slice(OPPORTUNITY_FEATURE_PREFIX.length)) : NaN;
+    const referralMarker = list.find((item) => item.startsWith(REFERRAL_FEATURE_PREFIX));
+    let referralNote: string | null = null;
+    if (referralMarker) {
+      try {
+        referralNote = decodeURIComponent(referralMarker.slice(REFERRAL_FEATURE_PREFIX.length)) || null;
+      } catch {
+        referralNote = referralMarker.slice(REFERRAL_FEATURE_PREFIX.length) || null;
+      }
+    }
     return {
-      features: list.filter((item) => !item.startsWith(OPPORTUNITY_FEATURE_PREFIX)),
+      features: list.filter(
+        (item) =>
+          !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
+          !item.startsWith(REFERRAL_FEATURE_PREFIX),
+      ),
       opportunityPrice: Number.isFinite(amount) && amount > 0 ? amount : null,
+      referralNote,
     };
   } catch {
-    return { features: [] as string[], opportunityPrice: null as number | null };
+    return { features: [] as string[], opportunityPrice: null as number | null, referralNote: null as string | null };
   }
 }
 
-function encodeStoredFeatures(features: string[], opportunityPrice: number | null | undefined) {
+function encodeStoredFeatures(
+  features: string[],
+  opportunityPrice: number | null | undefined,
+  referralNote: string | null | undefined,
+) {
   const clean = features
     .map((item) => item.trim())
-    .filter((item) => item.length > 0 && !item.startsWith(OPPORTUNITY_FEATURE_PREFIX));
+    .filter(
+      (item) =>
+        item.length > 0 &&
+        !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
+        !item.startsWith(REFERRAL_FEATURE_PREFIX),
+    );
   if (opportunityPrice && opportunityPrice > 0) {
     clean.push(`${OPPORTUNITY_FEATURE_PREFIX}${opportunityPrice}`);
   }
+  const referral = referralNote?.trim();
+  if (referral) clean.push(`${REFERRAL_FEATURE_PREFIX}${encodeURIComponent(referral)}`);
   return JSON.stringify(clean);
 }
 
@@ -65,6 +91,7 @@ const propertyInput = z.object({
   type: typeEnum.default("apartamento"),
   price: z.number().min(0).max(999_999_999),
   opportunityPrice: z.number().min(0).max(999_999_999).nullable().optional(),
+  referralNote: z.string().max(600).nullable().optional(),
   condoFee: z.number().min(0).max(999_999).nullable().optional(),
   iptu: z.number().min(0).max(999_999).nullable().optional(),
   district: z.string().max(120).default(""),
@@ -116,7 +143,7 @@ function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().to
     areaTotal: input.areaTotal ?? null,
     description: input.description?.trim() || null,
     highlight: input.highlight?.trim() || null,
-    features: encodeStoredFeatures(input.features, input.opportunityPrice),
+    features: encodeStoredFeatures(input.features, input.opportunityPrice, input.referralNote),
     status: input.status,
     published: input.published ? 1 : 0,
     featured: input.featured ? 1 : 0,
@@ -228,6 +255,7 @@ export const adminProperties = {
           ...row,
           features: JSON.stringify(decoded.features),
           opportunityPrice: decoded.opportunityPrice,
+          referralNote: decoded.referralNote,
           imageCount: own.length,
           cover: (own.find((image) => image.isPrimary === 1) ?? own[0])?.url ?? null,
           /* Eixos novos, informativos para a tela — o `status` antigo segue
@@ -254,6 +282,7 @@ export const adminProperties = {
         ...row,
         features: JSON.stringify(decoded.features),
         opportunityPrice: decoded.opportunityPrice,
+        referralNote: decoded.referralNote,
         images: await loadImages(context.db, row.id),
       };
     }),
