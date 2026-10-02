@@ -52,8 +52,6 @@ export const properties = sqliteTable(
     /** apartamento | casa | cobertura | terreno | sala_comercial | sobrado | chacara | outro */
     type: text("type").notNull().default("apartamento"),
     price: real("price").notNull().default(0),
-    /** Valor promocional/oportunidade. NULL = exibir somente o valor normal. */
-    opportunityPrice: real("opportunity_price"),
     condoFee: real("condo_fee"),
     iptu: real("iptu"),
     district: text("district").notNull().default(""),
