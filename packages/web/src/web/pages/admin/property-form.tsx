@@ -112,6 +112,8 @@ interface FormState {
   published: boolean;
   featured: boolean;
   ownerId: string;
+  /** lembrete interno da origem/indicação deste imóvel */
+  referralNote: string;
   /** marca d'água desligada só neste imóvel */
   watermarkOff: boolean;
   /** vídeo do imóvel no YouTube — opcional */
@@ -143,6 +145,7 @@ const empty: FormState = {
   published: true,
   featured: false,
   ownerId: "",
+  referralNote: "",
   watermarkOff: false,
   youtubeUrl: "",
 };
@@ -257,6 +260,7 @@ export function PropertyForm({
       published: row.published === 1,
       featured: row.featured === 1,
       ownerId: row.ownerId ? String(row.ownerId) : "",
+      referralNote: row.referralNote ?? "",
       watermarkOff: row.watermarkOff === 1,
       youtubeUrl: row.youtubeUrl ?? "",
     });
@@ -565,6 +569,7 @@ export function PropertyForm({
       published: form.published,
       featured: form.featured,
       ownerId: form.ownerId ? Number(form.ownerId) : null,
+      referralNote: form.referralNote.trim() || null,
       watermarkOff: form.watermarkOff,
       youtubeUrl: form.youtubeUrl.trim() || null,
       images: images.map((image) => ({
@@ -937,6 +942,20 @@ export function PropertyForm({
                     >
                       {createOwner.isPending ? "Cadastrando…" : "Cadastrar e vincular proprietário"}
                     </Btn>
+                  </div>
+
+                  <div className="space-y-3 border-t border-line pt-4">
+                    <Field
+                      label="Origem / indicação do imóvel"
+                      hint="Uso interno. Ex.: veio por intermédio de vizinho, amigo, familiar ou outro contato. Não aparece no site."
+                    >
+                      <Textarea
+                        value={form.referralNote}
+                        onChange={(e) => set("referralNote", e.target.value)}
+                        placeholder="Ex.: Imóvel veio por intermédio de João da Silva, vizinho do proprietário. Telefone: (13) 99999-9999."
+                        className="min-h-24"
+                      />
+                    </Field>
                   </div>
                 </>
               )}
