@@ -37,6 +37,7 @@ const statements = [
     purpose TEXT NOT NULL DEFAULT 'venda',
     type TEXT NOT NULL DEFAULT 'apartamento',
     price REAL NOT NULL DEFAULT 0,
+    opportunity_price REAL,
     condo_fee REAL,
     iptu REAL,
     district TEXT NOT NULL DEFAULT '',
@@ -522,6 +523,7 @@ const mediaColumns: Record<string, string> = {
 
 /** Colunas adicionadas à tabela properties. */
 const propertyColumns: Record<string, string> = {
+  opportunity_price: "REAL",
   slug: "TEXT",
   watermark_off: "INTEGER NOT NULL DEFAULT 0",
   /* V2 — documentação. Nullable de propósito: NULL = ainda não respondido,
