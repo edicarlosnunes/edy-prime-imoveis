@@ -497,6 +497,7 @@ export function PropertyForm({
         purpose: form.purpose,
         type: form.type,
         price: softMoney(form.price),
+        opportunityPrice: softMoney(form.opportunityPrice),
         condoFee: softMoney(form.condoFee),
         iptu: softMoney(form.iptu),
         district: form.district.trim(),

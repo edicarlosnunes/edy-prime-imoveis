@@ -195,7 +195,21 @@ function Content() {
                   {labelOf(propertyTypeLabel, property.type)} ·{" "}
                   {labelOf(purposeLabel, property.purpose)} · {property.district}, {property.city}
                 </p>
-                <p className="display mt-1 text-xl text-deep">{money(property.price)}</p>
+                {property.opportunityPrice &&
+                property.opportunityPrice > 0 &&
+                property.opportunityPrice < property.price ? (
+                  <div className="mt-1">
+                    <Badge tone="brass">OPORTUNIDADE</Badge>
+                    <p className="mt-1 text-xs text-muted">
+                      De <span className="line-through">{money(property.price)}</span>
+                    </p>
+                    <p className="display text-xl text-deep">
+                      Por {money(property.opportunityPrice)}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="display mt-1 text-xl text-deep">{money(property.price)}</p>
+                )}
                 <p className="mt-1 text-xs text-muted">
                   {property.bedrooms} dorm · {property.suites} suíte(s) · {property.bathrooms} banh ·{" "}
                   {property.parking} vaga(s) · {property.areaUtil} m² · {property.imageCount} foto(s) ·{" "}

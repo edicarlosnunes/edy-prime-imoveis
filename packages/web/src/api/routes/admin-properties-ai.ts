@@ -49,6 +49,7 @@ const generateInput = z.object({
   purpose: purposeEnum,
   type: typeEnum,
   price: z.number().min(0).max(999_999_999).nullable().optional(),
+  opportunityPrice: z.number().min(0).max(999_999_999).nullable().optional(),
   condoFee: z.number().min(0).max(999_999).nullable().optional(),
   iptu: z.number().min(0).max(999_999).nullable().optional(),
   district: z.string().max(120).default(""),
@@ -76,7 +77,10 @@ function buildSheet(input: GenerateInput) {
   lines.push(`Finalidade: ${purposeLabel[input.purpose] ?? "venda"}`);
   if (input.district.trim()) lines.push(`Bairro: ${input.district.trim()}`);
   if (input.city.trim()) lines.push(`Cidade: ${input.city.trim()}`);
-  if (input.price && input.price > 0) lines.push(`Preço: ${money(input.price)}`);
+  if (input.price && input.price > 0) lines.push(`Valor do imóvel: ${money(input.price)}`);
+  if (input.opportunityPrice && input.opportunityPrice > 0) {
+    lines.push(`Valor de oportunidade: ${money(input.opportunityPrice)}`);
+  }
   if (input.condoFee && input.condoFee > 0) lines.push(`Condomínio: ${money(input.condoFee)}`);
   if (input.iptu && input.iptu > 0) lines.push(`IPTU: ${money(input.iptu)}`);
   if (input.bedrooms > 0) lines.push(`Dormitórios: ${input.bedrooms}`);
@@ -101,6 +105,7 @@ const RULES = `REGRAS ABSOLUTAS (quebrar qualquer uma torna o texto inútil):
 1. Use SOMENTE os dados da ficha abaixo. Está proibido criar, supor, estimar ou insinuar qualquer informação que não esteja escrita nela.
 2. Nunca mencione: distância ou proximidade da praia, do mar, do comércio, de escolas ou de qualquer ponto; vista (mar, livre, panorâmica); lazer do condomínio (piscina, academia, salão, churrasqueira, portaria, elevador); mobília ou armários; documentação, escritura, financiamento, FGTS, permuta, entrada, parcelamento; andar, posição solar, estado de conservação, reforma, ano de construção; nome de edifício, rua ou número — EXCETO se estiver textualmente na ficha.
 3. Nunca invente número: não crie metragem, quantidade de dormitórios, suítes, banheiros, vagas, valores ou prazos. Se um número não está na ficha, ele não existe.
+3A. PREÇO: quando existir “Valor de oportunidade”, ele é o valor comercial atual e deve ser priorizado em descrição, WhatsApp e portal. Se mencionar os dois valores, use a forma “de [Valor do imóvel] por [Valor de oportunidade]”. Nunca substitua o valor de oportunidade pelo valor do imóvel. Quando não houver valor de oportunidade, use somente o Valor do imóvel.
 4. Não use superlativo vazio nem promessa ("o melhor da cidade", "oportunidade única", "imperdível", "não perca"). Não prometa retorno de investimento nem valorização.
 5. Tom: sofisticado, premium e profissional, humano e direto. Português do Brasil. Sem emoji. Sem CAIXA ALTA. Sem hashtag.
 6. Se a ficha tiver poucos dados, escreva textos mais curtos — jamais complete com suposição.
