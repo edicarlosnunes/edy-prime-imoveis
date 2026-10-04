@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { asc, eq, inArray } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
+import type { AdminDb } from "../lib/admin-base";
 import * as schema from "../database/schema";
 import { ORPCError } from "@orpc/server";
 import { docWarning, normalizeDoc, normalizeRg } from "../lib/person-doc";
@@ -38,7 +39,7 @@ const TEST_PHONE_KEYS = new Set([
 const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
 const isTestPhone = (value: string | null | undefined) => TEST_PHONE_KEYS.has(digits(value));
 
-async function resetDedicatedTestPhones(db: Parameters<Parameters<typeof adminBase.handler>[0]>[0]["context"]["db"]) {
+async function resetDedicatedTestPhones(db: AdminDb) {
   const owners = (await db.select().from(schema.owners).limit(5000)).filter((row) => isTestPhone(row.phone));
   const ownerIds = owners.map((row) => row.id);
 
