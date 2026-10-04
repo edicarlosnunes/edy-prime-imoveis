@@ -157,6 +157,12 @@ const empty: FormState = {
   youtubeUrl: "",
 };
 
+const PROPERTY_DRAFT_VERSION = 1;
+
+function propertyDraftKey(captureId: number | null) {
+  return `esantos:property-draft:v${PROPERTY_DRAFT_VERSION}:${captureId ?? "new"}`;
+}
+
 function num(value: string) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -211,6 +217,10 @@ export function PropertyForm({
     const day = String(now.getDate()).padStart(2, "0");
     return `${now.getFullYear()}-${month}-${day}`;
   });
+  const [draftReady, setDraftReady] = useState(propertyId !== null);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const draftKey = useMemo(() => propertyDraftKey(captureId), [captureId]);
 
   /* Fluxo de captação: a captação só vira CAPTADO se o imóvel for criado. */
   const capture = useCapture(captureId);
@@ -245,6 +255,82 @@ export function PropertyForm({
     ...orpc.adminProperties.get.queryOptions({ input: { id: propertyId ?? 0 } }),
     enabled: propertyId !== null,
   });
+
+  useEffect(() => {
+    if (propertyId !== null) return;
+    try {
+      const raw = window.localStorage.getItem(draftKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        form?: Partial<FormState>;
+        images?: GalleryImage[];
+        section?: string;
+        documentationDraft?: PropertyDocumentationDraft;
+        portfolioEntryDate?: string;
+        savedAt?: string;
+      };
+      if (parsed.form) setForm((current) => ({ ...current, ...parsed.form }));
+      if (Array.isArray(parsed.images)) setImages(parsed.images);
+      if (parsed.section && SECTIONS.some((item) => item.id === parsed.section)) {
+        setSection(parsed.section);
+      }
+      if (parsed.documentationDraft) {
+        setDocumentationDraft({
+          ...EMPTY_PROPERTY_DOCUMENTATION_DRAFT,
+          ...parsed.documentationDraft,
+          conditions: {
+            ...EMPTY_PROPERTY_DOCUMENTATION_DRAFT.conditions,
+            ...parsed.documentationDraft.conditions,
+          },
+          checklist: parsed.documentationDraft.checklist ?? {},
+          documents: Array.isArray(parsed.documentationDraft.documents)
+            ? parsed.documentationDraft.documents.map((doc) => ({ ...doc, file: null }))
+            : [],
+        });
+      }
+      if (parsed.portfolioEntryDate) setPortfolioEntryDate(parsed.portfolioEntryDate);
+      setDraftSavedAt(parsed.savedAt ?? null);
+      setDraftRestored(true);
+    } catch {
+      window.localStorage.removeItem(draftKey);
+    } finally {
+      setDraftReady(true);
+    }
+  }, [draftKey, propertyId]);
+
+  useEffect(() => {
+    if (propertyId !== null || !draftReady) return;
+    const savedAt = new Date().toISOString();
+    const safeDocumentationDraft: PropertyDocumentationDraft = {
+      ...documentationDraft,
+      documents: documentationDraft.documents.map((doc) => ({ ...doc, file: null })),
+    };
+    try {
+      window.localStorage.setItem(
+        draftKey,
+        JSON.stringify({
+          form,
+          images,
+          section,
+          documentationDraft: safeDocumentationDraft,
+          portfolioEntryDate,
+          savedAt,
+        }),
+      );
+      setDraftSavedAt(savedAt);
+    } catch {
+      // O cadastro continua funcionando mesmo se o navegador bloquear armazenamento local.
+    }
+  }, [
+    documentationDraft,
+    draftKey,
+    draftReady,
+    form,
+    images,
+    portfolioEntryDate,
+    propertyId,
+    section,
+  ]);
 
   useEffect(() => {
     const row = detail.data;
@@ -686,6 +772,7 @@ export function PropertyForm({
             );
           }
         }
+        window.localStorage.removeItem(draftKey);
       }
       onClose();
     } catch (caught) {
@@ -715,6 +802,21 @@ export function PropertyForm({
       title={propertyId ? "Editar imóvel" : "Novo imóvel"}
     >
       <form onSubmit={submit} className="space-y-4">
+        {guidedCreate && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-brass/30 bg-brass/5 px-3 py-2 text-[11px] text-muted">
+            <span>
+              {draftRestored
+                ? "Rascunho automático recuperado. Você pode continuar de onde parou."
+                : "Rascunho automático ativo. Se sair desta tela antes de finalizar, o preenchimento será preservado neste navegador."}
+            </span>
+            {draftSavedAt && (
+              <span>
+                Salvo {new Date(draftSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
+        )}
+
         <PropertyFormHeader
           isNew={propertyId === null}
           code={form.code}
@@ -747,14 +849,10 @@ export function PropertyForm({
                         Captação #{captureId} · {capture.data.owner?.name ?? "proprietário"}
                       </div>
                       {capture.data.serial && (
-                        /* Mesmo número impresso na Ficha Técnica e na
-                           Autorização: o imóvel HERDA, não recebe outro. */
                         <div className="mt-1 font-mono text-xs text-deep">
                           EPI {capture.data.serial}
                         </div>
                       )}
-                      {/* Observações ficam à vista, não são copiadas para campos
-                          públicos: o texto é interno e o imóvel nasce fora do ar. */}
                       <p className="mt-1 whitespace-pre-line text-muted">
                         {parseChecklist(capture.data.notes).text || "Sem observações na captação."}
                       </p>
@@ -810,14 +908,8 @@ export function PropertyForm({
                     <Input value={form.title} onChange={(e) => set("title", e.target.value)} />
                   </Field>
 
-                  <Field
-                    label="Frase de destaque"
-                    hint="Aparece no card do imóvel dentro do site."
-                  >
-                    <Input
-                      value={form.highlight}
-                      onChange={(e) => set("highlight", e.target.value)}
-                    />
+                  <Field label="Frase de destaque" hint="Aparece no card do imóvel dentro do site.">
+                    <Input value={form.highlight} onChange={(e) => set("highlight", e.target.value)} />
                   </Field>
 
                   <p className="text-[11px] text-muted">
@@ -838,42 +930,19 @@ export function PropertyForm({
                 <>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <Field label="Cidade">
-                      <Input
-                        value={form.city}
-                        list="edy-city-options"
-                        onChange={(e) => set("city", e.target.value)}
-                      />
+                      <Input value={form.city} list="edy-city-options" onChange={(e) => set("city", e.target.value)} />
                       <datalist id="edy-city-options">
-                        {citySuggestions.map((value) => (
-                          <option key={value} value={value} />
-                        ))}
+                        {citySuggestions.map((value) => <option key={value} value={value} />)}
                       </datalist>
                     </Field>
-                    <Field
-                      label="Bairro"
-                      hint={
-                        districtSuggestions.length > 0
-                          ? "Sugestões vêm dos imóveis já cadastrados nesta cidade."
-                          : undefined
-                      }
-                    >
-                      <Input
-                        value={form.district}
-                        list="edy-district-options"
-                        onChange={(e) => set("district", e.target.value)}
-                      />
+                    <Field label="Bairro" hint={districtSuggestions.length > 0 ? "Sugestões vêm dos imóveis já cadastrados nesta cidade." : undefined}>
+                      <Input value={form.district} list="edy-district-options" onChange={(e) => set("district", e.target.value)} />
                       <datalist id="edy-district-options">
-                        {districtSuggestions.map((value) => (
-                          <option key={value} value={value} />
-                        ))}
+                        {districtSuggestions.map((value) => <option key={value} value={value} />)}
                       </datalist>
                     </Field>
                   </div>
-
-                  <Field
-                    label="Endereço"
-                    hint="Uso interno. Não aparece no site nem nos portais."
-                  >
+                  <Field label="Endereço" hint="Uso interno. Não aparece no site nem nos portais.">
                     <Input value={form.address} onChange={(e) => set("address", e.target.value)} />
                   </Field>
                 </>
@@ -882,51 +951,14 @@ export function PropertyForm({
               {section === "caracteristicas" && (
                 <>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <Field label="Dormitórios">
-                      <CountInput
-                        label="dormitórios"
-                        value={form.bedrooms}
-                        onChange={(next) => set("bedrooms", next)}
-                      />
-                    </Field>
-                    <Field label="Suítes">
-                      <CountInput
-                        label="suítes"
-                        value={form.suites}
-                        onChange={(next) => set("suites", next)}
-                      />
-                    </Field>
-                    <Field label="Banheiros">
-                      <CountInput
-                        label="banheiros"
-                        value={form.bathrooms}
-                        onChange={(next) => set("bathrooms", next)}
-                      />
-                    </Field>
-                    <Field label="Vagas">
-                      <CountInput
-                        label="vagas"
-                        value={form.parking}
-                        onChange={(next) => set("parking", next)}
-                      />
-                    </Field>
+                    <Field label="Dormitórios"><CountInput label="dormitórios" value={form.bedrooms} onChange={(next) => set("bedrooms", next)} /></Field>
+                    <Field label="Suítes"><CountInput label="suítes" value={form.suites} onChange={(next) => set("suites", next)} /></Field>
+                    <Field label="Banheiros"><CountInput label="banheiros" value={form.bathrooms} onChange={(next) => set("bathrooms", next)} /></Field>
+                    <Field label="Vagas"><CountInput label="vagas" value={form.parking} onChange={(next) => set("parking", next)} /></Field>
                   </div>
-
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <Field label="Área útil (m²)">
-                      <Input
-                        value={form.areaUtil}
-                        onChange={(e) => set("areaUtil", e.target.value)}
-                        inputMode="decimal"
-                      />
-                    </Field>
-                    <Field label="Área total (m²)">
-                      <Input
-                        value={form.areaTotal}
-                        onChange={(e) => set("areaTotal", e.target.value)}
-                        inputMode="decimal"
-                      />
-                    </Field>
+                    <Field label="Área útil (m²)"><Input value={form.areaUtil} onChange={(e) => set("areaUtil", e.target.value)} inputMode="decimal" /></Field>
+                    <Field label="Área total (m²)"><Input value={form.areaTotal} onChange={(e) => set("areaTotal", e.target.value)} inputMode="decimal" /></Field>
                   </div>
                 </>
               )}
@@ -934,137 +966,46 @@ export function PropertyForm({
               {section === "valores" && (
                 <>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                    <Field label="Valor do imóvel">
-                      <MoneyInput
-                        value={form.price}
-                        onChange={(next) => set("price", next)}
-                        placeholder="410.000,00"
-                      />
-                    </Field>
-                    <Field label="Valor de oportunidade" hint="Opcional. Se preenchido, aparece no site como OPORTUNIDADE.">
-                      <MoneyInput
-                        value={form.opportunityPrice}
-                        onChange={(next) => set("opportunityPrice", next)}
-                        placeholder="310.000,00"
-                      />
-                    </Field>
-                    <Field label="Condomínio">
-                      <MoneyInput
-                        value={form.condoFee}
-                        onChange={(next) => set("condoFee", next)}
-                        placeholder="0,00"
-                      />
-                    </Field>
-                    <Field label="IPTU">
-                      <MoneyInput
-                        value={form.iptu}
-                        onChange={(next) => set("iptu", next)}
-                        placeholder="0,00"
-                      />
-                    </Field>
+                    <Field label="Valor do imóvel"><MoneyInput value={form.price} onChange={(next) => set("price", next)} placeholder="410.000,00" /></Field>
+                    <Field label="Valor de oportunidade" hint="Opcional. Se preenchido, aparece no site como OPORTUNIDADE."><MoneyInput value={form.opportunityPrice} onChange={(next) => set("opportunityPrice", next)} placeholder="310.000,00" /></Field>
+                    <Field label="Condomínio"><MoneyInput value={form.condoFee} onChange={(next) => set("condoFee", next)} placeholder="0,00" /></Field>
+                    <Field label="IPTU"><MoneyInput value={form.iptu} onChange={(next) => set("iptu", next)} placeholder="0,00" /></Field>
                   </div>
-                  <p className="text-[11px] text-muted">
-                    Digite como preferir — 320000, 320000,00 ou 320.000,00. O valor é formatado ao
-                    sair do campo e enviado como número.
-                  </p>
+                  <p className="text-[11px] text-muted">Digite como preferir — 320000, 320000,00 ou 320.000,00. O valor é formatado ao sair do campo e enviado como número.</p>
                 </>
               )}
 
               {section === "proprietario" && (
                 <>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={form.ownerId ? "green" : "amber"}>
-                      {form.ownerId ? "Proprietário vinculado" : "Proprietário pendente"}
-                    </Badge>
+                    <Badge tone={form.ownerId ? "green" : "amber"}>{form.ownerId ? "Proprietário vinculado" : "Proprietário pendente"}</Badge>
                     {ownerName && <span className="text-sm text-deep">{ownerName}</span>}
                   </div>
-
-                  <Field
-                    label="Proprietário"
-                    hint="Selecione um proprietário já cadastrado ou cadastre um novo aqui, sem sair desta ficha."
-                  >
-                    <Select
-                      value={form.ownerId}
-                      onChange={(e) => set("ownerId", e.target.value)}
-                    >
+                  <Field label="Proprietário" hint="Selecione um proprietário já cadastrado ou cadastre um novo aqui, sem sair desta ficha.">
+                    <Select value={form.ownerId} onChange={(e) => set("ownerId", e.target.value)}>
                       <option value="">Sem vínculo</option>
-                      {(owners.data ?? []).map((owner) => (
-                        <option key={owner.id} value={owner.id}>
-                          {owner.name}
-                        </option>
-                      ))}
+                      {(owners.data ?? []).map((owner) => <option key={owner.id} value={owner.id}>{owner.name}</option>)}
                     </Select>
                   </Field>
-
                   <div className="space-y-3 border-t border-line pt-4">
                     <p className="label-xs text-muted">Cadastrar novo proprietário</p>
-                    <p className="text-[11px] text-muted">
-                      O novo proprietário será criado e vinculado automaticamente a este imóvel. Você não perde o preenchimento já feito.
-                    </p>
-                    <Field label="Nome">
-                      <Input
-                        value={newOwnerName}
-                        onChange={(e) => setNewOwnerName(e.target.value)}
-                        placeholder="Nome completo"
-                      />
-                    </Field>
+                    <p className="text-[11px] text-muted">O novo proprietário será criado e vinculado automaticamente a este imóvel. Você não perde o preenchimento já feito.</p>
+                    <Field label="Nome"><Input value={newOwnerName} onChange={(e) => setNewOwnerName(e.target.value)} placeholder="Nome completo" /></Field>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <Field label="Telefone">
-                        <Input
-                          value={newOwnerPhone}
-                          onChange={(e) => setNewOwnerPhone(e.target.value)}
-                        />
-                      </Field>
-                      <Field label="E-mail">
-                        <Input
-                          value={newOwnerEmail}
-                          onChange={(e) => setNewOwnerEmail(e.target.value)}
-                        />
-                      </Field>
+                      <Field label="Telefone"><Input value={newOwnerPhone} onChange={(e) => setNewOwnerPhone(e.target.value)} /></Field>
+                      <Field label="E-mail"><Input value={newOwnerEmail} onChange={(e) => setNewOwnerEmail(e.target.value)} /></Field>
                     </div>
                     <Field label="Status de captação">
-                      <Select
-                        value={newOwnerCaptureStatus}
-                        onChange={(e) =>
-                          setNewOwnerCaptureStatus(
-                            e.target.value as (typeof captureStatuses)[number],
-                          )
-                        }
-                      >
-                        {captureStatuses.map((value) => (
-                          <option key={value} value={value}>
-                            {captureStatusLabel[value]}
-                          </option>
-                        ))}
+                      <Select value={newOwnerCaptureStatus} onChange={(e) => setNewOwnerCaptureStatus(e.target.value as (typeof captureStatuses)[number])}>
+                        {captureStatuses.map((value) => <option key={value} value={value}>{captureStatusLabel[value]}</option>)}
                       </Select>
                     </Field>
-                    <Field label="Observações">
-                      <Textarea
-                        value={newOwnerNotes}
-                        onChange={(e) => setNewOwnerNotes(e.target.value)}
-                      />
-                    </Field>
-                    <Btn
-                      type="button"
-                      tone="outline"
-                      onClick={() => void createAndLinkOwner()}
-                      disabled={createOwner.isPending}
-                    >
-                      {createOwner.isPending ? "Cadastrando…" : "Cadastrar e vincular proprietário"}
-                    </Btn>
+                    <Field label="Observações"><Textarea value={newOwnerNotes} onChange={(e) => setNewOwnerNotes(e.target.value)} /></Field>
+                    <Btn type="button" tone="outline" onClick={() => void createAndLinkOwner()} disabled={createOwner.isPending}>{createOwner.isPending ? "Cadastrando…" : "Cadastrar e vincular proprietário"}</Btn>
                   </div>
-
                   <div className="space-y-3 border-t border-line pt-4">
-                    <Field
-                      label="Origem / indicação do imóvel"
-                      hint="Uso interno. Ex.: veio por intermédio de vizinho, amigo, familiar ou outro contato. Não aparece no site."
-                    >
-                      <Textarea
-                        value={form.referralNote}
-                        onChange={(e) => set("referralNote", e.target.value)}
-                        placeholder="Ex.: Imóvel veio por intermédio de João da Silva, vizinho do proprietário. Telefone: (13) 99999-9999."
-                        className="min-h-24"
-                      />
+                    <Field label="Origem / indicação do imóvel" hint="Uso interno. Ex.: veio por intermédio de vizinho, amigo, familiar ou outro contato. Não aparece no site.">
+                      <Textarea value={form.referralNote} onChange={(e) => set("referralNote", e.target.value)} placeholder="Ex.: Imóvel veio por intermédio de João da Silva, vizinho do proprietário. Telefone: (13) 99999-9999." className="min-h-24" />
                     </Field>
                   </div>
                 </>
@@ -1073,170 +1014,55 @@ export function PropertyForm({
               {section === "descricao" && (
                 <>
                   <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-brass/40 bg-brass/5 px-3 py-3">
-                    <Btn tone="brass" onClick={() => void runGenerate()} disabled={generate.isPending}>
-                      <Sparkles className="h-3.5 w-3.5" />
-                      {generate.isPending ? "Gerando…" : "Gerar conteúdo com IA"}
-                    </Btn>
-                    <p className="text-[11px] text-muted">
-                      Usa somente os dados já cadastrados deste imóvel. Você revisa antes de
-                      aplicar — nada é publicado automaticamente.
-                    </p>
+                    <Btn tone="brass" onClick={() => void runGenerate()} disabled={generate.isPending}><Sparkles className="h-3.5 w-3.5" />{generate.isPending ? "Gerando…" : "Gerar conteúdo com IA"}</Btn>
+                    <p className="text-[11px] text-muted">Usa somente os dados já cadastrados deste imóvel. Você revisa antes de aplicar — nada é publicado automaticamente.</p>
                   </div>
-
-                  <Field label="Descrição">
-                    <Textarea
-                      value={form.description}
-                      onChange={(e) => set("description", e.target.value)}
-                      className="min-h-40"
-                    />
-                  </Field>
-
+                  <Field label="Descrição"><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} className="min-h-40" /></Field>
                   <div className="border-t border-line pt-4">
                     <p className="label-xs text-muted">Características e diferenciais</p>
-                    <p className="mt-1 text-[11px] text-muted">
-                      Marque somente o que o imóvel realmente tem. Estes itens alimentam o site, os
-                      portais e a geração de conteúdo com IA.
-                    </p>
-                    <div className="mt-3">
-                      <FeaturesPicker
-                        value={form.features}
-                        onChange={(next) => set("features", next)}
-                      />
-                    </div>
+                    <p className="mt-1 text-[11px] text-muted">Marque somente o que o imóvel realmente tem. Estes itens alimentam o site, os portais e a geração de conteúdo com IA.</p>
+                    <div className="mt-3"><FeaturesPicker value={form.features} onChange={(next) => set("features", next)} /></div>
                   </div>
                 </>
               )}
 
               {section === "fotos" && (
                 <>
-                  <PropertyGallery
-                    images={images}
-                    uploading={uploading}
-                    onPick={(files) => void pickFiles(files)}
-                    onMove={move}
-                    onSetPrimary={setPrimary}
-                    onRemove={removeImage}
-                  />
-
-                  {/* Opcional. Vazio não renderiza nada no site. Aparece só
-                      dentro da galeria da página do imóvel. */}
+                  <PropertyGallery images={images} uploading={uploading} onPick={(files) => void pickFiles(files)} onMove={move} onSetPrimary={setPrimary} onRemove={removeImage} />
                   <div className="mt-6 border-t border-line pt-6">
-                    <Field
-                      label="YouTube"
-                      hint="Opcional. Aparece somente na galeria de fotos da página do imóvel."
-                    >
-                      <Input
-                        value={form.youtubeUrl}
-                        placeholder="Cole aqui a URL do vídeo do imóvel"
-                        onChange={(e) => set("youtubeUrl", e.target.value)}
-                      />
+                    <Field label="YouTube" hint="Opcional. Aparece somente na galeria de fotos da página do imóvel.">
+                      <Input value={form.youtubeUrl} placeholder="Cole aqui a URL do vídeo do imóvel" onChange={(e) => set("youtubeUrl", e.target.value)} />
                     </Field>
                   </div>
                 </>
               )}
 
-              {section === "documentacao" &&
-                (guidedCreate && propertyId === null ? (
-                  <PropertyDocsDraftSection
-                    value={documentationDraft}
-                    onChange={setDocumentationDraft}
-                  />
-                ) : (
-                  <PropertyDocsSection propertyId={propertyId} />
-                ))}
+              {section === "documentacao" && (guidedCreate && propertyId === null ? <PropertyDocsDraftSection value={documentationDraft} onChange={setDocumentationDraft} /> : <PropertyDocsSection propertyId={propertyId} />)}
 
-              {section === "revalidacao" &&
-                (guidedCreate && propertyId === null ? (
-                  <div className="space-y-4">
-                    <div className="rounded-[10px] border border-brass/30 bg-brass/5 p-3">
-                      <p className="text-sm text-deep">Entrada na carteira</p>
-                      <p className="mt-1 text-[11px] text-muted">
-                        Esta data será gravada junto com o imóvel no clique final. Nenhum
-                        cadastro é criado nesta etapa.
-                      </p>
-                    </div>
-                    <Field label="Data de entrada na carteira">
-                      <Input
-                        type="date"
-                        value={portfolioEntryDate}
-                        onChange={(event) => setPortfolioEntryDate(event.target.value)}
-                      />
-                    </Field>
-                    <p className="text-[11px] text-muted">
-                      A primeira revalidação será calculada a partir desta data. Os contatos
-                      futuros de revalidação serão registrados depois, no imóvel já cadastrado.
-                    </p>
+              {section === "revalidacao" && (guidedCreate && propertyId === null ? (
+                <div className="space-y-4">
+                  <div className="rounded-[10px] border border-brass/30 bg-brass/5 p-3">
+                    <p className="text-sm text-deep">Entrada na carteira</p>
+                    <p className="mt-1 text-[11px] text-muted">Esta data será gravada junto com o imóvel no clique final. Nenhum cadastro é criado nesta etapa.</p>
                   </div>
-                ) : (
-                  <PropertyRevalidationSection propertyId={propertyId} />
-                ))}
+                  <Field label="Data de entrada na carteira"><Input type="date" value={portfolioEntryDate} onChange={(event) => setPortfolioEntryDate(event.target.value)} /></Field>
+                  <p className="text-[11px] text-muted">A primeira revalidação será calculada a partir desta data. Os contatos futuros de revalidação serão registrados depois, no imóvel já cadastrado.</p>
+                </div>
+              ) : <PropertyRevalidationSection propertyId={propertyId} />)}
 
               {section === "publicacao" && (
                 <>
                   <Field label="Status">
-                    <Select
-                      value={form.status}
-                      onChange={(e) => set("status", e.target.value as FormState["status"])}
-                    >
-                      {propertyStatuses.map((value) => (
-                        <option key={value} value={value}>
-                          {propertyStatusLabel[value]}
-                        </option>
-                      ))}
+                    <Select value={form.status} onChange={(e) => set("status", e.target.value as FormState["status"])}>
+                      {propertyStatuses.map((value) => <option key={value} value={value}>{propertyStatusLabel[value]}</option>)}
                     </Select>
                   </Field>
-
                   <div className="space-y-3 border-t border-line pt-4">
-                    <label className="flex items-start gap-3 text-sm text-deep">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={form.published}
-                        onChange={(e) => set("published", e.target.checked)}
-                      />
-                      <span>
-                        Publicado no site
-                        <span className="mt-0.5 block text-[11px] text-muted">
-                          Desmarcado, o imóvel some do site e das buscas do agente de IA.
-                        </span>
-                      </span>
-                    </label>
-
-                    <label className="flex items-start gap-3 text-sm text-deep">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={form.featured}
-                        onChange={(e) => set("featured", e.target.checked)}
-                      />
-                      <span>
-                        Destaque na vitrine
-                        <span className="mt-0.5 block text-[11px] text-muted">
-                          Aparece no bloco de destaques da página inicial.
-                        </span>
-                      </span>
-                    </label>
-
-                    <label className="flex items-start gap-3 text-sm text-deep">
-                      <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={form.watermarkOff}
-                        onChange={(e) => set("watermarkOff", e.target.checked)}
-                      />
-                      <span>
-                        Não aplicar marca d'água neste imóvel
-                        <span className="mt-0.5 block text-[11px] text-muted">
-                          Vale só para este cadastro. A configuração global da marca d'água não é
-                          alterada.
-                        </span>
-                      </span>
-                    </label>
+                    <label className="flex items-start gap-3 text-sm text-deep"><input type="checkbox" className="mt-1" checked={form.published} onChange={(e) => set("published", e.target.checked)} /><span>Publicado no site<span className="mt-0.5 block text-[11px] text-muted">Desmarcado, o imóvel some do site e das buscas do agente de IA.</span></span></label>
+                    <label className="flex items-start gap-3 text-sm text-deep"><input type="checkbox" className="mt-1" checked={form.featured} onChange={(e) => set("featured", e.target.checked)} /><span>Destaque na vitrine<span className="mt-0.5 block text-[11px] text-muted">Aparece no bloco de destaques da página inicial.</span></span></label>
+                    <label className="flex items-start gap-3 text-sm text-deep"><input type="checkbox" className="mt-1" checked={form.watermarkOff} onChange={(e) => set("watermarkOff", e.target.checked)} /><span>Não aplicar marca d'água neste imóvel<span className="mt-0.5 block text-[11px] text-muted">Vale só para este cadastro. A configuração global da marca d'água não é alterada.</span></span></label>
                   </div>
-
-                  <p className="border-t border-line pt-4 text-[11px] text-muted">
-                    Envio para portais/XML continua sendo controlado na tela Portais.
-                  </p>
+                  <p className="border-t border-line pt-4 text-[11px] text-muted">Envio para portais/XML continua sendo controlado na tela Portais.</p>
                 </>
               )}
             </div>
@@ -1246,30 +1072,14 @@ export function PropertyForm({
         <ErrorNote message={error} />
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-          <p className="text-[11px] text-muted">
-            {progress.missing.length === 0
-              ? "Cadastro completo."
-              : `Faltam: ${progress.missing.map((item) => item.label).join(", ")}.`}
-          </p>
+          <p className="text-[11px] text-muted">{progress.missing.length === 0 ? "Cadastro completo." : `Faltam: ${progress.missing.map((item) => item.label).join(", ")}.`}</p>
           <div className="flex gap-2">
-            <Btn tone="outline" onClick={onClose}>
-              Cancelar
-            </Btn>
+            <Btn tone="outline" onClick={onClose}>Cancelar</Btn>
             {guidedCanAdvance ? (
-              <Btn type="button" tone="brass" onClick={advance}>
-                Próximo
-              </Btn>
+              <Btn type="button" tone="brass" onClick={advance}>Próximo</Btn>
             ) : (
-              <Btn
-                type="submit"
-                tone="brass"
-                disabled={save.isPending || uploading || captureBlock !== null}
-              >
-                {save.isPending
-                  ? "Salvando…"
-                  : guidedFinalSave
-                    ? "Finalizar cadastro"
-                    : "Salvar imóvel"}
+              <Btn type="submit" tone="brass" disabled={save.isPending || uploading || captureBlock !== null}>
+                {save.isPending ? "Salvando…" : guidedFinalSave ? "Finalizar cadastro" : "Salvar imóvel"}
               </Btn>
             )}
           </div>
