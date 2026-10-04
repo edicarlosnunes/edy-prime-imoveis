@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { MessageCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { MessageCircle, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../../components/admin/ui";
 import { captureStatusLabel, captureStatuses, labelOf } from "../../components/admin/labels";
 import { errorMessage } from "../../lib/admin-session";
+import { orpc } from "../../lib/api";
 import { useAdminOwners, useRemoveOwner, useSaveOwner } from "../../queries/admin";
 
 type Capture = (typeof captureStatuses)[number];
@@ -50,9 +52,15 @@ export default function AdminOwners() {
 function Content() {
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const { data, isLoading } = useAdminOwners();
   const remove = useRemoveOwner();
   const save = useSaveOwner(form?.id ? "update" : "create");
+  const resetTests = useMutation(
+    orpc.adminOwners.resetTestNumbers.mutationOptions({
+      onSuccess: () => queryClient.invalidateQueries(),
+    }),
+  );
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => (current ? { ...current, [key]: value } : current));
@@ -78,14 +86,44 @@ function Content() {
     }
   }
 
+  async function resetDedicatedTests() {
+    const confirmed = window.confirm(
+      "Zerar SOMENTE os dados de teste dos números finais 1174 e 2804?\n\n" +
+      "O fluxo real continuará salvando normalmente durante o próximo teste. " +
+      "Nenhum outro telefone será alterado.",
+    );
+    if (!confirmed) return;
+    setError(null);
+    try {
+      const result = await resetTests.mutateAsync({ confirm: "RESET_TEST_NUMBERS" });
+      const removed = result.removed;
+      window.alert(
+        `Testes zerados com segurança.\n` +
+        `Proprietários: ${removed.owners}\n` +
+        `Captações: ${removed.captures}\n` +
+        `Conversas: ${removed.conversations}\n` +
+        `Leads: ${removed.leads}\n` +
+        `Tokens: ${removed.shareTokens}`,
+      );
+    } catch (caught) {
+      setError(errorMessage(caught, "Não foi possível zerar os números de teste"));
+    }
+  }
+
   return (
     <AdminLayout
       title="Proprietários"
       subtitle="Captação e imóveis vinculados"
       actions={
-        <Btn tone="brass" onClick={() => setForm(empty)}>
-          <Plus className="h-3.5 w-3.5" /> Novo proprietário
-        </Btn>
+        <div className="flex flex-wrap gap-2">
+          <Btn tone="outline" onClick={resetDedicatedTests} disabled={resetTests.isPending}>
+            <RotateCcw className="h-3.5 w-3.5" />
+            {resetTests.isPending ? "Zerando testes…" : "Zerar testes 1174 / 2804"}
+          </Btn>
+          <Btn tone="brass" onClick={() => setForm(empty)}>
+            <Plus className="h-3.5 w-3.5" /> Novo proprietário
+          </Btn>
+        </div>
       }
     >
       <div className="space-y-4">
