@@ -157,6 +157,8 @@ const empty: FormState = {
   youtubeUrl: "",
 };
 
+const MANUAL_PROPERTY_DRAFT_KEY = "e-santos:admin:new-property-draft:v1";
+
 function num(value: string) {
   const parsed = Number(value.replace(",", "."));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -211,6 +213,8 @@ export function PropertyForm({
     const day = String(now.getDate()).padStart(2, "0");
     return `${now.getFullYear()}-${month}-${day}`;
   });
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
 
   /* Fluxo de captação: a captação só vira CAPTADO se o imóvel for criado. */
   const capture = useCapture(captureId);
@@ -293,6 +297,111 @@ export function PropertyForm({
       })),
     );
   }, [detail.data]);
+
+  /* Rascunho do cadastro manual. Não cria imóvel, EPI ou linha no banco: apenas
+     evita perder o checklist se o administrador sair da tela antes de finalizar. */
+  useEffect(() => {
+    if (!guidedCreate || propertyId !== null || captureId !== null) {
+      setDraftLoaded(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(MANUAL_PROPERTY_DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw) as {
+        form?: Partial<FormState>;
+        images?: GalleryImage[];
+        section?: string;
+        documentationDraft?: PropertyDocumentationDraft;
+        portfolioEntryDate?: string;
+        newOwnerName?: string;
+        newOwnerPhone?: string;
+        newOwnerEmail?: string;
+        newOwnerCaptureStatus?: (typeof captureStatuses)[number];
+        newOwnerNotes?: string;
+        savedAt?: string;
+      };
+      if (draft.form) setForm({ ...empty, ...draft.form });
+      if (Array.isArray(draft.images)) setImages(draft.images);
+      if (draft.section && SECTIONS.some((item) => item.id === draft.section)) {
+        setSection(draft.section);
+      }
+      if (draft.documentationDraft) {
+        setDocumentationDraft({
+          ...EMPTY_PROPERTY_DOCUMENTATION_DRAFT,
+          ...draft.documentationDraft,
+          documents: (draft.documentationDraft.documents ?? []).map((doc) => ({
+            ...doc,
+            file: null,
+          })),
+        });
+      }
+      if (draft.portfolioEntryDate) setPortfolioEntryDate(draft.portfolioEntryDate);
+      if (draft.newOwnerName) setNewOwnerName(draft.newOwnerName);
+      if (draft.newOwnerPhone) setNewOwnerPhone(draft.newOwnerPhone);
+      if (draft.newOwnerEmail) setNewOwnerEmail(draft.newOwnerEmail);
+      if (
+        draft.newOwnerCaptureStatus &&
+        captureStatuses.includes(draft.newOwnerCaptureStatus)
+      ) {
+        setNewOwnerCaptureStatus(draft.newOwnerCaptureStatus);
+      }
+      if (draft.newOwnerNotes) setNewOwnerNotes(draft.newOwnerNotes);
+      if (draft.savedAt) setDraftSavedAt(draft.savedAt);
+    } catch {
+      window.localStorage.removeItem(MANUAL_PROPERTY_DRAFT_KEY);
+    } finally {
+      setDraftLoaded(true);
+    }
+  }, [captureId, guidedCreate, propertyId]);
+
+  useEffect(() => {
+    if (!draftLoaded || !guidedCreate || propertyId !== null || captureId !== null) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const savedAt = new Date().toISOString();
+        const safeDocumentationDraft: PropertyDocumentationDraft = {
+          ...documentationDraft,
+          documents: documentationDraft.documents.map((doc) => ({ ...doc, file: null })),
+        };
+        window.localStorage.setItem(
+          MANUAL_PROPERTY_DRAFT_KEY,
+          JSON.stringify({
+            form,
+            images,
+            section,
+            documentationDraft: safeDocumentationDraft,
+            portfolioEntryDate,
+            newOwnerName,
+            newOwnerPhone,
+            newOwnerEmail,
+            newOwnerCaptureStatus,
+            newOwnerNotes,
+            savedAt,
+          }),
+        );
+        setDraftSavedAt(savedAt);
+      } catch {
+        // O cadastro continua funcionando mesmo se o navegador bloquear storage.
+      }
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [
+    captureId,
+    documentationDraft,
+    draftLoaded,
+    form,
+    guidedCreate,
+    images,
+    newOwnerCaptureStatus,
+    newOwnerEmail,
+    newOwnerName,
+    newOwnerNotes,
+    newOwnerPhone,
+    portfolioEntryDate,
+    propertyId,
+    section,
+  ]);
 
   /**
    * Prefill a partir da captação. Só em cadastro novo, uma única vez, e sem
@@ -687,6 +796,9 @@ export function PropertyForm({
           }
         }
       }
+      if (guidedCreate && captureId === null) {
+        window.localStorage.removeItem(MANUAL_PROPERTY_DRAFT_KEY);
+      }
       onClose();
     } catch (caught) {
       setError(errorMessage(caught, "Não foi possível salvar o imóvel"));
@@ -725,6 +837,18 @@ export function PropertyForm({
           imageCount={images.length}
           percent={progress.percent}
         />
+
+        {guidedCreate && captureId === null && (
+          <div className="rounded-[10px] border border-brass/30 bg-brass/5 px-3 py-2 text-[11px] text-muted">
+            <span className="font-medium text-deep">Rascunho automático ativo.</span>{" "}
+            Se você sair antes de finalizar, este cadastro será recuperado quando voltar neste navegador.
+            {draftSavedAt && (
+              <span className="ml-1">
+                Último rascunho: {new Date(draftSavedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="lg:grid lg:grid-cols-[220px_1fr] lg:gap-5">
           <div className="lg:sticky lg:top-0 lg:self-start">
