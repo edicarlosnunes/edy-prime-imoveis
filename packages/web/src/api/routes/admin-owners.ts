@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
 import { ORPCError } from "@orpc/server";
@@ -25,6 +25,97 @@ function toRow(input: z.infer<typeof ownerInput>) {
     document: normalizeDoc(input.document),
     rg: normalizeRg(input.rg),
     captureStatus: input.captureStatus,
+  };
+}
+
+const TEST_PHONE_KEYS = new Set([
+  "5513997141174", // 1174
+  "13997141174",
+  "5513996922804", // 2804
+  "13996922804",
+]);
+
+const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
+const isTestPhone = (value: string | null | undefined) => TEST_PHONE_KEYS.has(digits(value));
+
+async function resetDedicatedTestPhones(db: Parameters<Parameters<typeof adminBase.handler>[0]>[0]["context"]["db"]) {
+  const owners = (await db.select().from(schema.owners).limit(5000)).filter((row) => isTestPhone(row.phone));
+  const ownerIds = owners.map((row) => row.id);
+
+  const captures = ownerIds.length
+    ? await db.select().from(schema.propertyCaptures).where(inArray(schema.propertyCaptures.ownerId, ownerIds)).limit(5000)
+    : [];
+  const captureIds = captures.map((row) => row.id);
+
+  const conversations = (await db.select().from(schema.conversations).limit(5000)).filter(
+    (row) => isTestPhone(row.externalId) || isTestPhone(row.contactPhone),
+  );
+  const conversationIds = conversations.map((row) => row.id);
+
+  const leads = (await db.select().from(schema.leads).limit(5000)).filter((row) => isTestPhone(row.phone));
+  const leadIds = leads.map((row) => row.id);
+
+  const shareTokens = (await db.select().from(schema.captureShareTokens).limit(5000)).filter(
+    (row) => isTestPhone(row.senderPhone),
+  );
+  const shareTokenIds = shareTokens.map((row) => row.id);
+
+  const crmDocs = (await db.select().from(schema.crmDocuments).limit(5000)).filter(
+    (row) => (row.captureId != null && captureIds.includes(row.captureId)) ||
+      (row.ownerId != null && ownerIds.includes(row.ownerId)),
+  );
+  const crmDocIds = crmDocs.map((row) => row.id);
+
+  const tasks = (await db.select().from(schema.tasks).limit(5000)).filter((row) =>
+    (row.captureId != null && captureIds.includes(row.captureId)) ||
+    (row.leadId != null && leadIds.includes(row.leadId)) ||
+    ownerIds.some((ownerId) => (row.notes ?? "").includes(`[owner:${ownerId}]`)),
+  );
+  const taskIds = tasks.map((row) => row.id);
+
+  if (conversationIds.length) {
+    await db.delete(schema.messages).where(inArray(schema.messages.conversationId, conversationIds));
+    await db.delete(schema.conversations).where(inArray(schema.conversations.id, conversationIds));
+  }
+
+  if (leadIds.length) {
+    await db.delete(schema.leadNotes).where(inArray(schema.leadNotes.leadId, leadIds));
+    await db.delete(schema.leadProfile).where(inArray(schema.leadProfile.leadId, leadIds));
+    await db.delete(schema.leadEvents).where(inArray(schema.leadEvents.leadId, leadIds));
+    await db.delete(schema.leads).where(inArray(schema.leads.id, leadIds));
+  }
+
+  if (shareTokenIds.length) {
+    await db.delete(schema.captureShareTokens).where(inArray(schema.captureShareTokens.id, shareTokenIds));
+  }
+
+  if (taskIds.length) {
+    await db.delete(schema.tasks).where(inArray(schema.tasks.id, taskIds));
+  }
+
+  if (crmDocIds.length) {
+    await db.delete(schema.crmDocumentEvents).where(inArray(schema.crmDocumentEvents.documentId, crmDocIds));
+    await db.delete(schema.crmDocuments).where(inArray(schema.crmDocuments.id, crmDocIds));
+  }
+
+  if (captureIds.length) {
+    await db.delete(schema.propertyCaptures).where(inArray(schema.propertyCaptures.id, captureIds));
+  }
+
+  if (ownerIds.length) {
+    /* Imóvel definitivo é preservado: só perde o vínculo com o contato de teste. */
+    await db.update(schema.properties).set({ ownerId: null }).where(inArray(schema.properties.ownerId, ownerIds));
+    await db.delete(schema.owners).where(inArray(schema.owners.id, ownerIds));
+  }
+
+  return {
+    owners: ownerIds.length,
+    captures: captureIds.length,
+    conversations: conversationIds.length,
+    leads: leadIds.length,
+    shareTokens: shareTokenIds.length,
+    tasks: taskIds.length,
+    crmDocuments: crmDocIds.length,
   };
 }
 
@@ -76,6 +167,27 @@ export const adminOwners = {
         .where(eq(schema.properties.ownerId, input.id));
       await context.db.delete(schema.owners).where(eq(schema.owners.id, input.id));
       return { ok: true };
+    }),
+
+  /**
+   * Zera SOMENTE os dois números privados reservados para teste (1174/2804).
+   * O fluxo real continua salvando telefone, nome, endereço, foto e conclusão
+   * normalmente durante cada rodada; o reset é manual entre uma rodada e outra.
+   * Qualquer outro telefone fica fora desta rotina por construção.
+   */
+  resetTestNumbers: adminBase
+    .input(z.object({ confirm: z.literal("RESET_TEST_NUMBERS") }))
+    .handler(async ({ context }) => {
+      const removed = await resetDedicatedTestPhones(context.db);
+      await context.db.insert(schema.auditLog).values({
+        userId: context.user.id,
+        userName: context.user.name,
+        action: "test_numbers_reset",
+        entity: "owner",
+        entityId: "1174,2804",
+        detail: JSON.stringify(removed),
+      });
+      return { ok: true, phones: ["1174", "2804"], removed };
     }),
 
   /**
