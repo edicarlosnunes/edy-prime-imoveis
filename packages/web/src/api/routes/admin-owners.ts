@@ -29,17 +29,19 @@ function toRow(input: z.infer<typeof ownerInput>) {
   };
 }
 
+/**
+ * ÚNICO número autorizado para reset destrutivo de teste.
+ * Qualquer outro telefone, inclusive 1174, fica fora desta rotina por construção.
+ */
 const TEST_PHONE_KEYS = new Set([
-  "5513997141174", // 1174
-  "13997141174",
-  "5513996922804", // 2804
-  "13996922804",
+  "5513996922804", // 2804 com DDI
+  "13996922804",   // 2804 sem DDI
 ]);
 
 const digits = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
 const isTestPhone = (value: string | null | undefined) => TEST_PHONE_KEYS.has(digits(value));
 
-async function resetDedicatedTestPhones(db: AdminDb) {
+async function resetDedicatedTestPhone(db: AdminDb) {
   const owners = (await db.select().from(schema.owners).limit(5000)).filter((row) => isTestPhone(row.phone));
   const ownerIds = owners.map((row) => row.id);
 
@@ -171,24 +173,24 @@ export const adminOwners = {
     }),
 
   /**
-   * Zera SOMENTE os dois números privados reservados para teste (1174/2804).
+   * Zera SOMENTE o número privado 2804, reservado para testes repetíveis.
    * O fluxo real continua salvando telefone, nome, endereço, foto e conclusão
    * normalmente durante cada rodada; o reset é manual entre uma rodada e outra.
-   * Qualquer outro telefone fica fora desta rotina por construção.
+   * Nenhum outro telefone pode ser atingido por esta rotina.
    */
   resetTestNumbers: adminBase
     .input(z.object({ confirm: z.literal("RESET_TEST_NUMBERS") }))
     .handler(async ({ context }) => {
-      const removed = await resetDedicatedTestPhones(context.db);
+      const removed = await resetDedicatedTestPhone(context.db);
       await context.db.insert(schema.auditLog).values({
         userId: context.user.id,
         userName: context.user.name,
-        action: "test_numbers_reset",
+        action: "test_number_2804_reset",
         entity: "owner",
-        entityId: "1174,2804",
+        entityId: "2804",
         detail: JSON.stringify(removed),
       });
-      return { ok: true, phones: ["1174", "2804"], removed };
+      return { ok: true, phones: ["2804"], removed };
     }),
 
   /**
