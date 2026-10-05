@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { asc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
 
@@ -41,7 +41,7 @@ export const adminTasks = {
         .select()
         .from(schema.tasks)
         .where(input?.status ? eq(schema.tasks.status, input.status) : undefined)
-        .orderBy(asc(schema.tasks.dueAt))
+        .orderBy(desc(schema.tasks.dueAt))
         .limit(500);
     }),
 
