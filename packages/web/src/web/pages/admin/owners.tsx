@@ -88,8 +88,9 @@ function Content() {
 
   async function resetDedicatedTests() {
     const confirmed = window.confirm(
-      "Zerar SOMENTE os dados de teste dos números finais 1174 e 2804?\n\n" +
-      "O fluxo real continuará salvando normalmente durante o próximo teste. " +
+      "RESET COMPLETO DO TESTE 2804?\n\n" +
+      "Isso apaga somente os dados temporários ligados ao número final 2804 " +
+      "para que a próxima rodada comece como um cadastro novo. " +
       "Nenhum outro telefone será alterado.",
     );
     if (!confirmed) return;
@@ -98,7 +99,7 @@ function Content() {
       const result = await resetTests.mutateAsync({ confirm: "RESET_TEST_NUMBERS" });
       const removed = result.removed;
       window.alert(
-        `Testes zerados com segurança.\n` +
+        `Teste 2804 zerado com segurança.\n` +
         `Proprietários: ${removed.owners}\n` +
         `Captações: ${removed.captures}\n` +
         `Conversas: ${removed.conversations}\n` +
@@ -106,7 +107,7 @@ function Content() {
         `Tokens: ${removed.shareTokens}`,
       );
     } catch (caught) {
-      setError(errorMessage(caught, "Não foi possível zerar os números de teste"));
+      setError(errorMessage(caught, "Não foi possível zerar o teste 2804"));
     }
   }
 
@@ -118,7 +119,7 @@ function Content() {
         <div className="flex flex-wrap gap-2">
           <Btn tone="outline" onClick={resetDedicatedTests} disabled={resetTests.isPending}>
             <RotateCcw className="h-3.5 w-3.5" />
-            {resetTests.isPending ? "Zerando testes…" : "Zerar testes 1174 / 2804"}
+            {resetTests.isPending ? "Zerando 2804…" : "Resetar teste 2804"}
           </Btn>
           <Btn tone="brass" onClick={() => setForm(empty)}>
             <Plus className="h-3.5 w-3.5" /> Novo proprietário
