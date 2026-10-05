@@ -88,9 +88,9 @@ function Content() {
 
   async function resetDedicatedTests() {
     const confirmed = window.confirm(
-      "RESET COMPLETO DO TESTE 2804?\n\n" +
-      "Isso apaga somente os dados temporários ligados ao número final 2804 " +
-      "para que a próxima rodada comece como um cadastro novo. " +
+      "INICIAR NOVA RODADA DE TESTE DO 2804?\n\n" +
+      "Isso limpa somente a sessão/conversa do Link de Captação e os tokens do teste. " +
+      "Proprietários, captações, leads, agenda, documentos e imóveis já gravados serão preservados. " +
       "Nenhum outro telefone será alterado.",
     );
     if (!confirmed) return;
@@ -99,15 +99,13 @@ function Content() {
       const result = await resetTests.mutateAsync({ confirm: "RESET_TEST_NUMBERS" });
       const removed = result.removed;
       window.alert(
-        `Teste 2804 zerado com segurança.\n` +
-        `Proprietários: ${removed.owners}\n` +
-        `Captações: ${removed.captures}\n` +
-        `Conversas: ${removed.conversations}\n` +
-        `Leads: ${removed.leads}\n` +
-        `Tokens: ${removed.shareTokens}`,
+        `Nova rodada do 2804 liberada sem apagar o CRM.\n` +
+        `Conversas reiniciadas: ${removed.conversations}\n` +
+        `Tokens reiniciados: ${removed.shareTokens}\n\n` +
+        `Proprietários, captações, leads e agenda foram preservados.`,
       );
     } catch (caught) {
-      setError(errorMessage(caught, "Não foi possível zerar o teste 2804"));
+      setError(errorMessage(caught, "Não foi possível reiniciar a sessão de teste 2804"));
     }
   }
 
@@ -119,7 +117,7 @@ function Content() {
         <div className="flex flex-wrap gap-2">
           <Btn tone="outline" onClick={resetDedicatedTests} disabled={resetTests.isPending}>
             <RotateCcw className="h-3.5 w-3.5" />
-            {resetTests.isPending ? "Zerando 2804…" : "Resetar teste 2804"}
+            {resetTests.isPending ? "Reiniciando 2804…" : "Nova rodada teste 2804"}
           </Btn>
           <Btn tone="brass" onClick={() => setForm(empty)}>
             <Plus className="h-3.5 w-3.5" /> Novo proprietário
