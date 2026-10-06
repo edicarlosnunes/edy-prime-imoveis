@@ -253,20 +253,23 @@ export async function agentReply(
   if (phone) {
     const linkState = await linkCaptacaoState(db, phone, turns);
     if (linkState?.active) {
-       return linkCaptacaoReply(
-         db,
-         agent,
-         turns,
-         phone,
-         linkState,
-         configured,
-         options.trustedWhatsappMedia === true,
-       );
+      const linkReply = await linkCaptacaoReply(
+        db,
+        agent,
+        turns,
+        phone,
+        linkState,
+        configured,
+        options.trustedWhatsappMedia === true,
+      );
+      return linkReply.text === "Solicite outro link para cadastro."
+        ? { ...linkReply, text: "Caso precise cadastrar outro imóvel, solicite um novo link." }
+        : linkReply;
     }
     const lastMessage = [...turns].reverse().find((turn) => turn.role === "user")?.content;
     if (hasLinkToken(lastMessage)) {
       return {
-        text: "Solicite outro link para cadastro.",
+        text: "Caso precise cadastrar outro imóvel, solicite um novo link.",
         handoff: false,
         handoffReason: null,
         usedProperties: [],
