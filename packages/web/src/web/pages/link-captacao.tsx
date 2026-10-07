@@ -5,9 +5,7 @@ import { orpc } from "../lib/api";
 
 const MESSAGE = [
   "*Bem-vindo à E. Santos*",
-  "",
   "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
-  "",
   "*Vamos iniciar o cadastro do seu imóvel?*",
 ].join("\n");
 const AUTO_OPEN_KEY = "link-captacao-whatsapp-opened";
