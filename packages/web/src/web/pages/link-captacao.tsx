@@ -3,7 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BadgeCheck, MessageCircle } from "lucide-react";
 import { orpc } from "../lib/api";
 
-const MESSAGE = "Vamos iniciar o cadastro do seu imóvel?";
+const MESSAGE = [
+  "*Bem-vindo à E. Santos*",
+  "",
+  "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
+  "",
+  "*Vamos iniciar o cadastro do seu imóvel?*",
+].join("\n");
 const AUTO_OPEN_KEY = "link-captacao-whatsapp-opened";
 const AUTO_OPEN_COOLDOWN_MS = 8_000;
 
