@@ -18,6 +18,11 @@ export type Channel = "whatsapp" | "instagram" | "facebook" | "site" | "teste";
 
 const LINK_CAPTURE_PREFILLED_HEADER = [
   "*Bem-vindo à E. Santos*",
+  "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
+  "*Vamos iniciar o cadastro do seu imóvel?*",
+].join("\n");
+const LINK_CAPTURE_PREFILLED_HEADER_LEGACY = [
+  "*Bem-vindo à E. Santos*",
   "",
   "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
   "",
@@ -27,17 +32,15 @@ const LINK_CAPTURE_ENGINE_START = "Vamos iniciar o cadastro do seu imóvel?";
 
 function normalizeLinkCaptureStartForAgent(turns: AgentTurn[]): AgentTurn[] {
   if (turns.length === 0) return turns;
-  const latest = turns[turns.length - 1];
-  if (
-    latest?.role === "user" &&
-    latest.content.trim() === LINK_CAPTURE_PREFILLED_HEADER
-  ) {
-    return [
-      ...turns.slice(0, -1),
-      { ...latest, content: LINK_CAPTURE_ENGINE_START },
-    ];
-  }
-  return turns;
+  return turns.map((turn) => {
+    if (
+      turn.role === "user" &&
+      [LINK_CAPTURE_PREFILLED_HEADER, LINK_CAPTURE_PREFILLED_HEADER_LEGACY].includes(turn.content.trim())
+    ) {
+      return { ...turn, content: LINK_CAPTURE_ENGINE_START };
+    }
+    return turn;
+  });
 }
 
 export async function ensureConversation(
