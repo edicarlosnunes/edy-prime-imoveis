@@ -84,17 +84,48 @@ export async function verifyMetaSignature(
 export async function downloadWhatsappMedia(config: ConfigMap, mediaId: string) {
   const token = config.accessToken;
   if (!token || !mediaId) throw new Error("WhatsApp Cloud API sem credenciais de mídia");
-  const metaResponse = await fetch(`${GRAPH}/${mediaId}`, {
-    headers: { authorization: `Bearer ${token}` },
-  });
-  const meta = (await metaResponse.json().catch(() => ({}))) as { url?: string; mime_type?: string; file_size?: number; error?: { message?: string } };
-  if (!metaResponse.ok || !meta.url) throw new Error(meta.error?.message ?? `Falha ao localizar mídia HTTP ${metaResponse.status}`);
-  const fileResponse = await fetch(meta.url, { headers: { authorization: `Bearer ${token}` } });
-  if (!fileResponse.ok) throw new Error(`Falha ao baixar mídia HTTP ${fileResponse.status}`);
-  const bytes = new Uint8Array(await fileResponse.arrayBuffer());
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return { data: btoa(binary), mime: meta.mime_type ?? fileResponse.headers.get("content-type") ?? "image/jpeg", size: bytes.length };
+
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const metaResponse = await fetch(`${GRAPH}/${mediaId}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const meta = (await metaResponse.json().catch(() => ({}))) as {
+        url?: string;
+        mime_type?: string;
+        file_size?: number;
+        error?: { message?: string };
+      };
+      if (!metaResponse.ok || !meta.url) {
+        throw new Error(
+          meta.error?.message ?? `Falha ao localizar mídia HTTP ${metaResponse.status}`,
+        );
+      }
+
+      const fileResponse = await fetch(meta.url, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (!fileResponse.ok) throw new Error(`Falha ao baixar mídia HTTP ${fileResponse.status}`);
+
+      const bytes = new Uint8Array(await fileResponse.arrayBuffer());
+      if (bytes.length === 0) throw new Error("Mídia recebida vazia");
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      }
+      return {
+        data: btoa(binary),
+        mime: meta.mime_type ?? fileResponse.headers.get("content-type") ?? "image/jpeg",
+        size: bytes.length,
+      };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Falha ao baixar mídia do WhatsApp");
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
+
+  throw lastError ?? new Error("Falha ao baixar mídia do WhatsApp");
 }
 
 export interface IncomingWhatsapp {
