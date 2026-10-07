@@ -7,7 +7,7 @@
  */
 import { and, asc, desc, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
-import { agentReply, type AgentRow } from "../agent/broker";
+import { agentReply, type AgentRow, type AgentTurn } from "../agent/broker";
 import { gatewayConfigured } from "../agent/gateway";
 import { fireTrigger } from "./automations";
 import { logLeadEvent, qualifyLeadFromText } from "./lead-profile";
@@ -15,6 +15,30 @@ import type { AdminDb } from "./admin-base";
 import { publicBrandText } from "./public-identity";
 
 export type Channel = "whatsapp" | "instagram" | "facebook" | "site" | "teste";
+
+const LINK_CAPTURE_PREFILLED_HEADER = [
+  "*Bem-vindo à E. Santos*",
+  "",
+  "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
+  "",
+  "*Vamos iniciar o cadastro do seu imóvel?*",
+].join("\n");
+const LINK_CAPTURE_ENGINE_START = "Vamos iniciar o cadastro do seu imóvel?";
+
+function normalizeLinkCaptureStartForAgent(turns: AgentTurn[]): AgentTurn[] {
+  if (turns.length === 0) return turns;
+  const latest = turns[turns.length - 1];
+  if (
+    latest?.role === "user" &&
+    latest.content.trim() === LINK_CAPTURE_PREFILLED_HEADER
+  ) {
+    return [
+      ...turns.slice(0, -1),
+      { ...latest, content: LINK_CAPTURE_ENGINE_START },
+    ];
+  }
+  return turns;
+}
 
 export async function ensureConversation(
   db: AdminDb,
@@ -267,7 +291,9 @@ export async function aiTurn(
   const agent = await activeAgentFor(db, conversation.channel);
   if (!agent) return { replied: false, skipped: "nenhum agente ativo neste canal" };
 
-  const turns = await conversationTurns(db, conversationId);
+  const turns = normalizeLinkCaptureStartForAgent(
+    await conversationTurns(db, conversationId),
+  );
   if (turns.length === 0) return { replied: false, skipped: "sem mensagens" };
 
   try {
