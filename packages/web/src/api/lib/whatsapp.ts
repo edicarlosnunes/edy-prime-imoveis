@@ -5,22 +5,23 @@
 import type { ConfigMap } from "./integrations";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
-const LINK_CAPTURE_ROLE_QUESTION = "Você é proprietário, locador ou corretor de imóveis?";
-const LINK_CAPTURE_WELCOME = [
+const LINK_CAPTURE_START = [
   "*Bem-vindo à E. Santos Gestor Imobiliário*",
-  "",
   "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
-  "",
   "*Vamos iniciar o cadastro do seu imóvel?*",
-  `*${LINK_CAPTURE_ROLE_QUESTION}*`,
 ].join("\n");
+const LEGACY_LINK_CAPTURE_START = "Vamos iniciar o cadastro do seu imóvel?";
+
+const normalizeCaptureStart = (value: string | null | undefined) =>
+  String(value ?? "").replace(/\r\n/g, "\n").trim();
+
+const isApprovedCaptureStart = (value: string | null | undefined) =>
+  normalizeCaptureStart(value) === normalizeCaptureStart(LINK_CAPTURE_START);
 
 export async function sendWhatsappText(config: ConfigMap, to: string, body: string) {
   const token = config.accessToken;
   const phoneNumberId = config.phoneNumberId;
   if (!token || !phoneNumberId) throw new Error("WhatsApp Cloud API sem credenciais");
-
-  if (body.trim() === LINK_CAPTURE_ROLE_QUESTION) body = LINK_CAPTURE_WELCOME;
 
   const response = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
     method: "POST",
@@ -164,10 +165,15 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
         const from = onlyDigits(message.from);
         if (selfPhone && from === selfPhone) continue;
         if (selfPhoneId && message.from.trim() === selfPhoneId) continue;
+        const rawText = message.text?.body ?? "";
         out.push({
           from: message.from,
           name: contactName,
-          text: isImage ? "[imagem]" : (message.text?.body ?? ""),
+          text: isImage
+            ? "[imagem]"
+            : isApprovedCaptureStart(rawText)
+              ? LEGACY_LINK_CAPTURE_START
+              : rawText,
           messageId: message.id ?? null,
           mediaId: isImage ? (message.image?.id ?? null) : null,
           mediaMime: isImage ? (message.image?.mime_type ?? null) : null,
