@@ -5,11 +5,22 @@
 import type { ConfigMap } from "./integrations";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
+const LINK_CAPTURE_ROLE_QUESTION = "Você é proprietário, locador ou corretor de imóveis?";
+const LINK_CAPTURE_WELCOME = [
+  "*Bem-vindo à E. Santos Gestor Imobiliário*",
+  "",
+  "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
+  "",
+  "*Vamos iniciar o cadastro do seu imóvel?*",
+  `*${LINK_CAPTURE_ROLE_QUESTION}*`,
+].join("\n");
 
 export async function sendWhatsappText(config: ConfigMap, to: string, body: string) {
   const token = config.accessToken;
   const phoneNumberId = config.phoneNumberId;
   if (!token || !phoneNumberId) throw new Error("WhatsApp Cloud API sem credenciais");
+
+  if (body.trim() === LINK_CAPTURE_ROLE_QUESTION) body = LINK_CAPTURE_WELCOME;
 
   const response = await fetch(`${GRAPH}/${phoneNumberId}/messages`, {
     method: "POST",
