@@ -21,7 +21,7 @@ import { gateway, gatewayConfigured } from "./gateway";
 import { pickModel } from "./model";
 import { readConfig } from "../lib/integrations";
 import { ownerPhoneKey } from "../lib/owner-identity";
-import { captureFlowPrompt, captureSnapshot, captureTools } from "./owner-capture";
+import { captureFlowPrompt, captureSnapshot, captureTools, saveCaptureAnswer } from "./owner-capture";
 import { classifyContactIntent, INTENT_QUESTION } from "./capture-intent";
 import { hasLinkToken, linkCaptacaoReply, linkCaptacaoState } from "./link-captacao";
 import { handoffAllowance, looksLikeHandoffText } from "./handoff-guard";
@@ -60,6 +60,13 @@ const money = (value: number) =>
   value > 0
     ? value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
     : "sob consulta";
+
+/** Valor monetário simples digitado no WhatsApp, preservado no formato informado. */
+function linkMoneyAnswer(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  if (!/^(?:R\$\s*)?(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{1,2})?$/.test(text)) return null;
+  return text.replace(/^R\$\s*/i, "").trim();
+}
 
 function propertyTools(db: AdminDb, baseUrl: string, seen: Set<string>) {
   return {
@@ -251,8 +258,40 @@ export async function agentReply(
    * alcançado quando o fluxo do link não está ativo, exatamente como antes.
    */
   if (phone) {
-    const linkState = await linkCaptacaoState(db, phone, turns);
+    let linkState = await linkCaptacaoState(db, phone, turns);
     if (linkState?.active) {
+      /* Condomínio e IPTU são valores simples. Quando o cliente responde apenas
+         com um valor monetário, gravamos de forma determinística em vez de
+         depender do extrator de IA. Isso impede a repetição da mesma pergunta. */
+      const lastLinkUser = [...turns].reverse().find((turn) => turn.role === "user")?.content ?? null;
+      const directMoney = linkMoneyAnswer(lastLinkUser);
+      const directField = linkState.nextStep === "condominio"
+        ? "condominio"
+        : linkState.nextStep === "custos"
+          ? "custos"
+          : null;
+      if (directField && directMoney && linkState.snapshot.captureId !== null) {
+        const saved = await saveCaptureAnswer(db, {
+          phone,
+          origem: "LINK_CAPTACAO",
+          negociacao: linkState.intention ?? undefined,
+          targetCaptureId: linkState.snapshot.captureId,
+          [directField]: directMoney,
+        });
+        if (saved.saved) {
+          linkState = await linkCaptacaoState(db, phone, turns);
+          if (linkState?.active && linkState.nextQuestion) {
+            return {
+              text: linkState.nextQuestion,
+              handoff: false,
+              handoffReason: null,
+              usedProperties: [],
+              toolCalls: [{ tool: "salvarCadastroVenda", input: JSON.stringify({ [directField]: directMoney }) }],
+            };
+          }
+        }
+      }
+
       const linkReply = await linkCaptacaoReply(
         db,
         agent,
