@@ -8,9 +8,7 @@ const GRAPH = "https://graph.facebook.com/v21.0";
 const LINK_CAPTURE_ROLE_QUESTION = "Você é proprietário, locador ou corretor de imóveis?";
 const LINK_CAPTURE_WELCOME = [
   "*Bem-vindo à E. Santos Gestor Imobiliário*",
-  "",
   "_Estamos prontos para receber as informações do seu imóvel. O cadastro é rápido, seguro e será analisado pela nossa equipe para dar continuidade ao atendimento._",
-  "",
   "*Vamos iniciar o cadastro do seu imóvel?*",
   `*${LINK_CAPTURE_ROLE_QUESTION}*`,
 ].join("\n");
@@ -119,6 +117,24 @@ export interface IncomingWhatsapp {
 
 const onlyDigits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "");
 
+function normalizeWhatsappRoleText(value: string | null | undefined) {
+  const clean = String(value ?? "")
+    .normalize("NFKC")
+    .replace(/\p{Cf}/gu, "")
+    .trim();
+  const role = clean
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[.!?,;:]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (/^(?:proprietario|proprietaria|dono|dona)$/.test(role)) return "proprietario";
+  if (/^(?:locador|locadora)$/.test(role)) return "locador";
+  if (/^(?:corretor|corretora)$/.test(role)) return "corretor";
+  return clean;
+}
+
 /**
  * Extrai as mensagens de texto do payload do webhook.
  *
@@ -167,7 +183,7 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
         out.push({
           from: message.from,
           name: contactName,
-          text: isImage ? "[imagem]" : (message.text?.body ?? ""),
+          text: isImage ? "[imagem]" : normalizeWhatsappRoleText(message.text?.body),
           messageId: message.id ?? null,
           mediaId: isImage ? (message.image?.id ?? null) : null,
           mediaMime: isImage ? (message.image?.mime_type ?? null) : null,
