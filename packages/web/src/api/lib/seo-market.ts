@@ -88,3 +88,37 @@ export const SEO_LANDING_PATHS = SEO_CITIES.flatMap((city) => [
   `/imoveis/${city.slug}`,
   ...city.districts.map((district) => `/imoveis/${city.slug}/${district.slug}`),
 ]);
+
+export type SeoIntent = "venda" | "locacao";
+
+export type SeoPropertyType = {
+  key: string;
+  singular: string;
+  plural: string;
+  slugVenda: string;
+  slugLocacao?: string;
+  dbTypes: string[];
+};
+
+export const SEO_PROPERTY_TYPES: SeoPropertyType[] = [
+  { key: "apartamento", singular: "apartamento", plural: "apartamentos", slugVenda: "apartamentos-a-venda", slugLocacao: "apartamentos-para-alugar", dbTypes: ["apartamento"] },
+  { key: "casa", singular: "casa", plural: "casas", slugVenda: "casas-a-venda", slugLocacao: "casas-para-alugar", dbTypes: ["casa"] },
+  { key: "terreno", singular: "terreno", plural: "terrenos", slugVenda: "terrenos-a-venda", dbTypes: ["terreno"] },
+  { key: "sobrado", singular: "sobrado", plural: "sobrados", slugVenda: "sobrados-a-venda", slugLocacao: "sobrados-para-alugar", dbTypes: ["sobrado"] },
+  { key: "cobertura", singular: "cobertura", plural: "coberturas", slugVenda: "coberturas-a-venda", slugLocacao: "coberturas-para-alugar", dbTypes: ["cobertura"] },
+  { key: "comercial", singular: "imóvel comercial", plural: "imóveis comerciais", slugVenda: "imoveis-comerciais-a-venda", slugLocacao: "imoveis-comerciais-para-alugar", dbTypes: ["sala_comercial"] },
+  { key: "chácara", singular: "chácara", plural: "chácaras", slugVenda: "chacaras-a-venda", dbTypes: ["chacara"] },
+];
+
+export function findSeoTypeSegment(segment: string) {
+  for (const item of SEO_PROPERTY_TYPES) {
+    if (item.slugVenda === segment) return { type: item, intent: "venda" as const };
+    if (item.slugLocacao === segment) return { type: item, intent: "locacao" as const };
+  }
+  return undefined;
+}
+
+export function allowedSeoTypes(city: SeoCity, district?: SeoDistrict) {
+  const allowed = new Set((district?.types ?? city.types).map((item) => foldSeo(item)));
+  return SEO_PROPERTY_TYPES.filter((item) => allowed.has(foldSeo(item.key)));
+}
