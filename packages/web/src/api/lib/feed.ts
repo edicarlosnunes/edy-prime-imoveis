@@ -9,6 +9,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import * as schema from "../database/schema";
 import { propertySlug } from "./slug";
 import type { AdminDb } from "./admin-base";
+import { SEO_LANDING_PATHS } from "./seo-market";
 
 export const FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"] as const;
 export type FeedChannel = (typeof FEED_CHANNELS)[number];
@@ -236,7 +237,7 @@ export function feedXml(properties: FeedProperty[], options: FeedOptions) {
   return lines.filter((line) => line !== "").join("\n");
 }
 
-/** Sitemap com a home e a página de cada imóvel publicado. */
+/** Sitemap com a home, imóveis publicados e páginas estratégicas de SEO. */
 export async function sitemapXml(db: AdminDb, baseUrl: string) {
   const rows = await db
     .select({
@@ -259,6 +260,11 @@ export async function sitemapXml(db: AdminDb, baseUrl: string) {
     const lastmod = (row.updatedAt ?? new Date()).toISOString().slice(0, 10);
     urls.push(
       `  <url>\n    <loc>${baseUrl}/imovel/${slug}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`,
+    );
+  }
+  for (const path of SEO_LANDING_PATHS) {
+    urls.push(
+      `  <url>\n    <loc>${baseUrl}${path}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`,
     );
   }
 
