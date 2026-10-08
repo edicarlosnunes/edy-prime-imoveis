@@ -9,7 +9,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import * as schema from "../database/schema";
 import { propertySlug } from "./slug";
 import type { AdminDb } from "./admin-base";
-import { SEO_LANDING_PATHS } from "./seo-market";
+import { SEO_CITIES, allowedSeoTypes, foldSeo } from "./seo-market";
 
 export const FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"] as const;
 export type FeedChannel = (typeof FEED_CHANNELS)[number];
@@ -237,7 +237,62 @@ export function feedXml(properties: FeedProperty[], options: FeedOptions) {
   return lines.filter((line) => line !== "").join("\n");
 }
 
-/** Sitemap com a home, imóveis publicados e páginas estratégicas de SEO. */
+type SitemapProperty = {
+  city: string;
+  district: string;
+  type: string;
+  purpose: string;
+};
+
+function matchesIntent(purpose: string, intent: "venda" | "locacao") {
+  if (intent === "venda") return purpose !== "locacao";
+  return purpose !== "venda";
+}
+
+/**
+ * Leque inteligente de SEO:
+ * - hubs das cidades estratégicas entram sempre;
+ * - bairro, tipo e intenção só entram no sitemap quando existe imóvel real publicado;
+ * - evita milhares de URLs vazias e mantém o Google focado em páginas úteis.
+ */
+function seoSitemapPaths(rows: SitemapProperty[]) {
+  const paths = new Set<string>();
+
+  for (const city of SEO_CITIES) {
+    paths.add(`/imoveis/${city.slug}`);
+    const cityRows = rows.filter((row) => foldSeo(row.city) === city.slug);
+
+    for (const type of allowedSeoTypes(city)) {
+      const typeRows = cityRows.filter((row) => type.dbTypes.includes(row.type));
+      if (typeRows.some((row) => matchesIntent(row.purpose, "venda"))) {
+        paths.add(`/imoveis/${city.slug}/${type.slugVenda}`);
+      }
+      if (type.slugLocacao && typeRows.some((row) => matchesIntent(row.purpose, "locacao"))) {
+        paths.add(`/imoveis/${city.slug}/${type.slugLocacao}`);
+      }
+    }
+
+    for (const district of city.districts) {
+      const districtRows = cityRows.filter((row) => foldSeo(row.district) === district.slug);
+      if (districtRows.length === 0) continue;
+
+      paths.add(`/imoveis/${city.slug}/${district.slug}`);
+      for (const type of allowedSeoTypes(city, district)) {
+        const typeRows = districtRows.filter((row) => type.dbTypes.includes(row.type));
+        if (typeRows.some((row) => matchesIntent(row.purpose, "venda"))) {
+          paths.add(`/imoveis/${city.slug}/${district.slug}/${type.slugVenda}`);
+        }
+        if (type.slugLocacao && typeRows.some((row) => matchesIntent(row.purpose, "locacao"))) {
+          paths.add(`/imoveis/${city.slug}/${district.slug}/${type.slugLocacao}`);
+        }
+      }
+    }
+  }
+
+  return [...paths];
+}
+
+/** Sitemap com a home, imóveis publicados e somente páginas SEO úteis. */
 export async function sitemapXml(db: AdminDb, baseUrl: string) {
   const rows = await db
     .select({
@@ -247,6 +302,7 @@ export async function sitemapXml(db: AdminDb, baseUrl: string) {
       district: schema.properties.district,
       city: schema.properties.city,
       type: schema.properties.type,
+      purpose: schema.properties.purpose,
       updatedAt: schema.properties.updatedAt,
     })
     .from(schema.properties)
@@ -262,7 +318,8 @@ export async function sitemapXml(db: AdminDb, baseUrl: string) {
       `  <url>\n    <loc>${baseUrl}/imovel/${slug}</loc>\n    <lastmod>${lastmod}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n  </url>`,
     );
   }
-  for (const path of SEO_LANDING_PATHS) {
+
+  for (const path of seoSitemapPaths(rows)) {
     urls.push(
       `  <url>\n    <loc>${baseUrl}${path}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>`,
     );
