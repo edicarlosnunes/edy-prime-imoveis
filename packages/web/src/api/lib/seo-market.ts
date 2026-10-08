@@ -97,13 +97,19 @@ export const SEO_CITIES: SeoCity[] = [
   },
 ];
 
+const SEO_ALIASES: Record<string, string> = {
+  // Compatibilidade com variações antigas já existentes no CRM.
+  guilherminia: "guilhermina",
+};
+
 export function foldSeo(value: string) {
-  return value
+  const folded = value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+  return SEO_ALIASES[folded] ?? folded;
 }
 
 export function findSeoCity(slug: string) {
