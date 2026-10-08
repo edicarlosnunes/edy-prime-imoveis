@@ -25,15 +25,15 @@
     },
     {
       "source": "/imoveis/:city/:district/:segment",
-      "destination": "/api/handler?__path=/api/seo/imoveis/:city/:district/:segment"
+      "destination": "/api/handler?__path=/api/seo2/imoveis/:city/:district/:segment"
     },
     {
       "source": "/imoveis/:city/:district",
-      "destination": "/api/handler?__path=/api/seo/imoveis/:city/:district"
+      "destination": "/api/handler?__path=/api/seo2/imoveis/:city/:district"
     },
     {
       "source": "/imoveis/:city",
-      "destination": "/api/handler?__path=/api/seo/imoveis/:city"
+      "destination": "/api/handler?__path=/api/seo2/imoveis/:city"
     },
     {
       "source": "/((?!api).*)",
