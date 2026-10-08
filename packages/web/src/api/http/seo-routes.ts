@@ -66,9 +66,9 @@ async function renderSeoLanding(
     })
     .slice(0, 24);
 
-  // Só indexa combinações tipo + intenção quando houver estoque real.
-  // Assim o leque cresce com qualidade sem criar milhares de páginas vazias.
-  const indexable = !propertyType || matching.length > 0;
+  // O hub da cidade pode existir como página estratégica. Bairro e combinações
+  // de tipo/intenção só entram no índice quando houver estoque real correspondente.
+  const indexable = !district && !propertyType ? true : matching.length > 0;
 
   const cards = matching.length
     ? matching
@@ -85,7 +85,7 @@ async function renderSeoLanding(
           return `<article class="card"><h3><a href="/imovel/${escapeHtml(slug)}">${escapeHtml(property.title)}</a></h3><p>${escapeHtml(property.district)} · ${escapeHtml(property.city)}</p><strong>${escapeHtml(price)}</strong></article>`;
         })
         .join("")
-    : `<p class="empty">Ainda não há imóveis publicados nesta seleção. Esta URL fica fora do índice do Google até existir estoque real correspondente.</p>`;
+    : `<p class="empty">${indexable ? "Novos imóveis desta cidade serão exibidos aqui automaticamente conforme forem publicados no CRM." : "Ainda não há imóveis publicados nesta seleção. Esta URL fica fora do índice do Google até existir estoque real correspondente."}</p>`;
 
   const typeLinks = allowedSeoTypes(city, district)
     .map(
