@@ -35,6 +35,7 @@ import { adminAutomations } from "./routes/admin-automations";
 import { adminWatermark } from "./routes/admin-watermark";
 import { adminAudit } from "./routes/admin-audit";
 import { registerFeedRoutes } from "./http/feed-routes";
+import { registerSeoRoutes } from "./http/seo-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
 import * as schema from "./database/schema";
 import { verifyGithubActionsOidc } from "./lib/github-actions-oidc";
@@ -102,6 +103,7 @@ const app = createApp(router);
 
 /* Arquivos públicos (feed/sitemap/robots/prerender) e webhooks de entrada. */
 registerFeedRoutes(app);
+registerSeoRoutes(app);
 registerWebhookRoutes(app);
 
 app.get("/api/cron/link-captacao-help", async (c) => {
