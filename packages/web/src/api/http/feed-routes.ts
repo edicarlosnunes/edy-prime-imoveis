@@ -127,7 +127,16 @@ export function registerFeedRoutes(app: Hono) {
         rows.find((row) => (row.slug ?? propertySlug(row)).toLowerCase() === wanted) ??
         rows.find((row) => row.code.toLowerCase() === wanted);
       if (!property) {
-        return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+        return new Response(
+          "<!doctype html><html lang=\"pt-BR\"><head><meta charset=\"utf-8\"><meta name=\"robots\" content=\"noindex,follow\"><title>Imóvel não encontrado | E. Santos Corretor</title></head><body><h1>Imóvel não encontrado</h1><p>Este imóvel não está mais disponível nesta URL.</p></body></html>",
+          {
+            status: 404,
+            headers: {
+              "content-type": "text/html; charset=utf-8",
+              "cache-control": "public, max-age=0, must-revalidate",
+            },
+          },
+        );
       }
 
       const images = await db
