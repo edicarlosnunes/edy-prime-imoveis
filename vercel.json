@@ -24,6 +24,14 @@
       "destination": "/api/handler?__path=/api/prerender/imovel/:slug"
     },
     {
+      "source": "/imoveis/:city/:district",
+      "destination": "/api/handler?__path=/api/seo/imoveis/:city/:district"
+    },
+    {
+      "source": "/imoveis/:city",
+      "destination": "/api/handler?__path=/api/seo/imoveis/:city"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
