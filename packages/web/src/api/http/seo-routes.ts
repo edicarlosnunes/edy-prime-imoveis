@@ -125,13 +125,13 @@ async function renderSeoLanding(
 }
 
 export function registerSeoRoutes(app: Hono) {
-  app.get("/api/seo/imoveis/:city", async (c) => {
+  app.get("/api/seo2/imoveis/:city", async (c) => {
     const city = findSeoCity(c.req.param("city"));
     if (!city) return c.text("not found", 404);
     return renderSeoLanding(c, city);
   });
 
-  app.get("/api/seo/imoveis/:city/:segment", async (c) => {
+  app.get("/api/seo2/imoveis/:city/:segment", async (c) => {
     const city = findSeoCity(c.req.param("city"));
     if (!city) return c.text("not found", 404);
 
@@ -146,7 +146,7 @@ export function registerSeoRoutes(app: Hono) {
     return renderSeoLanding(c, city, undefined, resolved.type, resolved.intent);
   });
 
-  app.get("/api/seo/imoveis/:city/:district/:segment", async (c) => {
+  app.get("/api/seo2/imoveis/:city/:district/:segment", async (c) => {
     const city = findSeoCity(c.req.param("city"));
     if (!city) return c.text("not found", 404);
 
