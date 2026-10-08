@@ -1,6 +1,9 @@
 /**
  * Dados do negócio — edite aqui e o site inteiro se atualiza.
  */
+const DIRECT_BROKER_WHATSAPP = "5513997141174";
+const DIRECT_BROKER_WHATSAPP_LABEL = "(13) 99714-1174";
+
 export const site = {
   brand: "E. Santos",
   brandSuffix: "",
@@ -9,9 +12,10 @@ export const site = {
   creci: "CRECI 134718-F",
   city: "Praia Grande",
   state: "SP",
-  /** Somente números, com DDI e DDD. Ex: 5513991234567 */
+  /** Canal exclusivo da IA. Não usar nos CTAs de contato humano do site. */
   whatsapp: "5513997726767",
-  whatsappLabel: "(13) 99772-6767",
+  /** Número exibido nos pontos de atendimento direto com o corretor. */
+  whatsappLabel: DIRECT_BROKER_WHATSAPP_LABEL,
   email: "edyprimeimoveis@gmail.com",
   instagram: "https://instagram.com/edy_prime_imoveis",
   instagramHandle: "@edy_prime_imoveis",
@@ -50,15 +54,6 @@ export type SiteConfigPatch = Partial<{
   districts: string[];
 }>;
 
-function phoneLabel(raw: string) {
-  const digits = raw.replace(/\D/g, "").replace(/^55/, "");
-  if (digits.length < 10) return raw;
-  const ddd = digits.slice(0, 2);
-  const rest = digits.slice(2);
-  const head = rest.slice(0, rest.length - 4);
-  return `(${ddd}) ${head}-${rest.slice(-4)}`;
-}
-
 function handleOf(url: string) {
   const clean = url.replace(/\/+$/, "");
   const last = clean.split("/").pop() ?? "";
@@ -76,7 +71,6 @@ export function configureSite(patch: SiteConfigPatch | null | undefined) {
 
   const name = text(patch.name);
   if (name) target.brand = name;
-  const suffix = text(patch.brandSuffix);
   // Um sufixo vazio publicado remove o antigo nome fantasia.
   if (patch.brandSuffix !== undefined) target.brandSuffix = patch.brandSuffix.trim();
   const broker = text(patch.broker);
@@ -107,22 +101,22 @@ export function configureSite(patch: SiteConfigPatch | null | undefined) {
     target.facebookHandle = handleOf(facebook);
   }
 
+  // O número publicado no CMS continua sendo o canal da IA (6767).
+  // A exibição e os links de "falar com o corretor" ficam sempre no 1174.
   const whatsapp = patch.whatsapp?.replace(/\D/g, "");
   if (whatsapp && whatsapp.length >= 12) {
     target.whatsapp = whatsapp;
-    target.whatsappLabel = text(patch.phone) ?? phoneLabel(whatsapp);
-  } else {
-    const phone = text(patch.phone);
-    if (phone) target.whatsappLabel = phone;
   }
+  target.whatsappLabel = DIRECT_BROKER_WHATSAPP_LABEL;
 
   if (Array.isArray(patch.districts) && patch.districts.length > 0) {
     target.districts = patch.districts.map((item) => String(item).trim()).filter(Boolean);
   }
 }
 
+/** Link de atendimento humano direto com o corretor. */
 export function whatsappLink(message: string) {
-  return `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(message)}`;
+  return `https://wa.me/${DIRECT_BROKER_WHATSAPP}?text=${encodeURIComponent(message)}`;
 }
 
 /* Imóvel cadastrado sem preço (price = 0) mostra "Sob consulta" em vez de
