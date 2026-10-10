@@ -40,6 +40,7 @@ import * as schema from "./database/schema";
 import { verifyGithubActionsOidc } from "./lib/github-actions-oidc";
 import { sweepLinkCaptacaoHelp } from "./lib/link-captacao-help";
 import { readConfig } from "./lib/integrations";
+import { findAdminByIdentifier } from "./lib/admin-login";
 import {
   clearedSessionCookie,
   createSession,
@@ -155,28 +156,26 @@ app.post("/api/admin/login", async (c) => {
     return c.json({ error: "Muitas tentativas. Tente novamente mais tarde." }, 429);
   }
 
-  let email = "";
+  let identifier = "";
   let password = "";
   try {
-    const body = (await c.req.json()) as { email?: unknown; password?: unknown };
-    email = String(body.email ?? "").trim().toLowerCase();
+    const body = (await c.req.json()) as { login?: unknown; email?: unknown; password?: unknown };
+    identifier = String(body.login ?? body.email ?? "").trim().toLowerCase();
     password = String(body.password ?? "");
   } catch {
     return c.json({ error: "Requisição inválida" }, 400);
   }
-  if (!email || !password) return c.json({ error: "Informe e-mail e senha" }, 400);
+  if (!identifier || !password) {
+    return c.json({ error: "Informe usuário/e-mail e senha" }, 400);
+  }
 
   const db = await getDb();
-  const [user] = await db
-    .select()
-    .from(schema.adminUsers)
-    .where(eq(schema.adminUsers.email, email))
-    .limit(1);
+  const user = await findAdminByIdentifier(db, identifier);
 
   const ok = user ? await verifyPassword(password, user.passwordHash, user.passwordSalt) : false;
   if (!user || !ok) {
     registerAttempt(ip);
-    return c.json({ error: "E-mail ou senha inválidos" }, 401);
+    return c.json({ error: "Usuário/e-mail ou senha inválidos" }, 401);
   }
 
   const { token } = await createSession(db, user.id);
