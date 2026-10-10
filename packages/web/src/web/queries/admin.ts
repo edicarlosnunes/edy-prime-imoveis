@@ -34,6 +34,25 @@ function useInvalidate() {
   };
 }
 
+/**
+ * Proprietário é usado dentro do formulário do imóvel. Invalidar TODAS as
+ * queries depois de criar um proprietário fazia o detalhe do imóvel ser
+ * recarregado antes do clique final e sobrescrevia o `ownerId` recém-vinculado
+ * com o valor antigo vindo do banco. Aqui atualizamos somente as duas consultas
+ * de proprietários; o formulário do imóvel permanece intacto.
+ */
+function useInvalidateOwners() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({
+      queryKey: orpc.adminOwners.list.queryOptions().queryKey,
+    });
+    queryClient.invalidateQueries({
+      queryKey: orpc.adminOwners.options.queryOptions().queryKey,
+    });
+  };
+}
+
 export function useSaveProperty(mode: "create" | "update") {
   const invalidate = useInvalidate();
   const options =
@@ -191,11 +210,11 @@ export function useOwnerOptions() {
 }
 
 export function useSaveOwner(mode: "create" | "update") {
-  const invalidate = useInvalidate();
+  const invalidateOwners = useInvalidateOwners();
   const options =
     mode === "create"
-      ? orpc.adminOwners.create.mutationOptions({ onSuccess: invalidate })
-      : orpc.adminOwners.update.mutationOptions({ onSuccess: invalidate });
+      ? orpc.adminOwners.create.mutationOptions({ onSuccess: invalidateOwners })
+      : orpc.adminOwners.update.mutationOptions({ onSuccess: invalidateOwners });
   return useMutation(options);
 }
 
