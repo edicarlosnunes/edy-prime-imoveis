@@ -35,8 +35,8 @@ export const adminAuth = {
   changeLogin: adminBase
     .input(
       z.object({
-        currentPassword: z.string().min(1),
         newLogin: z.string().min(3).max(32),
+        repeatLogin: z.string().min(3).max(32),
       }),
     )
     .handler(async ({ input, context }) => {
@@ -47,10 +47,11 @@ export const adminAuth = {
         .limit(1);
       if (!row) throw new ORPCError("NOT_FOUND", { message: "Usuário não encontrado" });
 
-      const ok = await verifyPassword(input.currentPassword, row.passwordHash, row.passwordSalt);
-      if (!ok) throw new ORPCError("BAD_REQUEST", { message: "Senha atual incorreta" });
-
       const newLogin = normalizeAdminLogin(input.newLogin);
+      const repeatLogin = normalizeAdminLogin(input.repeatLogin);
+      if (newLogin !== repeatLogin) {
+        throw new ORPCError("BAD_REQUEST", { message: "Os logins não conferem" });
+      }
       if (!ADMIN_LOGIN_PATTERN.test(newLogin)) {
         throw new ORPCError("BAD_REQUEST", {
           message: "Use de 3 a 32 caracteres: letras minúsculas, números, ponto, hífen ou _",
