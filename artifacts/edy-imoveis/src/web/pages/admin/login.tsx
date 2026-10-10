@@ -6,7 +6,7 @@ import { adminLogin, errorMessage } from "../../lib/admin-session";
 import { useAdminMe } from "../../queries/admin";
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ export default function AdminLogin() {
     setError(null);
     setLoading(true);
     try {
-      await adminLogin(email.trim(), password);
+      await adminLogin(login.trim(), password);
       await queryClient.invalidateQueries();
       navigate("/admin", { replace: true });
     } catch (caught) {
@@ -42,13 +42,14 @@ export default function AdminLogin() {
         </div>
         <form onSubmit={submit} className="admin-card rounded-[4px] border border-line bg-white p-6">
           <div className="space-y-4">
-            <Field label="E-mail">
+            <Field label="Usuário ou e-mail">
               <Input
-                type="email"
+                type="text"
                 autoComplete="username"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="seu@email.com"
+                autoCapitalize="none"
+                value={login}
+                onChange={(event) => setLogin(event.target.value)}
+                placeholder="edy ou seu@email.com"
                 required
               />
             </Field>
