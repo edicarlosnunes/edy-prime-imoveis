@@ -57,7 +57,7 @@ function Content() {
   const [saved, setSaved] = useState(false);
 
   const [newLogin, setNewLogin] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
+  const [repeatLogin, setRepeatLogin] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loginDone, setLoginDone] = useState(false);
 
@@ -91,11 +91,6 @@ function Content() {
       priorityCities: (row.priorityCities ?? []).join("\n"),
     });
   }, [settings.data]);
-
-  useEffect(() => {
-    if (!loginInfo.data?.login) return;
-    setNewLogin(loginInfo.data.login);
-  }, [loginInfo.data?.login]);
 
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -134,15 +129,20 @@ function Content() {
     setLoginError(null);
     setLoginDone(false);
     const candidate = newLogin.trim().toLowerCase();
+    const confirmation = repeatLogin.trim().toLowerCase();
     if (!/^[a-z0-9._-]{3,32}$/.test(candidate)) {
       setLoginError("Use de 3 a 32 caracteres: letras minúsculas, números, ponto, hífen ou _");
       return;
     }
+    if (candidate !== confirmation) {
+      setLoginError("Os logins não conferem");
+      return;
+    }
     try {
-      await changeLogin.mutateAsync({ currentPassword: loginPassword, newLogin: candidate });
+      await changeLogin.mutateAsync({ newLogin: candidate, repeatLogin: confirmation });
       setLoginDone(true);
-      setNewLogin(candidate);
-      setLoginPassword("");
+      setNewLogin("");
+      setRepeatLogin("");
       window.setTimeout(() => {
         window.location.href = "/admin/login";
       }, 1500);
@@ -247,47 +247,6 @@ function Content() {
 
         <StreetsCard />
 
-        <Card title="Login administrativo">
-          <form onSubmit={submitLogin} className="space-y-4">
-            <Field label="Login atual" hint={`O e-mail ${loginInfo.data?.email ?? "administrativo"} continua funcionando como alternativa.`}>
-              <Input value={loginInfo.data?.login ?? "edy"} readOnly />
-            </Field>
-            <Field
-              label="Novo login"
-              hint="De 3 a 32 caracteres. Use letras minúsculas, números, ponto, hífen ou _."
-            >
-              <Input
-                type="text"
-                autoComplete="username"
-                autoCapitalize="none"
-                value={newLogin}
-                onChange={(event) => setNewLogin(event.target.value.toLowerCase())}
-                required
-              />
-            </Field>
-            <Field label="Senha atual" hint="Confirme sua senha para autorizar a troca do login.">
-              <Input
-                type="password"
-                autoComplete="current-password"
-                value={loginPassword}
-                onChange={(event) => setLoginPassword(event.target.value)}
-                required
-              />
-            </Field>
-            <ErrorNote message={loginError} />
-            {loginDone && (
-              <p className="text-xs text-emerald-700">
-                Login alterado. Você será levado ao login para entrar novamente.
-              </p>
-            )}
-            <div className="flex justify-end border-t border-line pt-4">
-              <Btn type="submit" tone="primary" disabled={changeLogin.isPending}>
-                Alterar login
-              </Btn>
-            </div>
-          </form>
-        </Card>
-
         <Card title="Senha administrativa">
           <form onSubmit={submitPassword} className="space-y-4">
             <Field label="Senha atual">
@@ -326,6 +285,50 @@ function Content() {
             <div className="flex justify-end border-t border-line pt-4">
               <Btn type="submit" tone="primary" disabled={changePassword.isPending}>
                 Alterar senha
+              </Btn>
+            </div>
+          </form>
+        </Card>
+
+        <Card title="Login administrativo">
+          <form onSubmit={submitLogin} className="space-y-4">
+            <Field
+              label="Login atual"
+              hint={`O e-mail ${loginInfo.data?.email ?? "administrativo"} continua funcionando como alternativa.`}
+            >
+              <Input value={loginInfo.data?.login ?? "edy"} readOnly />
+            </Field>
+            <Field
+              label="Novo login"
+              hint="De 3 a 32 caracteres. Use letras minúsculas, números, ponto, hífen ou _."
+            >
+              <Input
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                value={newLogin}
+                onChange={(event) => setNewLogin(event.target.value.toLowerCase())}
+                required
+              />
+            </Field>
+            <Field label="Repetir novo login">
+              <Input
+                type="text"
+                autoCapitalize="none"
+                value={repeatLogin}
+                onChange={(event) => setRepeatLogin(event.target.value.toLowerCase())}
+                required
+              />
+            </Field>
+            <ErrorNote message={loginError} />
+            {loginDone && (
+              <p className="text-xs text-emerald-700">
+                Login alterado. Você será levado ao login para entrar novamente.
+              </p>
+            )}
+            <div className="flex justify-end border-t border-line pt-4">
+              <Btn type="submit" tone="primary" disabled={changeLogin.isPending}>
+                Alterar login
               </Btn>
             </div>
           </form>
