@@ -267,6 +267,13 @@ export function PropertyForm({
         section?: string;
         documentationDraft?: PropertyDocumentationDraft;
         portfolioEntryDate?: string;
+        newOwner?: {
+          name?: string;
+          phone?: string;
+          email?: string;
+          captureStatus?: (typeof captureStatuses)[number];
+          notes?: string;
+        };
         savedAt?: string;
       };
       if (parsed.form) setForm((current) => ({ ...current, ...parsed.form }));
@@ -289,6 +296,18 @@ export function PropertyForm({
         });
       }
       if (parsed.portfolioEntryDate) setPortfolioEntryDate(parsed.portfolioEntryDate);
+      if (parsed.newOwner) {
+        setNewOwnerName(parsed.newOwner.name ?? "");
+        setNewOwnerPhone(parsed.newOwner.phone ?? "");
+        setNewOwnerEmail(parsed.newOwner.email ?? "");
+        if (
+          parsed.newOwner.captureStatus &&
+          captureStatuses.includes(parsed.newOwner.captureStatus)
+        ) {
+          setNewOwnerCaptureStatus(parsed.newOwner.captureStatus);
+        }
+        setNewOwnerNotes(parsed.newOwner.notes ?? "");
+      }
       setDraftSavedAt(parsed.savedAt ?? null);
       setDraftRestored(true);
     } catch {
@@ -314,6 +333,13 @@ export function PropertyForm({
           section,
           documentationDraft: safeDocumentationDraft,
           portfolioEntryDate,
+          newOwner: {
+            name: newOwnerName,
+            phone: newOwnerPhone,
+            email: newOwnerEmail,
+            captureStatus: newOwnerCaptureStatus,
+            notes: newOwnerNotes,
+          },
           savedAt,
         }),
       );
@@ -327,6 +353,11 @@ export function PropertyForm({
     draftReady,
     form,
     images,
+    newOwnerCaptureStatus,
+    newOwnerEmail,
+    newOwnerName,
+    newOwnerNotes,
+    newOwnerPhone,
     portfolioEntryDate,
     propertyId,
     section,
@@ -497,11 +528,20 @@ export function PropertyForm({
 
   const ownerName = owners.data?.find((owner) => String(owner.id) === form.ownerId)?.name ?? null;
 
-  async function createAndLinkOwner() {
+  function hasPendingNewOwner() {
+    return Boolean(
+      newOwnerName.trim() ||
+        newOwnerPhone.trim() ||
+        newOwnerEmail.trim() ||
+        newOwnerNotes.trim(),
+    );
+  }
+
+  async function createAndLinkOwner(): Promise<number | null> {
     const name = newOwnerName.trim();
     if (name.length < 2) {
       setError("Informe o nome do proprietário.");
-      return;
+      return null;
     }
     setError(null);
     try {
@@ -520,8 +560,10 @@ export function PropertyForm({
       setNewOwnerCaptureStatus("prospeccao");
       setNewOwnerNotes("");
       await owners.refetch();
+      return created.id;
     } catch (caught) {
       setError(errorMessage(caught, "Não foi possível cadastrar o proprietário"));
+      return null;
     }
   }
 
@@ -622,6 +664,17 @@ export function PropertyForm({
     return null;
   }
 
+  async function advance() {
+    if (!nextSection) return false;
+    if (section === "proprietario" && !form.ownerId && hasPendingNewOwner()) {
+      const createdOwnerId = await createAndLinkOwner();
+      if (!createdOwnerId) return false;
+    }
+    setError(null);
+    setSection(nextSection.id);
+    return true;
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -629,9 +682,11 @@ export function PropertyForm({
     if (captureBlock) return void fail("basico", captureBlock);
 
     /* Cadastro NOVO é um checklist único: nenhuma etapa intermediária cria o
-       imóvel. Enter ou submit antes da última aba apenas avança. */
+       imóvel. Enter ou submit antes da última aba apenas avança. Se houver um
+       novo proprietário preenchido, ele é criado e vinculado antes de sair da
+       etapa Proprietário. */
     if (guidedCreate && section !== "publicacao") {
-      advance();
+      await advance();
       return;
     }
 
@@ -640,6 +695,18 @@ export function PropertyForm({
     }
     if (form.title.trim().length < 3) {
       return void fail("basico", "Informe um título com pelo menos 3 caracteres.");
+    }
+
+    let resolvedOwnerId = form.ownerId;
+    /* Segurança adicional para quem pula etapas pelo menu lateral: nunca deixa
+       um proprietário preenchido desaparecer no clique final. */
+    if (guidedCreate && !resolvedOwnerId && hasPendingNewOwner()) {
+      const createdOwnerId = await createAndLinkOwner();
+      if (!createdOwnerId) {
+        setSection("proprietario");
+        return;
+      }
+      resolvedOwnerId = String(createdOwnerId);
     }
 
     let price: number | null;
@@ -719,7 +786,7 @@ export function PropertyForm({
       status: form.status,
       published: form.published,
       featured: form.featured,
-      ownerId: form.ownerId ? Number(form.ownerId) : null,
+      ownerId: resolvedOwnerId ? Number(resolvedOwnerId) : null,
       referralNote: form.referralNote.trim() || null,
       watermarkOff: form.watermarkOff,
       youtubeUrl: form.youtubeUrl.trim() || null,
@@ -783,12 +850,6 @@ export function PropertyForm({
   const activeSection = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0]!;
   const sectionIndex = SECTIONS.findIndex((item) => item.id === section);
   const nextSection = sectionIndex >= 0 ? SECTIONS[sectionIndex + 1] : undefined;
-
-  function advance() {
-    if (!nextSection) return;
-    setError(null);
-    setSection(nextSection.id);
-  }
 
   const guidedFinalSave = guidedCreate && section === "publicacao";
   const guidedCanAdvance = guidedCreate && !guidedFinalSave && Boolean(nextSection);
@@ -989,7 +1050,7 @@ export function PropertyForm({
                   </Field>
                   <div className="space-y-3 border-t border-line pt-4">
                     <p className="label-xs text-muted">Cadastrar novo proprietário</p>
-                    <p className="text-[11px] text-muted">O novo proprietário será criado e vinculado automaticamente a este imóvel. Você não perde o preenchimento já feito.</p>
+                    <p className="text-[11px] text-muted">O novo proprietário será criado e vinculado automaticamente a este imóvel. Ao clicar em Próximo, o cadastro também é salvo antes de avançar.</p>
                     <Field label="Nome"><Input value={newOwnerName} onChange={(e) => setNewOwnerName(e.target.value)} placeholder="Nome completo" /></Field>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <Field label="Telefone"><Input value={newOwnerPhone} onChange={(e) => setNewOwnerPhone(e.target.value)} /></Field>
@@ -1076,9 +1137,9 @@ export function PropertyForm({
           <div className="flex gap-2">
             <Btn tone="outline" onClick={onClose}>Cancelar</Btn>
             {guidedCanAdvance ? (
-              <Btn type="button" tone="brass" onClick={advance}>Próximo</Btn>
+              <Btn type="button" tone="brass" onClick={() => void advance()} disabled={createOwner.isPending}>Próximo</Btn>
             ) : (
-              <Btn type="submit" tone="brass" disabled={save.isPending || uploading || captureBlock !== null}>
+              <Btn type="submit" tone="brass" disabled={save.isPending || uploading || createOwner.isPending || captureBlock !== null}>
                 {save.isPending ? "Salvando…" : guidedFinalSave ? "Finalizar cadastro" : "Salvar imóvel"}
               </Btn>
             )}
