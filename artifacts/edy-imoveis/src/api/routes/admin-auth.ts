@@ -5,6 +5,13 @@ import { base } from "../__core/app";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
 import { hashPassword, resolveSession, verifyPassword } from "../lib/auth";
+import { audit } from "../lib/audit";
+import {
+  ADMIN_LOGIN_PATTERN,
+  getAdminLogin,
+  normalizeAdminLogin,
+  setAdminLogin,
+} from "../lib/admin-login";
 
 /**
  * Sessão do painel. O login/logout ficam em rotas HTTP simples
@@ -16,6 +23,54 @@ export const adminAuth = {
     const user = await resolveSession(context.headers);
     return { user };
   }),
+
+  /** Login curto configurado para o administrador atual. */
+  loginInfo: adminBase.handler(async ({ context }) => {
+    return {
+      login: await getAdminLogin(context.db, context.user.id),
+      email: context.user.email,
+    };
+  }),
+
+  changeLogin: adminBase
+    .input(
+      z.object({
+        currentPassword: z.string().min(1),
+        newLogin: z.string().min(3).max(32),
+      }),
+    )
+    .handler(async ({ input, context }) => {
+      const [row] = await context.db
+        .select()
+        .from(schema.adminUsers)
+        .where(eq(schema.adminUsers.id, context.user.id))
+        .limit(1);
+      if (!row) throw new ORPCError("NOT_FOUND", { message: "Usuário não encontrado" });
+
+      const ok = await verifyPassword(input.currentPassword, row.passwordHash, row.passwordSalt);
+      if (!ok) throw new ORPCError("BAD_REQUEST", { message: "Senha atual incorreta" });
+
+      const newLogin = normalizeAdminLogin(input.newLogin);
+      if (!ADMIN_LOGIN_PATTERN.test(newLogin)) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "Use de 3 a 32 caracteres: letras minúsculas, números, ponto, hífen ou _",
+        });
+      }
+
+      await setAdminLogin(context.db, row.id, newLogin);
+      await audit(context.db, context.user, "admin.login_alterado", {
+        entity: "admin_user",
+        entityId: row.id,
+        detail: `novo login: ${newLogin}`,
+      });
+
+      // exige novo login em todos os dispositivos depois de trocar a credencial
+      await context.db
+        .delete(schema.adminSessions)
+        .where(eq(schema.adminSessions.userId, row.id));
+
+      return { ok: true, login: newLogin };
+    }),
 
   changePassword: adminBase
     .input(
