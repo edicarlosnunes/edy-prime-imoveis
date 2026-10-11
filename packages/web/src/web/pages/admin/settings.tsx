@@ -62,6 +62,7 @@ function Content() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordDone, setPasswordDone] = useState(false);
 
+  const [currentLogin, setCurrentLogin] = useState("");
   const [newLogin, setNewLogin] = useState("");
   const [repeatLogin, setRepeatLogin] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -154,19 +155,30 @@ function Content() {
     event.preventDefault();
     setLoginError(null);
     setLoginDone(false);
+
+    const current = currentLogin.trim().toLowerCase();
     const candidate = newLogin.trim().toLowerCase();
     const confirmation = repeatLogin.trim().toLowerCase();
-    if (!/^[a-z0-9._-]{3,32}$/.test(candidate)) {
-      setLoginError("Use de 3 a 32 caracteres: letras minúsculas, números, ponto, hífen ou _");
+
+    if (current.length < 3) {
+      setLoginError("Informe o login atual.");
+      return;
+    }
+    if (!/^[^\r\n\t]{3,80}$/.test(candidate)) {
+      setLoginError("O novo login deve ter de 3 a 80 caracteres.");
       return;
     }
     if (candidate !== confirmation) {
       setLoginError("Os logins não conferem");
       return;
     }
+
     try {
-      await changeLogin.mutateAsync({ newLogin: candidate });
+      await changeLogin.mutateAsync({ currentLogin: current, newLogin: candidate });
       setLoginDone(true);
+      setCurrentLogin("");
+      setNewLogin("");
+      setRepeatLogin("");
       window.setTimeout(() => {
         window.location.href = "/admin/login";
       }, 1500);
@@ -292,13 +304,21 @@ function Content() {
           <form onSubmit={submitLogin} className="space-y-4">
             <Field
               label="Login atual"
-              hint={`O e-mail ${loginInfo.data?.email ?? "administrativo"} continua funcionando como alternativa.`}
+              hint={`Digite o login que você usa hoje. O e-mail ${loginInfo.data?.email ?? "administrativo"} continua funcionando como alternativa.`}
             >
-              <Input value={loginInfo.data?.login ?? ""} readOnly />
+              <Input
+                type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                placeholder="Digite o login atual"
+                value={currentLogin}
+                onChange={(event) => setCurrentLogin(event.target.value)}
+                required
+              />
             </Field>
             <Field
               label="Novo login"
-              hint="De 3 a 32 caracteres. Use letras minúsculas, números, ponto, hífen ou _."
+              hint="Pode ser um nome, apelido ou e-mail, de 3 a 80 caracteres."
             >
               <Input
                 type="text"
@@ -306,7 +326,7 @@ function Content() {
                 autoCapitalize="none"
                 placeholder="Digite o novo login"
                 value={newLogin}
-                onChange={(event) => setNewLogin(event.target.value.toLowerCase())}
+                onChange={(event) => setNewLogin(event.target.value)}
                 required
               />
             </Field>
@@ -316,7 +336,7 @@ function Content() {
                 autoCapitalize="none"
                 placeholder="Digite novamente o novo login"
                 value={repeatLogin}
-                onChange={(event) => setRepeatLogin(event.target.value.toLowerCase())}
+                onChange={(event) => setRepeatLogin(event.target.value)}
                 required
               />
             </Field>
