@@ -551,8 +551,11 @@ export function PropertyForm({
         email: newOwnerEmail.trim() || null,
         notes: newOwnerNotes.trim() || null,
         captureStatus: newOwnerCaptureStatus,
+        propertyId: propertyId ?? undefined,
       });
-      if (!created.id) throw new Error("Proprietário não foi criado");
+      if (!Number.isSafeInteger(created.id) || created.id <= 0) {
+        throw new Error("Não foi possível confirmar o cadastro do proprietário. Os dados foram mantidos.");
+      }
       set("ownerId", String(created.id));
       setNewOwnerName("");
       setNewOwnerPhone("");
@@ -562,7 +565,8 @@ export function PropertyForm({
       await owners.refetch();
       return created.id;
     } catch (caught) {
-      setError(errorMessage(caught, "Não foi possível cadastrar o proprietário"));
+      console.error("[property-form] Falha ao cadastrar/vincular proprietário:", caught);
+      setError(`Não foi possível cadastrar e vincular o proprietário. Os dados foram mantidos. ${errorMessage(caught, "Tente novamente.")}`);
       return null;
     }
   }

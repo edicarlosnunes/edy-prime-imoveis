@@ -106,10 +106,36 @@ export const adminOwners = {
     }));
   }),
 
-  create: adminBase.input(ownerInput).handler(async ({ input, context }) => {
-    const [created] = await context.db.insert(schema.owners).values(toRow(input)).returning();
-    return { id: created?.id ?? 0 };
-  }),
+  create: adminBase
+    .input(ownerInput.extend({ propertyId: z.number().int().positive().optional() }))
+    .handler(async ({ input, context }) => {
+      try {
+        return await context.db.transaction(async (tx) => {
+          const [created] = await tx.insert(schema.owners).values(toRow(input))
+            .returning({ id: schema.owners.id });
+          if (!created || !Number.isSafeInteger(created.id) || created.id <= 0) {
+            throw new ORPCError("INTERNAL_SERVER_ERROR", {
+              message: "Não foi possível confirmar o cadastro do proprietário.",
+            });
+          }
+          if (input.propertyId !== undefined) {
+            const [linked] = await tx.update(schema.properties)
+              .set({ ownerId: created.id })
+              .where(eq(schema.properties.id, input.propertyId))
+              .returning({ id: schema.properties.id, ownerId: schema.properties.ownerId });
+            if (!linked || linked.ownerId !== created.id) {
+              throw new ORPCError("NOT_FOUND", {
+                message: "Imóvel não encontrado. O proprietário não foi cadastrado; os dados foram mantidos.",
+              });
+            }
+          }
+          return { id: created.id };
+        });
+      } catch (error) {
+        console.error("[adminOwners.create] Falha ao cadastrar/vincular proprietário:", error);
+        throw error;
+      }
+    }),
 
   update: adminBase
     .input(ownerInput.extend({ id: z.number().int() }))
