@@ -704,7 +704,7 @@ export function PropertyForm({
     let resolvedOwnerId = form.ownerId;
     /* Segurança adicional para quem pula etapas pelo menu lateral: nunca deixa
        um proprietário preenchido desaparecer no clique final. */
-    if (guidedCreate && !resolvedOwnerId && hasPendingNewOwner()) {
+    if (!resolvedOwnerId && hasPendingNewOwner()) {
       const createdOwnerId = await createAndLinkOwner();
       if (!createdOwnerId) {
         setSection("proprietario");
