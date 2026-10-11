@@ -1,13 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Facebook, RefreshCw, Send, TestTube } from "lucide-react";
+import { Megaphone, RefreshCw, Send, TestTube } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import { Badge, Btn, Card, Empty, ErrorNote, Field, Input, Select, Stat } from "../../components/admin/ui";
 import { orpc } from "../../lib/api";
 import { errorMessage } from "../../lib/admin-session";
-
-type Overview = NonNullable<ReturnType<typeof useFacebookOverview>["data"]>;
 
 type ConfigState = {
   pageId: string;
@@ -182,7 +180,7 @@ function FacebookPage() {
               save.mutate(config);
             }}
           >
-            <Facebook className="h-4 w-4" /> Salvar conexão
+            <Megaphone className="h-4 w-4" /> Salvar conexão
           </Btn>
           <Btn
             tone="outline"
