@@ -92,12 +92,6 @@ function Content() {
     });
   }, [settings.data]);
 
-  useEffect(() => {
-    if (!loginInfo.data?.login) return;
-    setNewLogin(loginInfo.data.login);
-    setRepeatLogin(loginInfo.data.login);
-  }, [loginInfo.data?.login]);
-
   function set<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
     setSaved(false);
@@ -300,7 +294,7 @@ function Content() {
               label="Login atual"
               hint={`O e-mail ${loginInfo.data?.email ?? "administrativo"} continua funcionando como alternativa.`}
             >
-              <Input value={loginInfo.data?.login ?? "edy"} readOnly />
+              <Input value={loginInfo.data?.login ?? ""} readOnly />
             </Field>
             <Field
               label="Novo login"
@@ -310,15 +304,17 @@ function Content() {
                 type="text"
                 autoComplete="username"
                 autoCapitalize="none"
+                placeholder="Digite o novo login"
                 value={newLogin}
                 onChange={(event) => setNewLogin(event.target.value.toLowerCase())}
                 required
               />
             </Field>
-            <Field label="Repetir novo login">
+            <Field label="Confirmar novo login">
               <Input
                 type="text"
                 autoCapitalize="none"
+                placeholder="Digite novamente o novo login"
                 value={repeatLogin}
                 onChange={(event) => setRepeatLogin(event.target.value.toLowerCase())}
                 required
