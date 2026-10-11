@@ -15,6 +15,7 @@ import AdminSettings from "./pages/admin/settings";
 import AdminSiteEditor from "./pages/admin/site-editor";
 import AdminIntegrations from "./pages/admin/integrations";
 import AdminPortals from "./pages/admin/portals";
+import AdminFacebook from "./pages/admin/facebook";
 import AdminConversations from "./pages/admin/conversations";
 import AdminAi from "./pages/admin/ai";
 import AdminAutomations from "./pages/admin/automations";
@@ -54,6 +55,7 @@ function App() {
         <Route path="/admin/editor" component={AdminSiteEditor} />
         <Route path="/admin/integracoes" component={AdminIntegrations} />
         <Route path="/admin/portais" component={AdminPortals} />
+        <Route path="/admin/facebook" component={AdminFacebook} />
         <Route path="/admin/conversas" component={AdminConversations} />
         <Route path="/admin/ia" component={AdminAi} />
         <Route path="/admin/automacoes" component={AdminAutomations} />
