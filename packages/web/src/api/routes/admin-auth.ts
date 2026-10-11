@@ -33,7 +33,12 @@ export const adminAuth = {
   }),
 
   changeLogin: adminBase
-    .input(z.object({ newLogin: z.string().min(3).max(32) }))
+    .input(
+      z.object({
+        currentLogin: z.string().min(1).max(80),
+        newLogin: z.string().min(3).max(80),
+      }),
+    )
     .handler(async ({ input, context }) => {
       const [row] = await context.db
         .select()
@@ -42,10 +47,17 @@ export const adminAuth = {
         .limit(1);
       if (!row) throw new ORPCError("NOT_FOUND", { message: "Usuário não encontrado" });
 
+      const currentLogin = normalizeAdminLogin(input.currentLogin);
+      const configuredLogin = await getAdminLogin(context.db, row.id);
+      const emailLogin = normalizeAdminLogin(row.email);
+      if (currentLogin !== configuredLogin && currentLogin !== emailLogin) {
+        throw new ORPCError("BAD_REQUEST", { message: "Login atual incorreto" });
+      }
+
       const newLogin = normalizeAdminLogin(input.newLogin);
       if (!ADMIN_LOGIN_PATTERN.test(newLogin)) {
         throw new ORPCError("BAD_REQUEST", {
-          message: "Use de 3 a 32 caracteres: letras minúsculas, números, ponto, hífen ou _",
+          message: "O novo login deve ter de 3 a 80 caracteres e não pode conter quebras de linha",
         });
       }
 
