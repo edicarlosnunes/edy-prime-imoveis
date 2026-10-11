@@ -95,6 +95,7 @@ export const adminOwners = {
       .select({
         id: schema.properties.id,
         code: schema.properties.code,
+        serial: schema.properties.serial,
         title: schema.properties.title,
         ownerId: schema.properties.ownerId,
       })

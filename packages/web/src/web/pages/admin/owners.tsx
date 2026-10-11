@@ -52,8 +52,17 @@ export default function AdminOwners() {
 function Content() {
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [propertySearch, setPropertySearch] = useState("");
   const queryClient = useQueryClient();
   const { data, isLoading } = useAdminOwners();
+  const search = propertySearch.trim().toUpperCase();
+  const filteredOwners = (data ?? []).filter(
+    (owner) =>
+      !search ||
+      owner.properties.some((property) =>
+        [property.code, property.serial].some((code) => code?.toUpperCase().includes(search)),
+      ),
+  );
   const remove = useRemoveOwner();
   const save = useSaveOwner(form?.id ? "update" : "create");
   const resetTests = useMutation(
@@ -127,11 +136,22 @@ function Content() {
     >
       <div className="space-y-4">
         <ErrorNote message={error} />
+        <Field label="Buscar proprietário pelo EPI/código do imóvel">
+          <Input
+            type="search"
+            placeholder="Ex.: AP-2026-000012"
+            value={propertySearch}
+            onChange={(event) => setPropertySearch(event.target.value)}
+          />
+        </Field>
         {isLoading && <Empty>Carregando…</Empty>}
         {!isLoading && (data?.length ?? 0) === 0 && <Empty>Nenhum proprietário cadastrado.</Empty>}
+        {!isLoading && (data?.length ?? 0) > 0 && filteredOwners.length === 0 && (
+          <Empty>Nenhum proprietário encontrado para esse EPI/código.</Empty>
+        )}
 
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-          {(data ?? []).map((owner) => (
+          {filteredOwners.map((owner) => (
             <Card key={owner.id}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
