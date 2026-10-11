@@ -5,7 +5,7 @@ import { readConfig, saveIntegration } from "./integrations";
 
 const ADMIN_LOGIN_KEY = "admin_login";
 export const DEFAULT_ADMIN_LOGIN = "edy";
-export const ADMIN_LOGIN_PATTERN = /^[a-z0-9._-]{3,32}$/;
+export const ADMIN_LOGIN_PATTERN = /^[^\r\n\t]{3,80}$/;
 
 export function normalizeAdminLogin(value: string) {
   return value.trim().toLowerCase();
@@ -24,7 +24,7 @@ export async function getAdminLogin(db: AdminDb, userId: number) {
   return DEFAULT_ADMIN_LOGIN;
 }
 
-/** Resolve tanto o e-mail antigo quanto o login curto. */
+/** Resolve tanto o e-mail antigo quanto o login configurado. */
 export async function findAdminByIdentifier(db: AdminDb, identifier: string) {
   const normalized = normalizeAdminLogin(identifier);
   if (!normalized) return null;
