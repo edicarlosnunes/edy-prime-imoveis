@@ -1,11 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Download, Film, Image as ImageIcon, Sparkles } from "lucide-react";
+import {
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Film,
+  Image as ImageIcon,
+  PlayCircle,
+  Sparkles,
+} from "lucide-react";
 import { orpc } from "../../lib/api";
 import { Badge, Btn } from "./ui";
 
 type ThemeKey = "ouro" | "azul" | "oliva" | "claro";
-type VideoRow = { kind?: string };
+type VideoRow = { kind?: string; url?: string };
 
 type Theme = {
   label: string;
@@ -14,6 +23,12 @@ type Theme = {
   surface: string;
   overlay: string;
 };
+
+type DemoStep =
+  | { kind: "cover"; label: string }
+  | { kind: "video"; label: string; url: string }
+  | { kind: "photo"; label: string; url: string }
+  | { kind: "cta"; label: string };
 
 const THEMES: Record<ThemeKey, Theme> = {
   ouro: { label: "Ouro premium", accent: "#D1A24B", ink: "#FFF8EA", surface: "#20150D", overlay: "rgba(21,12,7,.76)" },
@@ -68,7 +83,8 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
 export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
   const [badge, setBadge] = useState<(typeof BADGES)[number]>("Destaque");
-  const [shortReady, setShortReady] = useState(false);
+  const [shortVideoUrl, setShortVideoUrl] = useState<string | null>(null);
+  const [demoIndex, setDemoIndex] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,18 +94,20 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   });
 
   useEffect(() => {
+    setDemoIndex(0);
     if (propertyId === null) {
-      setShortReady(false);
+      setShortVideoUrl(null);
       return;
     }
     let alive = true;
     void fetch(`/api/admin/property-videos/${propertyId}`, { credentials: "same-origin" })
       .then(async (response) => response.ok ? response.json() as Promise<{ videos?: VideoRow[] }> : { videos: [] as VideoRow[] })
       .then((payload) => {
-        if (alive) setShortReady(Boolean(payload.videos?.some((video) => video.kind === "short_social")));
+        const short = payload.videos?.find((video) => video.kind === "short_social");
+        if (alive) setShortVideoUrl(short?.url ?? null);
       })
       .catch(() => {
-        if (alive) setShortReady(false);
+        if (alive) setShortVideoUrl(null);
       });
     return () => { alive = false; };
   }, [propertyId]);
@@ -97,7 +115,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const property = detail.data;
   const images = property?.images ?? [];
   const primary = useMemo(() => images.find((image) => image.isPrimary === 1) ?? images[0] ?? null, [images]);
-  const maxPhotos = shortReady ? 8 : 9;
+  const shortReady = Boolean(shortVideoUrl);
+  const maxPhotos = shortReady ? 7 : 8;
   const bookPhotos = useMemo(() => images.slice(0, maxPhotos), [images, maxPhotos]);
   const theme = THEMES[themeKey];
   const headline = (property?.highlight || property?.title || "Imóvel em destaque").trim();
@@ -109,7 +128,19 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     formatInfo("m²", property?.areaUtil),
   ].filter(Boolean).join(" · ");
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
-  const mediaCount = Number(shortReady) + 1 + bookPhotos.length;
+
+  const demoSteps = useMemo<DemoStep[]>(() => {
+    const steps: DemoStep[] = [{ kind: "cover", label: "Capa premium E. Santos" }];
+    if (shortVideoUrl) steps.push({ kind: "video", label: "Vídeo curto / cabeça", url: shortVideoUrl });
+    for (const [index, image] of bookPhotos.entries()) {
+      steps.push({ kind: "photo", label: `Foto ${images.indexOf(image) + 1}`, url: image.url });
+    }
+    steps.push({ kind: "cta", label: "Resumo + CTA" });
+    return steps.slice(0, 10);
+  }, [bookPhotos, images, shortVideoUrl]);
+
+  const mediaCount = demoSteps.length;
+  const currentDemo = demoSteps[Math.min(demoIndex, Math.max(0, demoSteps.length - 1))] ?? null;
 
   async function downloadCover() {
     if (!primary?.url || !property) {
@@ -215,13 +246,18 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           </div>
 
           <div className="rounded-[10px] border border-line bg-white p-3">
-            <p className="text-xs font-medium text-deep">Ordem do book multicanal</p>
+            <p className="text-xs font-medium text-deep">Ordem oficial do book multicanal</p>
             <ol className="mt-2 space-y-1.5 text-[11px] text-muted">
-              {shortReady && <li className="flex items-center gap-2"><Film className="h-3.5 w-3.5" /> 1. Vídeo curto / cabeça</li>}
-              <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> {shortReady ? 2 : 1}. Capa premium E. Santos</li>
-              {bookPhotos.map((image, index) => <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}{image.isPrimary === 1 ? " · capa original" : ""}</li>)}
+              <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> 1. Capa premium E. Santos</li>
+              {shortReady && <li className="flex items-center gap-2"><Film className="h-3.5 w-3.5" /> 2. Vídeo curto / cabeça</li>}
+              {bookPhotos.map((image, index) => (
+                <li key={`${image.url}-${index}`} className="flex items-center gap-2">
+                  <ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}{image.isPrimary === 1 ? " · capa original" : ""}
+                </li>
+              ))}
+              <li className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> {mediaCount}. Resumo + CTA</li>
             </ol>
-            <p className="mt-2 text-[10px] text-muted">Padrão-base: até 10 mídias. As integrações futuras adaptarão esse book ao limite de cada plataforma.</p>
+            <p className="mt-2 text-[10px] text-muted">Padrão-base: até 10 mídias. Ordem oficial: capa → vídeo → fotos → resumo/CTA.</p>
           </div>
         </div>
 
@@ -230,6 +266,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
             <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
             <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Veja o book</span></div>
+            {shortReady && <PlayCircle className="absolute left-1/2 top-[43%] h-20 w-20 -translate-x-1/2 -translate-y-1/2 drop-shadow-lg" style={{ color: theme.accent }} />}
             <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
           </div>
 
@@ -237,6 +274,59 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           {error && <p className="mt-2 text-[11px] text-red-700">{error}</p>}
         </div>
       </div>
+
+      {primary && currentDemo && (
+        <div className="mt-5 rounded-[12px] border border-brass/30 bg-bone/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-deep">Demo funcional do Book</p>
+              <p className="mt-1 text-[11px] text-muted">Clique no play da capa e navegue pela sequência real: capa → vídeo → fotos → resumo.</p>
+            </div>
+            <Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge>
+          </div>
+
+          <div className="mx-auto mt-4 max-w-xl">
+            <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
+              {currentDemo.kind === "cover" && (
+                <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
+                  <img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" />
+                  <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
+                  <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Assista ao vídeo</span></div>
+                  {shortReady && <PlayCircle className="absolute left-1/2 top-[42%] h-24 w-24 -translate-x-1/2 -translate-y-1/2 drop-shadow-xl" style={{ color: theme.accent }} />}
+                  <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
+                </button>
+              )}
+
+              {currentDemo.kind === "video" && (
+                <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline />
+              )}
+
+              {currentDemo.kind === "photo" && (
+                <img src={currentDemo.url} alt={currentDemo.label} className="h-full w-full object-cover" />
+              )}
+
+              {currentDemo.kind === "cta" && (
+                <div className="flex h-full flex-col items-center justify-center p-8 text-center" style={{ background: theme.surface, color: theme.ink }}>
+                  <p className="text-xs font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p>
+                  <h4 className="mt-4 text-3xl font-semibold">{property?.title || headline}</h4>
+                  <p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p>
+                  <p className="mt-3 text-sm">{location}</p>
+                  <p className="mt-2 text-sm">{info}</p>
+                  <div className="mt-7 rounded-full px-6 py-3 text-sm font-bold uppercase" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Saiba mais · Fale com a E. Santos</div>
+                </div>
+              )}
+
+              <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-semibold text-white">{demoIndex + 1}/{demoSteps.length}</span>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <Btn type="button" tone="outline" disabled={demoIndex === 0} onClick={() => setDemoIndex((current) => Math.max(0, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Anterior</Btn>
+              <p className="text-center text-[11px] font-medium text-deep">{currentDemo.label}</p>
+              <Btn type="button" tone="outline" disabled={demoIndex >= demoSteps.length - 1} onClick={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))}>Próximo <ChevronRight className="h-3.5 w-3.5" /></Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
