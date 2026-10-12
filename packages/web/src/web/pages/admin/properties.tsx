@@ -39,6 +39,7 @@ import { readCaptureId } from "../../lib/capture-conversion-flow";
 import { isPropertyCreateRoute, propertyFormReturnPath } from "../../lib/property-create-route";
 
 type StatusFilter = (typeof propertyStatuses)[number] | "";
+type VideoPendingItem = { id: number; missing: number; shortReady: boolean; youtubeReady: boolean };
 
 /* Item 9 — tons do eixo comercial traduzidos para os tons da UI. */
 const COMM_TONE: Record<"ok" | "info" | "neutral" | "warn", "green" | "brass" | "neutral" | "amber"> = {
@@ -60,6 +61,7 @@ function Content() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
   const [editing, setEditing] = useState<number | "new" | null>(null);
+  const [videoPending, setVideoPending] = useState<Record<number, VideoPendingItem>>({});
   /**
    * O Radar abre o Cadastro Premium por rota: /admin/imoveis/novo?capture_id=<id>.
    * Ler da rota (e não de estado em memória) faz o prefill sobreviver a refresh.
@@ -74,6 +76,23 @@ function Content() {
     else setEditing((current) => current === "new" ? null : current);
   }, [isCreateRoute, captureId]);
   const [error, setError] = useState<string | null>(null);
+
+  async function refreshVideoPending() {
+    try {
+      const response = await fetch("/api/admin/property-videos-pending", { credentials: "same-origin" });
+      if (!response.ok) return;
+      const payload = await response.json() as { items?: VideoPendingItem[] };
+      const next: Record<number, VideoPendingItem> = {};
+      for (const item of payload.items ?? []) next[item.id] = item;
+      setVideoPending(next);
+    } catch {
+      // A lista de imóveis continua funcionando mesmo se o resumo de vídeos falhar.
+    }
+  }
+
+  useEffect(() => {
+    void refreshVideoPending();
+  }, []);
 
   const filters = useMemo(
     () => ({
@@ -170,6 +189,15 @@ function Content() {
                   </Badge>
                   {/* Item 11 — o que não aparece na vitrine ativa do site. */}
                   {!property.showcaseVisible && <Badge tone="red">fora da vitrine</Badge>}
+                  {videoPending[property.id] && (
+                    <Badge tone="red">
+                      {videoPending[property.id]!.missing === 2
+                        ? "2 vídeos pendentes"
+                        : videoPending[property.id]!.shortReady
+                          ? "vídeo YouTube pendente"
+                          : "vídeo curto pendente"}
+                    </Badge>
+                  )}
                 </div>
                 {/* Itens 10 e 11 — regra dos 12 meses: pausa automática, volta humana. */}
                 {property.lifecycle.state === "ja_pausado" && (
@@ -328,6 +356,7 @@ function Content() {
           captureId={editing === "new" ? captureId : null}
           onClose={() => {
             setEditing(null);
+            void refreshVideoPending();
             /* O cadastro iniciado na Captação volta à mesma área e ficha. */
             if (isCreateRoute || captureId !== null || fromCaptureHub) {
               navigate(propertyFormReturnPath(captureId, fromCaptureHub));
