@@ -1,13 +1,21 @@
+import { and, desc, eq } from "drizzle-orm";
 import { getDb, randomHex, resolveSession } from "../lib/auth";
 import { readConfig, saveIntegration, logEvent } from "../lib/integrations";
 import { siteBaseUrl } from "../lib/base-url";
+import * as schema from "../database/schema";
 
 const INTEGRATION_KEY = "youtube_publicacao";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels";
-const SCOPE = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly";
+const VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos";
+const UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos";
+const SCOPE = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.readonly",
+].join(" ");
 const STATE_TTL_MS = 10 * 60 * 1000;
+const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 
 function callbackUrl(headers: Headers) {
   return `${siteBaseUrl(headers)}/api/oauth/youtube/callback`;
@@ -17,12 +25,24 @@ function appRedirect(request: Request, path: string) {
   return Response.redirect(new URL(path, request.url).toString(), 302);
 }
 
+function safeText(value: unknown, max: number) {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function money(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
+}
+
 async function freshAccessToken(config: Record<string, string>) {
   const clientId = (config.clientId ?? "").trim();
   const clientSecret = (config.clientSecret ?? "").trim();
   const refreshToken = (config.refreshToken ?? "").trim();
   if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error("Conecte a conta do Google antes de testar o canal.");
+    throw new Error("Conecte a conta do Google antes de continuar.");
   }
 
   const response = await fetch(TOKEN_URL, {
@@ -50,8 +70,245 @@ async function freshAccessToken(config: Record<string, string>) {
   };
 }
 
+async function youtubeProperties(db: Awaited<ReturnType<typeof getDb>>) {
+  return db
+    .select({
+      id: schema.properties.id,
+      code: schema.properties.code,
+      title: schema.properties.title,
+      purpose: schema.properties.purpose,
+      price: schema.properties.price,
+      district: schema.properties.district,
+      city: schema.properties.city,
+      bedrooms: schema.properties.bedrooms,
+      suites: schema.properties.suites,
+      parking: schema.properties.parking,
+      areaUtil: schema.properties.areaUtil,
+      description: schema.properties.description,
+      youtubeUrl: schema.properties.youtubeUrl,
+      updatedAt: schema.properties.updatedAt,
+    })
+    .from(schema.properties)
+    .where(and(eq(schema.properties.published, 1), eq(schema.properties.status, "disponivel")))
+    .orderBy(desc(schema.properties.updatedAt))
+    .limit(250);
+}
+
+async function propertyById(db: Awaited<ReturnType<typeof getDb>>, propertyId: number) {
+  const [property] = await db
+    .select()
+    .from(schema.properties)
+    .where(eq(schema.properties.id, propertyId))
+    .limit(1);
+  return property ?? null;
+}
+
+function videoMetadata(property: NonNullable<Awaited<ReturnType<typeof propertyById>>>, baseUrl: string) {
+  const title = safeText(property.title || `${property.code} · ${property.district} · ${property.city}`, 100);
+  const details = [
+    property.code ? `Código do imóvel: ${property.code}` : null,
+    property.price > 0 ? `Valor: ${money(property.price)}` : null,
+    property.district ? `Bairro: ${property.district}` : null,
+    property.city ? `Cidade: ${property.city}` : null,
+    property.bedrooms > 0 ? `Dormitórios: ${property.bedrooms}` : null,
+    property.suites > 0 ? `Suítes: ${property.suites}` : null,
+    property.parking > 0 ? `Vagas: ${property.parking}` : null,
+    property.areaUtil > 0 ? `Área útil: ${property.areaUtil} m²` : null,
+    property.description ? `\n${safeText(property.description, 2800)}` : null,
+    `\nMais informações: ${baseUrl}`,
+  ].filter(Boolean);
+  return { title, description: safeText(details.join("\n"), 4900) };
+}
+
 export async function handleYouTubeOAuthRequest(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
+
+  if (request.method === "GET" && url.pathname === "/api/oauth/youtube/properties") {
+    const user = await resolveSession(request.headers);
+    if (!user) return Response.json({ ok: false, message: "Não autorizado" }, { status: 401 });
+    const db = await getDb();
+    const properties = await youtubeProperties(db);
+    return Response.json({ ok: true, properties });
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/oauth/youtube/upload-session") {
+    const user = await resolveSession(request.headers);
+    if (!user) return Response.json({ ok: false, message: "Sessão expirada. Entre novamente no painel." }, { status: 401 });
+
+    const body = await request.json().catch(() => ({})) as {
+      propertyId?: number;
+      fileName?: string;
+      fileSize?: number;
+      mime?: string;
+    };
+    const propertyId = Number(body.propertyId ?? 0);
+    const fileSize = Number(body.fileSize ?? 0);
+    const mime = safeText(body.mime, 120) || "application/octet-stream";
+    if (!Number.isInteger(propertyId) || propertyId <= 0) {
+      return Response.json({ ok: false, message: "Selecione um imóvel válido." }, { status: 400 });
+    }
+    if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > MAX_VIDEO_BYTES) {
+      return Response.json({ ok: false, message: "O vídeo precisa ter até 2 GB para este envio pelo CRM." }, { status: 400 });
+    }
+    if (!(mime.startsWith("video/") || mime === "application/octet-stream")) {
+      return Response.json({ ok: false, message: "Selecione um arquivo de vídeo válido." }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const current = await readConfig(db, INTEGRATION_KEY);
+    const property = await propertyById(db, propertyId);
+    if (!property) return Response.json({ ok: false, message: "Imóvel não encontrado." }, { status: 404 });
+    if (property.published !== 1 || property.status !== "disponivel") {
+      return Response.json({ ok: false, message: "Só imóvel aprovado/publicado e disponível pode ser enviado ao YouTube." }, { status: 400 });
+    }
+
+    const [previous] = await db
+      .select()
+      .from(schema.propertyChannels)
+      .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, "youtube")))
+      .orderBy(desc(schema.propertyChannels.id))
+      .limit(1);
+    if (previous?.status === "publicado") {
+      return Response.json({ ok: false, message: "Este imóvel já possui vídeo publicado no YouTube. Republicação ficará para a próxima etapa." }, { status: 409 });
+    }
+
+    try {
+      const access = await freshAccessToken(current.config);
+      const metadata = videoMetadata(property, siteBaseUrl(request.headers));
+      const uploadStart = new URL(UPLOAD_URL);
+      uploadStart.searchParams.set("uploadType", "resumable");
+      uploadStart.searchParams.set("part", "snippet,status");
+      const response = await fetch(uploadStart, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${access.token}`,
+          "content-type": "application/json; charset=UTF-8",
+          "x-upload-content-length": String(fileSize),
+          "x-upload-content-type": mime,
+        },
+        body: JSON.stringify({
+          snippet: {
+            title: metadata.title,
+            description: metadata.description,
+            categoryId: "22",
+          },
+          status: {
+            privacyStatus: "private",
+            selfDeclaredMadeForKids: false,
+          },
+        }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({})) as { error?: { message?: string } };
+        throw new Error(payload.error?.message || `YouTube recusou o início do upload (HTTP ${response.status}).`);
+      }
+      const uploadUrl = response.headers.get("location") ?? "";
+      if (!uploadUrl) throw new Error("O YouTube não devolveu a URL de upload resumível.");
+
+      await saveIntegration(db, INTEGRATION_KEY, {
+        config: { ...current.config, accessToken: access.token, tokenExpiresAt: access.expiresAt },
+        status: "conectado",
+        enabled: true,
+        lastError: null,
+      });
+      await logEvent(db, INTEGRATION_KEY, "sync", true, `Upload iniciado: ${property.code} · ${safeText(body.fileName, 180)}`);
+      return Response.json({
+        ok: true,
+        uploadUrl,
+        accessToken: access.token,
+        title: metadata.title,
+        description: metadata.description,
+        privacy: "private",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao iniciar o upload no YouTube.";
+      await saveIntegration(db, INTEGRATION_KEY, { status: "erro", lastError: message });
+      await logEvent(db, INTEGRATION_KEY, "error", false, message);
+      return Response.json({ ok: false, message }, { status: 400 });
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/oauth/youtube/upload-complete") {
+    const user = await resolveSession(request.headers);
+    if (!user) return Response.json({ ok: false, message: "Sessão expirada. Entre novamente no painel." }, { status: 401 });
+    const body = await request.json().catch(() => ({})) as { propertyId?: number; videoId?: string };
+    const propertyId = Number(body.propertyId ?? 0);
+    const videoId = safeText(body.videoId, 80);
+    if (!Number.isInteger(propertyId) || propertyId <= 0 || !videoId) {
+      return Response.json({ ok: false, message: "Retorno do upload inválido." }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const current = await readConfig(db, INTEGRATION_KEY);
+    const property = await propertyById(db, propertyId);
+    if (!property) return Response.json({ ok: false, message: "Imóvel não encontrado." }, { status: 404 });
+
+    try {
+      const access = await freshAccessToken(current.config);
+      const verifyUrl = new URL(VIDEOS_URL);
+      verifyUrl.searchParams.set("part", "id,snippet,status");
+      verifyUrl.searchParams.set("id", videoId);
+      const verify = await fetch(verifyUrl, { headers: { authorization: `Bearer ${access.token}` } });
+      const payload = await verify.json().catch(() => ({})) as {
+        items?: Array<{ id?: string; snippet?: { title?: string }; status?: { privacyStatus?: string; uploadStatus?: string } }>;
+        error?: { message?: string };
+      };
+      if (!verify.ok) throw new Error(payload.error?.message || `Falha ao confirmar vídeo no YouTube (HTTP ${verify.status}).`);
+      const video = payload.items?.find((item) => item.id === videoId);
+      if (!video?.id) throw new Error("O vídeo enviado não pôde ser confirmado na conta conectada.");
+
+      const link = `https://www.youtube.com/watch?v=${videoId}`;
+      const message = `Publicado no YouTube como privado. ID: ${videoId}. URL: ${link}`;
+      const [previous] = await db
+        .select()
+        .from(schema.propertyChannels)
+        .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, "youtube")))
+        .orderBy(desc(schema.propertyChannels.id))
+        .limit(1);
+
+      if (previous) {
+        await db
+          .update(schema.propertyChannels)
+          .set({ authorized: 1, status: "publicado", message, lastSyncAt: new Date(), updatedAt: new Date() })
+          .where(eq(schema.propertyChannels.id, previous.id));
+      } else {
+        await db.insert(schema.propertyChannels).values({
+          propertyId,
+          channel: "youtube",
+          authorized: 1,
+          status: "publicado",
+          message,
+          lastSyncAt: new Date(),
+        });
+      }
+
+      await db
+        .update(schema.properties)
+        .set({ youtubeUrl: link, updatedAt: new Date() })
+        .where(eq(schema.properties.id, propertyId));
+      await saveIntegration(db, INTEGRATION_KEY, {
+        config: { ...current.config, accessToken: access.token, tokenExpiresAt: access.expiresAt },
+        status: "conectado",
+        enabled: true,
+        lastError: null,
+      });
+      await logEvent(db, INTEGRATION_KEY, "sync", true, `${property.code}: ${message}`);
+      return Response.json({
+        ok: true,
+        message,
+        videoId,
+        link,
+        title: video.snippet?.title ?? property.title,
+        privacy: video.status?.privacyStatus ?? "private",
+        uploadStatus: video.status?.uploadStatus ?? "uploaded",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao registrar o vídeo publicado.";
+      await saveIntegration(db, INTEGRATION_KEY, { lastError: message });
+      await logEvent(db, INTEGRATION_KEY, "error", false, message);
+      return Response.json({ ok: false, message }, { status: 400 });
+    }
+  }
 
   if (request.method === "GET" && url.pathname === "/api/oauth/youtube/test") {
     const user = await resolveSession(request.headers);
