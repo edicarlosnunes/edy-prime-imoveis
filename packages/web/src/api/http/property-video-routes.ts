@@ -19,6 +19,7 @@ const ALLOWED_VIDEO_TYPES = [
   "video/mpeg",
 ];
 const GRAPH_VERSION = "v26.0";
+const INSTAGRAM_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`;
 const YOUTUBE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const YOUTUBE_UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos";
 
@@ -153,7 +154,7 @@ async function publishInstagramReel(propertyId: number, videoUrl: string, captio
     throw new Error("Este vídeo curto já foi publicado no Instagram. Marque republicar para enviar novamente.");
   }
 
-  const createResponse = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${config.userId}/media`, {
+  const createResponse = await fetch(`${INSTAGRAM_GRAPH_BASE}/${config.userId}/media`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -173,7 +174,7 @@ async function publishInstagramReel(propertyId: number, videoUrl: string, captio
   for (let attempt = 0; attempt < 12; attempt += 1) {
     await sleep(attempt === 0 ? 1800 : 2200);
     const statusResponse = await fetch(
-      `https://graph.facebook.com/${GRAPH_VERSION}/${created.id}?fields=status_code,status&access_token=${encodeURIComponent(config.accessToken)}`,
+      `${INSTAGRAM_GRAPH_BASE}/${created.id}?fields=status_code,status&access_token=${encodeURIComponent(config.accessToken)}`,
     );
     const status = await statusResponse.json().catch(() => ({})) as {
       status_code?: string;
@@ -191,7 +192,7 @@ async function publishInstagramReel(propertyId: number, videoUrl: string, captio
   }
   if (!ready) throw new Error("O Instagram ainda está processando o vídeo. Tente publicar novamente em alguns instantes.");
 
-  const publishResponse = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${config.userId}/media_publish`, {
+  const publishResponse = await fetch(`${INSTAGRAM_GRAPH_BASE}/${config.userId}/media_publish`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ creation_id: created.id, access_token: config.accessToken }),
@@ -202,7 +203,7 @@ async function publishInstagramReel(propertyId: number, videoUrl: string, captio
   }
 
   const permalinkResponse = await fetch(
-    `https://graph.facebook.com/${GRAPH_VERSION}/${published.id}?fields=permalink&access_token=${encodeURIComponent(config.accessToken)}`,
+    `${INSTAGRAM_GRAPH_BASE}/${published.id}?fields=permalink&access_token=${encodeURIComponent(config.accessToken)}`,
   );
   const permalinkPayload = await permalinkResponse.json().catch(() => ({})) as { permalink?: string };
   const message = `Vídeo curto publicado no Instagram. ID: ${published.id}.${permalinkPayload.permalink ? ` URL: ${permalinkPayload.permalink}` : ""}`;
