@@ -5,6 +5,7 @@ import { siteBaseUrl } from "../lib/base-url";
 const INTEGRATION_KEY = "youtube_publicacao";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels";
 const SCOPE = "https://www.googleapis.com/auth/youtube.upload";
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -16,8 +17,97 @@ function appRedirect(request: Request, path: string) {
   return Response.redirect(new URL(path, request.url).toString(), 302);
 }
 
+async function freshAccessToken(config: Record<string, string>) {
+  const clientId = (config.clientId ?? "").trim();
+  const clientSecret = (config.clientSecret ?? "").trim();
+  const refreshToken = (config.refreshToken ?? "").trim();
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error("Conecte a conta do Google antes de testar o canal.");
+  }
+
+  const response = await fetch(TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    access_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+  };
+  if (!response.ok || !payload.access_token) {
+    throw new Error(payload.error_description || payload.error || `Falha ao renovar acesso ao Google (HTTP ${response.status}).`);
+  }
+  return {
+    token: payload.access_token,
+    expiresAt: String(Date.now() + Math.max(0, Number(payload.expires_in ?? 3600) - 60) * 1000),
+  };
+}
+
 export async function handleYouTubeOAuthRequest(request: Request): Promise<Response | null> {
   const url = new URL(request.url);
+
+  if (request.method === "GET" && url.pathname === "/api/oauth/youtube/test") {
+    const user = await resolveSession(request.headers);
+    if (!user) {
+      return Response.json({ ok: false, message: "Sessão expirada. Entre novamente no painel." }, { status: 401 });
+    }
+
+    const db = await getDb();
+    const current = await readConfig(db, INTEGRATION_KEY);
+    try {
+      const access = await freshAccessToken(current.config);
+      const channelUrl = new URL(CHANNELS_URL);
+      channelUrl.searchParams.set("part", "id,snippet");
+      channelUrl.searchParams.set("mine", "true");
+      const channelResponse = await fetch(channelUrl, {
+        headers: { authorization: `Bearer ${access.token}` },
+      });
+      const channelPayload = await channelResponse.json().catch(() => ({})) as {
+        items?: Array<{ id?: string; snippet?: { title?: string; customUrl?: string } }>;
+        error?: { message?: string };
+      };
+      if (!channelResponse.ok) {
+        throw new Error(channelPayload.error?.message || `YouTube Data API respondeu HTTP ${channelResponse.status}.`);
+      }
+      const channel = channelPayload.items?.[0];
+      if (!channel?.id) {
+        throw new Error("A conta autorizada não possui um canal do YouTube disponível para publicação.");
+      }
+
+      const title = channel.snippet?.title?.trim() || "Canal do YouTube";
+      const nextConfig = {
+        ...current.config,
+        accessToken: access.token,
+        tokenExpiresAt: access.expiresAt,
+        channelId: channel.id,
+        channelTitle: title,
+        channelHandle: channel.snippet?.customUrl ?? "",
+        lastChannelTestAt: new Date().toISOString(),
+      };
+      await saveIntegration(db, INTEGRATION_KEY, {
+        config: nextConfig,
+        status: "conectado",
+        enabled: true,
+        lastError: null,
+      });
+      const message = `Conectado ao YouTube: ${title} (${channel.id}).`;
+      await logEvent(db, INTEGRATION_KEY, "test", true, message);
+      return Response.json({ ok: true, message, channelId: channel.id, channelTitle: title });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Falha ao testar a conexão com o YouTube.";
+      await saveIntegration(db, INTEGRATION_KEY, { status: "erro", lastError: message });
+      await logEvent(db, INTEGRATION_KEY, "test", false, message);
+      return Response.json({ ok: false, message }, { status: 400 });
+    }
+  }
+
   if (request.method !== "GET") return null;
 
   if (url.pathname === "/api/oauth/youtube/start") {
