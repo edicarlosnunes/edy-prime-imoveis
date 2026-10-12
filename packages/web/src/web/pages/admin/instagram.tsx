@@ -16,7 +16,7 @@ type ConfigState = {
 };
 
 function useInstagramOverview() {
-  return useQuery(orpc.adminInstagram.overview.queryOptions({ staleTime: 10_000 }));
+  return useQuery(orpc.adminIntegrations.instagram.overview.queryOptions({ staleTime: 10_000 }));
 }
 
 function money(value: number) {
@@ -84,7 +84,7 @@ function InstagramPage() {
     });
   }, [overview.data]);
 
-  const save = useMutation(orpc.adminInstagram.save.mutationOptions({
+  const save = useMutation(orpc.adminIntegrations.instagram.save.mutationOptions({
     onSuccess: async (result) => {
       setError(null);
       setFeedback(`Configuração salva · ${statusLabel[result.status] ?? result.status}`);
@@ -93,7 +93,7 @@ function InstagramPage() {
     onError: (caught) => setError(errorMessage(caught)),
   }));
 
-  const test = useMutation(orpc.adminInstagram.test.mutationOptions({
+  const test = useMutation(orpc.adminIntegrations.instagram.test.mutationOptions({
     onSuccess: async (result) => {
       setError(result.ok ? null : result.message);
       setFeedback(result.ok ? result.message : null);
@@ -102,7 +102,7 @@ function InstagramPage() {
     onError: (caught) => setError(errorMessage(caught)),
   }));
 
-  const publish = useMutation(orpc.adminInstagram.publish.mutationOptions({
+  const publish = useMutation(orpc.adminIntegrations.instagram.publish.mutationOptions({
     onSuccess: async (result) => {
       setError(null);
       setFeedback(result.message);
