@@ -36,6 +36,7 @@ import {
   isStrongToken,
   randomWebhookToken,
 } from "../lib/lead-webhook-token";
+import { adminInstagram } from "./admin-instagram";
 
 const keyInput = z.object({ key: z.string().min(2).max(60) });
 
@@ -103,6 +104,8 @@ function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
 }
 
 export const adminIntegrations = {
+  instagram: adminInstagram,
+
   /** Catálogo + situação de cada integração, agrupado por categoria. */
   list: adminBase.handler(async ({ context }) => {
     const rows = await context.db.select().from(schema.integrations);
