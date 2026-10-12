@@ -202,68 +202,79 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
         </Badge>
       </div>
 
-      {propertyId === null ? (
-        <div className="mt-4 rounded-[6px] border border-red-200 bg-red-50 p-4 text-xs text-red-800">
-          O imóvel pode ser finalizado normalmente. Como ainda não existe um código interno salvo para este cadastro, os vídeos ficam como pendência e podem ser anexados ao abrir o imóvel em <strong>Editar</strong>.
-        </div>
-      ) : loading ? (
+      {loading ? (
         <div className="mt-4 flex items-center gap-2 text-xs text-muted"><Loader2 className="h-4 w-4 animate-spin" /> Carregando vídeos…</div>
       ) : (
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          {SLOTS.map((slot) => {
-            const video = videos.find((item) => item.kind === slot.kind);
-            const slotBusy = busy === slot.kind;
-            const inputRef = slot.kind === "short_social" ? shortInput : longInput;
-            return (
-              <div key={slot.kind} className={`rounded-[8px] border p-4 ${video ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50/50"}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-deep">{slot.title}</p>
-                  <Badge tone={video ? "green" : "red"}>{video ? "PRONTO" : "PENDENTE"}</Badge>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-muted">{slot.description}</p>
-                <p className="mt-1 text-[11px] font-medium text-deep">{slot.recommendation}</p>
-
-                {video && (
-                  <div className="mt-3 rounded border border-line bg-white p-3">
-                    <div className="flex items-center gap-2 text-xs text-emerald-800">
-                      <CheckCircle2 className="h-4 w-4" /> Arquivo vinculado ao imóvel
-                    </div>
-                    <p className="mt-1 truncate text-[11px] text-muted">{video.fileName || "vídeo"}</p>
-                    <p className="mt-0.5 text-[11px] text-muted">
-                      {[durationLabel(video.durationSeconds), fileSize(video.size)].filter(Boolean).join(" · ")}
-                    </p>
-                    <a href={video.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[11px] text-brass underline underline-offset-2">Abrir vídeo</a>
+        <>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {SLOTS.map((slot) => {
+              const video = videos.find((item) => item.kind === slot.kind);
+              const slotBusy = busy === slot.kind;
+              const inputRef = slot.kind === "short_social" ? shortInput : longInput;
+              const canUpload = propertyId !== null;
+              return (
+                <div key={slot.kind} className={`rounded-[8px] border p-4 ${video ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50/50"}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-deep">{slot.title}</p>
+                    <Badge tone={video ? "green" : "red"}>{video ? "PRONTO" : "PENDENTE"}</Badge>
                   </div>
-                )}
+                  <p className="mt-2 text-xs leading-relaxed text-muted">{slot.description}</p>
+                  <p className="mt-1 text-[11px] font-medium text-deep">{slot.recommendation}</p>
 
-                {slotBusy && (
-                  <div className="mt-3">
-                    <div className="h-1.5 overflow-hidden rounded bg-bone"><div className="h-full bg-deep transition-all" style={{ width: `${Math.max(3, progress)}%` }} /></div>
-                    <p className="mt-1 text-[11px] text-muted">Enviando… {progress}%</p>
-                  </div>
-                )}
-
-                <input
-                  ref={inputRef}
-                  type="file"
-                  accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/mpeg"
-                  className="hidden"
-                  onChange={(event) => void choose(slot.kind, event.target.files?.[0] ?? null)}
-                />
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Btn type="button" tone="outline" disabled={Boolean(busy)} onClick={() => inputRef.current?.click()}>
-                    <Upload className="h-3.5 w-3.5" /> {video ? "Substituir vídeo" : "Selecionar vídeo"}
-                  </Btn>
                   {video && (
-                    <Btn type="button" tone="outline" disabled={Boolean(busy)} onClick={() => void remove(slot.kind)}>
-                      <Trash2 className="h-3.5 w-3.5" /> Remover
-                    </Btn>
+                    <div className="mt-3 rounded border border-line bg-white p-3">
+                      <div className="flex items-center gap-2 text-xs text-emerald-800">
+                        <CheckCircle2 className="h-4 w-4" /> Arquivo vinculado ao imóvel
+                      </div>
+                      <p className="mt-1 truncate text-[11px] text-muted">{video.fileName || "vídeo"}</p>
+                      <p className="mt-0.5 text-[11px] text-muted">
+                        {[durationLabel(video.durationSeconds), fileSize(video.size)].filter(Boolean).join(" · ")}
+                      </p>
+                      <a href={video.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[11px] text-brass underline underline-offset-2">Abrir vídeo</a>
+                    </div>
                   )}
+
+                  {slotBusy && (
+                    <div className="mt-3">
+                      <div className="h-1.5 overflow-hidden rounded bg-bone"><div className="h-full bg-deep transition-all" style={{ width: `${Math.max(3, progress)}%` }} /></div>
+                      <p className="mt-1 text-[11px] text-muted">Enviando… {progress}%</p>
+                    </div>
+                  )}
+
+                  <input
+                    ref={inputRef}
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/mpeg"
+                    className="hidden"
+                    onChange={(event) => void choose(slot.kind, event.target.files?.[0] ?? null)}
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Btn
+                      type="button"
+                      tone="outline"
+                      disabled={Boolean(busy) || !canUpload}
+                      title={canUpload ? undefined : "Finalize o cadastro do imóvel para anexar o vídeo."}
+                      onClick={() => inputRef.current?.click()}
+                    >
+                      <Upload className="h-3.5 w-3.5" /> {video ? "Substituir vídeo" : "Selecionar vídeo"}
+                    </Btn>
+                    {video && (
+                      <Btn type="button" tone="outline" disabled={Boolean(busy)} onClick={() => void remove(slot.kind)}>
+                        <Trash2 className="h-3.5 w-3.5" /> Remover
+                      </Btn>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+          {propertyId === null && (
+            <p className="mt-3 text-[11px] text-muted">
+              Os dois campos já fazem parte deste cadastro. Como o imóvel ainda não recebeu o código interno definitivo, os botões de envio serão liberados assim que o cadastro for finalizado e aberto em Editar. Isso não bloqueia o imóvel e não muda nenhuma outra etapa.
+            </p>
+          )}
+        </>
       )}
 
       <ErrorNote message={error} />
