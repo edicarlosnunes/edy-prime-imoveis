@@ -5,6 +5,7 @@
 // in the ?__path= query param via the rewrite in vercel.json.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import app from "../src/api";
+import { handleYouTubeOAuthRequest } from "../src/api/http/youtube-oauth-routes";
 
 export default async function handler(
   req: IncomingMessage,
@@ -41,9 +42,9 @@ export default async function handler(
       body = chunks.length > 0 ? Buffer.concat(chunks) : undefined;
     }
 
-    const response = await app.fetch(
-      new Request(target.toString(), { method, headers, body }),
-    );
+    const request = new Request(target.toString(), { method, headers, body });
+    const oauthResponse = await handleYouTubeOAuthRequest(request);
+    const response = oauthResponse ?? await app.fetch(request);
 
     res.statusCode = response.status;
     response.headers.forEach((value, key) => {
