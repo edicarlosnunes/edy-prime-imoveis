@@ -51,6 +51,20 @@ function YouTubePage() {
     });
   }, [overview.data]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const result = new URLSearchParams(window.location.search).get("youtube");
+    if (result === "connected") {
+      setError(null);
+      setFeedback("Google autorizado. O refresh token do YouTube foi salvo com segurança no servidor.");
+      void queryClient.invalidateQueries();
+      window.history.replaceState({}, "", "/admin/youtube");
+    } else if (result) {
+      setFeedback(null);
+      setError("A autorização do Google não foi concluída. Tente Conectar com Google novamente.");
+    }
+  }, [queryClient]);
+
   const save = useMutation(orpc.adminIntegrations.instagram.youtubeSave.mutationOptions({
     onSuccess: async () => {
       setError(null);
@@ -144,7 +158,12 @@ function YouTubePage() {
           >
             <Save className="h-4 w-4" /> Salvar conexão
           </Btn>
-          <Btn disabled>
+          <Btn
+            disabled={!saved}
+            onClick={() => {
+              window.location.href = "/api/oauth/youtube/start";
+            }}
+          >
             <Youtube className="h-4 w-4" /> Conectar com Google
           </Btn>
           <Btn tone="outline" disabled>
@@ -153,7 +172,7 @@ function YouTubePage() {
           <Badge tone={saved ? "amber" : "neutral"}>{saved ? "Credenciais salvas" : "Aguardando Google Cloud"}</Badge>
         </div>
         <p className="mt-3 text-[11px] text-muted">
-          Primeiro salve o Client ID e o Client Secret. Na etapa seguinte o botão “Conectar com Google” será liberado para a autorização OAuth 2.0; nenhum token permanente será colado manualmente.
+          Depois de salvar as credenciais, clique em “Conectar com Google”. O Google solicitará autorização do escopo youtube.upload e o CRM guardará o refresh token somente no servidor.
         </p>
       </Card>
 
