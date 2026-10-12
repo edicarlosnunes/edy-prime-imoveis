@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, Copy, Link2, Plug, RefreshCw, ShieldCheck, TestTube } from "lucide-react";
+import { ArrowRight, Check, Copy, FolderOpen, Link2, Plug, RefreshCw, ShieldCheck, TestTube } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import { Badge, Btn, Card, Empty, ErrorNote, Field, Input, Modal, Select, Stat, Textarea, dateTimeLabel } from "../../components/admin/ui";
@@ -20,7 +20,7 @@ const statusLabel: Record<string, { label: string; tone: "green" | "amber" | "re
   configurando: { label: "Configurando", tone: "amber" },
   aguardando_credencial: { label: "Aguardando credencial", tone: "amber" },
   erro: { label: "Com erro", tone: "red" },
-  nao_configurado: { label: "Não configurado", tone: "neutral" },
+  nao_configurado: { label: "Aguardando configuração", tone: "neutral" },
   nao_disponivel: { label: "Não disponível", tone: "neutral" },
 };
 
@@ -76,6 +76,57 @@ function IntegrationCard({ item, onOpen }: { item: Item; onOpen: () => void }) {
       {item.lastError && <p className="text-[11px] text-red-700">{item.lastError}</p>}
     </button>
   );
+}
+
+function SocialFolder({
+  mark,
+  name,
+  description,
+  href,
+  next,
+}: {
+  mark: string;
+  name: string;
+  description: string;
+  href?: string;
+  next?: boolean;
+}) {
+  const content = (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-[4px] bg-deep text-xs font-semibold text-white">
+            {mark}
+          </span>
+          <div>
+            <p className="text-sm font-medium text-deep">{name}</p>
+            <p className="text-[11px] text-muted">Publicação de imóveis</p>
+          </div>
+        </div>
+        <FolderOpen className="h-5 w-5 text-brass" />
+      </div>
+      <p className="mt-3 text-xs leading-relaxed text-muted">{description}</p>
+      <div className="mt-4 flex items-center justify-between border-t border-line/70 pt-3">
+        <span className="text-[11px] font-medium text-brass">
+          {next ? "Próxima etapa" : "Abrir integração"}
+        </span>
+        {!next && <ArrowRight className="h-4 w-4 text-brass" />}
+      </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        className="block rounded-[4px] border border-line bg-white/80 p-4 transition-colors hover:border-brass"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return <div className="rounded-[4px] border border-line bg-white/60 p-4">{content}</div>;
 }
 
 function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
@@ -339,7 +390,7 @@ function IntegrationsPage() {
   return (
     <AdminLayout
       title="Central de Integrações"
-      subtitle="Portais, WhatsApp, Meta, Google e feeds — cada um com o método oficial e o que ainda falta."
+      subtitle="Portais, redes sociais, WhatsApp, Google e feeds — cada canal no seu lugar."
     >
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Integrações" value={counts?.total ?? "—"} />
@@ -348,9 +399,41 @@ function IntegrationsPage() {
         <Stat label="Com erro" value={counts?.erro ?? "—"} />
       </div>
 
+      <section className="mt-6">
+        <header className="mb-3 flex items-center gap-2">
+          <FolderOpen className="h-4 w-4 text-brass" />
+          <div>
+            <h2 className="display text-xl text-deep">Publicação em redes sociais</h2>
+            <p className="text-[11px] text-muted">
+              Uma pasta para cada canal de saída do CRM. Configuração e publicação ficam centralizadas aqui.
+            </p>
+          </div>
+        </header>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <SocialFolder
+            mark="FB"
+            name="Facebook"
+            description="Configurar a Página e publicar os imóveis já aprovados no CRM."
+            href="/admin/facebook"
+          />
+          <SocialFolder
+            mark="IG"
+            name="Instagram"
+            description="Pasta reservada para a próxima etapa: publicação automática do conteúdo aprovado."
+            next
+          />
+          <SocialFolder
+            mark="YT"
+            name="YouTube"
+            description="Pasta reservada para a próxima etapa: envio dos vídeos dos imóveis pelo CRM."
+            next
+          />
+        </div>
+      </section>
+
       {query.isLoading && <Empty>Carregando integrações…</Empty>}
 
-      <div className="mt-6 space-y-8">
+      <div className="mt-8 space-y-8">
         {(query.data?.categories ?? []).map((category) => {
           const group = items.filter((item) => item.category === category);
           if (group.length === 0) return null;
