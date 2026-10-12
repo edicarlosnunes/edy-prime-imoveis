@@ -6,7 +6,7 @@ const INTEGRATION_KEY = "youtube_publicacao";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels";
-const SCOPE = "https://www.googleapis.com/auth/youtube.upload";
+const SCOPE = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly";
 const STATE_TTL_MS = 10 * 60 * 1000;
 
 function callbackUrl(headers: Headers) {
