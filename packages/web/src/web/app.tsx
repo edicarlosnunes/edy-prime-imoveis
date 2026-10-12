@@ -15,6 +15,7 @@ import AdminSiteEditor from "./pages/admin/site-editor";
 import AdminIntegrations from "./pages/admin/integrations";
 import AdminFacebook from "./pages/admin/facebook";
 import AdminInstagram from "./pages/admin/instagram";
+import AdminYouTube from "./pages/admin/youtube";
 import AdminPortals from "./pages/admin/portals";
 import AdminConversations from "./pages/admin/conversations";
 import AdminAi from "./pages/admin/ai";
@@ -55,6 +56,7 @@ function App() {
         <Route path="/admin/integracoes" component={AdminIntegrations} />
         <Route path="/admin/facebook" component={AdminFacebook} />
         <Route path="/admin/instagram" component={AdminInstagram} />
+        <Route path="/admin/youtube" component={AdminYouTube} />
         <Route path="/admin/portais" component={AdminPortals} />
         <Route path="/admin/conversas" component={AdminConversations} />
         <Route path="/admin/ia" component={AdminAi} />
