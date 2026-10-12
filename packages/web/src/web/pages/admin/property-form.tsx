@@ -72,6 +72,7 @@ import {
   PropertyGallery,
   type GalleryImage,
 } from "../../components/admin/property-gallery";
+import { PropertyVideosSection } from "../../components/admin/property-videos-section";
 import { propertyProgress } from "../../lib/property-progress";
 import { MoneyInputError, formatMoneyInput, parseMoneyInput } from "../../lib/money-input";
 import {
@@ -1128,6 +1129,7 @@ export function PropertyForm({
                     <label className="flex items-start gap-3 text-sm text-deep"><input type="checkbox" className="mt-1" checked={form.watermarkOff} onChange={(e) => set("watermarkOff", e.target.checked)} /><span>Não aplicar marca d'água neste imóvel<span className="mt-0.5 block text-[11px] text-muted">Vale só para este cadastro. A configuração global da marca d'água não é alterada.</span></span></label>
                   </div>
                   <p className="border-t border-line pt-4 text-[11px] text-muted">Envio para portais/XML continua sendo controlado na tela Portais.</p>
+                  <PropertyVideosSection propertyId={propertyId} />
                 </>
               )}
             </div>
