@@ -39,6 +39,7 @@ function YouTubePage() {
   const [config, setConfig] = useState<YouTubeConfig>({ clientId: "", clientSecret: "", privacy: "private" });
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const overview = useQuery(orpc.adminIntegrations.instagram.youtubeOverview.queryOptions({ staleTime: 10_000 }));
 
@@ -79,7 +80,27 @@ function YouTubePage() {
 
   const hasClientId = config.clientId.trim().length > 10;
   const hasSecret = config.clientSecret.trim().length > 0;
-  const saved = overview.data?.status === "configurando" || overview.data?.status === "conectado";
+  const saved = Boolean(overview.data?.clientId && overview.data?.clientSecret);
+  const connected = overview.data?.status === "conectado";
+
+  async function testConnection() {
+    setTesting(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const response = await fetch("/api/oauth/youtube/test", { credentials: "same-origin" });
+      const payload = await response.json().catch(() => ({})) as { ok?: boolean; message?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.message || "Falha ao testar a conexão com o YouTube.");
+      }
+      setFeedback(payload.message || "Canal do YouTube confirmado com sucesso.");
+      await queryClient.invalidateQueries();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao testar a conexão com o YouTube.");
+    } finally {
+      setTesting(false);
+    }
+  }
 
   return (
     <AdminLayout
@@ -97,7 +118,7 @@ function YouTubePage() {
       <Card title="Cronograma · começo, meio e fim">
         <div className="grid gap-3 lg:grid-cols-4">
           {steps.map((step, index) => {
-            const done = index === 0 && saved;
+            const done = (index === 0 && saved) || (connected && index <= 2);
             return (
               <div key={step.title} className="rounded-[4px] border border-line bg-bone/25 p-4">
                 <div className="flex items-center gap-2">
@@ -166,13 +187,16 @@ function YouTubePage() {
           >
             <Youtube className="h-4 w-4" /> Conectar com Google
           </Btn>
-          <Btn tone="outline" disabled>
-            <RefreshCw className="h-4 w-4" /> Testar conexão
+          <Btn tone="outline" disabled={!saved || testing} onClick={() => void testConnection()}>
+            <RefreshCw className={`h-4 w-4 ${testing ? "animate-spin" : ""}`} />
+            {testing ? "Testando" : "Testar conexão"}
           </Btn>
-          <Badge tone={saved ? "amber" : "neutral"}>{saved ? "Credenciais salvas" : "Aguardando Google Cloud"}</Badge>
+          <Badge tone={connected ? "green" : saved ? "amber" : "neutral"}>
+            {connected ? "YouTube conectado" : saved ? "Credenciais salvas" : "Aguardando Google Cloud"}
+          </Badge>
         </div>
         <p className="mt-3 text-[11px] text-muted">
-          Depois de salvar as credenciais, clique em “Conectar com Google”. O Google solicitará autorização do escopo youtube.upload e o CRM guardará o refresh token somente no servidor.
+          Depois de salvar as credenciais, clique em “Conectar com Google”. Após a autorização, use “Testar conexão” para confirmar pela API qual canal do YouTube foi conectado.
         </p>
       </Card>
 
