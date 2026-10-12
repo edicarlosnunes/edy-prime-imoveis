@@ -419,8 +419,8 @@ function IntegrationsPage() {
           <SocialFolder
             mark="IG"
             name="Instagram"
-            description="Pasta reservada para a próxima etapa: publicação automática do conteúdo aprovado."
-            next
+            description="Conectar @e_santos_corretor e publicar os imóveis aprovados usando as fotos já cadastradas no CRM."
+            href="/admin/instagram"
           />
           <SocialFolder
             mark="YT"
