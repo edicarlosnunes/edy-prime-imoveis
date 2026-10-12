@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Download, Film, Image as ImageIcon, Sparkles } from "lucide-react";
-import type { GalleryImage } from "./property-gallery";
+import { orpc } from "../../lib/api";
 import { Badge, Btn } from "./ui";
 
 type ThemeKey = "ouro" | "azul" | "oliva" | "claro";
-
 type VideoRow = { kind?: string };
 
 type Theme = {
@@ -24,7 +24,16 @@ const THEMES: Record<ThemeKey, Theme> = {
 
 const BADGES = ["Oportunidade", "Exclusivo", "Alto padrão", "Destaque", "Tour completo", "Nova captação"] as const;
 
-function formatInfo(label: string, value: string | number) {
+function money(value: number | null | undefined) {
+  if (!value) return "Consulte o valor";
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatInfo(label: string, value: number | string | null | undefined) {
   const text = String(value ?? "").trim();
   return text && text !== "0" ? `${text} ${label}` : null;
 }
@@ -56,42 +65,17 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
   if (line && lineNo < maxLines) ctx.fillText(line, x, y + lineNo * lineHeight);
 }
 
-export function PropertyMarketingBook({
-  propertyId,
-  images,
-  title,
-  highlight,
-  price,
-  opportunityPrice,
-  district,
-  city,
-  bedrooms,
-  suites,
-  parking,
-  areaUtil,
-  code,
-  description,
-}: {
-  propertyId: number | null;
-  images: GalleryImage[];
-  title: string;
-  highlight: string;
-  price: string;
-  opportunityPrice: string;
-  district: string;
-  city: string;
-  bedrooms: string;
-  suites: string;
-  parking: string;
-  areaUtil: string;
-  code: string;
-  description: string;
-}) {
+export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
   const [badge, setBadge] = useState<(typeof BADGES)[number]>("Destaque");
   const [shortReady, setShortReady] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const detail = useQuery({
+    ...orpc.adminProperties.get.queryOptions({ input: { id: propertyId ?? 0 } }),
+    enabled: propertyId !== null,
+  });
 
   useEffect(() => {
     if (propertyId === null) {
@@ -100,10 +84,7 @@ export function PropertyMarketingBook({
     }
     let alive = true;
     void fetch(`/api/admin/property-videos/${propertyId}`, { credentials: "same-origin" })
-      .then(async (response) => {
-        if (!response.ok) return { videos: [] as VideoRow[] };
-        return response.json() as Promise<{ videos?: VideoRow[] }>;
-      })
+      .then(async (response) => response.ok ? response.json() as Promise<{ videos?: VideoRow[] }> : { videos: [] as VideoRow[] })
       .then((payload) => {
         if (alive) setShortReady(Boolean(payload.videos?.some((video) => video.kind === "short_social")));
       })
@@ -113,23 +94,25 @@ export function PropertyMarketingBook({
     return () => { alive = false; };
   }, [propertyId]);
 
-  const primary = useMemo(() => images.find((image) => image.isPrimary) ?? images[0] ?? null, [images]);
+  const property = detail.data;
+  const images = property?.images ?? [];
+  const primary = useMemo(() => images.find((image) => image.isPrimary === 1) ?? images[0] ?? null, [images]);
   const maxPhotos = shortReady ? 8 : 9;
   const bookPhotos = useMemo(() => images.slice(0, maxPhotos), [images, maxPhotos]);
   const theme = THEMES[themeKey];
-  const headline = (highlight || title || "Imóvel em destaque").trim();
-  const priceText = (opportunityPrice || price).trim() ? `R$ ${(opportunityPrice || price).trim()}` : "Consulte o valor";
+  const headline = (property?.highlight || property?.title || "Imóvel em destaque").trim();
+  const priceText = money(property?.opportunityPrice ?? property?.price);
   const info = [
-    formatInfo("dorm.", bedrooms),
-    formatInfo("suíte", suites),
-    formatInfo("vaga", parking),
-    formatInfo("m²", areaUtil),
+    formatInfo("dorm.", property?.bedrooms),
+    formatInfo("suíte", property?.suites),
+    formatInfo("vaga", property?.parking),
+    formatInfo("m²", property?.areaUtil),
   ].filter(Boolean).join(" · ");
-  const location = [district, city].filter(Boolean).join(" · ");
+  const location = [property?.district, property?.city].filter(Boolean).join(" · ");
   const mediaCount = Number(shortReady) + 1 + bookPhotos.length;
 
   async function downloadCover() {
-    if (!primary?.url) {
+    if (!primary?.url || !property) {
       setError("Cadastre ao menos uma foto para gerar a capa premium.");
       return;
     }
@@ -152,24 +135,24 @@ export function PropertyMarketingBook({
       if (!ctx) throw new Error("Seu navegador não conseguiu preparar a capa.");
 
       cropImage(ctx, image, 1080, 1080);
-      const gradient = ctx.createLinearGradient(0, 360, 0, 1080);
+      const gradient = ctx.createLinearGradient(0, 330, 0, 1080);
       gradient.addColorStop(0, "rgba(0,0,0,0.02)");
-      gradient.addColorStop(0.5, theme.overlay);
+      gradient.addColorStop(0.52, theme.overlay);
       gradient.addColorStop(1, theme.surface);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, 1080, 1080);
 
       ctx.fillStyle = theme.accent;
-      ctx.fillRect(64, 60, 250, 54);
+      ctx.fillRect(64, 60, 270, 54);
       ctx.fillStyle = themeKey === "claro" ? "#FFFFFF" : "#15110C";
       ctx.font = "700 25px Arial";
       ctx.fillText(badge.toUpperCase(), 84, 96);
 
       ctx.fillStyle = theme.ink;
       ctx.font = "700 34px Arial";
-      ctx.fillText("E. SANTOS", 64, 650);
+      ctx.fillText("E. SANTOS", 64, 646);
       ctx.font = "700 57px Arial";
-      wrapText(ctx, headline, 64, 720, 900, 66, 3);
+      wrapText(ctx, headline, 64, 718, 900, 66, 3);
 
       ctx.fillStyle = theme.accent;
       ctx.font = "700 43px Arial";
@@ -189,7 +172,7 @@ export function PropertyMarketingBook({
       const data = canvas.toDataURL("image/png", 0.94);
       const link = document.createElement("a");
       link.href = data;
-      link.download = `e-santos-${code || propertyId || "imovel"}-capa-premium.png`;
+      link.download = `e-santos-${property.code || propertyId || "imovel"}-capa-premium.png`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -200,17 +183,21 @@ export function PropertyMarketingBook({
     }
   }
 
+  if (propertyId === null) {
+    return (
+      <div className="mt-5 border-t border-line pt-5">
+        <div className="flex items-center gap-2 text-deep"><BookOpen className="h-4 w-4" /><p className="text-sm font-medium">Book / carrossel premium</p></div>
+        <p className="mt-1 text-[11px] text-muted">O book será montado automaticamente depois que o imóvel receber o código interno e for aberto em Editar.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-5 border-t border-line pt-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-deep">
-            <BookOpen className="h-4 w-4" />
-            <p className="text-sm font-medium">Book / carrossel premium</p>
-          </div>
-          <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-muted">
-            Usa o cadastro, a foto principal e a ordem atual da galeria. Não altera nem duplica as fotos originais do imóvel.
-          </p>
+          <div className="flex items-center gap-2 text-deep"><BookOpen className="h-4 w-4" /><p className="text-sm font-medium">Book / carrossel premium</p></div>
+          <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-muted">Usa a descrição já aprovada, a foto principal e a ordem atual da galeria. Não altera nem duplica as fotos originais.</p>
         </div>
         <Badge tone={primary ? "green" : "amber"}>{primary ? `${mediaCount} MÍDIAS PREPARADAS` : "AGUARDANDO FOTOS"}</Badge>
       </div>
@@ -218,23 +205,13 @@ export function PropertyMarketingBook({
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-deep">
-              <span className="mb-1 block font-medium">Estilo da capa</span>
-              <select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">
-                {Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-              </select>
-            </label>
-            <label className="text-xs text-deep">
-              <span className="mb-1 block font-medium">Selo comercial</span>
-              <select value={badge} onChange={(event) => setBadge(event.target.value as (typeof BADGES)[number])} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">
-                {BADGES.map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-            </label>
+            <label className="text-xs text-deep"><span className="mb-1 block font-medium">Estilo da capa</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
+            <label className="text-xs text-deep"><span className="mb-1 block font-medium">Selo comercial</span><select value={badge} onChange={(event) => setBadge(event.target.value as (typeof BADGES)[number])} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{BADGES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           </div>
 
           <div className="rounded-[10px] border border-line bg-bone/30 p-3">
             <div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">{description.trim() ? description.trim().slice(0, 340) + (description.trim().length > 340 ? "…" : "") : "A descrição já existente será usada pelas integrações; este módulo não cria uma segunda descrição."}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-muted">{property?.description?.trim() ? property.description.trim().slice(0, 340) + (property.description.trim().length > 340 ? "…" : "") : "A descrição já existente será usada pelas integrações; este módulo não cria uma segunda descrição."}</p>
           </div>
 
           <div className="rounded-[10px] border border-line bg-white p-3">
@@ -242,9 +219,7 @@ export function PropertyMarketingBook({
             <ol className="mt-2 space-y-1.5 text-[11px] text-muted">
               {shortReady && <li className="flex items-center gap-2"><Film className="h-3.5 w-3.5" /> 1. Vídeo curto / cabeça</li>}
               <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> {shortReady ? 2 : 1}. Capa premium E. Santos</li>
-              {bookPhotos.map((image, index) => (
-                <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}{image.isPrimary ? " · capa original" : ""}</li>
-              ))}
+              {bookPhotos.map((image, index) => <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}{image.isPrimary === 1 ? " · capa original" : ""}</li>)}
             </ol>
             <p className="mt-2 text-[10px] text-muted">Padrão-base: até 10 mídias. As integrações futuras adaptarão esse book ao limite de cada plataforma.</p>
           </div>
@@ -254,25 +229,11 @@ export function PropertyMarketingBook({
           <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line" style={{ background: theme.surface }}>
             {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
             <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
-            <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5">
-              <span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span>
-              <span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Veja o book</span>
-            </div>
-            <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}>
-              <p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p>
-              <h4 className="mt-2 max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4>
-              <p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p>
-              <p className="mt-2 text-xs">{location}</p>
-              <p className="mt-1 text-xs">{info}</p>
-            </div>
+            <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Veja o book</span></div>
+            <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[10px] text-muted">Prévia quadrada 1:1. A galeria original permanece intacta.</p>
-            <Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}>
-              <Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa PNG"}
-            </Btn>
-          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-muted">Prévia quadrada 1:1. A galeria original permanece intacta.</p><Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa PNG"}</Btn></div>
           {error && <p className="mt-2 text-[11px] text-red-700">{error}</p>}
         </div>
       </div>
