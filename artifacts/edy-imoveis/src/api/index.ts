@@ -28,6 +28,7 @@ import { adminSite } from "./routes/admin-site";
 import { adminMedia } from "./routes/admin-media";
 import { adminIntegrations } from "./routes/admin-integrations";
 import { adminChannels } from "./routes/admin-channels";
+import { adminFacebook } from "./routes/admin-facebook";
 import { adminInbox } from "./routes/admin-inbox";
 import { adminAgents } from "./routes/admin-agents";
 import { adminAutomations } from "./routes/admin-automations";
@@ -84,6 +85,7 @@ export const router = {
   adminMedia,
   adminIntegrations,
   adminChannels,
+  adminFacebook,
   adminInbox,
   adminAgents,
   adminAutomations,
