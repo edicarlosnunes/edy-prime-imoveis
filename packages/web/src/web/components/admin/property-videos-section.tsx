@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { CheckCircle2, Film, Loader2, Send, Trash2, Upload, Youtube } from "lucide-react";
 import { Badge, Btn, ErrorNote } from "./ui";
+import { PropertyMarketingBook } from "./property-marketing-book";
 
 export type PropertyVideoKind = "short_social" | "youtube_long";
 
@@ -17,22 +18,15 @@ type PropertyVideo = {
   durationSeconds: number | null;
 };
 
-type SlotConfig = {
-  kind: PropertyVideoKind;
-  title: string;
-  description: string;
-  recommendation: string;
-};
-
-const SLOTS: SlotConfig[] = [
+const SLOTS = [
   {
-    kind: "short_social",
+    kind: "short_social" as const,
     title: "Vídeo curto · Instagram / Facebook",
     description: "Arquivo principal para Reels, Facebook e futuros anúncios do imóvel.",
     recommendation: "Até 60 segundos.",
   },
   {
-    kind: "youtube_long",
+    kind: "youtube_long" as const,
     title: "Vídeo completo · YouTube",
     description: "Apresentação completa do imóvel. Depois da publicação, o link do YouTube fica ligado ao imóvel.",
     recommendation: "Recomendado: aproximadamente 2 a 3 minutos.",
@@ -99,7 +93,11 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
   const longInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
-    if (propertyId === null) return;
+    if (propertyId === null) {
+      setVideos([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const response = await fetch(`/api/admin/property-videos/${propertyId}`, { credentials: "same-origin" });
@@ -113,27 +111,23 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     }
   }, [propertyId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   const shortVideo = videos.find((video) => video.kind === "short_social") ?? null;
   const longVideo = videos.find((video) => video.kind === "youtube_long") ?? null;
-  const shortReady = Boolean(shortVideo);
-  const youtubeReady = Boolean(longVideo);
-  const missing = Number(!shortReady) + Number(!youtubeReady);
+  const missing = Number(!shortVideo) + Number(!longVideo);
 
   async function choose(kind: PropertyVideoKind, file: File | null) {
     if (!file || propertyId === null) return;
     setError(null);
     setPublishMessage(null);
+    if (!file.type.startsWith("video/")) {
+      setError("Selecione um arquivo de vídeo.");
+      return;
+    }
     const durationSeconds = await videoDuration(file);
     if (kind === "short_social" && durationSeconds > 60) {
       setError(`O vídeo curto tem ${durationLabel(durationSeconds)}. Para Instagram/Facebook, use no máximo 1:00.`);
-      return;
-    }
-    if (!file.type.startsWith("video/")) {
-      setError("Selecione um arquivo de vídeo.");
       return;
     }
 
@@ -165,8 +159,7 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
           durationSeconds,
         }),
       });
-      const payload = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Não foi possível vincular o vídeo ao imóvel.");
+      if (!response.ok) throw new Error(await responseError(response, "Não foi possível vincular o vídeo ao imóvel."));
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha no upload do vídeo.");
@@ -189,8 +182,7 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
         method: "DELETE",
         credentials: "same-origin",
       });
-      const payload = await response.json().catch(() => ({})) as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Não foi possível remover o vídeo.");
+      if (!response.ok) throw new Error(await responseError(response, "Não foi possível remover o vídeo."));
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível remover o vídeo.");
@@ -199,75 +191,48 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     }
   }
 
-  async function uploadStoredVideoToYouTube(
-    video: PropertyVideo,
-    mode: "short" | "long",
-  ) {
+  async function uploadStoredVideoToYouTube(video: PropertyVideo, mode: "short" | "long") {
     if (propertyId === null) return null;
     const source = await fetch(video.url);
     if (!source.ok) throw new Error("Não foi possível abrir o arquivo de vídeo armazenado.");
     const blob = await source.blob();
     const mime = video.mime || blob.type || "video/mp4";
 
-    if (mode === "short") {
-      const session = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-session`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ force: false }),
-      });
-      if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Short."));
-      const prepared = await session.json() as { uploadUrl: string; accessToken: string };
-      const sent = await fetch(prepared.uploadUrl, {
-        method: "PUT",
-        headers: {
-          authorization: `Bearer ${prepared.accessToken}`,
-          "content-type": mime,
-          "content-length": String(blob.size),
-        },
-        body: blob,
-      });
-      const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
-      if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o envio do Short.");
-      const complete = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-complete`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ videoId: youtube.id }),
-      });
-      if (!complete.ok) throw new Error(await responseError(complete, "Short enviado, mas não foi possível registrar o retorno."));
-      return await complete.json() as { message?: string; link?: string };
-    }
+    const sessionUrl = mode === "short"
+      ? `/api/admin/property-videos/${propertyId}/youtube-short-session`
+      : "/api/oauth/youtube/upload-session";
+    const sessionBody = mode === "short"
+      ? { force: false }
+      : { propertyId, fileName: video.fileName || "video-imovel.mp4", fileSize: blob.size, mime };
 
-    const session = await fetch("/api/oauth/youtube/upload-session", {
+    const session = await fetch(sessionUrl, {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        propertyId,
-        fileName: video.fileName || "video-imovel.mp4",
-        fileSize: blob.size,
-        mime,
-      }),
+      body: JSON.stringify(sessionBody),
     });
     if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o upload no YouTube."));
     const prepared = await session.json() as { uploadUrl: string; accessToken: string };
+
     const sent = await fetch(prepared.uploadUrl, {
       method: "PUT",
-      headers: {
-        authorization: `Bearer ${prepared.accessToken}`,
-        "content-type": mime,
-        "content-length": String(blob.size),
-      },
+      headers: { authorization: `Bearer ${prepared.accessToken}`, "content-type": mime },
       body: blob,
     });
     const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
     if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o upload.");
-    const complete = await fetch("/api/oauth/youtube/upload-complete", {
+
+    const completeUrl = mode === "short"
+      ? `/api/admin/property-videos/${propertyId}/youtube-short-complete`
+      : "/api/oauth/youtube/upload-complete";
+    const completeBody = mode === "short"
+      ? { videoId: youtube.id }
+      : { propertyId, videoId: youtube.id };
+    const complete = await fetch(completeUrl, {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ propertyId, videoId: youtube.id }),
+      body: JSON.stringify(completeBody),
     });
     if (!complete.ok) throw new Error(await responseError(complete, "Vídeo enviado, mas não foi possível registrar o retorno."));
     return await complete.json() as { message?: string; link?: string };
@@ -284,18 +249,15 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     setPublishMessage(null);
     const messages: string[] = [];
     try {
-      const metaTargets = [instagram ? "instagram" : null, facebook ? "facebook" : null].filter(Boolean);
-      if (metaTargets.length > 0) {
+      const targets = [instagram ? "instagram" : null, facebook ? "facebook" : null].filter((value): value is string => Boolean(value));
+      if (targets.length > 0) {
         const response = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
           method: "POST",
           credentials: "same-origin",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ targets: metaTargets, force: false }),
+          body: JSON.stringify({ targets, force: false }),
         });
-        const payload = await response.json().catch(() => ({})) as {
-          error?: string;
-          results?: Record<string, { ok?: boolean; message?: string }>;
-        };
+        const payload = await response.json().catch(() => ({})) as { error?: string; results?: Record<string, { ok?: boolean; message?: string }> };
         if (!response.ok && !payload.results) throw new Error(payload.error || "Falha ao publicar nas redes Meta.");
         for (const [target, result] of Object.entries(payload.results ?? {})) {
           messages.push(`${target === "instagram" ? "Instagram" : "Facebook"}: ${result.message || (result.ok ? "publicado" : "erro")}`);
@@ -333,17 +295,10 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     <div className="mt-5 border-t border-line pt-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 text-deep">
-            <Film className="h-4 w-4" />
-            <p className="text-sm font-medium">Vídeos do imóvel</p>
-          </div>
-          <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted">
-            Última etapa operacional. Vídeo faltando não bloqueia cadastro, site, anúncio ou publicação do imóvel.
-          </p>
+          <div className="flex items-center gap-2 text-deep"><Film className="h-4 w-4" /><p className="text-sm font-medium">Vídeos do imóvel</p></div>
+          <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted">Última etapa operacional. Vídeo faltando não bloqueia cadastro, site, anúncio ou publicação do imóvel.</p>
         </div>
-        <Badge tone={missing === 0 ? "green" : "red"}>
-          {missing === 0 ? "VÍDEOS COMPLETOS" : missing === 2 ? "2 VÍDEOS PENDENTES" : "1 VÍDEO PENDENTE"}
-        </Badge>
+        <Badge tone={missing === 0 ? "green" : "red"}>{missing === 0 ? "VÍDEOS COMPLETOS" : missing === 2 ? "2 VÍDEOS PENDENTES" : "1 VÍDEO PENDENTE"}</Badge>
       </div>
 
       {loading ? (
@@ -355,58 +310,27 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
               const video = videos.find((item) => item.kind === slot.kind);
               const slotBusy = busy === slot.kind;
               const inputRef = slot.kind === "short_social" ? shortInput : longInput;
-              const canUpload = propertyId !== null;
               return (
                 <div key={slot.kind} className={`rounded-[8px] border p-4 ${video ? "border-emerald-200 bg-emerald-50/40" : "border-red-200 bg-red-50/50"}`}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium text-deep">{slot.title}</p>
-                    <Badge tone={video ? "green" : "red"}>{video ? "PRONTO" : "PENDENTE"}</Badge>
-                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium text-deep">{slot.title}</p><Badge tone={video ? "green" : "red"}>{video ? "PRONTO" : "PENDENTE"}</Badge></div>
                   <p className="mt-2 text-xs leading-relaxed text-muted">{slot.description}</p>
                   <p className="mt-1 text-[11px] font-medium text-deep">{slot.recommendation}</p>
 
                   {video && (
                     <div className="mt-3 rounded border border-line bg-white p-3">
-                      <div className="flex items-center gap-2 text-xs text-emerald-800">
-                        <CheckCircle2 className="h-4 w-4" /> Arquivo vinculado ao imóvel
-                      </div>
+                      <div className="flex items-center gap-2 text-xs text-emerald-800"><CheckCircle2 className="h-4 w-4" /> Arquivo vinculado ao imóvel</div>
                       <p className="mt-1 truncate text-[11px] text-muted">{video.fileName || "vídeo"}</p>
-                      <p className="mt-0.5 text-[11px] text-muted">
-                        {[durationLabel(video.durationSeconds), fileSize(video.size)].filter(Boolean).join(" · ")}
-                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted">{[durationLabel(video.durationSeconds), fileSize(video.size)].filter(Boolean).join(" · ")}</p>
                       <a href={video.url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-[11px] text-brass underline underline-offset-2">Abrir vídeo</a>
                     </div>
                   )}
 
-                  {slotBusy && (
-                    <div className="mt-3">
-                      <div className="h-1.5 overflow-hidden rounded bg-bone"><div className="h-full bg-deep transition-all" style={{ width: `${Math.max(3, progress)}%` }} /></div>
-                      <p className="mt-1 text-[11px] text-muted">Enviando… {progress}%</p>
-                    </div>
-                  )}
+                  {slotBusy && <div className="mt-3"><div className="h-1.5 overflow-hidden rounded bg-bone"><div className="h-full bg-deep transition-all" style={{ width: `${Math.max(3, progress)}%` }} /></div><p className="mt-1 text-[11px] text-muted">Enviando… {progress}%</p></div>}
 
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/mpeg"
-                    className="hidden"
-                    onChange={(event) => void choose(slot.kind, event.target.files?.[0] ?? null)}
-                  />
+                  <input ref={inputRef} type="file" accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/mpeg" className="hidden" onChange={(event) => void choose(slot.kind, event.target.files?.[0] ?? null)} />
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Btn
-                      type="button"
-                      tone="outline"
-                      disabled={Boolean(busy) || !canUpload}
-                      title={canUpload ? undefined : "Finalize o cadastro do imóvel para anexar o vídeo."}
-                      onClick={() => inputRef.current?.click()}
-                    >
-                      <Upload className="h-3.5 w-3.5" /> {video ? "Substituir vídeo" : "Selecionar vídeo"}
-                    </Btn>
-                    {video && (
-                      <Btn type="button" tone="outline" disabled={Boolean(busy)} onClick={() => void remove(slot.kind)}>
-                        <Trash2 className="h-3.5 w-3.5" /> Remover
-                      </Btn>
-                    )}
+                    <Btn type="button" tone="outline" disabled={Boolean(busy) || propertyId === null} title={propertyId === null ? "Finalize o cadastro do imóvel para anexar o vídeo." : undefined} onClick={() => inputRef.current?.click()}><Upload className="h-3.5 w-3.5" /> {video ? "Substituir vídeo" : "Selecionar vídeo"}</Btn>
+                    {video && <Btn type="button" tone="outline" disabled={Boolean(busy)} onClick={() => void remove(slot.kind)}><Trash2 className="h-3.5 w-3.5" /> Remover</Btn>}
                   </div>
                 </div>
               );
@@ -415,12 +339,8 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
 
           {propertyId !== null && (
             <div className="mt-4 rounded-[8px] border border-line bg-bone/25 p-4">
-              <div className="flex items-center gap-2 text-deep">
-                <Send className="h-4 w-4" />
-                <p className="text-sm font-medium">Publicar / enviar vídeo</p>
-              </div>
+              <div className="flex items-center gap-2 text-deep"><Send className="h-4 w-4" /><p className="text-sm font-medium">Publicar / enviar vídeo</p></div>
               <p className="mt-1 text-[11px] text-muted">Primeiro o arquivo fica guardado no imóvel. Depois você escolhe para quais canais quer enviar.</p>
-
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <div className="rounded-[8px] border border-line bg-white p-4">
                   <p className="text-sm font-medium text-deep">Vídeo curto</p>
@@ -429,41 +349,27 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
                     <label className="flex items-center gap-2"><input type="checkbox" checked={facebook} onChange={(event) => setFacebook(event.target.checked)} /> Facebook</label>
                     <label className="flex items-center gap-2"><input type="checkbox" checked={youtubeShort} onChange={(event) => setYoutubeShort(event.target.checked)} /> YouTube Shorts</label>
                   </div>
-                  <Btn type="button" tone="brass" className="mt-4" disabled={!shortVideo || publishBusy} onClick={() => void publishShort()}>
-                    {publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                    Publicar vídeo curto
-                  </Btn>
+                  <Btn type="button" tone="brass" className="mt-4" disabled={!shortVideo || publishBusy} onClick={() => void publishShort()}>{publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Publicar vídeo curto</Btn>
                   {!shortVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo curto acima.</p>}
                 </div>
 
                 <div className="rounded-[8px] border border-line bg-white p-4">
                   <p className="text-sm font-medium text-deep">Vídeo completo</p>
                   <p className="mt-2 text-xs text-muted">Destino: YouTube. No primeiro teste, o vídeo continua sendo enviado como privado.</p>
-                  <Btn type="button" tone="brass" className="mt-4" disabled={!longVideo || publishBusy} onClick={() => void publishLong()}>
-                    {publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Youtube className="h-3.5 w-3.5" />}
-                    Publicar vídeo completo
-                  </Btn>
+                  <Btn type="button" tone="brass" className="mt-4" disabled={!longVideo || publishBusy} onClick={() => void publishLong()}>{publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Youtube className="h-3.5 w-3.5" />} Publicar vídeo completo</Btn>
                   {!longVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo completo acima.</p>}
                 </div>
               </div>
-
-              {publishMessage && (
-                <div className="mt-4 whitespace-pre-line rounded-[6px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
-                  {publishMessage}
-                </div>
-              )}
+              {publishMessage && <div className="mt-4 whitespace-pre-line rounded-[6px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{publishMessage}</div>}
             </div>
           )}
 
-          {propertyId === null && (
-            <p className="mt-3 text-[11px] text-muted">
-              Os dois campos já fazem parte deste cadastro. Como o imóvel ainda não recebeu o código interno definitivo, os botões de envio serão liberados assim que o cadastro for finalizado e aberto em Editar. Isso não bloqueia o imóvel e não muda nenhuma outra etapa.
-            </p>
-          )}
+          {propertyId === null && <p className="mt-3 text-[11px] text-muted">Os dois campos já fazem parte deste cadastro. Como o imóvel ainda não recebeu o código interno definitivo, os botões de envio serão liberados assim que o cadastro for finalizado e aberto em Editar. Isso não bloqueia o imóvel e não muda nenhuma outra etapa.</p>}
         </>
       )}
 
       <ErrorNote message={error} />
+      <PropertyMarketingBook propertyId={propertyId} />
     </div>
   );
 }
