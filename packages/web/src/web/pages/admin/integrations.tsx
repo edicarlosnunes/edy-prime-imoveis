@@ -425,8 +425,8 @@ function IntegrationsPage() {
           <SocialFolder
             mark="YT"
             name="YouTube"
-            description="Pasta reservada para a próxima etapa: envio dos vídeos dos imóveis pelo CRM."
-            next
+            description="Conectar o canal pelo Google OAuth e enviar os vídeos dos imóveis aprovados pelo CRM."
+            href="/admin/youtube"
           />
         </div>
       </section>
