@@ -1,0 +1,6 @@
+/* Limpeza da ficha de imóvel: o campo legado de URL do YouTube foi substituído
+   pelos dois slots de vídeo da seção Publicação. Mantemos a estrutura antiga
+   no backend por compatibilidade, mas ela não aparece mais no CRM. */
+div.mt-6.border-t.border-line.pt-6:has(input[placeholder="Cole aqui a URL do vídeo do imóvel"]) {
+  display: none !important;
+}
