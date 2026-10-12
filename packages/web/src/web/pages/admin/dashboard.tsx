@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
   BarChart3,
@@ -5,6 +6,7 @@ import {
   CalendarCheck,
   CheckCircle2,
   FileSignature,
+  Film,
   Handshake,
   KeyRound,
   Percent,
@@ -32,6 +34,14 @@ import {
 } from "../../components/admin/labels";
 import { useDashboard } from "../../queries/admin";
 
+type VideoPendingSummary = {
+  pendingProperties: number;
+  shortMissing: number;
+  youtubeMissing: number;
+  bothMissing: number;
+  complete: number;
+};
+
 export default function AdminDashboard() {
   return (
     <AdminGuard>
@@ -44,6 +54,25 @@ export default function AdminDashboard() {
 
 function Content() {
   const { data, isLoading } = useDashboard();
+  const [videoSummary, setVideoSummary] = useState<VideoPendingSummary | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/admin/property-videos-pending", { credentials: "same-origin" })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json() as Promise<VideoPendingSummary>;
+      })
+      .then((payload) => {
+        if (!cancelled && payload) setVideoSummary(payload);
+      })
+      .catch(() => {
+        // O restante do Dashboard continua funcionando se o resumo de vídeos falhar.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (isLoading || !data) {
     return <Empty>Carregando indicadores…</Empty>;
@@ -112,6 +141,36 @@ function Content() {
           icon={<XCircle className="h-4 w-4" />}
         />
       </div>
+
+      <Card
+        title="Vídeos pendentes"
+        action={
+          <Link href="/admin/imoveis" className="text-xs text-brass hover:underline">
+            abrir imóveis
+          </Link>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex h-11 w-11 items-center justify-center rounded-[6px] border border-red-200 bg-red-50 text-red-700">
+            <Film className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="display text-3xl text-deep">{videoSummary?.pendingProperties ?? "—"}</p>
+            <p className="text-xs text-muted">imóveis ativos com algum vídeo faltando</p>
+          </div>
+          {videoSummary && (
+            <div className="flex flex-wrap gap-2 lg:ml-auto">
+              <Badge tone={videoSummary.shortMissing > 0 ? "red" : "green"}>Curto: {videoSummary.shortMissing} pendente(s)</Badge>
+              <Badge tone={videoSummary.youtubeMissing > 0 ? "red" : "green"}>YouTube: {videoSummary.youtubeMissing} pendente(s)</Badge>
+              <Badge tone={videoSummary.bothMissing > 0 ? "red" : "green"}>Sem os dois: {videoSummary.bothMissing}</Badge>
+              <Badge tone="green">Completos: {videoSummary.complete}</Badge>
+            </div>
+          )}
+        </div>
+        <p className="mt-3 text-[11px] text-muted">
+          Pendência de vídeo é apenas acompanhamento operacional: não bloqueia cadastro, site nem anúncio do imóvel.
+        </p>
+      </Card>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <Stat
