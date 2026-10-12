@@ -18,6 +18,7 @@ import * as schema from "../database/schema";
 
 const INTEGRATION_KEY = "facebook_publicacao";
 const MASK_PREFIX = "••••";
+const DEFAULT_PAGE_ID = "101408975339330";
 
 function isMasked(value: string) {
   return value.startsWith(MASK_PREFIX);
@@ -57,6 +58,30 @@ export const adminFacebook = {
       .orderBy(desc(schema.properties.updatedAt))
       .limit(250);
 
+    /* O Facebook só recebe imóvel que já passou pela liberação editorial do CRM
+       (`published = 1`), está disponível e tem ao menos uma foto cadastrada.
+       A foto vem SEMPRE da galeria do próprio imóvel; não existe upload
+       separado só para a rede social. */
+    const imageRows = await context.db
+      .select({ propertyId: schema.propertyImages.propertyId })
+      .from(schema.propertyImages);
+    const imageCountByProperty = new Map<number, number>();
+    for (const image of imageRows) {
+      imageCountByProperty.set(
+        image.propertyId,
+        (imageCountByProperty.get(image.propertyId) ?? 0) + 1,
+      );
+    }
+    const readyProperties = properties.filter((property) => {
+      const imageCount = imageCountByProperty.get(property.id) ?? 0;
+      return (
+        imageCount > 0 &&
+        property.title.trim().length > 0 &&
+        property.price > 0 &&
+        property.city.trim().length > 0
+      );
+    });
+
     const channels = await context.db
       .select()
       .from(schema.propertyChannels)
@@ -69,7 +94,7 @@ export const adminFacebook = {
 
     return {
       integration: {
-        pageId: config.pageId ?? "",
+        pageId: config.pageId ?? DEFAULT_PAGE_ID,
         pageToken: config.pageToken ? `${MASK_PREFIX}${config.pageToken.slice(-4)}` : "",
         imageVariant: config.imageVariant === "original" ? "original" : "marcada",
         enabled: row?.enabled === 1,
@@ -77,10 +102,11 @@ export const adminFacebook = {
         lastError: row?.lastError ?? null,
         lastTestAt: row?.lastTestAt ?? null,
       },
-      properties: properties.map((property) => {
+      properties: readyProperties.map((property) => {
         const channel = byProperty.get(property.id);
         return {
           ...property,
+          imageCount: imageCountByProperty.get(property.id) ?? 0,
           facebook: {
             status: channel?.status ?? "nao_enviado",
             message: channel?.message ?? null,
@@ -191,7 +217,12 @@ export const adminFacebook = {
       if (!property) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado." });
       if (property.published !== 1 || property.status !== "disponivel") {
         throw new ORPCError("BAD_REQUEST", {
-          message: "Só imóvel publicado e disponível pode ser anunciado no Facebook.",
+          message: "Só imóvel já aprovado/publicado no CRM e disponível pode ser anunciado no Facebook.",
+        });
+      }
+      if (!property.title.trim() || property.price <= 0 || !property.city.trim()) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "O cadastro do imóvel ainda não está 100% pronto para divulgação. Revise título, preço e cidade.",
         });
       }
 
@@ -207,6 +238,11 @@ export const adminFacebook = {
         .from(schema.propertyImages)
         .where(eq(schema.propertyImages.propertyId, property.id))
         .orderBy(desc(schema.propertyImages.isPrimary), asc(schema.propertyImages.sortOrder), asc(schema.propertyImages.id));
+      if (images.length === 0) {
+        throw new ORPCError("BAD_REQUEST", {
+          message: "O imóvel precisa ter ao menos uma foto no próprio cadastro antes de ser liberado para o Facebook.",
+        });
+      }
       const selected = images[0];
       const rawImage = config.imageVariant === "original"
         ? (selected?.originalUrl ?? selected?.url ?? "")
