@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
-import { CheckCircle2, Film, Loader2, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, Film, Loader2, Send, Trash2, Upload, Youtube } from "lucide-react";
 import { Badge, Btn, ErrorNote } from "./ui";
 
 export type PropertyVideoKind = "short_social" | "youtube_long";
@@ -79,12 +79,22 @@ function safeName(value: string) {
     .slice(-140);
 }
 
+async function responseError(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => ({})) as { error?: string; message?: string };
+  return payload.error || payload.message || fallback;
+}
+
 export function PropertyVideosSection({ propertyId }: { propertyId: number | null }) {
   const [videos, setVideos] = useState<PropertyVideo[]>([]);
   const [loading, setLoading] = useState(propertyId !== null);
   const [busy, setBusy] = useState<PropertyVideoKind | null>(null);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [publishBusy, setPublishBusy] = useState(false);
+  const [publishMessage, setPublishMessage] = useState<string | null>(null);
+  const [instagram, setInstagram] = useState(true);
+  const [facebook, setFacebook] = useState(true);
+  const [youtubeShort, setYoutubeShort] = useState(false);
   const shortInput = useRef<HTMLInputElement>(null);
   const longInput = useRef<HTMLInputElement>(null);
 
@@ -107,13 +117,16 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     void load();
   }, [load]);
 
-  const shortReady = videos.some((video) => video.kind === "short_social");
-  const youtubeReady = videos.some((video) => video.kind === "youtube_long");
+  const shortVideo = videos.find((video) => video.kind === "short_social") ?? null;
+  const longVideo = videos.find((video) => video.kind === "youtube_long") ?? null;
+  const shortReady = Boolean(shortVideo);
+  const youtubeReady = Boolean(longVideo);
   const missing = Number(!shortReady) + Number(!youtubeReady);
 
   async function choose(kind: PropertyVideoKind, file: File | null) {
     if (!file || propertyId === null) return;
     setError(null);
+    setPublishMessage(null);
     const durationSeconds = await videoDuration(file);
     if (kind === "short_social" && durationSeconds > 60) {
       setError(`O vídeo curto tem ${durationLabel(durationSeconds)}. Para Instagram/Facebook, use no máximo 1:00.`);
@@ -170,6 +183,7 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     if (!window.confirm("Remover este vídeo do imóvel? Isso não remove nem bloqueia o imóvel.")) return;
     setBusy(kind);
     setError(null);
+    setPublishMessage(null);
     try {
       const response = await fetch(`/api/admin/property-videos/${propertyId}/${kind}`, {
         method: "DELETE",
@@ -182,6 +196,136 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
       setError(caught instanceof Error ? caught.message : "Não foi possível remover o vídeo.");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function uploadStoredVideoToYouTube(
+    video: PropertyVideo,
+    mode: "short" | "long",
+  ) {
+    if (propertyId === null) return null;
+    const source = await fetch(video.url);
+    if (!source.ok) throw new Error("Não foi possível abrir o arquivo de vídeo armazenado.");
+    const blob = await source.blob();
+    const mime = video.mime || blob.type || "video/mp4";
+
+    if (mode === "short") {
+      const session = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-session`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ force: false }),
+      });
+      if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Short."));
+      const prepared = await session.json() as { uploadUrl: string; accessToken: string };
+      const sent = await fetch(prepared.uploadUrl, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${prepared.accessToken}`,
+          "content-type": mime,
+          "content-length": String(blob.size),
+        },
+        body: blob,
+      });
+      const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+      if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o envio do Short.");
+      const complete = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-complete`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ videoId: youtube.id }),
+      });
+      if (!complete.ok) throw new Error(await responseError(complete, "Short enviado, mas não foi possível registrar o retorno."));
+      return await complete.json() as { message?: string; link?: string };
+    }
+
+    const session = await fetch("/api/oauth/youtube/upload-session", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        propertyId,
+        fileName: video.fileName || "video-imovel.mp4",
+        fileSize: blob.size,
+        mime,
+      }),
+    });
+    if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o upload no YouTube."));
+    const prepared = await session.json() as { uploadUrl: string; accessToken: string };
+    const sent = await fetch(prepared.uploadUrl, {
+      method: "PUT",
+      headers: {
+        authorization: `Bearer ${prepared.accessToken}`,
+        "content-type": mime,
+        "content-length": String(blob.size),
+      },
+      body: blob,
+    });
+    const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+    if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o upload.");
+    const complete = await fetch("/api/oauth/youtube/upload-complete", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ propertyId, videoId: youtube.id }),
+    });
+    if (!complete.ok) throw new Error(await responseError(complete, "Vídeo enviado, mas não foi possível registrar o retorno."));
+    return await complete.json() as { message?: string; link?: string };
+  }
+
+  async function publishShort() {
+    if (propertyId === null || !shortVideo) return;
+    if (!instagram && !facebook && !youtubeShort) {
+      setError("Selecione pelo menos um destino para o vídeo curto.");
+      return;
+    }
+    setPublishBusy(true);
+    setError(null);
+    setPublishMessage(null);
+    const messages: string[] = [];
+    try {
+      const metaTargets = [instagram ? "instagram" : null, facebook ? "facebook" : null].filter(Boolean);
+      if (metaTargets.length > 0) {
+        const response = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ targets: metaTargets, force: false }),
+        });
+        const payload = await response.json().catch(() => ({})) as {
+          error?: string;
+          results?: Record<string, { ok?: boolean; message?: string }>;
+        };
+        if (!response.ok && !payload.results) throw new Error(payload.error || "Falha ao publicar nas redes Meta.");
+        for (const [target, result] of Object.entries(payload.results ?? {})) {
+          messages.push(`${target === "instagram" ? "Instagram" : "Facebook"}: ${result.message || (result.ok ? "publicado" : "erro")}`);
+        }
+      }
+      if (youtubeShort) {
+        const result = await uploadStoredVideoToYouTube(shortVideo, "short");
+        messages.push(`YouTube Shorts: ${result?.message || "enviado como privado"}`);
+      }
+      setPublishMessage(messages.join("\n"));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao publicar o vídeo curto.");
+      if (messages.length > 0) setPublishMessage(messages.join("\n"));
+    } finally {
+      setPublishBusy(false);
+    }
+  }
+
+  async function publishLong() {
+    if (propertyId === null || !longVideo) return;
+    setPublishBusy(true);
+    setError(null);
+    setPublishMessage(null);
+    try {
+      const result = await uploadStoredVideoToYouTube(longVideo, "long");
+      setPublishMessage(`YouTube: ${result?.message || "vídeo enviado como privado"}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao publicar o vídeo completo no YouTube.");
+    } finally {
+      setPublishBusy(false);
     }
   }
 
@@ -268,6 +412,48 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
               );
             })}
           </div>
+
+          {propertyId !== null && (
+            <div className="mt-4 rounded-[8px] border border-line bg-bone/25 p-4">
+              <div className="flex items-center gap-2 text-deep">
+                <Send className="h-4 w-4" />
+                <p className="text-sm font-medium">Publicar / enviar vídeo</p>
+              </div>
+              <p className="mt-1 text-[11px] text-muted">Primeiro o arquivo fica guardado no imóvel. Depois você escolhe para quais canais quer enviar.</p>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-[8px] border border-line bg-white p-4">
+                  <p className="text-sm font-medium text-deep">Vídeo curto</p>
+                  <div className="mt-3 grid gap-2 text-sm text-deep">
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={instagram} onChange={(event) => setInstagram(event.target.checked)} /> Instagram</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={facebook} onChange={(event) => setFacebook(event.target.checked)} /> Facebook</label>
+                    <label className="flex items-center gap-2"><input type="checkbox" checked={youtubeShort} onChange={(event) => setYoutubeShort(event.target.checked)} /> YouTube Shorts</label>
+                  </div>
+                  <Btn type="button" tone="brass" className="mt-4" disabled={!shortVideo || publishBusy} onClick={() => void publishShort()}>
+                    {publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    Publicar vídeo curto
+                  </Btn>
+                  {!shortVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo curto acima.</p>}
+                </div>
+
+                <div className="rounded-[8px] border border-line bg-white p-4">
+                  <p className="text-sm font-medium text-deep">Vídeo completo</p>
+                  <p className="mt-2 text-xs text-muted">Destino: YouTube. No primeiro teste, o vídeo continua sendo enviado como privado.</p>
+                  <Btn type="button" tone="brass" className="mt-4" disabled={!longVideo || publishBusy} onClick={() => void publishLong()}>
+                    {publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Youtube className="h-3.5 w-3.5" />}
+                    Publicar vídeo completo
+                  </Btn>
+                  {!longVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo completo acima.</p>}
+                </div>
+              </div>
+
+              {publishMessage && (
+                <div className="mt-4 whitespace-pre-line rounded-[6px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+                  {publishMessage}
+                </div>
+              )}
+            </div>
+          )}
 
           {propertyId === null && (
             <p className="mt-3 text-[11px] text-muted">
