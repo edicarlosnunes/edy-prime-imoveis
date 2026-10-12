@@ -37,6 +37,7 @@ import { adminWatermark } from "./routes/admin-watermark";
 import { adminAudit } from "./routes/admin-audit";
 import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
+import { registerPropertyVideoRoutes } from "./http/property-video-routes";
 import * as schema from "./database/schema";
 import { verifyGithubActionsOidc } from "./lib/github-actions-oidc";
 import { sweepLinkCaptacaoHelp } from "./lib/link-captacao-help";
@@ -103,9 +104,10 @@ export type AppRouterClient = RouterClient<AppRouter>;
 
 const app = createApp(router);
 
-/* Arquivos públicos (feed/sitemap/robots/prerender) e webhooks de entrada. */
+/* Arquivos públicos (feed/sitemap/robots/prerender), webhooks e vídeos. */
 registerFeedRoutes(app);
 registerWebhookRoutes(app);
+registerPropertyVideoRoutes(app);
 
 app.get("/api/cron/link-captacao-help", async (c) => {
   const auth = c.req.header("authorization") ?? "";
