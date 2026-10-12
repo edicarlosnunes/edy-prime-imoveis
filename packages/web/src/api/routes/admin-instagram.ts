@@ -13,6 +13,7 @@ import {
 import * as schema from "../database/schema";
 
 const INTEGRATION_KEY = "instagram_publicacao";
+const YOUTUBE_INTEGRATION_KEY = "youtube_publicacao";
 const MASK_PREFIX = "••••";
 const DEFAULT_USER_ID = "17841445283930429";
 const DEFAULT_USERNAME = "e_santos_corretor";
@@ -110,6 +111,56 @@ export const adminInstagram = {
       }),
     };
   }),
+
+  youtubeOverview: adminBase.handler(async ({ context }) => {
+    const { row, config } = await readConfig(context.db, YOUTUBE_INTEGRATION_KEY);
+    return {
+      clientId: config.clientId ?? "",
+      clientSecret: config.clientSecret ? `${MASK_PREFIX}${config.clientSecret.slice(-4)}` : "",
+      privacy: config.privacy === "unlisted" || config.privacy === "public" ? config.privacy : "private",
+      status: row?.status ?? "nao_configurado",
+      lastError: row?.lastError ?? null,
+    };
+  }),
+
+  youtubeSave: adminBase
+    .input(
+      z.object({
+        clientId: z.string().trim().min(10).max(1000),
+        clientSecret: z.string().max(4000),
+        privacy: z.enum(["private", "unlisted", "public"]).default("private"),
+      }),
+    )
+    .handler(async ({ input, context }) => {
+      const current = await readConfig(context.db, YOUTUBE_INTEGRATION_KEY);
+      const clientSecret =
+        !input.clientSecret || isMasked(input.clientSecret)
+          ? (current.config.clientSecret ?? "")
+          : input.clientSecret.trim();
+      if (!clientSecret) {
+        throw new ORPCError("BAD_REQUEST", { message: "Informe o Google OAuth Client Secret." });
+      }
+      const config = {
+        ...current.config,
+        clientId: input.clientId.trim(),
+        clientSecret,
+        privacy: input.privacy,
+      };
+      await saveIntegration(context.db, YOUTUBE_INTEGRATION_KEY, {
+        config,
+        status: "configurando",
+        enabled: true,
+        lastError: null,
+      });
+      await logEvent(context.db, YOUTUBE_INTEGRATION_KEY, "config", true, "Credenciais OAuth do YouTube salvas com segurança.");
+      await audit(context.db, context.user, "youtube.configurar", {
+        entity: "integration",
+        entityId: YOUTUBE_INTEGRATION_KEY,
+        detail: "Client ID salvo e Client Secret armazenado mascarado.",
+        ip: clientIp(context.headers),
+      });
+      return { ok: true, status: "configurando" as const };
+    }),
 
   save: adminBase
     .input(
