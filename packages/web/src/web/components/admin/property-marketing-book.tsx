@@ -56,7 +56,7 @@ function formatInfo(label: string, value: number | string | null | undefined) {
 
 function shortenDescription(value: string | null | undefined, max = 720) {
   const text = (value ?? "").replace(/\s+/g, " ").trim();
-  if (!text) return "Conheça todos os detalhes deste imóvel e fale agora com a E. Santos para receber atendimento e mais informações.";
+  if (!text) return "Conheça todos os detalhes deste imóvel e fale com a E. Santos para receber atendimento e mais informações.";
   if (text.length <= max) return text;
   const cut = text.slice(0, max);
   const lastSentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
@@ -139,7 +139,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   ].filter(Boolean).join(" · ");
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
   const ctaDescription = shortenDescription(property?.description);
-  const whatsappMessage = encodeURIComponent(`Olá! Quero saber mais sobre ${property?.title || "este imóvel"}${property?.code ? ` (código ${property.code})` : ""}.`);
+  const whatsappMessage = encodeURIComponent(`Olá! Vi o imóvel ${property?.title || "que vocês anunciaram"}${property?.code ? ` (código ${property.code})` : ""} e gostaria de receber mais informações.`);
   const whatsappUrl = `https://wa.me/5513997726767?text=${whatsappMessage}`;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
@@ -154,6 +154,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   const mediaCount = demoSteps.length;
   const currentDemo = demoSteps[Math.min(demoIndex, Math.max(0, demoSteps.length - 1))] ?? null;
+
+  useEffect(() => {
+    if (currentDemo?.kind !== "photo") return;
+    const timer = window.setTimeout(() => {
+      setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1));
+    }, 3200);
+    return () => window.clearTimeout(timer);
+  }, [currentDemo, demoSteps.length]);
 
   async function downloadCover() {
     if (!primary?.url || !property) {
@@ -293,7 +301,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-medium text-deep">Demo funcional do Book</p>
-              <p className="mt-1 text-[11px] text-muted">Clique no play da capa. Ao terminar o vídeo, o demo avança automaticamente para as fotos.</p>
+              <p className="mt-1 text-[11px] text-muted">Clique no play da capa. O vídeo e as fotos seguem automaticamente até o resumo final.</p>
             </div>
             <Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge>
           </div>
@@ -339,16 +347,20 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                     <p className="mt-2 text-[13px] leading-relaxed opacity-95">{ctaDescription}</p>
                   </div>
 
+                  <div className="mt-5 text-center">
+                    <p className="text-sm font-medium">Gostou deste imóvel?</p>
+                    <p className="mt-1 text-[11px] opacity-80">Tire suas dúvidas e receba os detalhes direto no WhatsApp.</p>
+                  </div>
                   <a
                     href={whatsappUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-5 flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold uppercase no-underline"
+                    className="mt-3 flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold no-underline"
                     style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}
                   >
-                    <MessageCircle className="h-5 w-5" /> Falar agora no WhatsApp
+                    <MessageCircle className="h-5 w-5" /> Quero saber mais sobre este imóvel
                   </a>
-                  <p className="mt-2 text-center text-[10px] opacity-75">Clique para iniciar o atendimento e pedir mais detalhes deste imóvel.</p>
+                  <p className="mt-2 text-center text-[10px] opacity-70">Ao clicar, você inicia uma conversa com a E. Santos sobre este imóvel.</p>
                 </div>
               )}
 
