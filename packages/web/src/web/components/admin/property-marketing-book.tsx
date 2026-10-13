@@ -8,7 +8,7 @@ import {
   Film,
   Image as ImageIcon,
   MessageCircle,
-  PlayCircle,
+  Play,
   Sparkles,
 } from "lucide-react";
 import { orpc } from "../../lib/api";
@@ -287,7 +287,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
             <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
             <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Veja o book</span></div>
-            {shortReady && <PlayCircle className="absolute left-1/2 top-[43%] h-20 w-20 -translate-x-1/2 -translate-y-1/2 drop-shadow-lg" style={{ color: theme.accent }} />}
+            {shortReady && <span className="absolute left-1/2 top-[43%] flex h-10 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[10px] bg-[#FF0000] shadow-lg"><Play className="ml-0.5 h-5 w-5 fill-white text-white" /></span>}
             <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
           </div>
 
@@ -313,7 +313,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                   <img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" />
                   <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
                   <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Assista ao vídeo</span></div>
-                  {shortReady && <PlayCircle className="absolute left-1/2 top-[42%] h-24 w-24 -translate-x-1/2 -translate-y-1/2 drop-shadow-xl" style={{ color: theme.accent }} />}
+                  {shortReady && <span className="absolute left-1/2 top-[42%] flex h-12 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[11px] bg-[#FF0000] shadow-xl"><Play className="ml-0.5 h-6 w-6 fill-white text-white" /></span>}
                   <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
                 </button>
               )}
