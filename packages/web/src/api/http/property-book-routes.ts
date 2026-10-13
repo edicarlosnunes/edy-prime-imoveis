@@ -9,6 +9,14 @@ import { siteBaseUrl } from "../lib/base-url";
 const GRAPH_VERSION = "v26.0";
 const INSTAGRAM_GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`;
 
+type MetaError = {
+  message?: string;
+  code?: number;
+  error_subcode?: number;
+  error_user_title?: string;
+  error_user_msg?: string;
+};
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -43,6 +51,13 @@ function safePublicUrl(value: unknown) {
   } catch {
     return null;
   }
+}
+
+function metaErrorMessage(label: string, error: MetaError | undefined, fallback: string) {
+  if (!error) return `${label}: ${fallback}`;
+  const detail = error.error_user_msg || error.message || fallback;
+  const code = [error.code, error.error_subcode].filter((value) => value !== undefined).join("/");
+  return `${label}: ${detail}${code ? ` (Meta ${code})` : ""}`;
 }
 
 async function latestChannel(propertyId: number, channel: string) {
@@ -91,34 +106,39 @@ async function waitForContainer(containerId: string, accessToken: string, label:
     const status = await statusResponse.json().catch(() => ({})) as {
       status_code?: string;
       status?: string;
-      error?: { message?: string };
+      error?: MetaError;
     };
     if (!statusResponse.ok) {
-      throw new Error(status.error?.message || `Não foi possível acompanhar o processamento ${label}.`);
+      throw new Error(metaErrorMessage(label, status.error, "Não foi possível acompanhar o processamento."));
     }
     if (["FINISHED", "PUBLISHED"].includes(status.status_code ?? "")) return;
     if (["ERROR", "EXPIRED"].includes(status.status_code ?? "")) {
-      throw new Error(status.status || `O Instagram não conseguiu processar ${label}.`);
+      throw new Error(`${label}: ${status.status || "O Instagram não conseguiu processar esta mídia."}`);
     }
   }
-  throw new Error(`O Instagram ainda está processando ${label}. Tente publicar novamente em alguns instantes.`);
+  throw new Error(`${label}: o Instagram ainda está processando esta mídia. Tente publicar novamente em alguns instantes.`);
 }
 
-async function createImageChild(userId: string, accessToken: string, imageUrl: string) {
-  const response = await fetch(`${INSTAGRAM_GRAPH_BASE}/${userId}/media`, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      image_url: imageUrl,
-      is_carousel_item: "true",
-      access_token: accessToken,
-    }),
-  });
-  const payload = await response.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
-  if (!response.ok || !payload.id) {
-    throw new Error(payload.error?.message || `Instagram recusou uma imagem do Book (HTTP ${response.status}).`);
+async function createImageChild(userId: string, accessToken: string, imageUrl: string, label: string) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) await sleep(2500);
+    const response = await fetch(`${INSTAGRAM_GRAPH_BASE}/${userId}/media`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        image_url: imageUrl,
+        is_carousel_item: "true",
+        access_token: accessToken,
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as { id?: string; error?: MetaError };
+    if (response.ok && payload.id) return payload.id;
+
+    const fetchFailure = payload.error?.code === 9004 || payload.error?.error_subcode === 2207052;
+    if (attempt === 0 && fetchFailure) continue;
+    throw new Error(metaErrorMessage(label, payload.error, `Instagram recusou esta imagem (HTTP ${response.status}).`));
   }
-  return payload.id;
+  throw new Error(`${label}: o Instagram não conseguiu baixar a imagem.`);
 }
 
 async function createVideoChild(userId: string, accessToken: string, videoUrl: string) {
@@ -132,11 +152,11 @@ async function createVideoChild(userId: string, accessToken: string, videoUrl: s
       access_token: accessToken,
     }),
   });
-  const payload = await response.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+  const payload = await response.json().catch(() => ({})) as { id?: string; error?: MetaError };
   if (!response.ok || !payload.id) {
-    throw new Error(payload.error?.message || `Instagram recusou o vídeo do Book (HTTP ${response.status}).`);
+    throw new Error(metaErrorMessage("Vídeo curto", payload.error, `Instagram recusou o vídeo do Book (HTTP ${response.status}).`));
   }
-  await waitForContainer(payload.id, accessToken, "o vídeo do Book");
+  await waitForContainer(payload.id, accessToken, "Vídeo curto");
   return payload.id;
 }
 
@@ -187,12 +207,13 @@ export function registerPropertyBookRoutes(app: Hono) {
 
     try {
       const children: string[] = [];
-      children.push(await createImageChild(config.userId, config.accessToken, coverUrl));
+      children.push(await createImageChild(config.userId, config.accessToken, coverUrl, "Capa"));
       children.push(await createVideoChild(config.userId, config.accessToken, video.url));
-      for (const photoUrl of photoUrls.slice(0, 10 - 3)) {
-        children.push(await createImageChild(config.userId, config.accessToken, photoUrl));
+      for (let index = 0; index < photoUrls.slice(0, 7).length; index += 1) {
+        const photoUrl = photoUrls[index];
+        children.push(await createImageChild(config.userId, config.accessToken, photoUrl, `Foto ${index + 1}`));
       }
-      children.push(await createImageChild(config.userId, config.accessToken, ctaUrl));
+      children.push(await createImageChild(config.userId, config.accessToken, ctaUrl, "Encerramento/CTA"));
 
       const parentResponse = await fetch(`${INSTAGRAM_GRAPH_BASE}/${config.userId}/media`, {
         method: "POST",
@@ -204,21 +225,21 @@ export function registerPropertyBookRoutes(app: Hono) {
           access_token: config.accessToken,
         }),
       });
-      const parent = await parentResponse.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+      const parent = await parentResponse.json().catch(() => ({})) as { id?: string; error?: MetaError };
       if (!parentResponse.ok || !parent.id) {
-        throw new Error(parent.error?.message || `Instagram recusou o carrossel (HTTP ${parentResponse.status}).`);
+        throw new Error(metaErrorMessage("Carrossel", parent.error, `Instagram recusou o carrossel (HTTP ${parentResponse.status}).`));
       }
 
-      await waitForContainer(parent.id, config.accessToken, "o carrossel do Book", 20);
+      await waitForContainer(parent.id, config.accessToken, "Carrossel", 20);
 
       const publishResponse = await fetch(`${INSTAGRAM_GRAPH_BASE}/${config.userId}/media_publish`, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ creation_id: parent.id, access_token: config.accessToken }),
       });
-      const published = await publishResponse.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+      const published = await publishResponse.json().catch(() => ({})) as { id?: string; error?: MetaError };
       if (!publishResponse.ok || !published.id) {
-        throw new Error(published.error?.message || `Instagram recusou a publicação do Book (HTTP ${publishResponse.status}).`);
+        throw new Error(metaErrorMessage("Publicação", published.error, `Instagram recusou a publicação do Book (HTTP ${publishResponse.status}).`));
       }
 
       const permalinkResponse = await fetch(
