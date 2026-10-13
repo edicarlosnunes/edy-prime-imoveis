@@ -109,14 +109,28 @@ async function loadImage(url: string) {
 
 function canvasBlob(canvas: HTMLCanvasElement) {
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Não foi possível gerar a arte do Book.")), "image/png", 0.94);
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Não foi possível gerar a arte do Book.")), "image/jpeg", 0.92);
   });
+}
+
+async function buildSocialPhotoCanvas(url: string) {
+  const image = await loadImage(url);
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Seu navegador não conseguiu preparar uma foto para publicação.");
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, 1080, 1080);
+  cropImage(ctx, image, 1080, 1080);
+  return canvas;
 }
 
 async function uploadBookAsset(canvas: HTMLCanvasElement, name: string) {
   const blob = await canvasBlob(canvas);
   const form = new FormData();
-  form.append("file", new File([blob], name, { type: "image/png" }));
+  const jpegName = name.replace(/\.(png|webp|avif|jpeg)$/i, ".jpg");
+  form.append("file", new File([blob], jpegName, { type: "image/jpeg" }));
   const response = await fetch("/api/admin/upload", { method: "POST", credentials: "same-origin", body: form });
   const payload = await response.json().catch(() => ({})) as { url?: string; error?: string };
   if (!response.ok || !payload.url) throw new Error(payload.error || "Não foi possível salvar a arte do Book.");
@@ -284,8 +298,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     try {
       const canvas = await buildCoverCanvas();
       const link = document.createElement("a");
-      link.href = canvas.toDataURL("image/png", 0.94);
-      link.download = `e-santos-${property?.code || propertyId || "imovel"}-capa-premium.png`;
+      link.href = canvas.toDataURL("image/jpeg", 0.92);
+      link.download = `e-santos-${property?.code || propertyId || "imovel"}-capa-premium.jpg`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -298,12 +312,17 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   async function publishInstagramBook() {
     if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Instagram.");
-    const [coverCanvas, ctaCanvas] = await Promise.all([buildCoverCanvas(), buildCtaCanvas()]);
-    const [coverUrl, ctaUrl] = await Promise.all([
-      uploadBookAsset(coverCanvas, `book-${property.code || propertyId}-capa.png`),
-      uploadBookAsset(ctaCanvas, `book-${property.code || propertyId}-cta.png`),
+    const [coverCanvas, ctaCanvas, photoCanvases] = await Promise.all([
+      buildCoverCanvas(),
+      buildCtaCanvas(),
+      Promise.all(bookPhotos.map((image) => buildSocialPhotoCanvas(image.url))),
     ]);
-    const photoUrls = bookPhotos.map((image) => new URL(image.url, window.location.origin).toString());
+    const uploaded = await Promise.all([
+      uploadBookAsset(coverCanvas, `book-${property.code || propertyId}-capa.jpg`),
+      uploadBookAsset(ctaCanvas, `book-${property.code || propertyId}-cta.jpg`),
+      ...photoCanvases.map((canvas, index) => uploadBookAsset(canvas, `book-${property.code || propertyId}-foto-${index + 1}.jpg`)),
+    ]);
+    const [coverUrl, ctaUrl, ...photoUrls] = uploaded;
     const response = await fetch(`/api/admin/property-book/${propertyId}/publish-instagram`, {
       method: "POST",
       credentials: "same-origin",
@@ -437,7 +456,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
             <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-muted">Prévia quadrada 1:1. A galeria original permanece intacta.</p><Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa PNG"}</Btn></div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-muted">Saída para redes: JPEG 1080×1080. A galeria original permanece intacta.</p><Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa JPEG"}</Btn></div>
         </div>
       </div>
 
