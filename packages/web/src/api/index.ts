@@ -38,6 +38,7 @@ import { adminAudit } from "./routes/admin-audit";
 import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
 import { registerPropertyVideoRoutes } from "./http/property-video-routes";
+import { registerPropertyBookRoutes } from "./http/property-book-routes";
 import * as schema from "./database/schema";
 import { verifyGithubActionsOidc } from "./lib/github-actions-oidc";
 import { sweepLinkCaptacaoHelp } from "./lib/link-captacao-help";
@@ -108,6 +109,7 @@ const app = createApp(router);
 registerFeedRoutes(app);
 registerWebhookRoutes(app);
 registerPropertyVideoRoutes(app);
+registerPropertyBookRoutes(app);
 
 app.get("/api/cron/link-captacao-help", async (c) => {
   const auth = c.req.header("authorization") ?? "";
