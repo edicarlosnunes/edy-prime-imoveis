@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
-import { CheckCircle2, Film, Loader2, Send, Trash2, Upload, Youtube } from "lucide-react";
+import { CheckCircle2, Film, Loader2, Trash2, Upload, Youtube } from "lucide-react";
 import { Badge, Btn, ErrorNote } from "./ui";
 import { PropertyMarketingBook } from "./property-marketing-book";
 
@@ -22,13 +22,13 @@ const SLOTS = [
   {
     kind: "short_social" as const,
     title: "Vídeo curto · Instagram / Facebook",
-    description: "Arquivo principal para Reels, Facebook e futuros anúncios do imóvel.",
-    recommendation: "Até 60 segundos.",
+    description: "Encaixe aqui o vídeo curto. Ele entra automaticamente no Book Premium abaixo; não precisa publicar separado.",
+    recommendation: "Padrão social: até 60 segundos.",
   },
   {
     kind: "youtube_long" as const,
     title: "Vídeo completo · YouTube",
-    description: "Apresentação completa do imóvel. Depois da publicação, o link do YouTube fica ligado ao imóvel.",
+    description: "Apresentação completa do imóvel. É independente do Book curto e pode ser publicada no YouTube quando estiver pronta.",
     recommendation: "Recomendado: aproximadamente 2 a 3 minutos.",
   },
 ];
@@ -86,9 +86,6 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
   const [error, setError] = useState<string | null>(null);
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
-  const [instagram, setInstagram] = useState(true);
-  const [facebook, setFacebook] = useState(true);
-  const [youtubeShort, setYoutubeShort] = useState(false);
   const shortInput = useRef<HTMLInputElement>(null);
   const longInput = useRef<HTMLInputElement>(null);
 
@@ -127,7 +124,7 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     }
     const durationSeconds = await videoDuration(file);
     if (kind === "short_social" && durationSeconds > 60) {
-      setError(`O vídeo curto tem ${durationLabel(durationSeconds)}. Para Instagram/Facebook, use no máximo 1:00.`);
+      setError(`O vídeo curto tem ${durationLabel(durationSeconds)}. Para o Book social, use no máximo 1:00.`);
       return;
     }
 
@@ -191,99 +188,40 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     }
   }
 
-  async function uploadStoredVideoToYouTube(video: PropertyVideo, mode: "short" | "long") {
-    if (propertyId === null) return null;
-    const source = await fetch(video.url);
-    if (!source.ok) throw new Error("Não foi possível abrir o arquivo de vídeo armazenado.");
-    const blob = await source.blob();
-    const mime = video.mime || blob.type || "video/mp4";
-
-    const sessionUrl = mode === "short"
-      ? `/api/admin/property-videos/${propertyId}/youtube-short-session`
-      : "/api/oauth/youtube/upload-session";
-    const sessionBody = mode === "short"
-      ? { force: false }
-      : { propertyId, fileName: video.fileName || "video-imovel.mp4", fileSize: blob.size, mime };
-
-    const session = await fetch(sessionUrl, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(sessionBody),
-    });
-    if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o upload no YouTube."));
-    const prepared = await session.json() as { uploadUrl: string; accessToken: string };
-
-    const sent = await fetch(prepared.uploadUrl, {
-      method: "PUT",
-      headers: { authorization: `Bearer ${prepared.accessToken}`, "content-type": mime },
-      body: blob,
-    });
-    const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
-    if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o upload.");
-
-    const completeUrl = mode === "short"
-      ? `/api/admin/property-videos/${propertyId}/youtube-short-complete`
-      : "/api/oauth/youtube/upload-complete";
-    const completeBody = mode === "short"
-      ? { videoId: youtube.id }
-      : { propertyId, videoId: youtube.id };
-    const complete = await fetch(completeUrl, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(completeBody),
-    });
-    if (!complete.ok) throw new Error(await responseError(complete, "Vídeo enviado, mas não foi possível registrar o retorno."));
-    return await complete.json() as { message?: string; link?: string };
-  }
-
-  async function publishShort() {
-    if (propertyId === null || !shortVideo) return;
-    if (!instagram && !facebook && !youtubeShort) {
-      setError("Selecione pelo menos um destino para o vídeo curto.");
-      return;
-    }
-    setPublishBusy(true);
-    setError(null);
-    setPublishMessage(null);
-    const messages: string[] = [];
-    try {
-      const targets = [instagram ? "instagram" : null, facebook ? "facebook" : null].filter((value): value is string => Boolean(value));
-      if (targets.length > 0) {
-        const response = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ targets, force: false }),
-        });
-        const payload = await response.json().catch(() => ({})) as { error?: string; results?: Record<string, { ok?: boolean; message?: string }> };
-        if (!response.ok && !payload.results) throw new Error(payload.error || "Falha ao publicar nas redes Meta.");
-        for (const [target, result] of Object.entries(payload.results ?? {})) {
-          messages.push(`${target === "instagram" ? "Instagram" : "Facebook"}: ${result.message || (result.ok ? "publicado" : "erro")}`);
-        }
-      }
-      if (youtubeShort) {
-        const result = await uploadStoredVideoToYouTube(shortVideo, "short");
-        messages.push(`YouTube Shorts: ${result?.message || "enviado como privado"}`);
-      }
-      setPublishMessage(messages.join("\n"));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Falha ao publicar o vídeo curto.");
-      if (messages.length > 0) setPublishMessage(messages.join("\n"));
-    } finally {
-      setPublishBusy(false);
-    }
-  }
-
   async function publishLong() {
     if (propertyId === null || !longVideo) return;
     setPublishBusy(true);
     setError(null);
     setPublishMessage(null);
     try {
-      const result = await uploadStoredVideoToYouTube(longVideo, "long");
-      setPublishMessage(`YouTube: ${result?.message || "vídeo enviado como privado"}`);
+      const source = await fetch(longVideo.url);
+      if (!source.ok) throw new Error("Não foi possível abrir o vídeo completo armazenado.");
+      const blob = await source.blob();
+      const mime = longVideo.mime || blob.type || "video/mp4";
+      const session = await fetch("/api/oauth/youtube/upload-session", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ propertyId, fileName: longVideo.fileName || "video-imovel.mp4", fileSize: blob.size, mime }),
+      });
+      if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o upload no YouTube."));
+      const prepared = await session.json() as { uploadUrl: string; accessToken: string };
+      const sent = await fetch(prepared.uploadUrl, {
+        method: "PUT",
+        headers: { authorization: `Bearer ${prepared.accessToken}`, "content-type": mime },
+        body: blob,
+      });
+      const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+      if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o upload.");
+      const complete = await fetch("/api/oauth/youtube/upload-complete", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ propertyId, videoId: youtube.id }),
+      });
+      if (!complete.ok) throw new Error(await responseError(complete, "Vídeo enviado, mas não foi possível registrar o retorno."));
+      const result = await complete.json() as { message?: string; link?: string };
+      setPublishMessage(`YouTube: ${result.message || "vídeo enviado como privado"}${result.link ? `\n${result.link}` : ""}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Falha ao publicar o vídeo completo no YouTube.");
     } finally {
@@ -296,7 +234,7 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-deep"><Film className="h-4 w-4" /><p className="text-sm font-medium">Vídeos do imóvel</p></div>
-          <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted">Última etapa operacional. Vídeo faltando não bloqueia cadastro, site, anúncio ou publicação do imóvel.</p>
+          <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted">Esta área é independente do salvamento principal do imóvel. Você pode concluir o cadastro e depois encaixar, substituir ou corrigir os vídeos sem mexer nos dados já salvos.</p>
         </div>
         <Badge tone={missing === 0 ? "green" : "red"}>{missing === 0 ? "VÍDEOS COMPLETOS" : missing === 2 ? "2 VÍDEOS PENDENTES" : "1 VÍDEO PENDENTE"}</Badge>
       </div>
@@ -332,39 +270,20 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
                     <Btn type="button" tone="outline" disabled={Boolean(busy) || propertyId === null} title={propertyId === null ? "Finalize o cadastro do imóvel para anexar o vídeo." : undefined} onClick={() => inputRef.current?.click()}><Upload className="h-3.5 w-3.5" /> {video ? "Substituir vídeo" : "Selecionar vídeo"}</Btn>
                     {video && <Btn type="button" tone="outline" disabled={Boolean(busy)} onClick={() => void remove(slot.kind)}><Trash2 className="h-3.5 w-3.5" /> Remover</Btn>}
                   </div>
+
+                  {slot.kind === "youtube_long" && propertyId !== null && (
+                    <div className="mt-4 border-t border-line pt-3">
+                      <Btn type="button" tone="brass" disabled={!longVideo || publishBusy} onClick={() => void publishLong()}>{publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Youtube className="h-3.5 w-3.5" />} Publicar vídeo completo no YouTube</Btn>
+                      {!longVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo completo.</p>}
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
 
-          {propertyId !== null && (
-            <div className="mt-4 rounded-[8px] border border-line bg-bone/25 p-4">
-              <div className="flex items-center gap-2 text-deep"><Send className="h-4 w-4" /><p className="text-sm font-medium">Publicar / enviar vídeo</p></div>
-              <p className="mt-1 text-[11px] text-muted">Primeiro o arquivo fica guardado no imóvel. Depois você escolhe para quais canais quer enviar.</p>
-              <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <div className="rounded-[8px] border border-line bg-white p-4">
-                  <p className="text-sm font-medium text-deep">Vídeo curto</p>
-                  <div className="mt-3 grid gap-2 text-sm text-deep">
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={instagram} onChange={(event) => setInstagram(event.target.checked)} /> Instagram</label>
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={facebook} onChange={(event) => setFacebook(event.target.checked)} /> Facebook</label>
-                    <label className="flex items-center gap-2"><input type="checkbox" checked={youtubeShort} onChange={(event) => setYoutubeShort(event.target.checked)} /> YouTube Shorts</label>
-                  </div>
-                  <Btn type="button" tone="brass" className="mt-4" disabled={!shortVideo || publishBusy} onClick={() => void publishShort()}>{publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Publicar vídeo curto</Btn>
-                  {!shortVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo curto acima.</p>}
-                </div>
-
-                <div className="rounded-[8px] border border-line bg-white p-4">
-                  <p className="text-sm font-medium text-deep">Vídeo completo</p>
-                  <p className="mt-2 text-xs text-muted">Destino: YouTube. No primeiro teste, o vídeo continua sendo enviado como privado.</p>
-                  <Btn type="button" tone="brass" className="mt-4" disabled={!longVideo || publishBusy} onClick={() => void publishLong()}>{publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Youtube className="h-3.5 w-3.5" />} Publicar vídeo completo</Btn>
-                  {!longVideo && <p className="mt-2 text-[11px] text-muted">Cadastre primeiro o vídeo completo acima.</p>}
-                </div>
-              </div>
-              {publishMessage && <div className="mt-4 whitespace-pre-line rounded-[6px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{publishMessage}</div>}
-            </div>
-          )}
-
-          {propertyId === null && <p className="mt-3 text-[11px] text-muted">Os dois campos já fazem parte deste cadastro. Como o imóvel ainda não recebeu o código interno definitivo, os botões de envio serão liberados assim que o cadastro for finalizado e aberto em Editar. Isso não bloqueia o imóvel e não muda nenhuma outra etapa.</p>}
+          {publishMessage && <div className="mt-4 whitespace-pre-line rounded-[6px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{publishMessage}</div>}
+          {propertyId === null && <p className="mt-3 text-[11px] text-muted">Os vídeos serão liberados depois que o imóvel receber o código interno definitivo. Isso não bloqueia nem altera o cadastro principal.</p>}
         </>
       )}
 
