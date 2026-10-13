@@ -23,6 +23,12 @@ const typeEnum = z.enum([
   "cobertura",
   "sobrado",
   "terreno",
+  "lote",
+  "sitio",
+  "fazenda",
+  "gleba",
+  "loteamento",
+  "area",
   "sala_comercial",
   "chacara",
   "outro",
@@ -40,6 +46,12 @@ const typeLabel: Record<string, string> = {
   cobertura: "cobertura",
   sobrado: "sobrado",
   terreno: "terreno",
+  lote: "lote",
+  sitio: "sítio",
+  fazenda: "fazenda",
+  gleba: "gleba",
+  loteamento: "loteamento",
+  area: "área",
   sala_comercial: "sala comercial",
   chacara: "chácara",
   outro: "imóvel",
@@ -146,12 +158,25 @@ function parseJson(raw: string) {
   return JSON.parse(text) as unknown;
 }
 
+const LAND_ONLY_TYPES = [
+  "terreno",
+  "lote",
+  "sitio",
+  "fazenda",
+  "gleba",
+  "loteamento",
+  "area",
+  "chacara",
+  "sala_comercial",
+  "outro",
+] as const;
+
 /** Campos mínimos: sem eles o texto sairia genérico. */
 function missingFields(input: GenerateInput) {
   const missing: string[] = [];
   if (!input.district.trim()) missing.push("bairro");
   if (input.areaUtil <= 0) missing.push("área útil");
-  const needsBedrooms = !["terreno", "sala_comercial", "outro"].includes(input.type);
+  const needsBedrooms = !LAND_ONLY_TYPES.includes(input.type as (typeof LAND_ONLY_TYPES)[number]);
   if (needsBedrooms && input.bedrooms <= 0) missing.push("dormitórios");
   return missing;
 }
