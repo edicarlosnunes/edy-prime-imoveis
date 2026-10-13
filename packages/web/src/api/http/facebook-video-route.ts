@@ -9,6 +9,8 @@ import { siteBaseUrl } from "../lib/base-url";
 const GRAPH_VERSION = "v26.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
+type MetaError = { message?: string; code?: number; error_subcode?: number };
+
 function money(value: number) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -21,6 +23,7 @@ function propertyCaption(property: any, headers: Headers) {
   const site = siteBaseUrl(headers);
   return [
     property.title,
+    property.description ? String(property.description).trim() : null,
     property.code ? `Código: ${property.code}` : null,
     property.price > 0 ? `Valor: ${money(property.price)}` : null,
     property.district ? `${property.district} · ${property.city}` : property.city,
@@ -28,23 +31,32 @@ function propertyCaption(property: any, headers: Headers) {
     property.suites > 0 ? `${property.suites} suíte(s)` : null,
     property.parking > 0 ? `${property.parking} vaga(s)` : null,
     `Mais informações: ${site}`,
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n\n").slice(0, 5000);
 }
 
-async function latestChannel(propertyId: number) {
+function safePublicUrl(value: unknown) {
+  try {
+    const url = new URL(String(value ?? ""));
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function latestChannel(propertyId: number, channel: string) {
   const db = await getDb();
   const [row] = await db
     .select()
     .from(schema.propertyChannels)
-    .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, "facebook_video")))
+    .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, channel)))
     .orderBy(desc(schema.propertyChannels.id))
     .limit(1);
   return row ?? null;
 }
 
-async function saveChannel(propertyId: number, status: string, message: string, authorized = 1) {
+async function saveChannel(propertyId: number, channel: string, status: string, message: string, authorized = 1) {
   const db = await getDb();
-  const previous = await latestChannel(propertyId);
+  const previous = await latestChannel(propertyId, channel);
   if (previous) {
     await db
       .update(schema.propertyChannels)
@@ -59,7 +71,7 @@ async function saveChannel(propertyId: number, status: string, message: string, 
   } else {
     await db.insert(schema.propertyChannels).values({
       propertyId,
-      channel: "facebook_video",
+      channel,
       authorized,
       status,
       message,
@@ -74,8 +86,9 @@ async function graphGet(url: string) {
     id?: string;
     name?: string;
     access_token?: string;
+    permalink_url?: string;
     data?: Array<{ id?: string; name?: string; access_token?: string }>;
-    error?: { message?: string; code?: number; error_subcode?: number };
+    error?: MetaError;
   };
   return { response, payload };
 }
@@ -106,7 +119,113 @@ async function resolveFacebookPageAccessToken(pageId: string, credential: string
   );
 }
 
+function metaMessage(error: MetaError | undefined, fallback: string) {
+  if (!error) return fallback;
+  const code = error.code ? ` (Meta ${error.code}${error.error_subcode ? `/${error.error_subcode}` : ""})` : "";
+  return `${error.message || fallback}${code}`;
+}
+
+async function stageFacebookPhoto(pageId: string, pageToken: string, imageUrl: string, label: string) {
+  const response = await fetch(`${GRAPH_BASE}/${encodeURIComponent(pageId)}/photos`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      url: imageUrl,
+      published: "false",
+      access_token: pageToken,
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as { id?: string; error?: MetaError };
+  if (!response.ok || !payload.id) {
+    throw new Error(`${label}: ${metaMessage(payload.error, `Facebook recusou a imagem (HTTP ${response.status}).`)}`);
+  }
+  return payload.id;
+}
+
 export function registerFacebookVideoRoute(app: Hono) {
+  app.post("/api/admin/property-book/:propertyId/publish-facebook", async (c) => {
+    const user = await resolveSession(c.req.raw.headers);
+    if (!user) return c.json({ error: "Não autorizado" }, 401);
+
+    const propertyId = Number(c.req.param("propertyId"));
+    if (!Number.isSafeInteger(propertyId) || propertyId <= 0) return c.json({ error: "Imóvel inválido" }, 400);
+
+    const body = await c.req.json().catch(() => ({})) as {
+      coverUrl?: unknown;
+      ctaUrl?: unknown;
+      photoUrls?: unknown;
+      force?: unknown;
+    };
+    const coverUrl = safePublicUrl(body.coverUrl);
+    const ctaUrl = safePublicUrl(body.ctaUrl);
+    const photoUrls = Array.isArray(body.photoUrls)
+      ? body.photoUrls.map(safePublicUrl).filter((value): value is string => Boolean(value)).slice(0, 8)
+      : [];
+    if (!coverUrl || !ctaUrl) return c.json({ error: "A capa e o encerramento do Book são obrigatórios." }, 400);
+
+    const db = await getDb();
+    const [property] = await db.select().from(schema.properties).where(eq(schema.properties.id, propertyId)).limit(1);
+    if (!property) return c.json({ error: "Imóvel não encontrado" }, 404);
+    if (property.published !== 1 || property.status !== "disponivel") {
+      return c.json({ error: "O imóvel precisa estar publicado no site e disponível antes de enviar ao Facebook." }, 400);
+    }
+
+    const previous = await latestChannel(propertyId, "facebook_book");
+    if (previous?.status === "publicado" && body.force !== true) {
+      return c.json({ error: "Este Book já foi publicado no Facebook." }, 409);
+    }
+
+    const { row, config } = await readConfig(db, "facebook_publicacao");
+    if (!row || row.enabled !== 1 || !config.pageId || !config.pageToken) {
+      return c.json({ error: "Facebook não está conectado para publicação." }, 400);
+    }
+
+    try {
+      const pageToken = await resolveFacebookPageAccessToken(config.pageId, config.pageToken);
+      const mediaUrls = [coverUrl, ...photoUrls, ctaUrl];
+      const mediaIds: string[] = [];
+      for (let index = 0; index < mediaUrls.length; index += 1) {
+        const label = index === 0 ? "Capa" : index === mediaUrls.length - 1 ? "Encerramento/CTA" : `Foto ${index}`;
+        mediaIds.push(await stageFacebookPhoto(config.pageId, pageToken, mediaUrls[index], label));
+      }
+
+      const params = new URLSearchParams({
+        message: propertyCaption(property, c.req.raw.headers),
+        access_token: pageToken,
+      });
+      mediaIds.forEach((id, index) => {
+        params.set(`attached_media[${index}]`, JSON.stringify({ media_fbid: id }));
+      });
+
+      const response = await fetch(`${GRAPH_BASE}/${encodeURIComponent(config.pageId)}/feed`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: params,
+      });
+      const payload = await response.json().catch(() => ({})) as { id?: string; error?: MetaError };
+      if (!response.ok || !payload.id) {
+        throw new Error(metaMessage(payload.error, `Facebook recusou o Book (HTTP ${response.status}).`));
+      }
+
+      let permalink: string | null = null;
+      const permalinkRequest = new URL(`${GRAPH_BASE}/${encodeURIComponent(payload.id)}`);
+      permalinkRequest.searchParams.set("fields", "permalink_url");
+      permalinkRequest.searchParams.set("access_token", pageToken);
+      const permalinkResult = await graphGet(permalinkRequest.toString());
+      if (permalinkResult.response.ok) permalink = permalinkResult.payload.permalink_url ?? null;
+
+      const message = `Book Premium publicado no Facebook com capa, ${photoUrls.length} foto(s), CTA e descrição completa. ID: ${payload.id}.${permalink ? ` URL: ${permalink}` : ""}`;
+      await saveChannel(propertyId, "facebook_book", "publicado", message, 1);
+      await logEvent(db, "facebook_publicacao", "sync", true, message);
+      return c.json({ ok: true, id: payload.id, url: permalink, message }, 200);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Falha ao publicar o Book Premium no Facebook.";
+      await saveChannel(propertyId, "facebook_book", "erro", message, 0);
+      await logEvent(db, "facebook_publicacao", "sync", false, message);
+      return c.json({ error: message }, 400);
+    }
+  });
+
   app.post("/api/admin/property-videos/:propertyId/publish-meta", async (c, next) => {
     const body = await c.req.json().catch(() => ({})) as { targets?: unknown; force?: unknown };
     const targets = Array.isArray(body.targets) ? body.targets.map(String) : [];
@@ -132,7 +251,7 @@ export function registerFacebookVideoRoute(app: Hono) {
       .limit(1);
     if (!video?.url) return c.json({ error: "Cadastre o vídeo curto antes de publicar." }, 400);
 
-    const previous = await latestChannel(propertyId);
+    const previous = await latestChannel(propertyId, "facebook_video");
     if (previous?.status === "publicado" && body.force !== true) {
       return c.json({
         ok: false,
@@ -163,16 +282,15 @@ export function registerFacebookVideoRoute(app: Hono) {
       });
       const payload = await response.json().catch(() => ({})) as {
         id?: string;
-        error?: { message?: string; code?: number; error_subcode?: number };
+        error?: MetaError;
       };
       if (!response.ok || !payload.id) {
-        const suffix = payload.error?.code ? ` (Meta ${payload.error.code}${payload.error.error_subcode ? `/${payload.error.error_subcode}` : ""})` : "";
-        throw new Error(`${payload.error?.message || `Facebook recusou o vídeo (HTTP ${response.status}).`}${suffix}`);
+        throw new Error(metaMessage(payload.error, `Facebook recusou o vídeo (HTTP ${response.status}).`));
       }
 
       const url = `https://www.facebook.com/${config.pageId}/videos/${payload.id}`;
       const message = `Vídeo curto enviado ao Facebook. ID: ${payload.id}. URL: ${url}`;
-      await saveChannel(propertyId, "publicado", message, 1);
+      await saveChannel(propertyId, "facebook_video", "publicado", message, 1);
       await logEvent(db, "facebook_publicacao", "sync", true, message);
       return c.json({
         ok: true,
@@ -180,7 +298,7 @@ export function registerFacebookVideoRoute(app: Hono) {
       }, 200);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Falha ao publicar no Facebook.";
-      await saveChannel(propertyId, "erro", message, 0);
+      await saveChannel(propertyId, "facebook_video", "erro", message, 0);
       await logEvent(db, "facebook_publicacao", "sync", false, message);
       return c.json({
         ok: false,
