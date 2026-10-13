@@ -82,6 +82,28 @@ async function saveChannel(propertyId: number, channel: string, status: string, 
   }
 }
 
+async function waitForContainer(containerId: string, accessToken: string, label: string, maxAttempts = 40) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await sleep(attempt === 0 ? 1800 : 2500);
+    const statusResponse = await fetch(
+      `${INSTAGRAM_GRAPH_BASE}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    const status = await statusResponse.json().catch(() => ({})) as {
+      status_code?: string;
+      status?: string;
+      error?: { message?: string };
+    };
+    if (!statusResponse.ok) {
+      throw new Error(status.error?.message || `Não foi possível acompanhar o processamento ${label}.`);
+    }
+    if (["FINISHED", "PUBLISHED"].includes(status.status_code ?? "")) return;
+    if (["ERROR", "EXPIRED"].includes(status.status_code ?? "")) {
+      throw new Error(status.status || `O Instagram não conseguiu processar ${label}.`);
+    }
+  }
+  throw new Error(`O Instagram ainda está processando ${label}. Tente publicar novamente em alguns instantes.`);
+}
+
 async function createImageChild(userId: string, accessToken: string, imageUrl: string) {
   const response = await fetch(`${INSTAGRAM_GRAPH_BASE}/${userId}/media`, {
     method: "POST",
@@ -114,26 +136,8 @@ async function createVideoChild(userId: string, accessToken: string, videoUrl: s
   if (!response.ok || !payload.id) {
     throw new Error(payload.error?.message || `Instagram recusou o vídeo do Book (HTTP ${response.status}).`);
   }
-
-  for (let attempt = 0; attempt < 18; attempt += 1) {
-    await sleep(attempt === 0 ? 1800 : 2200);
-    const statusResponse = await fetch(
-      `${INSTAGRAM_GRAPH_BASE}/${payload.id}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`,
-    );
-    const status = await statusResponse.json().catch(() => ({})) as {
-      status_code?: string;
-      status?: string;
-      error?: { message?: string };
-    };
-    if (!statusResponse.ok) {
-      throw new Error(status.error?.message || "Não foi possível acompanhar o processamento do vídeo do Book.");
-    }
-    if (status.status_code === "FINISHED") return payload.id;
-    if (["ERROR", "EXPIRED"].includes(status.status_code ?? "")) {
-      throw new Error(status.status || "O Instagram não conseguiu processar o vídeo do Book.");
-    }
-  }
-  throw new Error("O Instagram ainda está processando o vídeo do Book. Tente publicar novamente em alguns instantes.");
+  await waitForContainer(payload.id, accessToken, "o vídeo do Book");
+  return payload.id;
 }
 
 export function registerPropertyBookRoutes(app: Hono) {
@@ -204,6 +208,8 @@ export function registerPropertyBookRoutes(app: Hono) {
       if (!parentResponse.ok || !parent.id) {
         throw new Error(parent.error?.message || `Instagram recusou o carrossel (HTTP ${parentResponse.status}).`);
       }
+
+      await waitForContainer(parent.id, config.accessToken, "o carrossel do Book", 20);
 
       const publishResponse = await fetch(`${INSTAGRAM_GRAPH_BASE}/${config.userId}/media_publish`, {
         method: "POST",
