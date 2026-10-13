@@ -24,6 +24,8 @@ type DemoStep =
   | { kind: "video"; label: string; url: string }
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
+type SocialTarget = "instagram" | "facebook" | "youtube" | "other";
+type ChannelResult = { status: "success" | "error" | "pending"; message: string };
 
 const ESANTOS_LOGO = "/esantos-logo.png";
 
@@ -121,6 +123,11 @@ async function uploadBookAsset(canvas: HTMLCanvasElement, name: string) {
   return new URL(payload.url, window.location.origin).toString();
 }
 
+async function responseError(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => ({})) as { error?: string; message?: string };
+  return payload.error || payload.message || fallback;
+}
+
 function YoutubePlayBadge({ large = false }: { large?: boolean }) {
   return (
     <span className={`absolute left-1/2 top-[42%] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[10px] bg-[#FF0000] shadow-xl ${large ? "h-12 w-[70px]" : "h-10 w-[58px]"}`}>
@@ -140,7 +147,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [downloading, setDownloading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [publishMessage, setPublishMessage] = useState<string | null>(null);
+  const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, other: false });
+  const [otherTarget, setOtherTarget] = useState("");
+  const [channelResults, setChannelResults] = useState<Partial<Record<SocialTarget, ChannelResult>>>({});
 
   const detail = useQuery({
     ...orpc.adminProperties.get.queryOptions({ input: { id: propertyId ?? 0 } }),
@@ -149,7 +158,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   useEffect(() => {
     setDemoIndex(0);
-    setPublishMessage(null);
+    setChannelResults({});
     if (propertyId === null) {
       setShortVideoUrl(null);
       return;
@@ -184,6 +193,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const ctaDescription = shortenDescription(property?.description);
   const whatsappMessage = encodeURIComponent(`Olá! Vi o imóvel ${property?.title || "que vocês anunciaram"}${property?.code ? ` (código ${property.code})` : ""} e gostaria de receber mais informações.`);
   const whatsappUrl = `https://wa.me/5513997726767?text=${whatsappMessage}`;
+  const selectedCount = Object.values(targets).filter(Boolean).length;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
     const steps: DemoStep[] = [{ kind: "cover", label: "Capa premium E. Santos" }];
@@ -286,32 +296,99 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     }
   }
 
-  async function publishApprovedBook() {
-    if (!propertyId || !property || !primary || !shortVideoUrl) return;
+  async function publishInstagramBook() {
+    if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Instagram.");
+    const [coverCanvas, ctaCanvas] = await Promise.all([buildCoverCanvas(), buildCtaCanvas()]);
+    const [coverUrl, ctaUrl] = await Promise.all([
+      uploadBookAsset(coverCanvas, `book-${property.code || propertyId}-capa.png`),
+      uploadBookAsset(ctaCanvas, `book-${property.code || propertyId}-cta.png`),
+    ]);
+    const photoUrls = bookPhotos.map((image) => new URL(image.url, window.location.origin).toString());
+    const response = await fetch(`/api/admin/property-book/${propertyId}/publish-instagram`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ coverUrl, ctaUrl, photoUrls, force: false }),
+    });
+    const payload = await response.json().catch(() => ({})) as { error?: string; message?: string; url?: string };
+    if (!response.ok) throw new Error(payload.error || "Não foi possível publicar o Book Premium.");
+    return payload.url ? `Publicado. ${payload.url}` : (payload.message || "Book Premium publicado.");
+  }
+
+  async function publishFacebook() {
+    if (!propertyId || !shortVideoUrl) throw new Error("Vídeo curto não encontrado.");
+    const response = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ targets: ["facebook"], force: false }),
+    });
+    const payload = await response.json().catch(() => ({})) as { error?: string; results?: { facebook?: { message?: string } } };
+    if (!response.ok) throw new Error(payload.error || payload.results?.facebook?.message || "Falha ao publicar no Facebook.");
+    return payload.results?.facebook?.message || "Conteúdo publicado no Facebook.";
+  }
+
+  async function publishYoutubeShort() {
+    if (!propertyId || !shortVideoUrl) throw new Error("Vídeo curto não encontrado.");
+    const session = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-session`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ force: false }),
+    });
+    if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Shorts."));
+    const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
+    const source = await fetch(prepared.videoUrl);
+    if (!source.ok) throw new Error("Não foi possível abrir o vídeo curto armazenado.");
+    const blob = await source.blob();
+    const sent = await fetch(prepared.uploadUrl, {
+      method: "PUT",
+      headers: { authorization: `Bearer ${prepared.accessToken}`, "content-type": prepared.mime || blob.type || "video/mp4" },
+      body: blob,
+    });
+    const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
+    if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o Short.");
+    const complete = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-complete`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ videoId: youtube.id }),
+    });
+    if (!complete.ok) throw new Error(await responseError(complete, "Short enviado, mas o CRM não registrou o retorno."));
+    const result = await complete.json() as { message?: string };
+    return result.message || "YouTube Shorts publicado.";
+  }
+
+  async function publishSelectedChannels() {
+    if (!propertyId || selectedCount === 0) return;
     setPublishing(true);
     setError(null);
-    setPublishMessage(null);
-    try {
-      const [coverCanvas, ctaCanvas] = await Promise.all([buildCoverCanvas(), buildCtaCanvas()]);
-      const [coverUrl, ctaUrl] = await Promise.all([
-        uploadBookAsset(coverCanvas, `book-${property.code || propertyId}-capa.png`),
-        uploadBookAsset(ctaCanvas, `book-${property.code || propertyId}-cta.png`),
-      ]);
-      const photoUrls = bookPhotos.map((image) => new URL(image.url, window.location.origin).toString());
-      const response = await fetch(`/api/admin/property-book/${propertyId}/publish-instagram`, {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ coverUrl, ctaUrl, photoUrls, force: false }),
-      });
-      const payload = await response.json().catch(() => ({})) as { error?: string; message?: string; url?: string };
-      if (!response.ok) throw new Error(payload.error || "Não foi possível publicar o Book Premium.");
-      setPublishMessage(payload.url ? `Book publicado no Instagram. ${payload.url}` : (payload.message || "Book publicado no Instagram."));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Falha ao publicar o Book Premium.");
-    } finally {
-      setPublishing(false);
+    setChannelResults({});
+
+    const run = async (target: SocialTarget, fn: () => Promise<string>) => {
+      try {
+        const message = await fn();
+        setChannelResults((current) => ({ ...current, [target]: { status: "success", message } }));
+      } catch (caught) {
+        setChannelResults((current) => ({
+          ...current,
+          [target]: { status: "error", message: caught instanceof Error ? caught.message : "Erro na publicação." },
+        }));
+      }
+    };
+
+    const jobs: Promise<void>[] = [];
+    if (targets.instagram) jobs.push(run("instagram", publishInstagramBook));
+    if (targets.facebook) jobs.push(run("facebook", publishFacebook));
+    if (targets.youtube) jobs.push(run("youtube", publishYoutubeShort));
+    if (targets.other) {
+      setChannelResults((current) => ({
+        ...current,
+        other: { status: "pending", message: otherTarget ? "Integração selecionada ainda pendente de adaptador de publicação." : "Nenhuma integração adicional configurada." },
+      }));
     }
+    await Promise.allSettled(jobs);
+    setPublishing(false);
   }
 
   if (propertyId === null) {
@@ -366,7 +443,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
       {primary && currentDemo && (
         <div className="mt-5 rounded-[12px] border border-brass/30 bg-bone/20 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-medium text-deep">Demo funcional do Book</p><p className="mt-1 text-[11px] text-muted">Esta é a prévia que você aprova antes de publicar no Instagram.</p></div><Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge></div>
+          <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-medium text-deep">Demo funcional do Book</p><p className="mt-1 text-[11px] text-muted">Esta é a prévia definitiva que você aprova antes de publicar.</p></div><Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge></div>
           <div className="mx-auto mt-4 max-w-xl">
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></button>}
@@ -379,9 +456,54 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           </div>
 
           <div className="mt-5 border-t border-brass/20 pt-4">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium text-deep">Publicação aprovada</p><p className="mt-1 text-[11px] text-muted">Depois de conferir o Demo, publique o mesmo conjunto no Instagram: capa + vídeo + fotos + encerramento.</p></div><Btn type="button" tone="brass" disabled={!primary || !shortReady || publishing} onClick={() => void publishApprovedBook()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando Book…" : "Publicar Book Premium no Instagram"}</Btn></div>
-            {!shortReady && <p className="mt-2 text-[11px] text-muted">Encaixe primeiro o vídeo curto no slot acima. Não precisa publicar o vídeo separadamente.</p>}
-            {publishMessage && <div className="mt-3 rounded-[6px] border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{publishMessage}</div>}
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p>
+                <p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p>
+              </div>
+              <Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {([
+                ["instagram", "Instagram"],
+                ["facebook", "Facebook"],
+                ["youtube", "YouTube Shorts"],
+                ["other", "Outros"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex cursor-pointer items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-3 text-sm text-deep">
+                  <input type="checkbox" checked={targets[key]} onChange={(event) => setTargets((current) => ({ ...current, [key]: event.target.checked }))} />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+
+            {targets.other && (
+              <div className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 p-3">
+                <label className="block text-xs font-medium text-deep">Outras integrações</label>
+                <select value={otherTarget} onChange={(event) => setOtherTarget(event.target.value)} className="mt-2 w-full max-w-md rounded-[5px] border border-line bg-white px-3 py-2 text-sm" disabled>
+                  <option value="">Nenhuma integração adicional configurada</option>
+                </select>
+                <p className="mt-2 text-[11px] text-amber-800">Outros — pendente. Só aparecerão aqui plataformas realmente configuradas no CRM.</p>
+              </div>
+            )}
+
+            <div className="mt-4">
+              <Btn type="button" tone="brass" disabled={!shortReady || selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn>
+              {!shortReady && <p className="mt-2 text-[11px] text-muted">Encaixe primeiro o vídeo curto no slot acima.</p>}
+            </div>
+
+            {Object.keys(channelResults).length > 0 && (
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {(["instagram", "facebook", "youtube", "other"] as SocialTarget[]).map((key) => {
+                  const result = channelResults[key];
+                  if (!result) return null;
+                  const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "Outros";
+                  const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800";
+                  return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>;
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
