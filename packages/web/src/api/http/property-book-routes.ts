@@ -60,6 +60,23 @@ function metaErrorMessage(label: string, error: MetaError | undefined, fallback:
   return `${label}: ${detail}${code ? ` (Meta ${code})` : ""}`;
 }
 
+function publishedInstagramId(message: string | null | undefined) {
+  const match = String(message ?? "").match(/ID:\s*([0-9]+)/i);
+  return match?.[1] ?? null;
+}
+
+async function instagramMediaStillExists(mediaId: string, accessToken: string) {
+  const response = await fetch(
+    `${INSTAGRAM_GRAPH_BASE}/${mediaId}?fields=id,permalink&access_token=${encodeURIComponent(accessToken)}`,
+  );
+  if (response.ok) return true;
+  const payload = await response.json().catch(() => ({})) as { error?: MetaError };
+  const code = payload.error?.code;
+  const subcode = payload.error?.error_subcode;
+  if (code === 100 || code === 190 || subcode === 33) return false;
+  return true;
+}
+
 async function latestChannel(propertyId: number, channel: string) {
   const db = await getDb();
   const [row] = await db
@@ -195,14 +212,19 @@ export function registerPropertyBookRoutes(app: Hono) {
       .limit(1);
     if (!video?.url) return c.json({ error: "Cadastre o vídeo curto antes de publicar o Book." }, 400);
 
-    const previous = await latestChannel(propertyId, "instagram_book");
-    if (previous?.status === "publicado" && body.force !== true) {
-      return c.json({ error: "Este Book já foi publicado no Instagram." }, 409);
-    }
-
     const { row, config } = await readConfig(db, "instagram_publicacao");
     if (!row || row.enabled !== 1 || !config.userId || !config.accessToken) {
       return c.json({ error: "Instagram não está conectado para publicação." }, 400);
+    }
+
+    const previous = await latestChannel(propertyId, "instagram_book");
+    if (previous?.status === "publicado" && body.force !== true) {
+      const mediaId = publishedInstagramId(previous.message);
+      const stillExists = mediaId ? await instagramMediaStillExists(mediaId, config.accessToken) : true;
+      if (stillExists) {
+        return c.json({ error: "Este Book já foi publicado no Instagram." }, 409);
+      }
+      await saveChannel(propertyId, "instagram_book", "removido_externamente", "A publicação anterior foi removida do Instagram. O Book foi liberado para republicação.", 1);
     }
 
     try {
