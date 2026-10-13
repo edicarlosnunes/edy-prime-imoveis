@@ -53,7 +53,39 @@ function hasAmount(value: string) {
   return digits.length > 0 && Number(digits) > 0;
 }
 
+function normalize(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+/**
+ * Tipos sem edificação não possuem dormitórios/banheiros obrigatórios.
+ * O cadastro usa código serial por tipo e também leva o tipo no título,
+ * então esta regra cobre cadastros existentes sem exigir novo campo no banco.
+ */
+function isLandOnlyProperty(input: PropertyProgressInput) {
+  const codePrefix = input.code.trim().toUpperCase().split("-")[0] ?? "";
+  const landPrefixes = new Set(["TE", "LO", "SI", "FA", "GL", "LT", "AR", "CH"]);
+  if (landPrefixes.has(codePrefix)) return true;
+
+  const title = normalize(input.title);
+  return [
+    "terreno",
+    "lote",
+    "sitio",
+    "fazenda",
+    "gleba",
+    "loteamento",
+    "area",
+    "chacara",
+  ].some((type) => title.includes(type));
+}
+
 export function propertyProgress(input: PropertyProgressInput): PropertyProgress {
+  const landOnly = isLandOnlyProperty(input);
+
   const items: ProgressItem[] = [
     { key: "code", label: "Código", section: "basico", weight: 10, done: filled(input.code) },
     { key: "title", label: "Título", section: "basico", weight: 10, done: filled(input.title) },
@@ -75,10 +107,10 @@ export function propertyProgress(input: PropertyProgressInput): PropertyProgress
     },
     {
       key: "rooms",
-      label: "Dormitórios e banheiros",
+      label: landOnly ? "Tipo sem edificação" : "Dormitórios e banheiros",
       section: "caracteristicas",
       weight: 5,
-      done: positive(input.bedrooms) || positive(input.bathrooms),
+      done: landOnly || positive(input.bedrooms) || positive(input.bathrooms),
     },
     { key: "price", label: "Preço", section: "valores", weight: 15, done: hasAmount(input.price) },
     {
