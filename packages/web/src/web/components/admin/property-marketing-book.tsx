@@ -7,6 +7,7 @@ import {
   Download,
   Film,
   Image as ImageIcon,
+  MessageCircle,
   PlayCircle,
   Sparkles,
 } from "lucide-react";
@@ -51,6 +52,15 @@ function money(value: number | null | undefined) {
 function formatInfo(label: string, value: number | string | null | undefined) {
   const text = String(value ?? "").trim();
   return text && text !== "0" ? `${text} ${label}` : null;
+}
+
+function shortenDescription(value: string | null | undefined, max = 720) {
+  const text = (value ?? "").replace(/\s+/g, " ").trim();
+  if (!text) return "Conheça todos os detalhes deste imóvel e fale agora com a E. Santos para receber atendimento e mais informações.";
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastSentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  return `${(lastSentence > max * 0.55 ? cut.slice(0, lastSentence + 1) : cut).trim()}…`;
 }
 
 function cropImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width: number, height: number) {
@@ -128,6 +138,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     formatInfo("m²", property?.areaUtil),
   ].filter(Boolean).join(" · ");
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
+  const ctaDescription = shortenDescription(property?.description);
+  const whatsappMessage = encodeURIComponent(`Olá! Quero saber mais sobre ${property?.title || "este imóvel"}${property?.code ? ` (código ${property.code})` : ""}.`);
+  const whatsappUrl = `https://wa.me/5513997726767?text=${whatsappMessage}`;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
     const steps: DemoStep[] = [{ kind: "cover", label: "Capa premium E. Santos" }];
@@ -280,7 +293,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-medium text-deep">Demo funcional do Book</p>
-              <p className="mt-1 text-[11px] text-muted">Clique no play da capa e navegue pela sequência real: capa → vídeo → fotos → resumo.</p>
+              <p className="mt-1 text-[11px] text-muted">Clique no play da capa. Ao terminar o vídeo, o demo avança automaticamente para as fotos.</p>
             </div>
             <Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge>
           </div>
@@ -298,7 +311,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               )}
 
               {currentDemo.kind === "video" && (
-                <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline />
+                <video
+                  src={currentDemo.url}
+                  className="h-full w-full object-contain"
+                  controls
+                  autoPlay
+                  playsInline
+                  onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))}
+                />
               )}
 
               {currentDemo.kind === "photo" && (
@@ -306,13 +326,29 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               )}
 
               {currentDemo.kind === "cta" && (
-                <div className="flex h-full flex-col items-center justify-center p-8 text-center" style={{ background: theme.surface, color: theme.ink }}>
-                  <p className="text-xs font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p>
-                  <h4 className="mt-4 text-3xl font-semibold">{property?.title || headline}</h4>
-                  <p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p>
-                  <p className="mt-3 text-sm">{location}</p>
-                  <p className="mt-2 text-sm">{info}</p>
-                  <div className="mt-7 rounded-full px-6 py-3 text-sm font-bold uppercase" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Saiba mais · Fale com a E. Santos</div>
+                <div className="flex h-full flex-col overflow-y-auto p-7 text-left" style={{ background: theme.surface, color: theme.ink }}>
+                  <div className="text-center">
+                    <p className="text-xs font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p>
+                    <h4 className="mt-3 text-2xl font-semibold leading-tight">{property?.title || headline}</h4>
+                    <p className="mt-2 text-lg font-semibold" style={{ color: theme.accent }}>{priceText}</p>
+                    <p className="mt-2 text-xs">{location}{location && info ? " · " : ""}{info}</p>
+                  </div>
+
+                  <div className="mt-5 rounded-[12px] border border-white/10 bg-black/15 p-4">
+                    <p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: theme.accent }}>Conheça melhor este imóvel</p>
+                    <p className="mt-2 text-[13px] leading-relaxed opacity-95">{ctaDescription}</p>
+                  </div>
+
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-5 flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold uppercase no-underline"
+                    style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}
+                  >
+                    <MessageCircle className="h-5 w-5" /> Falar agora no WhatsApp
+                  </a>
+                  <p className="mt-2 text-center text-[10px] opacity-75">Clique para iniciar o atendimento e pedir mais detalhes deste imóvel.</p>
                 </div>
               )}
 
