@@ -64,14 +64,7 @@ function cropImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width
   ctx.drawImage(image, sx, sy, sourceWidth, sourceHeight, 0, 0, width, height);
 }
 
-function drawContainedImage(
-  ctx: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  x: number,
-  y: number,
-  maxWidth: number,
-  maxHeight: number,
-) {
+function drawContainedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, maxWidth: number, maxHeight: number) {
   const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
   const width = image.naturalWidth * scale;
   const height = image.naturalHeight * scale;
@@ -157,6 +150,8 @@ function BrandLogo({ className = "" }: { className?: string }) {
 export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
   const [shortVideoUrl, setShortVideoUrl] = useState<string | null>(null);
+  const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
+  const [uploadingCustomCover, setUploadingCustomCover] = useState(false);
   const [demoIndex, setDemoIndex] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -175,8 +170,11 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setChannelResults({});
     if (propertyId === null) {
       setShortVideoUrl(null);
+      setCustomCoverUrl(null);
       return;
     }
+    const storageKey = `esantos-book-custom-cover-${propertyId}`;
+    setCustomCoverUrl(window.localStorage.getItem(storageKey));
     let alive = true;
     void fetch(`/api/admin/property-videos/${propertyId}`, { credentials: "same-origin" })
       .then(async (response) => response.ok ? response.json() as Promise<{ videos?: VideoRow[] }> : { videos: [] as VideoRow[] })
@@ -217,14 +215,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const selectedCount = Object.values(targets).filter(Boolean).length;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
-    const steps: DemoStep[] = [{ kind: "cover", label: "Capa premium E. Santos" }];
+    const steps: DemoStep[] = [{ kind: "cover", label: customCoverUrl ? "Capa personalizada" : "Capa premium E. Santos" }];
     if (shortVideoUrl) steps.push({ kind: "video", label: "Vídeo curto", url: shortVideoUrl });
     for (const [index, image] of bookPhotos.entries()) {
       steps.push({ kind: "photo", label: `Foto ${images.indexOf(image) + 1}`, url: image.url });
     }
     steps.push({ kind: "cta", label: "Contato + CTA" });
     return steps.slice(0, 10);
-  }, [bookPhotos, images, shortVideoUrl]);
+  }, [bookPhotos, customCoverUrl, images, shortVideoUrl]);
 
   const mediaCount = demoSteps.length;
   const currentDemo = demoSteps[Math.min(demoIndex, Math.max(0, demoSteps.length - 1))] ?? null;
@@ -235,7 +233,40 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return () => window.clearTimeout(timer);
   }, [currentDemo, demoSteps.length]);
 
+  async function handleCustomCover(file: File | null) {
+    if (!file || !propertyId) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Escolha uma imagem para a capa personalizada.");
+      return;
+    }
+    setUploadingCustomCover(true);
+    setError(null);
+    const temporaryUrl = URL.createObjectURL(file);
+    try {
+      const canvas = await buildSocialPhotoCanvas(temporaryUrl);
+      const savedUrl = await uploadBookAsset(canvas, `book-${property?.code || propertyId}-capa-personalizada.jpg`);
+      window.localStorage.setItem(`esantos-book-custom-cover-${propertyId}`, savedUrl);
+      setCustomCoverUrl(savedUrl);
+      setDemoIndex(0);
+      setChannelResults({});
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível salvar a capa personalizada.");
+    } finally {
+      URL.revokeObjectURL(temporaryUrl);
+      setUploadingCustomCover(false);
+    }
+  }
+
+  function removeCustomCover() {
+    if (!propertyId) return;
+    window.localStorage.removeItem(`esantos-book-custom-cover-${propertyId}`);
+    setCustomCoverUrl(null);
+    setDemoIndex(0);
+    setChannelResults({});
+  }
+
   async function buildCoverCanvas() {
+    if (customCoverUrl) return buildSocialPhotoCanvas(customCoverUrl);
     if (!primary?.url || !property) throw new Error("Cadastre ao menos uma foto para gerar a capa premium.");
     const image = await loadImage(primary.url);
     const canvas = document.createElement("canvas");
@@ -386,7 +417,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       const canvas = await buildCoverCanvas();
       const link = document.createElement("a");
       link.href = canvas.toDataURL("image/jpeg", 0.92);
-      link.download = `e-santos-${property?.code || propertyId || "imovel"}-capa-premium.jpg`;
+      link.download = `e-santos-${property?.code || propertyId || "imovel"}-${customCoverUrl ? "capa-personalizada" : "capa-premium"}.jpg`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -430,7 +461,6 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   async function publishFacebook() {
     if (!propertyId || !property || !primary) throw new Error("Book incompleto para o Facebook.");
     const { coverUrl, ctaUrl, photoUrls } = await prepareBookAssets();
-
     const bookResponse = await fetch(`/api/admin/property-book/${propertyId}/publish-facebook`, {
       method: "POST",
       credentials: "same-origin",
@@ -452,13 +482,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     const videoPayload = await videoResponse.json().catch(() => ({})) as { error?: string; results?: { facebook?: { message?: string } } };
     const videoMessage = videoPayload.results?.facebook?.message || videoPayload.error || "";
     const alreadyPublished = videoResponse.status === 409 && /já foi publicado/i.test(videoMessage);
-    if (!videoResponse.ok && !alreadyPublished) {
-      throw new Error(videoMessage || "O Book foi publicado, mas o Facebook recusou o vídeo curto.");
-    }
-
-    return alreadyPublished
-      ? `${bookMessage} O vídeo curto já estava publicado e foi preservado.`
-      : `${bookMessage} Vídeo curto publicado junto como post complementar.`;
+    if (!videoResponse.ok && !alreadyPublished) throw new Error(videoMessage || "O Book foi publicado, mas o Facebook recusou o vídeo curto.");
+    return alreadyPublished ? `${bookMessage} O vídeo curto já estava publicado e foi preservado.` : `${bookMessage} Vídeo curto publicado junto como post complementar.`;
   }
 
   async function publishYoutubeShort() {
@@ -497,28 +522,20 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setPublishing(true);
     setError(null);
     setChannelResults({});
-
     const run = async (target: SocialTarget, fn: () => Promise<string>) => {
       try {
         const message = await fn();
         setChannelResults((current) => ({ ...current, [target]: { status: "success", message } }));
       } catch (caught) {
-        setChannelResults((current) => ({
-          ...current,
-          [target]: { status: "error", message: caught instanceof Error ? caught.message : "Erro na publicação." },
-        }));
+        setChannelResults((current) => ({ ...current, [target]: { status: "error", message: caught instanceof Error ? caught.message : "Erro na publicação." } }));
       }
     };
-
     const jobs: Promise<void>[] = [];
     if (targets.instagram) jobs.push(run("instagram", publishInstagramBook));
     if (targets.facebook) jobs.push(run("facebook", publishFacebook));
     if (targets.youtube) jobs.push(run("youtube", publishYoutubeShort));
     if (targets.other) {
-      setChannelResults((current) => ({
-        ...current,
-        other: { status: "pending", message: otherTarget ? "Integração selecionada ainda pendente de adaptador de publicação." : "Nenhuma integração adicional configurada." },
-      }));
+      setChannelResults((current) => ({ ...current, other: { status: "pending", message: otherTarget ? "Integração selecionada ainda pendente de adaptador de publicação." : "Nenhuma integração adicional configurada." } }));
     }
     await Promise.allSettled(jobs);
     setPublishing(false);
@@ -546,16 +563,11 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-3">
           <label className="block max-w-sm text-xs text-deep"><span className="mb-1 block font-medium">Estilo da capa</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
-
-          <div className="rounded-[10px] border border-line bg-bone/30 p-3">
-            <div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div>
-            <p className="mt-2 text-[11px] leading-relaxed text-muted">{property?.description?.trim() ? shortenDescription(property.description, 340) : "A descrição já existente será usada; este módulo não cria uma segunda descrição."}</p>
-          </div>
-
+          <div className="rounded-[10px] border border-line bg-bone/30 p-3"><div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div><p className="mt-2 text-[11px] leading-relaxed text-muted">{property?.description?.trim() ? shortenDescription(property.description, 340) : "A descrição já existente será usada; este módulo não cria uma segunda descrição."}</p></div>
           <div className="rounded-[10px] border border-line bg-white p-3">
             <p className="text-xs font-medium text-deep">Ordem oficial do Book</p>
             <ol className="mt-2 space-y-1.5 text-[11px] text-muted">
-              <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> 1. Capa premium E. Santos</li>
+              <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> 1. {customCoverUrl ? "Capa personalizada" : "Capa premium E. Santos"}</li>
               {shortReady && <li className="flex items-center gap-2"><Film className="h-3.5 w-3.5" /> 2. Vídeo curto</li>}
               {bookPhotos.map((image, index) => <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}</li>)}
               <li className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> {mediaCount}. Contato + CTA</li>
@@ -566,12 +578,28 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
         <div>
           <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line" style={{ background: theme.surface }}>
-            {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
-            <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
-            {shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}
-            <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
+            {customCoverUrl ? (
+              <img src={customCoverUrl} alt="Capa personalizada do Book" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <>
+                {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
+                <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
+                {shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}
+                <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
+              </>
+            )}
+            {customCoverUrl && <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] text-white">Capa personalizada</span>}
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-muted">Saída para redes: JPEG 1080×1080. A galeria original permanece intacta.</p><Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa JPEG"}</Btn></div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[10px] text-muted">Saída para redes: JPEG 1080×1080. A galeria original permanece intacta.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa JPEG"}</Btn>
+              <input id={`custom-book-cover-${propertyId}`} type="file" accept="image/*" className="hidden" onChange={(event) => { void handleCustomCover(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
+              <Btn type="button" tone="outline" disabled={uploadingCustomCover} onClick={() => document.getElementById(`custom-book-cover-${propertyId}`)?.click()}><ImageIcon className="h-3.5 w-3.5" /> {uploadingCustomCover ? "Enviando…" : customCoverUrl ? "Trocar capa personalizada" : "Adicionar capa personalizada"}</Btn>
+              {customCoverUrl && <Btn type="button" tone="outline" onClick={removeCustomCover}>Voltar para capa automática</Btn>}
+            </div>
+          </div>
+          {customCoverUrl && <p className="mt-2 rounded-[7px] border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">Capa personalizada ativa. Ela será o slide 1 e será usada na publicação; a capa automática continua disponível como reserva.</p>}
         </div>
       </div>
 
@@ -580,7 +608,11 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-medium text-deep">Demo funcional do Book</p><p className="mt-1 text-[11px] text-muted">Esta é a prévia definitiva que você aprova antes de publicar.</p></div><Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge></div>
           <div className="mx-auto mt-4 max-w-xl">
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
-              {currentDemo.kind === "cover" && <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}{shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></button>}
+              {currentDemo.kind === "cover" && (
+                <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
+                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}{shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
+                </button>
+              )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
               {currentDemo.kind === "photo" && <img src={currentDemo.url} alt={currentDemo.label} className="h-full w-full object-cover" />}
               {currentDemo.kind === "cta" && <div className="relative h-full overflow-hidden text-left text-[#fff8ea]" style={{ background: "radial-gradient(circle at 72% 48%, #4a2a09 0%, #241205 38%, #090503 100%)" }}><div className="absolute inset-x-0 top-0 h-[18%] bg-gradient-to-r from-[#d6a23a]/5 via-[#f3ca65]/20 to-[#d6a23a]/5" /><BrandLogo className="absolute right-[-3%] top-[20%] h-[58%] w-[62%] opacity-35 mix-blend-screen" /><div className="relative z-10 h-full px-10 py-8"><div className="flex items-center gap-4 text-[10px] font-medium uppercase tracking-[.22em] text-[#e4b84d]"><span className="h-px flex-1 bg-[#c89631]" /><span>E. Santos · Gestor Imobiliário</span><span className="h-px flex-1 bg-[#c89631]" /></div><h4 className="mt-6 font-serif text-[42px] font-bold uppercase leading-[.94] tracking-[-.02em] text-[#fff7e6]">Gostou deste<br />imóvel?</h4><div className="mt-5 inline-flex min-w-[52%] items-center rounded-[16px] border-2 border-[#d7a43a] px-5 py-3 text-[26px] font-extrabold text-[#e7bd55] shadow-[0_0_22px_rgba(226,174,65,.12)]">{priceText}</div><div className="mt-5 space-y-2 text-[13px] font-semibold"><p>{location}</p>{info && <p>{info}</p>}</div>{property?.code && <div className="mt-4 w-fit border-t border-[#c89631]/60 pt-3 text-[11px] font-bold uppercase tracking-[.08em] text-[#e4b84d]">Código {property.code}</div>}<div className="mt-8 max-w-[82%]"><p className="font-serif text-[22px] font-bold text-[#efc75f]">Pronto para conhecer de perto?</p><p className="mt-2 text-[12px] leading-relaxed text-[#fff8ea]/90">Tire suas dúvidas, receba as condições atualizadas e agende uma visita com atendimento direto.</p></div><a href={whatsappUrl} target="_blank" rel="noreferrer" className="absolute inset-x-10 bottom-16 flex items-center justify-center gap-3 rounded-[14px] border border-[#ffe18a] bg-gradient-to-r from-[#d39a2d] via-[#ffe38b] to-[#d59e31] px-5 py-4 text-[15px] font-extrabold uppercase text-[#140c06] no-underline shadow-[0_0_24px_rgba(255,205,87,.18)]"><MessageCircle className="h-6 w-6" /> Fale agora pelo WhatsApp</a><div className="absolute inset-x-10 bottom-6 flex items-center gap-4 text-[9px] tracking-[.12em] text-[#fff8ea]/80"><span className="h-px flex-1 bg-[#c89631]" /><span>E. Santos Gestor Imobiliário · Atendimento direto</span><span className="h-px flex-1 bg-[#c89631]" /></div></div></div>}
@@ -590,58 +622,17 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           </div>
 
           <div className="mt-5 border-t border-brass/20 pt-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p>
-                <p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p>
-              </div>
-              <Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge>
-            </div>
-
+            <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p><p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p></div><Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge></div>
             <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {([
-                ["instagram", "Instagram"],
-                ["facebook", "Facebook"],
-                ["youtube", "YouTube Shorts"],
-                ["other", "Outros"],
-              ] as const).map(([key, label]) => {
+              {([ ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube Shorts"], ["other", "Outros"] ] as const).map(([key, label]) => {
                 const unavailable = key === "youtube" && !shortReady;
-                return (
-                  <label key={key} className={`flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-3 text-sm text-deep ${unavailable ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
-                    <input type="checkbox" checked={targets[key]} disabled={unavailable} onChange={(event) => setTargets((current) => ({ ...current, [key]: event.target.checked }))} />
-                    <span>{label}</span>
-                  </label>
-                );
+                return <label key={key} className={`flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-3 text-sm text-deep ${unavailable ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}><input type="checkbox" checked={targets[key]} disabled={unavailable} onChange={(event) => setTargets((current) => ({ ...current, [key]: event.target.checked }))} /><span>{label}</span></label>;
               })}
             </div>
-
             {!shortReady && <p className="mt-2 text-[11px] text-muted">Sem vídeo curto: Instagram e Facebook continuam liberados. YouTube Shorts fica disponível quando houver vídeo.</p>}
-
-            {targets.other && (
-              <div className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 p-3">
-                <label className="block text-xs font-medium text-deep">Outras integrações</label>
-                <select value={otherTarget} onChange={(event) => setOtherTarget(event.target.value)} className="mt-2 w-full max-w-md rounded-[5px] border border-line bg-white px-3 py-2 text-sm" disabled>
-                  <option value="">Nenhuma integração adicional configurada</option>
-                </select>
-                <p className="mt-2 text-[11px] text-amber-800">Outros — pendente. Só aparecerão aqui plataformas realmente configuradas no CRM.</p>
-              </div>
-            )}
-
-            <div className="mt-4">
-              <Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn>
-            </div>
-
-            {Object.keys(channelResults).length > 0 && (
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {(["instagram", "facebook", "youtube", "other"] as SocialTarget[]).map((key) => {
-                  const result = channelResults[key];
-                  if (!result) return null;
-                  const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "Outros";
-                  const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800";
-                  return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>;
-                })}
-              </div>
-            )}
+            {targets.other && <div className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 p-3"><label className="block text-xs font-medium text-deep">Outras integrações</label><select value={otherTarget} onChange={(event) => setOtherTarget(event.target.value)} className="mt-2 w-full max-w-md rounded-[5px] border border-line bg-white px-3 py-2 text-sm" disabled><option value="">Nenhuma integração adicional configurada</option></select><p className="mt-2 text-[11px] text-amber-800">Outros — pendente. Só aparecerão aqui plataformas realmente configuradas no CRM.</p></div>}
+            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn></div>
+            {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{(["instagram", "facebook", "youtube", "other"] as SocialTarget[]).map((key) => { const result = channelResults[key]; if (!result) return null; const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "Outros"; const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"; return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>; })}</div>}
           </div>
         </div>
       )}
