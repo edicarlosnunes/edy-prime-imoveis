@@ -25,14 +25,14 @@ type DemoStep =
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
 
+const ESANTOS_LOGO = "/esantos-logo.png";
+
 const THEMES: Record<ThemeKey, Theme> = {
   ouro: { label: "Ouro premium", accent: "#D1A24B", ink: "#FFF8EA", surface: "#20150D", overlay: "rgba(21,12,7,.76)" },
   azul: { label: "Azul executivo", accent: "#D7B56D", ink: "#F7F3EA", surface: "#0C1B2B", overlay: "rgba(7,20,34,.78)" },
   oliva: { label: "Oliva sofisticado", accent: "#D8BE7A", ink: "#FFFDF4", surface: "#253027", overlay: "rgba(23,35,26,.78)" },
   claro: { label: "Clean premium", accent: "#8A6329", ink: "#1B1712", surface: "#F3EEE4", overlay: "rgba(244,239,229,.88)" },
 };
-
-const BADGES = ["Oportunidade", "Exclusivo", "Alto padrão", "Destaque", "Tour completo", "Nova captação"] as const;
 
 function money(value: number | null | undefined) {
   if (!value) return "Consulte o valor";
@@ -62,6 +62,20 @@ function cropImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width
   ctx.drawImage(image, sx, sy, sourceWidth, sourceHeight, 0, 0, width, height);
 }
 
+function drawContainedImage(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  maxWidth: number,
+  maxHeight: number,
+) {
+  const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+  const width = image.naturalWidth * scale;
+  const height = image.naturalHeight * scale;
+  ctx.drawImage(image, x, y, width, height);
+}
+
 function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
   const words = text.trim().split(/\s+/);
   let line = "";
@@ -85,7 +99,7 @@ async function loadImage(url: string) {
   image.crossOrigin = "anonymous";
   const loaded = new Promise<HTMLImageElement>((resolve, reject) => {
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error("Não foi possível carregar a imagem da capa."));
+    image.onerror = () => reject(new Error("Não foi possível carregar uma imagem do Book."));
   });
   image.src = url;
   return loaded;
@@ -115,9 +129,12 @@ function YoutubePlayBadge({ large = false }: { large?: boolean }) {
   );
 }
 
+function BrandLogo({ className = "" }: { className?: string }) {
+  return <img src={ESANTOS_LOGO} alt="E. Santos Gestor Imobiliário" className={`pointer-events-none object-contain ${className}`} />;
+}
+
 export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
-  const [badge, setBadge] = useState<(typeof BADGES)[number]>("Destaque");
   const [shortVideoUrl, setShortVideoUrl] = useState<string | null>(null);
   const [demoIndex, setDemoIndex] = useState(0);
   const [downloading, setDownloading] = useState(false);
@@ -189,7 +206,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   async function buildCoverCanvas() {
     if (!primary?.url || !property) throw new Error("Cadastre ao menos uma foto para gerar a capa premium.");
-    const image = await loadImage(primary.url);
+    const [image, logo] = await Promise.all([loadImage(primary.url), loadImage(ESANTOS_LOGO)]);
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1080;
@@ -202,16 +219,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     gradient.addColorStop(1, theme.surface);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 1080);
-    ctx.fillStyle = theme.accent;
-    ctx.fillRect(64, 60, 270, 54);
-    ctx.fillStyle = themeKey === "claro" ? "#FFFFFF" : "#15110C";
-    ctx.font = "700 25px Arial";
-    ctx.fillText(badge.toUpperCase(), 84, 96);
+    drawContainedImage(ctx, logo, 62, 52, 255, 210);
     ctx.fillStyle = theme.ink;
-    ctx.font = "700 34px Arial";
-    ctx.fillText("E. SANTOS", 64, 646);
     ctx.font = "700 57px Arial";
-    wrapText(ctx, headline, 64, 718, 900, 66, 3);
+    wrapText(ctx, headline, 64, 710, 900, 66, 3);
     ctx.fillStyle = theme.accent;
     ctx.font = "700 43px Arial";
     ctx.fillText(priceText, 64, 930);
@@ -222,8 +233,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return canvas;
   }
 
-  function buildCtaCanvas() {
+  async function buildCtaCanvas() {
     if (!property) throw new Error("Imóvel não carregado.");
+    const logo = await loadImage(ESANTOS_LOGO);
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1080;
@@ -231,24 +243,22 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     if (!ctx) throw new Error("Seu navegador não conseguiu preparar o encerramento.");
     ctx.fillStyle = theme.surface;
     ctx.fillRect(0, 0, 1080, 1080);
-    ctx.fillStyle = theme.accent;
-    ctx.font = "700 30px Arial";
-    ctx.fillText("E. SANTOS", 70, 90);
+    drawContainedImage(ctx, logo, 70, 48, 220, 160);
     ctx.fillStyle = theme.ink;
     ctx.font = "700 48px Arial";
-    wrapText(ctx, property.title || headline, 70, 160, 940, 56, 3);
+    wrapText(ctx, property.title || headline, 70, 235, 940, 56, 3);
     ctx.fillStyle = theme.accent;
     ctx.font = "700 38px Arial";
-    ctx.fillText(priceText, 70, 350);
+    ctx.fillText(priceText, 70, 405);
     ctx.fillStyle = theme.ink;
     ctx.font = "500 24px Arial";
-    ctx.fillText([location, info].filter(Boolean).join(" · "), 70, 400);
+    ctx.fillText([location, info].filter(Boolean).join(" · "), 70, 455);
     ctx.fillStyle = theme.accent;
     ctx.font = "700 24px Arial";
-    ctx.fillText("CONHEÇA MELHOR ESTE IMÓVEL", 70, 480);
+    ctx.fillText("CONHEÇA MELHOR ESTE IMÓVEL", 70, 520);
     ctx.fillStyle = theme.ink;
     ctx.font = "400 24px Arial";
-    wrapText(ctx, shortenDescription(property.description, 560), 70, 530, 940, 34, 10);
+    wrapText(ctx, shortenDescription(property.description, 560), 70, 570, 940, 34, 9);
     ctx.fillStyle = theme.accent;
     ctx.fillRect(70, 925, 940, 82);
     ctx.fillStyle = themeKey === "claro" ? "#FFFFFF" : "#15110C";
@@ -283,7 +293,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setError(null);
     setPublishMessage(null);
     try {
-      const [coverCanvas, ctaCanvas] = await Promise.all([buildCoverCanvas(), Promise.resolve(buildCtaCanvas())]);
+      const [coverCanvas, ctaCanvas] = await Promise.all([buildCoverCanvas(), buildCtaCanvas()]);
       const [coverUrl, ctaUrl] = await Promise.all([
         uploadBookAsset(coverCanvas, `book-${property.code || propertyId}-capa.png`),
         uploadBookAsset(ctaCanvas, `book-${property.code || propertyId}-cta.png`),
@@ -326,10 +336,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs text-deep"><span className="mb-1 block font-medium">Estilo da capa</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
-            <label className="text-xs text-deep"><span className="mb-1 block font-medium">Selo comercial</span><select value={badge} onChange={(event) => setBadge(event.target.value as (typeof BADGES)[number])} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{BADGES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-          </div>
+          <label className="block max-w-sm text-xs text-deep"><span className="mb-1 block font-medium">Estilo da capa</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
 
           <div className="rounded-[10px] border border-line bg-bone/30 p-3">
             <div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div>
@@ -352,9 +359,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line" style={{ background: theme.surface }}>
             {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
             <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
-            <div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Veja o Book</span></div>
-            {shortReady && <YoutubePlayBadge />}
-            <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
+            <BrandLogo className="absolute left-5 top-5 z-10 h-auto w-36 sm:w-40" />
+            <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-muted">Prévia quadrada 1:1. A galeria original permanece intacta.</p><Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa PNG"}</Btn></div>
         </div>
@@ -365,10 +371,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-medium text-deep">Demo funcional do Book</p><p className="mt-1 text-[11px] text-muted">Esta é a prévia que você aprova antes de publicar no Instagram.</p></div><Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge></div>
           <div className="mx-auto mt-4 max-w-xl">
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
-              {currentDemo.kind === "cover" && <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} /><div className="absolute inset-x-0 top-0 flex items-start justify-between p-5"><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>{badge}</span><span className="rounded px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em]" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}>Assista ao vídeo</span></div>{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><p className="text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-2 text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></button>}
-              {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
+              {currentDemo.kind === "cover" && <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} /><BrandLogo className="absolute left-5 top-5 z-10 h-auto w-32 sm:w-36" />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></button>}
+              {currentDemo.kind === "video" && <><video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} /><BrandLogo className="absolute left-4 top-4 z-10 h-auto w-24 opacity-95 sm:w-28" /></>}
               {currentDemo.kind === "photo" && <img src={currentDemo.url} alt={currentDemo.label} className="h-full w-full object-cover" />}
-              {currentDemo.kind === "cta" && <div className="flex h-full flex-col overflow-y-auto p-7 text-left" style={{ background: theme.surface, color: theme.ink }}><div className="text-center"><p className="text-xs font-bold uppercase tracking-[.2em]" style={{ color: theme.accent }}>E. Santos</p><h4 className="mt-3 text-2xl font-semibold leading-tight">{property?.title || headline}</h4><p className="mt-2 text-lg font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}{location && info ? " · " : ""}{info}</p></div><div className="mt-5 rounded-[12px] border border-white/10 bg-black/15 p-4"><p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: theme.accent }}>Conheça melhor este imóvel</p><p className="mt-2 text-[13px] leading-relaxed opacity-95">{ctaDescription}</p></div><div className="mt-5 text-center"><p className="text-sm font-medium">Gostou deste imóvel?</p><p className="mt-1 text-[11px] opacity-80">Tire suas dúvidas e receba os detalhes direto no WhatsApp.</p></div><a href={whatsappUrl} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold no-underline" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}><MessageCircle className="h-5 w-5" /> Quero saber mais sobre este imóvel</a></div>}
+              {currentDemo.kind === "cta" && <div className="flex h-full flex-col overflow-y-auto p-7 text-left" style={{ background: theme.surface, color: theme.ink }}><div className="text-center"><BrandLogo className="mx-auto h-auto w-32" /><h4 className="mt-3 text-2xl font-semibold leading-tight">{property?.title || headline}</h4><p className="mt-2 text-lg font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}{location && info ? " · " : ""}{info}</p></div><div className="mt-5 rounded-[12px] border border-white/10 bg-black/15 p-4"><p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: theme.accent }}>Conheça melhor este imóvel</p><p className="mt-2 text-[13px] leading-relaxed opacity-95">{ctaDescription}</p></div><div className="mt-5 text-center"><p className="text-sm font-medium">Gostou deste imóvel?</p><p className="mt-1 text-[11px] opacity-80">Tire suas dúvidas e receba os detalhes direto no WhatsApp.</p></div><a href={whatsappUrl} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold no-underline" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}><MessageCircle className="h-5 w-5" /> Quero saber mais sobre este imóvel</a></div>}
               <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-semibold text-white">{demoIndex + 1}/{demoSteps.length}</span>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3"><Btn type="button" tone="outline" disabled={demoIndex === 0} onClick={() => setDemoIndex((current) => Math.max(0, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Anterior</Btn><p className="text-center text-[11px] font-medium text-deep">{currentDemo.label}</p><Btn type="button" tone="outline" disabled={demoIndex >= demoSteps.length - 1} onClick={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))}>Próximo <ChevronRight className="h-3.5 w-3.5" /></Btn></div>
