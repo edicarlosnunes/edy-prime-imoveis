@@ -194,7 +194,7 @@ export function registerPropertyBookRoutes(app: Hono) {
     const coverUrl = safePublicUrl(body.coverUrl);
     const ctaUrl = safePublicUrl(body.ctaUrl);
     const photoUrls = Array.isArray(body.photoUrls)
-      ? body.photoUrls.map(safePublicUrl).filter((value): value is string => Boolean(value)).slice(0, 7)
+      ? body.photoUrls.map(safePublicUrl).filter((value): value is string => Boolean(value)).slice(0, 8)
       : [];
     if (!coverUrl || !ctaUrl) return c.json({ error: "A capa e o encerramento do Book são obrigatórios." }, 400);
 
@@ -210,7 +210,6 @@ export function registerPropertyBookRoutes(app: Hono) {
       .from(propertyVideos)
       .where(and(eq(propertyVideos.propertyId, propertyId), eq(propertyVideos.kind, "short_social")))
       .limit(1);
-    if (!video?.url) return c.json({ error: "Cadastre o vídeo curto antes de publicar o Book." }, 400);
 
     const { row, config } = await readConfig(db, "instagram_publicacao");
     if (!row || row.enabled !== 1 || !config.userId || !config.accessToken) {
@@ -230,9 +229,12 @@ export function registerPropertyBookRoutes(app: Hono) {
     try {
       const children: string[] = [];
       children.push(await createImageChild(config.userId, config.accessToken, coverUrl, "Capa"));
-      children.push(await createVideoChild(config.userId, config.accessToken, video.url));
-      for (let index = 0; index < photoUrls.slice(0, 7).length; index += 1) {
-        const photoUrl = photoUrls[index];
+      if (video?.url) {
+        children.push(await createVideoChild(config.userId, config.accessToken, video.url));
+      }
+      const selectedPhotoUrls = photoUrls.slice(0, video?.url ? 7 : 8);
+      for (let index = 0; index < selectedPhotoUrls.length; index += 1) {
+        const photoUrl = selectedPhotoUrls[index];
         children.push(await createImageChild(config.userId, config.accessToken, photoUrl, `Foto ${index + 1}`));
       }
       children.push(await createImageChild(config.userId, config.accessToken, ctaUrl, "Encerramento/CTA"));
@@ -268,7 +270,7 @@ export function registerPropertyBookRoutes(app: Hono) {
         `${INSTAGRAM_GRAPH_BASE}/${published.id}?fields=permalink&access_token=${encodeURIComponent(config.accessToken)}`,
       );
       const permalink = await permalinkResponse.json().catch(() => ({})) as { permalink?: string };
-      const message = `Book Premium publicado no Instagram. ID: ${published.id}.${permalink.permalink ? ` URL: ${permalink.permalink}` : ""}`;
+      const message = `Book Premium publicado no Instagram${video?.url ? " com vídeo curto" : " sem vídeo curto"}. ID: ${published.id}.${permalink.permalink ? ` URL: ${permalink.permalink}` : ""}`;
       await saveChannel(propertyId, "instagram_book", "publicado", message, 1);
       await logEvent(db, "instagram_publicacao", "sync", true, message);
       return c.json({ ok: true, id: published.id, url: permalink.permalink ?? null, message }, 200);
