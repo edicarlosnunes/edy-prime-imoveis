@@ -182,9 +182,17 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       .then(async (response) => response.ok ? response.json() as Promise<{ videos?: VideoRow[] }> : { videos: [] as VideoRow[] })
       .then((payload) => {
         const short = payload.videos?.find((video) => video.kind === "short_social");
-        if (alive) setShortVideoUrl(short?.url ?? null);
+        if (alive) {
+          setShortVideoUrl(short?.url ?? null);
+          if (!short?.url) setTargets((current) => ({ ...current, youtube: false }));
+        }
       })
-      .catch(() => { if (alive) setShortVideoUrl(null); });
+      .catch(() => {
+        if (alive) {
+          setShortVideoUrl(null);
+          setTargets((current) => ({ ...current, youtube: false }));
+        }
+      });
     return () => { alive = false; };
   }, [propertyId]);
 
@@ -406,7 +414,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   }
 
   async function publishInstagramBook() {
-    if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Instagram.");
+    if (!propertyId || !property || !primary) throw new Error("Book incompleto para o Instagram.");
     const { coverUrl, ctaUrl, photoUrls } = await prepareBookAssets();
     const response = await fetch(`/api/admin/property-book/${propertyId}/publish-instagram`, {
       method: "POST",
@@ -420,7 +428,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   }
 
   async function publishFacebook() {
-    if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Facebook.");
+    if (!propertyId || !property || !primary) throw new Error("Book incompleto para o Facebook.");
     const { coverUrl, ctaUrl, photoUrls } = await prepareBookAssets();
 
     const bookResponse = await fetch(`/api/admin/property-book/${propertyId}/publish-facebook`, {
@@ -431,6 +439,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     });
     const bookPayload = await bookResponse.json().catch(() => ({})) as { error?: string; message?: string; url?: string };
     if (!bookResponse.ok) throw new Error(bookPayload.error || "Falha ao publicar o Book Premium no Facebook.");
+
+    const bookMessage = bookPayload.url ? `Book Premium publicado: ${bookPayload.url}` : (bookPayload.message || "Book Premium publicado no Facebook.");
+    if (!shortVideoUrl) return `${bookMessage} Publicado sem vídeo curto.`;
 
     const videoResponse = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
       method: "POST",
@@ -445,7 +456,6 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       throw new Error(videoMessage || "O Book foi publicado, mas o Facebook recusou o vídeo curto.");
     }
 
-    const bookMessage = bookPayload.url ? `Book Premium publicado: ${bookPayload.url}` : (bookPayload.message || "Book Premium publicado no Facebook.");
     return alreadyPublished
       ? `${bookMessage} O vídeo curto já estava publicado e foi preservado.`
       : `${bookMessage} Vídeo curto publicado junto como post complementar.`;
@@ -528,7 +538,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-deep"><BookOpen className="h-4 w-4" /><p className="text-sm font-medium">Book / carrossel premium</p></div>
-          <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-muted">O vídeo apenas entra no slot acima. O Book puxa automaticamente capa, vídeo, fotos do cadastro e fechamento para você revisar antes de publicar.</p>
+          <p className="mt-1 max-w-3xl text-[11px] leading-relaxed text-muted">O Book puxa automaticamente capa, vídeo quando houver, fotos do cadastro e fechamento para você revisar antes de publicar.</p>
         </div>
         <Badge tone={primary ? "green" : "amber"}>{primary ? `${mediaCount} MÍDIAS PREPARADAS` : "AGUARDANDO FOTOS"}</Badge>
       </div>
@@ -550,7 +560,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               {bookPhotos.map((image, index) => <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}</li>)}
               <li className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> {mediaCount}. Contato + CTA</li>
             </ol>
-            <p className="mt-2 text-[10px] text-muted">Até 10 mídias: capa → vídeo → fotos → encerramento.</p>
+            <p className="mt-2 text-[10px] text-muted">Até 10 mídias: capa → vídeo quando houver → fotos → encerramento.</p>
           </div>
         </div>
 
@@ -594,13 +604,18 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                 ["facebook", "Facebook"],
                 ["youtube", "YouTube Shorts"],
                 ["other", "Outros"],
-              ] as const).map(([key, label]) => (
-                <label key={key} className="flex cursor-pointer items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-3 text-sm text-deep">
-                  <input type="checkbox" checked={targets[key]} onChange={(event) => setTargets((current) => ({ ...current, [key]: event.target.checked }))} />
-                  <span>{label}</span>
-                </label>
-              ))}
+              ] as const).map(([key, label]) => {
+                const unavailable = key === "youtube" && !shortReady;
+                return (
+                  <label key={key} className={`flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-3 text-sm text-deep ${unavailable ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+                    <input type="checkbox" checked={targets[key]} disabled={unavailable} onChange={(event) => setTargets((current) => ({ ...current, [key]: event.target.checked }))} />
+                    <span>{label}</span>
+                  </label>
+                );
+              })}
             </div>
+
+            {!shortReady && <p className="mt-2 text-[11px] text-muted">Sem vídeo curto: Instagram e Facebook continuam liberados. YouTube Shorts fica disponível quando houver vídeo.</p>}
 
             {targets.other && (
               <div className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 p-3">
@@ -613,8 +628,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             )}
 
             <div className="mt-4">
-              <Btn type="button" tone="brass" disabled={!shortReady || selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn>
-              {!shortReady && <p className="mt-2 text-[11px] text-muted">Encaixe primeiro o vídeo curto no slot acima.</p>}
+              <Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn>
             </div>
 
             {Object.keys(channelResults).length > 0 && (
