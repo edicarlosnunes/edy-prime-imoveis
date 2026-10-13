@@ -37,6 +37,7 @@ import { adminWatermark } from "./routes/admin-watermark";
 import { adminAudit } from "./routes/admin-audit";
 import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
+import { registerFacebookVideoRoute } from "./http/facebook-video-route";
 import { registerPropertyVideoRoutes } from "./http/property-video-routes";
 import { registerPropertyBookRoutes } from "./http/property-book-routes";
 import * as schema from "./database/schema";
@@ -108,6 +109,7 @@ const app = createApp(router);
 /* Arquivos públicos (feed/sitemap/robots/prerender), webhooks e vídeos. */
 registerFeedRoutes(app);
 registerWebhookRoutes(app);
+registerFacebookVideoRoute(app);
 registerPropertyVideoRoutes(app);
 registerPropertyBookRoutes(app);
 
