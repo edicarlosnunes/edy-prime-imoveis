@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
-import { CheckCircle2, Film, Loader2, Send, Trash2, Upload, Youtube } from "lucide-react";
+import { CheckCircle2, Film, Loader2, Trash2, Upload, Youtube } from "lucide-react";
 import { Badge, Btn, ErrorNote } from "./ui";
 import { PropertyMarketingBook } from "./property-marketing-book";
 
 export type PropertyVideoKind = "short_social" | "youtube_long";
-type SocialTarget = "instagram" | "facebook" | "youtube";
 
 type PropertyVideo = {
   id: number;
@@ -87,7 +86,6 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
   const [error, setError] = useState<string | null>(null);
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishMessage, setPublishMessage] = useState<string | null>(null);
-  const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false });
   const shortInput = useRef<HTMLInputElement>(null);
   const longInput = useRef<HTMLInputElement>(null);
 
@@ -115,7 +113,6 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
   const shortVideo = videos.find((video) => video.kind === "short_social") ?? null;
   const longVideo = videos.find((video) => video.kind === "youtube_long") ?? null;
   const missing = Number(!shortVideo) + Number(!longVideo);
-  const selectedCount = Object.values(targets).filter(Boolean).length;
 
   async function choose(kind: PropertyVideoKind, file: File | null) {
     if (!file || propertyId === null) return;
@@ -232,88 +229,9 @@ export function PropertyVideosSection({ propertyId }: { propertyId: number | nul
     }
   }
 
-  async function publishSelectedShort() {
-    if (propertyId === null || !shortVideo || selectedCount === 0) return;
-    setPublishBusy(true);
-    setError(null);
-    setPublishMessage(null);
-    const messages: string[] = [];
-    try {
-      if (targets.facebook) {
-        const response = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ targets: ["facebook"], force: false }),
-        });
-        const payload = await response.json().catch(() => ({})) as { error?: string; results?: { facebook?: { message?: string } } };
-        if (!response.ok) throw new Error(payload.error || payload.results?.facebook?.message || "Falha ao publicar no Facebook.");
-        messages.push(payload.results?.facebook?.message || "Facebook: vídeo curto publicado.");
-      }
-
-      if (targets.youtube) {
-        const session = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-session`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ force: false }),
-        });
-        if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Shorts."));
-        const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
-        const source = await fetch(prepared.videoUrl);
-        if (!source.ok) throw new Error("Não foi possível abrir o vídeo curto armazenado.");
-        const blob = await source.blob();
-        const sent = await fetch(prepared.uploadUrl, {
-          method: "PUT",
-          headers: { authorization: `Bearer ${prepared.accessToken}`, "content-type": prepared.mime || blob.type || "video/mp4" },
-          body: blob,
-        });
-        const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
-        if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o Short.");
-        const complete = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-complete`, {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ videoId: youtube.id }),
-        });
-        if (!complete.ok) throw new Error(await responseError(complete, "Short enviado, mas o CRM não registrou o retorno."));
-        const result = await complete.json() as { message?: string };
-        messages.push(result.message || "YouTube Shorts: vídeo curto publicado.");
-      }
-
-      if (targets.instagram) {
-        messages.push("Instagram selecionado: use o botão do Book Premium abaixo para publicar capa + vídeo + fotos + encerramento.");
-      }
-      setPublishMessage(messages.join("\n\n"));
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Falha ao publicar nos canais selecionados.");
-    } finally {
-      setPublishBusy(false);
-    }
-  }
-
   return (
     <div className="mt-5 border-t border-line pt-5">
-      <div className="rounded-[10px] border border-line bg-bone/30 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-deep">Destinos de publicação</p>
-            <p className="mt-1 text-[11px] text-muted">Escolha para onde este conteúdo será enviado. Instagram usa o Book Premium; Facebook e YouTube Shorts usam o vídeo curto.</p>
-          </div>
-          <Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge>
-        </div>
-        <div className="mt-3 flex flex-wrap gap-x-6 gap-y-3">
-          <label className="flex items-center gap-2 text-sm text-deep"><input type="checkbox" checked={targets.instagram} onChange={(event) => setTargets((current) => ({ ...current, instagram: event.target.checked }))} /> Instagram</label>
-          <label className="flex items-center gap-2 text-sm text-deep"><input type="checkbox" checked={targets.facebook} onChange={(event) => setTargets((current) => ({ ...current, facebook: event.target.checked }))} /> Facebook</label>
-          <label className="flex items-center gap-2 text-sm text-deep"><input type="checkbox" checked={targets.youtube} onChange={(event) => setTargets((current) => ({ ...current, youtube: event.target.checked }))} /> YouTube Shorts</label>
-        </div>
-        <div className="mt-3">
-          <Btn type="button" tone="outline" disabled={!shortVideo || selectedCount === 0 || publishBusy} onClick={() => void publishSelectedShort()}>{publishBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Publicar nos canais selecionados</Btn>
-          {!shortVideo && <p className="mt-2 text-[11px] text-muted">Encaixe o vídeo curto antes de enviar para Facebook ou YouTube Shorts.</p>}
-        </div>
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-deep"><Film className="h-4 w-4" /><p className="text-sm font-medium">Vídeos do imóvel</p></div>
           <p className="mt-1 max-w-2xl text-[11px] leading-relaxed text-muted">Esta área é independente do salvamento principal do imóvel. Você pode concluir o cadastro e depois encaixar, substituir ou corrigir os vídeos sem mexer nos dados já salvos.</p>
