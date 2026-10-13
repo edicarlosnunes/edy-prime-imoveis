@@ -345,8 +345,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     }
   }
 
-  async function publishInstagramBook() {
-    if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Instagram.");
+  async function prepareBookAssets() {
+    if (!propertyId || !property || !primary) throw new Error("Book incompleto para publicação.");
     const [coverCanvas, ctaCanvas, photoCanvases] = await Promise.all([
       buildCoverCanvas(),
       buildCtaCanvas(),
@@ -358,6 +358,12 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       ...photoCanvases.map((canvas, index) => uploadBookAsset(canvas, `book-${property.code || propertyId}-foto-${index + 1}.jpg`)),
     ]);
     const [coverUrl, ctaUrl, ...photoUrls] = uploaded;
+    return { coverUrl, ctaUrl, photoUrls };
+  }
+
+  async function publishInstagramBook() {
+    if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Instagram.");
+    const { coverUrl, ctaUrl, photoUrls } = await prepareBookAssets();
     const response = await fetch(`/api/admin/property-book/${propertyId}/publish-instagram`, {
       method: "POST",
       credentials: "same-origin",
@@ -370,16 +376,35 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   }
 
   async function publishFacebook() {
-    if (!propertyId || !shortVideoUrl) throw new Error("Vídeo curto não encontrado.");
-    const response = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
+    if (!propertyId || !property || !primary || !shortVideoUrl) throw new Error("Book incompleto para o Facebook.");
+    const { coverUrl, ctaUrl, photoUrls } = await prepareBookAssets();
+
+    const bookResponse = await fetch(`/api/admin/property-book/${propertyId}/publish-facebook`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ coverUrl, ctaUrl, photoUrls, force: false }),
+    });
+    const bookPayload = await bookResponse.json().catch(() => ({})) as { error?: string; message?: string; url?: string };
+    if (!bookResponse.ok) throw new Error(bookPayload.error || "Falha ao publicar o Book Premium no Facebook.");
+
+    const videoResponse = await fetch(`/api/admin/property-videos/${propertyId}/publish-meta`, {
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ targets: ["facebook"], force: false }),
     });
-    const payload = await response.json().catch(() => ({})) as { error?: string; results?: { facebook?: { message?: string } } };
-    if (!response.ok) throw new Error(payload.error || payload.results?.facebook?.message || "Falha ao publicar no Facebook.");
-    return payload.results?.facebook?.message || "Conteúdo publicado no Facebook.";
+    const videoPayload = await videoResponse.json().catch(() => ({})) as { error?: string; results?: { facebook?: { message?: string } } };
+    const videoMessage = videoPayload.results?.facebook?.message || videoPayload.error || "";
+    const alreadyPublished = videoResponse.status === 409 && /já foi publicado/i.test(videoMessage);
+    if (!videoResponse.ok && !alreadyPublished) {
+      throw new Error(videoMessage || "O Book foi publicado, mas o Facebook recusou o vídeo curto.");
+    }
+
+    const bookMessage = bookPayload.url ? `Book Premium publicado: ${bookPayload.url}` : (bookPayload.message || "Book Premium publicado no Facebook.");
+    return alreadyPublished
+      ? `${bookMessage} O vídeo curto já estava publicado e foi preservado.`
+      : `${bookMessage} Vídeo curto publicado junto como post complementar.`;
   }
 
   async function publishYoutubeShort() {
