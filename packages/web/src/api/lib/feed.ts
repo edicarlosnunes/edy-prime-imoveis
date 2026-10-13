@@ -272,6 +272,7 @@ export function robotsTxt(baseUrl: string, indexable: boolean) {
   return [
     "User-agent: *",
     "Allow: /",
+    "Allow: /api/media/",
     "Disallow: /admin",
     "Disallow: /api",
     "",
