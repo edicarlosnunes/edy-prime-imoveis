@@ -126,14 +126,37 @@ function metaMessage(error: MetaError | undefined, fallback: string) {
 }
 
 async function stageFacebookPhoto(pageId: string, pageToken: string, imageUrl: string, label: string) {
+  // Baixa a arte pelo próprio servidor do CRM e envia os bytes diretamente ao Facebook.
+  // Isso evita o erro Meta 324/2069019, que pode acontecer quando o Facebook tenta
+  // buscar uma URL recém-gerada do Book antes de ela estar disponível no CDN dele.
+  const sourceResponse = await fetch(imageUrl, { cache: "no-store" });
+  if (!sourceResponse.ok) {
+    throw new Error(`${label}: o CRM não conseguiu baixar a imagem preparada (HTTP ${sourceResponse.status}).`);
+  }
+
+  const sourceBytes = await sourceResponse.arrayBuffer();
+  if (!sourceBytes.byteLength) {
+    throw new Error(`${label}: a imagem preparada chegou vazia ao CRM.`);
+  }
+
+  const headerType = (sourceResponse.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+  const pathname = new URL(imageUrl).pathname.toLowerCase();
+  const mimeType = headerType.startsWith("image/")
+    ? headerType
+    : pathname.endsWith(".png")
+      ? "image/png"
+      : "image/jpeg";
+  const extension = mimeType === "image/png" ? "png" : "jpg";
+  const safeLabel = label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "foto";
+
+  const form = new FormData();
+  form.append("source", new Blob([sourceBytes], { type: mimeType }), `${safeLabel}.${extension}`);
+  form.append("published", "false");
+  form.append("access_token", pageToken);
+
   const response = await fetch(`${GRAPH_BASE}/${encodeURIComponent(pageId)}/photos`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      url: imageUrl,
-      published: "false",
-      access_token: pageToken,
-    }),
+    body: form,
   });
   const payload = await response.json().catch(() => ({})) as { id?: string; error?: MetaError };
   if (!response.ok || !payload.id) {
