@@ -204,7 +204,6 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     formatInfo("m²", property?.areaUtil),
   ].filter(Boolean).join(" · ");
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
-  const ctaDescription = shortenDescription(property?.description);
   const whatsappMessage = encodeURIComponent(`Olá! Vi o imóvel ${property?.title || "que vocês anunciaram"}${property?.code ? ` (código ${property.code})` : ""} e gostaria de receber mais informações.`);
   const whatsappUrl = `https://wa.me/5513997726767?text=${whatsappMessage}`;
   const selectedCount = Object.values(targets).filter(Boolean).length;
@@ -215,7 +214,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     for (const [index, image] of bookPhotos.entries()) {
       steps.push({ kind: "photo", label: `Foto ${images.indexOf(image) + 1}`, url: image.url });
     }
-    steps.push({ kind: "cta", label: "Resumo + contato" });
+    steps.push({ kind: "cta", label: "Contato + CTA" });
     return steps.slice(0, 10);
   }, [bookPhotos, images, shortVideoUrl]);
 
@@ -224,7 +223,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   useEffect(() => {
     if (currentDemo?.kind !== "photo") return;
-    const timer = window.setTimeout(() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1)), 3200);
+    const timer = window.setTimeout(() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1)), 2200);
     return () => window.clearTimeout(timer);
   }, [currentDemo, demoSteps.length]);
 
@@ -243,6 +242,16 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     gradient.addColorStop(1, theme.surface);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 1080);
+    if (shortReady) {
+      ctx.fillStyle = "rgba(0,0,0,.68)";
+      ctx.fillRect(64, 575, 430, 62);
+      ctx.strokeStyle = theme.accent;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(64, 575, 430, 62);
+      ctx.fillStyle = theme.accent;
+      ctx.font = "700 23px Arial";
+      ctx.fillText("▶  VÍDEO NO PRÓXIMO SLIDE", 88, 615);
+    }
     ctx.fillStyle = theme.ink;
     ctx.font = "700 57px Arial";
     wrapText(ctx, headline, 64, 710, 900, 66, 3);
@@ -266,29 +275,55 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     if (!ctx) throw new Error("Seu navegador não conseguiu preparar o encerramento.");
     ctx.fillStyle = theme.surface;
     ctx.fillRect(0, 0, 1080, 1080);
-    drawContainedImage(ctx, logo, 70, 48, 220, 160);
-    ctx.fillStyle = theme.ink;
-    ctx.font = "700 48px Arial";
-    wrapText(ctx, property.title || headline, 70, 235, 940, 56, 3);
+
+    ctx.save();
+    ctx.globalAlpha = 0.10;
+    ctx.globalCompositeOperation = "screen";
+    drawContainedImage(ctx, logo, 120, 180, 840, 620);
+    ctx.restore();
+
     ctx.fillStyle = theme.accent;
-    ctx.font = "700 38px Arial";
-    ctx.fillText(priceText, 70, 405);
+    ctx.font = "700 25px Arial";
+    ctx.fillText("E. SANTOS · GESTOR IMOBILIÁRIO", 70, 90);
+
     ctx.fillStyle = theme.ink;
-    ctx.font = "500 24px Arial";
-    ctx.fillText([location, info].filter(Boolean).join(" · "), 70, 455);
+    ctx.font = "700 54px Arial";
+    ctx.fillText("GOSTOU DESTE IMÓVEL?", 70, 175);
+
+    ctx.fillStyle = theme.accent;
+    ctx.font = "700 42px Arial";
+    ctx.fillText(priceText, 70, 275);
+
+    ctx.fillStyle = theme.ink;
+    ctx.font = "500 27px Arial";
+    if (location) ctx.fillText(location, 70, 335);
+    if (info) ctx.fillText(info, 70, 380);
+
     ctx.fillStyle = theme.accent;
     ctx.font = "700 24px Arial";
-    ctx.fillText("CONHEÇA MELHOR ESTE IMÓVEL", 70, 520);
+    ctx.fillText(property.code ? `CÓDIGO ${property.code}` : "ATENDIMENTO E. SANTOS", 70, 455);
+
     ctx.fillStyle = theme.ink;
-    ctx.font = "400 24px Arial";
-    wrapText(ctx, shortenDescription(property.description, 560), 70, 570, 940, 34, 9);
+    ctx.font = "700 32px Arial";
+    ctx.fillText("Pronto para conhecer de perto?", 70, 555);
+    ctx.font = "400 25px Arial";
+    wrapText(ctx, "Tire suas dúvidas, receba as condições atualizadas e agende uma visita com atendimento direto.", 70, 610, 900, 38, 3);
+
     ctx.fillStyle = theme.accent;
-    ctx.fillRect(70, 925, 940, 82);
+    ctx.fillRect(70, 830, 940, 105);
     ctx.fillStyle = themeKey === "claro" ? "#FFFFFF" : "#15110C";
-    ctx.font = "700 28px Arial";
+    ctx.font = "700 30px Arial";
     ctx.textAlign = "center";
-    ctx.fillText("QUERO SABER MAIS SOBRE ESTE IMÓVEL", 540, 976);
+    ctx.fillText("FALE AGORA PELO WHATSAPP", 540, 894);
     ctx.textAlign = "left";
+
+    ctx.fillStyle = theme.ink;
+    ctx.globalAlpha = 0.78;
+    ctx.font = "500 21px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("E. Santos Gestor Imobiliário · Atendimento direto", 540, 1010);
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
     return canvas;
   }
 
@@ -444,7 +479,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> 1. Capa premium E. Santos</li>
               {shortReady && <li className="flex items-center gap-2"><Film className="h-3.5 w-3.5" /> 2. Vídeo curto</li>}
               {bookPhotos.map((image, index) => <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}</li>)}
-              <li className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> {mediaCount}. Resumo + contato</li>
+              <li className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> {mediaCount}. Contato + CTA</li>
             </ol>
             <p className="mt-2 text-[10px] text-muted">Até 10 mídias: capa → vídeo → fotos → encerramento.</p>
           </div>
@@ -454,6 +489,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line" style={{ background: theme.surface }}>
             {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
             <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
+            {shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}
             <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><p className="text-[10px] text-muted">Saída para redes: JPEG 1080×1080. A galeria original permanece intacta.</p><Btn type="button" tone="outline" disabled={!primary || downloading} onClick={() => void downloadCover()}><Download className="h-3.5 w-3.5" /> {downloading ? "Gerando…" : "Baixar capa JPEG"}</Btn></div>
@@ -465,10 +501,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-sm font-medium text-deep">Demo funcional do Book</p><p className="mt-1 text-[11px] text-muted">Esta é a prévia definitiva que você aprova antes de publicar.</p></div><Badge tone="green">{demoIndex + 1}/{demoSteps.length}</Badge></div>
           <div className="mx-auto mt-4 max-w-xl">
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
-              {currentDemo.kind === "cover" && <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></button>}
+              {currentDemo.kind === "cover" && <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}{shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></button>}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
               {currentDemo.kind === "photo" && <img src={currentDemo.url} alt={currentDemo.label} className="h-full w-full object-cover" />}
-              {currentDemo.kind === "cta" && <div className="flex h-full flex-col overflow-y-auto p-7 text-left" style={{ background: theme.surface, color: theme.ink }}><div className="text-center"><h4 className="mt-3 text-2xl font-semibold leading-tight">{property?.title || headline}</h4><p className="mt-2 text-lg font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}{location && info ? " · " : ""}{info}</p></div><div className="mt-5 rounded-[12px] border border-white/10 bg-black/15 p-4"><p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: theme.accent }}>Conheça melhor este imóvel</p><p className="mt-2 text-[13px] leading-relaxed opacity-95">{ctaDescription}</p></div><div className="mt-5 text-center"><p className="text-sm font-medium">Gostou deste imóvel?</p><p className="mt-1 text-[11px] opacity-80">Tire suas dúvidas e receba os detalhes direto no WhatsApp.</p></div><a href={whatsappUrl} target="_blank" rel="noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold no-underline" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}><MessageCircle className="h-5 w-5" /> Quero saber mais sobre este imóvel</a></div>}
+              {currentDemo.kind === "cta" && <div className="relative flex h-full flex-col overflow-hidden p-7 text-left" style={{ background: theme.surface, color: theme.ink }}><BrandLogo className="absolute left-1/2 top-1/2 h-[58%] w-[78%] -translate-x-1/2 -translate-y-1/2 opacity-10 mix-blend-screen" /><div className="relative z-10"><p className="text-xs font-bold uppercase tracking-[.14em]" style={{ color: theme.accent }}>E. Santos · Gestor Imobiliário</p><h4 className="mt-6 text-3xl font-semibold leading-tight">Gostou deste imóvel?</h4><p className="mt-4 text-2xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}{location && info ? " · " : ""}{info}</p>{property?.code && <p className="mt-5 text-xs font-bold uppercase tracking-[.12em]" style={{ color: theme.accent }}>Código {property.code}</p>}<div className="mt-8 rounded-[12px] border border-white/10 bg-black/20 p-4"><p className="text-base font-semibold">Pronto para conhecer de perto?</p><p className="mt-2 text-[12px] leading-relaxed opacity-85">Tire suas dúvidas, receba as condições atualizadas e agende uma visita com atendimento direto.</p></div><a href={whatsappUrl} target="_blank" rel="noreferrer" className="mt-7 flex items-center justify-center gap-2 px-5 py-4 text-sm font-bold no-underline" style={{ background: theme.accent, color: themeKey === "claro" ? "#fff" : "#15110c" }}><MessageCircle className="h-5 w-5" /> Fale agora pelo WhatsApp</a><p className="mt-4 text-center text-[10px] opacity-70">E. Santos Gestor Imobiliário · Atendimento direto</p></div></div>}
               <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-semibold text-white">{demoIndex + 1}/{demoSteps.length}</span>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3"><Btn type="button" tone="outline" disabled={demoIndex === 0} onClick={() => setDemoIndex((current) => Math.max(0, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Anterior</Btn><p className="text-center text-[11px] font-medium text-deep">{currentDemo.label}</p><Btn type="button" tone="outline" disabled={demoIndex >= demoSteps.length - 1} onClick={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))}>Próximo <ChevronRight className="h-3.5 w-3.5" /></Btn></div>
