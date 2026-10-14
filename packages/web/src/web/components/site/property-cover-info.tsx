@@ -37,8 +37,7 @@ export function PropertyCoverInfo({ property }: { property: CoverProperty }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 bottom-0 space-y-[1.4cqw] p-[5cqw] font-sans text-white"
-      style={{ textShadow: "0 1px 3px rgba(0,0,0,.95), 0 0 1px rgba(0,0,0,.8)" }}
+      className="pointer-events-none absolute inset-x-0 bottom-0 space-y-[1.4cqw] p-[5cqw] font-sans text-black"
     >
       <p className="line-clamp-3 text-[clamp(17px,4.32cqw,24px)] font-bold leading-[1.15] tracking-[-0.015em]">
         {headline}
