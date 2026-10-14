@@ -8,7 +8,6 @@ import {
   Film,
   Image as ImageIcon,
   Loader2,
-  MessageCircle,
   Play,
   Send,
   Sparkles,
@@ -27,7 +26,7 @@ type DemoStep =
 type SocialTarget = "instagram" | "facebook" | "youtube" | "other";
 type ChannelResult = { status: "success" | "error" | "pending"; message: string };
 
-const ESANTOS_LOGO = "/esantos-logo.png";
+const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
 
 const THEMES: Record<ThemeKey, Theme> = {
   ouro: { label: "Ouro premium", accent: "#D1A24B", ink: "#FFF8EA", surface: "#20150D", overlay: "rgba(21,12,7,.76)" },
@@ -62,13 +61,6 @@ function cropImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width
   const sx = Math.max(0, (image.naturalWidth - sourceWidth) / 2);
   const sy = Math.max(0, (image.naturalHeight - sourceHeight) / 2);
   ctx.drawImage(image, sx, sy, sourceWidth, sourceHeight, 0, 0, width, height);
-}
-
-function drawContainedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, maxWidth: number, maxHeight: number) {
-  const scale = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
-  const width = image.naturalWidth * scale;
-  const height = image.naturalHeight * scale;
-  ctx.drawImage(image, x, y, width, height);
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
@@ -143,11 +135,9 @@ function YoutubePlayBadge({ large = false }: { large?: boolean }) {
   );
 }
 
-function BrandLogo({ className = "" }: { className?: string }) {
-  return <img src={ESANTOS_LOGO} alt="E. Santos Gestor Imobiliário" className={`pointer-events-none object-contain ${className}`} />;
-}
-
 export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
+  const [ctaPreviewUrl, setCtaPreviewUrl] = useState<string | null>(null);
+  const [ctaPreviewError, setCtaPreviewError] = useState<string | null>(null);
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
   const [shortVideoUrl, setShortVideoUrl] = useState<string | null>(null);
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
@@ -306,109 +296,48 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   async function buildCtaCanvas() {
     if (!property) throw new Error("Imóvel não carregado.");
-    const logo = await loadImage(ESANTOS_LOGO);
+    const background = await loadImage(BOOK_CTA_BACKGROUND);
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1080;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Seu navegador não conseguiu preparar o encerramento.");
+    ctx.drawImage(background, 0, 0, 1080, 1080);
 
-    const bg = ctx.createRadialGradient(790, 510, 60, 560, 520, 780);
-    bg.addColorStop(0, "#4a2a09");
-    bg.addColorStop(0.42, "#241205");
-    bg.addColorStop(1, "#090503");
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 1080, 1080);
-
-    const topGlow = ctx.createLinearGradient(0, 0, 1080, 0);
-    topGlow.addColorStop(0, "rgba(242,181,54,.06)");
-    topGlow.addColorStop(0.45, "rgba(255,210,90,.18)");
-    topGlow.addColorStop(1, "rgba(242,181,54,.03)");
-    ctx.fillStyle = topGlow;
-    ctx.fillRect(0, 0, 1080, 170);
-
-    ctx.save();
-    ctx.globalAlpha = 0.34;
-    ctx.globalCompositeOperation = "screen";
-    drawContainedImage(ctx, logo, 480, 185, 590, 610);
-    ctx.restore();
-
-    const gold = ctx.createLinearGradient(0, 0, 650, 0);
-    gold.addColorStop(0, "#F4D987");
-    gold.addColorStop(0.45, "#D8A538");
-    gold.addColorStop(1, "#FFF0A9");
-
-    ctx.strokeStyle = "rgba(224,174,65,.8)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(90, 64);
-    ctx.lineTo(210, 64);
-    ctx.moveTo(870, 64);
-    ctx.lineTo(990, 64);
-    ctx.stroke();
-
-    ctx.fillStyle = gold;
-    ctx.textAlign = "center";
-    ctx.font = "500 23px Georgia";
-    ctx.fillText("E. SANTOS · GESTOR IMOBILIÁRIO", 540, 74);
-    ctx.textAlign = "left";
-
-    ctx.fillStyle = "#FFF7E6";
-    ctx.font = "700 66px Georgia";
-    ctx.fillText("GOSTOU DESTE", 88, 180);
-    ctx.fillText("IMÓVEL?", 88, 255);
-
-    ctx.strokeStyle = "#D9A63B";
-    ctx.lineWidth = 3;
-    ctx.roundRect(88, 290, 480, 94, 20);
-    ctx.stroke();
-    ctx.fillStyle = gold;
-    ctx.font = "700 45px Arial";
-    ctx.fillText(priceText, 140, 352);
-
-    ctx.fillStyle = "#FFF8EA";
-    ctx.font = "600 27px Arial";
-    if (location) ctx.fillText(location, 140, 440);
-    if (info) ctx.fillText(info, 140, 495);
-
-    ctx.strokeStyle = "rgba(217,166,59,.75)";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(140, 535);
-    ctx.lineTo(520, 535);
-    ctx.stroke();
-    ctx.fillStyle = "#E2B64D";
-    ctx.font = "700 23px Arial";
-    ctx.fillText(property.code ? `CÓDIGO ${property.code}` : "ATENDIMENTO E. SANTOS", 140, 575);
-
-    ctx.fillStyle = gold;
-    ctx.font = "700 39px Georgia";
-    ctx.fillText("Pronto para conhecer de perto?", 140, 690);
-    ctx.fillStyle = "#FFF8EA";
-    ctx.font = "400 25px Arial";
-    wrapText(ctx, "Tire suas dúvidas, receba as condições atualizadas e agende uma visita com atendimento direto.", 140, 735, 800, 36, 3);
-
-    const button = ctx.createLinearGradient(80, 0, 1000, 0);
-    button.addColorStop(0, "#D39A2D");
-    button.addColorStop(0.5, "#FFE38B");
-    button.addColorStop(1, "#D59E31");
-    ctx.fillStyle = button;
-    ctx.roundRect(82, 860, 916, 100, 18);
-    ctx.fill();
-    ctx.strokeStyle = "#FFE598";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.fillStyle = "#140C06";
-    ctx.font = "800 31px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("FALE AGORA PELO WHATSAPP", 540, 922);
-
-    ctx.fillStyle = "rgba(255,248,234,.9)";
-    ctx.font = "500 19px Arial";
-    ctx.fillText("E. Santos Gestor Imobiliário · Atendimento direto", 540, 1022);
-    ctx.textAlign = "left";
+    // Coordinates follow the empty fields in the approved institutional artwork.
+    const field = (text: string, x: number, y: number, width: number, size: number, color = "#FFF8EA") => {
+      ctx.fillStyle = color;
+      ctx.textAlign = "left";
+      let fittedSize = size;
+      ctx.font = `600 ${fittedSize}px Arial`;
+      while (ctx.measureText(text).width > width && fittedSize > 16) {
+        fittedSize -= 1;
+        ctx.font = `600 ${fittedSize}px Arial`;
+      }
+      ctx.fillText(text, x, y, width);
+    };
+    field(priceText, 215, 392, 320, 39, "#F4D987");
+    field(location, 155, 480, 355, 25);
+    const rooms = [formatInfo("dorm.", property.bedrooms), formatInfo(property.suites === 1 ? "suíte" : "suítes", property.suites)].filter(Boolean).join(" · ");
+    field(rooms, 155, 542, 355, 25);
+    const parkingAndArea = [formatInfo(property.parking === 1 ? "vaga" : "vagas", property.parking), formatInfo("m²", property.areaUtil)].filter(Boolean).join(" · ");
+    field(parkingAndArea, 155, 604, 355, 25);
+    if (property.code) field(`CÓDIGO ${property.code}`, 155, 679, 355, 23, "#F4D987");
     return canvas;
   }
+
+  useEffect(() => {
+    if (currentDemo?.kind !== "cta" || !property) return;
+    let alive = true;
+    setCtaPreviewUrl(null);
+    setCtaPreviewError(null);
+    void buildCtaCanvas().then((canvas) => {
+      if (alive) setCtaPreviewUrl(canvas.toDataURL("image/jpeg", 0.92));
+    }).catch((caught) => {
+      if (alive) setCtaPreviewError(caught instanceof Error ? caught.message : "Não foi possível preparar o encerramento.");
+    });
+    return () => { alive = false; };
+  }, [currentDemo?.kind, property]);
 
   async function downloadCover() {
     setDownloading(true);
@@ -615,7 +544,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
               {currentDemo.kind === "photo" && <img src={currentDemo.url} alt={currentDemo.label} className="h-full w-full object-cover" />}
-              {currentDemo.kind === "cta" && <div className="relative h-full overflow-hidden text-left text-[#fff8ea]" style={{ background: "radial-gradient(circle at 72% 48%, #4a2a09 0%, #241205 38%, #090503 100%)" }}><div className="absolute inset-x-0 top-0 h-[18%] bg-gradient-to-r from-[#d6a23a]/5 via-[#f3ca65]/20 to-[#d6a23a]/5" /><BrandLogo className="absolute right-[-3%] top-[20%] h-[58%] w-[62%] opacity-35 mix-blend-screen" /><div className="relative z-10 h-full px-10 py-8"><div className="flex items-center gap-4 text-[10px] font-medium uppercase tracking-[.22em] text-[#e4b84d]"><span className="h-px flex-1 bg-[#c89631]" /><span>E. Santos · Gestor Imobiliário</span><span className="h-px flex-1 bg-[#c89631]" /></div><h4 className="mt-6 font-serif text-[42px] font-bold uppercase leading-[.94] tracking-[-.02em] text-[#fff7e6]">Gostou deste<br />imóvel?</h4><div className="mt-5 inline-flex min-w-[52%] items-center rounded-[16px] border-2 border-[#d7a43a] px-5 py-3 text-[26px] font-extrabold text-[#e7bd55] shadow-[0_0_22px_rgba(226,174,65,.12)]">{priceText}</div><div className="mt-5 space-y-2 text-[13px] font-semibold"><p>{location}</p>{info && <p>{info}</p>}</div>{property?.code && <div className="mt-4 w-fit border-t border-[#c89631]/60 pt-3 text-[11px] font-bold uppercase tracking-[.08em] text-[#e4b84d]">Código {property.code}</div>}<div className="mt-8 max-w-[82%]"><p className="font-serif text-[22px] font-bold text-[#efc75f]">Pronto para conhecer de perto?</p><p className="mt-2 text-[12px] leading-relaxed text-[#fff8ea]/90">Tire suas dúvidas, receba as condições atualizadas e agende uma visita com atendimento direto.</p></div><a href={whatsappUrl} target="_blank" rel="noreferrer" className="absolute inset-x-10 bottom-16 flex items-center justify-center gap-3 rounded-[14px] border border-[#ffe18a] bg-gradient-to-r from-[#d39a2d] via-[#ffe38b] to-[#d59e31] px-5 py-4 text-[15px] font-extrabold uppercase text-[#140c06] no-underline shadow-[0_0_24px_rgba(255,205,87,.18)]"><MessageCircle className="h-6 w-6" /> Fale agora pelo WhatsApp</a><div className="absolute inset-x-10 bottom-6 flex items-center gap-4 text-[9px] tracking-[.12em] text-[#fff8ea]/80"><span className="h-px flex-1 bg-[#c89631]" /><span>E. Santos Gestor Imobiliário · Atendimento direto</span><span className="h-px flex-1 bg-[#c89631]" /></div></div></div>}
+              {currentDemo.kind === "cta" && (ctaPreviewUrl ? <a href={whatsappUrl} target="_blank" rel="noreferrer" className="block h-full w-full" aria-label="Fale agora pelo WhatsApp"><img src={ctaPreviewUrl} alt="Encerramento do Book com os dados do imóvel" className="h-full w-full object-contain" /></a> : <div className="flex h-full items-center justify-center p-6 text-center text-sm text-white">{ctaPreviewError || "Preparando encerramento…"}</div>)}
               <span className="absolute right-3 top-3 rounded-full bg-black/65 px-2.5 py-1 text-[10px] font-semibold text-white">{demoIndex + 1}/{demoSteps.length}</span>
             </div>
             <div className="mt-3 flex items-center justify-between gap-3"><Btn type="button" tone="outline" disabled={demoIndex === 0} onClick={() => setDemoIndex((current) => Math.max(0, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Anterior</Btn><p className="text-center text-[11px] font-medium text-deep">{currentDemo.label}</p><Btn type="button" tone="outline" disabled={demoIndex >= demoSteps.length - 1} onClick={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))}>Próximo <ChevronRight className="h-3.5 w-3.5" /></Btn></div>
