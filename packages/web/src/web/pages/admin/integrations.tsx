@@ -409,7 +409,7 @@ function IntegrationsPage() {
             </p>
           </div>
         </header>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SocialFolder
             mark="FB"
             name="Facebook"
@@ -427,6 +427,12 @@ function IntegrationsPage() {
             name="YouTube"
             description="Conectar o canal pelo Google OAuth e enviar os vídeos dos imóveis aprovados pelo CRM."
             href="/admin/youtube"
+          />
+          <SocialFolder
+            mark="TT"
+            name="TikTok"
+            description="Preparar @esantosgestorimobiliario. Publicação aguardando vinculação da conta."
+            href="/admin/tiktok"
           />
         </div>
       </section>

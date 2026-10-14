@@ -82,6 +82,24 @@ const feedFields: IntegrationField[] = [
 ];
 
 export const INTEGRATIONS: IntegrationDef[] = [
+  {
+    key: "tiktok_publishing",
+    category: "Publicação em redes sociais",
+    name: "TikTok",
+    mark: "TT",
+    purpose: "Preparar o perfil para publicar os vídeos dos imóveis.",
+    method: "TikTok Content Posting API, com autorização da conta e aprovação do aplicativo.",
+    pending: ["Cadastrar o aplicativo no TikTok for Developers", "Autorizar a conta e validar uma publicação real"],
+    fields: [
+      { key: "username", label: "Nome de usuário", type: "text" },
+      { key: "accountEmail", label: "E-mail da conta", type: "text" },
+      { key: "notes", label: "Observações", type: "textarea" },
+    ],
+    canTest: false,
+    canSync: false,
+    available: true,
+    docsUrl: "https://developers.tiktok.com/doc/content-posting-api-get-started/",
+  },
   /* ------------------------------------------------ portais de imóveis */
   {
     key: "zap_vivareal",

@@ -234,6 +234,9 @@ export const adminIntegrations = {
     .handler(async ({ input, context }) => {
       const def = findIntegration(input.key);
       if (!def) throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+      if (def.key === "tiktok_publishing" && input.enabled) {
+        throw new ORPCError("BAD_REQUEST", { message: "TikTok aguarda vinculação e validação da publicação" });
+      }
       if (!def.available && input.enabled) {
         throw new ORPCError("BAD_REQUEST", { message: "Integração não disponível" });
       }
