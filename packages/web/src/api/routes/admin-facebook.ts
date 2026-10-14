@@ -263,6 +263,7 @@ export const adminFacebook = {
             title: property.title,
             purpose: property.purpose,
             price: property.price,
+            features: property.features,
             district: property.district,
             city: property.city,
             bedrooms: property.bedrooms,

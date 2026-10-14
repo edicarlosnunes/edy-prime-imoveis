@@ -1,3 +1,4 @@
+import { formatPropertyPrice, propertyPrice } from "../../shared/property-price";
 /**
  * Rotas públicas de arquivo: feed XML dos portais, sitemap, robots e o
  * prerender da página do imóvel (título/meta/OG/JSON-LD para Google e
@@ -137,11 +138,7 @@ export function registerFeedRoutes(app: Hono) {
         .limit(20);
       const cover = images.find((image) => image.isPrimary === 1) ?? images[0];
       const image = cover ? (cover.url.startsWith("http") ? cover.url : `${baseUrl}${cover.url}`) : "";
-      const price = property.price.toLocaleString("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-        maximumFractionDigits: 0,
-      });
+      const price = formatPropertyPrice(property);
       const title = `${property.title} — ${property.district}, ${property.city} | E. Santos`;
       const description = `${property.bedrooms} dorm., ${property.parking} vaga(s), ${property.areaUtil} m² em ${property.district}. ${price}. Código ${property.code}.`;
       const url = `${baseUrl}/imovel/${property.slug ?? propertySlug(property)}`;
@@ -155,7 +152,7 @@ export function registerFeedRoutes(app: Hono) {
         image: image || undefined,
         offers: {
           "@type": "Offer",
-          price: property.price,
+          price: propertyPrice(property).current,
           priceCurrency: "BRL",
           availability:
             property.status === "disponivel"

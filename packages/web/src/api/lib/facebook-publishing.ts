@@ -1,3 +1,4 @@
+import { formatPropertyPrice } from "../../shared/property-price";
 const GRAPH_VERSION = "v26.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
@@ -11,6 +12,8 @@ export interface FacebookPropertyForPost {
   title: string;
   purpose: string;
   price: number;
+  features?: string | null;
+  opportunityPrice?: number | null;
   district: string;
   city: string;
   bedrooms: number;
@@ -28,14 +31,6 @@ export interface FacebookPublishResult {
   mode: "photo" | "link";
 }
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-}
-
 export function buildFacebookCaption(property: FacebookPropertyForPost) {
   const lines = [property.title.trim(), ""];
   const purpose = property.purpose === "locacao" ? "Locação" : property.purpose === "venda_locacao" ? "Venda ou locação" : "Venda";
@@ -43,7 +38,7 @@ export function buildFacebookCaption(property: FacebookPropertyForPost) {
   if (property.district || property.city) {
     lines.push(`📍 ${[property.district, property.city].filter(Boolean).join(" - ")}`);
   }
-  if (property.price > 0) lines.push(`💰 ${money(property.price)}`);
+  if (property.price > 0) lines.push(`💰 ${formatPropertyPrice(property)}`);
 
   const details: string[] = [];
   if (property.bedrooms > 0) details.push(`${property.bedrooms} dorm.`);

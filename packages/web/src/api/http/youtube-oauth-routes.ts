@@ -1,3 +1,4 @@
+import { formatPropertyPrice } from "../../shared/property-price";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb, randomHex, resolveSession } from "../lib/auth";
 import { readConfig, saveIntegration, logEvent } from "../lib/integrations";
@@ -27,14 +28,6 @@ function appRedirect(request: Request, path: string) {
 
 function safeText(value: unknown, max: number) {
   return String(value ?? "").trim().slice(0, max);
-}
-
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
 }
 
 async function freshAccessToken(config: Record<string, string>) {
@@ -107,7 +100,7 @@ function videoMetadata(property: NonNullable<Awaited<ReturnType<typeof propertyB
   const title = safeText(property.title || `${property.code} · ${property.district} · ${property.city}`, 100);
   const details = [
     property.code ? `Código do imóvel: ${property.code}` : null,
-    property.price > 0 ? `Valor: ${money(property.price)}` : null,
+    property.price > 0 ? `Valor: ${formatPropertyPrice(property)}` : null,
     property.district ? `Bairro: ${property.district}` : null,
     property.city ? `Cidade: ${property.city}` : null,
     property.bedrooms > 0 ? `Dormitórios: ${property.bedrooms}` : null,
@@ -116,6 +109,8 @@ function videoMetadata(property: NonNullable<Awaited<ReturnType<typeof propertyB
     property.areaUtil > 0 ? `Área útil: ${property.areaUtil} m²` : null,
     property.description ? `\n${safeText(property.description, 2800)}` : null,
     `\nMais informações: ${baseUrl}`,
+    "WhatsApp: https://wa.me/5513997726767",
+    "Contato: (13) 99772-6767. Nos Shorts, acesse os links no perfil do canal.",
   ].filter(Boolean);
   return { title, description: safeText(details.join("\n"), 4900) };
 }

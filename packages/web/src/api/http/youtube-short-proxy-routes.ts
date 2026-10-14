@@ -1,3 +1,4 @@
+import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
 import { del } from "@vercel/blob";
 import { and, desc, eq } from "drizzle-orm";
@@ -9,14 +10,6 @@ import { siteBaseUrl } from "../lib/base-url";
 
 const YOUTUBE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const YOUTUBE_UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos";
-
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-}
 
 async function freshYouTubeAccessToken(config: Record<string, string>) {
   const clientId = (config.clientId ?? "").trim();
@@ -52,12 +45,14 @@ function captionFor(property: any, headers: Headers) {
   return [
     property.title,
     property.code ? `Código: ${property.code}` : null,
-    property.price > 0 ? `Valor: ${money(property.price)}` : null,
+    property.price > 0 ? `Valor: ${formatPropertyPrice(property)}` : null,
     property.district ? `${property.district} · ${property.city}` : property.city,
     property.bedrooms > 0 ? `${property.bedrooms} dormitório(s)` : null,
     property.suites > 0 ? `${property.suites} suíte(s)` : null,
     property.parking > 0 ? `${property.parking} vaga(s)` : null,
     `Mais informações: ${site}`,
+    "WhatsApp: https://wa.me/5513997726767",
+    "Contato: (13) 99772-6767. Nos Shorts, acesse os links no perfil do canal.",
     "#Shorts",
   ].filter(Boolean).join("\n").slice(0, 4900);
 }

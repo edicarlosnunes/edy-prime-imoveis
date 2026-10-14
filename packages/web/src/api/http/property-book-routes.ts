@@ -1,3 +1,4 @@
+import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
@@ -21,21 +22,13 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-}
-
 function captionFor(property: any, headers: Headers) {
   const site = siteBaseUrl(headers);
   return [
     property.title,
-    property.description ? String(property.description).trim() : null,
+    property.description ? String(property.description).trim().slice(0, 900) : null,
     property.code ? `Código: ${property.code}` : null,
-    property.price > 0 ? `Valor: ${money(property.price)}` : null,
+    property.price > 0 ? `Valor: ${formatPropertyPrice(property)}` : null,
     property.district ? `${property.district} · ${property.city}` : property.city,
     property.bedrooms > 0 ? `${property.bedrooms} dormitório(s)` : null,
     property.suites > 0 ? `${property.suites} suíte(s)` : null,

@@ -1,3 +1,4 @@
+import { formatPropertyPrice, propertyPrice } from "../../shared/property-price";
 /**
  * Feed XML dos imóveis + sitemap + robots.
  *
@@ -90,7 +91,7 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     title: row.title,
     purpose: row.purpose,
     type: row.type,
-    price: row.price,
+    price: propertyPrice(row).current,
     condoFee: row.condoFee,
     iptu: row.iptu,
     district: row.district,
@@ -102,8 +103,8 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     parking: row.parking,
     areaUtil: row.areaUtil,
     areaTotal: row.areaTotal,
-    description: row.description ?? "",
-    features: parseFeatures(row.features),
+    description: [row.description, propertyPrice(row).discounted ? `Valor: ${formatPropertyPrice(row)}` : null].filter(Boolean).join("\n\n"),
+    features: parseFeatures(row.features).filter((feature) => !feature.startsWith("__opportunity_price:") && !feature.startsWith("__referral_note:")),
     status: row.status,
     slug: row.slug ?? propertySlug(row),
     updatedAt: row.updatedAt ?? null,

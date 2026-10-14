@@ -1,3 +1,4 @@
+import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
 import { del } from "@vercel/blob";
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
@@ -90,20 +91,12 @@ function safeBlobUrl(value: string) {
   }
 }
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-}
-
 function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propertyForPublishing>>>, headers: Headers) {
   const site = siteBaseUrl(headers);
   return [
     property.title,
     property.code ? `Código: ${property.code}` : null,
-    property.price > 0 ? `Valor: ${money(property.price)}` : null,
+    property.price > 0 ? `Valor: ${formatPropertyPrice(property)}` : null,
     property.district ? `${property.district} · ${property.city}` : property.city,
     property.bedrooms > 0 ? `${property.bedrooms} dormitório(s)` : null,
     property.suites > 0 ? `${property.suites} suíte(s)` : null,

@@ -1,3 +1,4 @@
+import { propertyPrice } from "../../../shared/property-price";
 import { useEffect, useMemo, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { recordBookVideo } from "../../lib/book-video";
@@ -195,7 +196,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const bookPhotos = useMemo(() => images.slice(0, maxPhotos), [images, maxPhotos]);
   const theme = THEMES[themeKey];
   const headline = (property?.highlight || property?.title || "Imóvel em destaque").trim();
-  const priceText = money(property?.opportunityPrice ?? property?.price);
+  const pricing = propertyPrice(property ?? {});
+  const priceText = money(pricing.current);
+  const previousPriceText = pricing.discounted ? money(pricing.original) : null;
   const info = [
     formatInfo("dorm.", property?.bedrooms),
     formatInfo("suíte", property?.suites),
@@ -287,9 +290,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     ctx.fillStyle = theme.ink;
     ctx.font = "700 57px Arial";
     wrapText(ctx, headline, 64, 710, 900, 66, 3);
+    if (previousPriceText) {
+      ctx.fillStyle = theme.ink;
+      ctx.font = "500 28px Arial";
+      ctx.fillText(`De ${previousPriceText}`, 64, 879);
+    }
     ctx.fillStyle = theme.accent;
     ctx.font = "700 43px Arial";
-    ctx.fillText(priceText, 64, 930);
+    ctx.fillText(`${previousPriceText ? "Por " : ""}${priceText}`, 64, 930);
     ctx.fillStyle = theme.ink;
     ctx.font = "500 27px Arial";
     if (location) ctx.fillText(location, 64, 980);
@@ -297,7 +305,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return canvas;
   }
 
-  async function buildCtaCanvas() {
+  async function buildCtaCanvas(youtube = false) {
     if (!property) throw new Error("Imóvel não carregado.");
     const background = await loadImage(BOOK_CTA_BACKGROUND);
     const canvas = document.createElement("canvas");
@@ -319,13 +327,27 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       }
       ctx.fillText(text, x, y, width);
     };
-    field(priceText, 215, 392, 320, 39, "#F4D987");
+    if (previousPriceText) {
+      field(`De ${previousPriceText}`, 215, 362, 320, 23);
+      field(`Por ${priceText}`, 215, 405, 320, 34, "#F4D987");
+    } else field(priceText, 215, 392, 320, 39, "#F4D987");
     field(location, 155, 480, 355, 25);
     const rooms = [formatInfo("dorm.", property.bedrooms), formatInfo(property.suites === 1 ? "suíte" : "suítes", property.suites)].filter(Boolean).join(" · ");
     field(rooms, 155, 542, 355, 25);
     const parkingAndArea = [formatInfo(property.parking === 1 ? "vaga" : "vagas", property.parking), formatInfo("m²", property.areaUtil)].filter(Boolean).join(" · ");
     field(parkingAndArea, 155, 604, 355, 25);
     if (property.code) field(`CÓDIGO ${property.code}`, 155, 679, 355, 23, "#F4D987");
+    if (youtube) {
+      ctx.fillStyle = "#130F08";
+      ctx.fillRect(70, 868, 945, 132);
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#F4D987";
+      ctx.font = "600 35px Arial";
+      ctx.fillText("WhatsApp: (13) 99772-6767", 540, 925);
+      ctx.fillStyle = "#FFF8EA";
+      ctx.font = "500 27px Arial";
+      ctx.fillText("Site e contato: links no perfil do canal", 540, 970);
+    }
     return canvas;
   }
 
@@ -334,13 +356,13 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     let alive = true;
     setCtaPreviewUrl(null);
     setCtaPreviewError(null);
-    void buildCtaCanvas().then((canvas) => {
+    void buildCtaCanvas(targets.youtube).then((canvas) => {
       if (alive) setCtaPreviewUrl(canvas.toDataURL("image/jpeg", 0.92));
     }).catch((caught) => {
       if (alive) setCtaPreviewError(caught instanceof Error ? caught.message : "Não foi possível preparar o encerramento.");
     });
     return () => { alive = false; };
-  }, [currentDemo?.kind, property]);
+  }, [currentDemo?.kind, property, targets.youtube]);
 
   async function downloadCover() {
     setDownloading(true);
@@ -430,7 +452,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
     setYoutubeProgress("Preparando as imagens do Book…");
     const [cover, cta, photos] = await Promise.all([
-      buildCoverCanvas(), buildCtaCanvas(),
+      buildCoverCanvas(), buildCtaCanvas(true),
       Promise.all(bookPhotos.map((image) => buildSocialPhotoCanvas(image.url))),
     ]);
     const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress: setYoutubeProgress });
@@ -531,7 +553,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                 {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
                 <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
                 {shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}
-                <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
+                <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
               </>
             )}
             {customCoverUrl && <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] text-white">Capa personalizada</span>}
@@ -556,7 +578,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && (
                 <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
-                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}{shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4><p className="mt-4 text-xl font-semibold" style={{ color: theme.accent }}>{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
+                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}{shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
                 </button>
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
