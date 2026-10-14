@@ -109,8 +109,8 @@ function videoMetadata(property: NonNullable<Awaited<ReturnType<typeof propertyB
     property.areaUtil > 0 ? `Área útil: ${property.areaUtil} m²` : null,
     property.description ? `\n${safeText(property.description, 2800)}` : null,
     `\nMais informações: ${baseUrl}`,
-    "WhatsApp: https://wa.me/5513997726767",
-    "Contato: (13) 99772-6767. Nos Shorts, acesse os links no perfil do canal.",
+    "WhatsApp: https://wa.me/5513997141174",
+    "Contato: (13) 99714-1174. Nos Shorts, acesse os links no perfil do canal.",
   ].filter(Boolean);
   return { title, description: safeText(details.join("\n"), 4900) };
 }

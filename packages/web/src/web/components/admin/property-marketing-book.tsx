@@ -207,7 +207,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   ].filter(Boolean).join(" · ");
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
   const whatsappMessage = encodeURIComponent(`Olá! Vi o imóvel ${property?.title || "que vocês anunciaram"}${property?.code ? ` (código ${property.code})` : ""} e gostaria de receber mais informações.`);
-  const whatsappUrl = `https://wa.me/5513997726767?text=${whatsappMessage}`;
+  const whatsappUrl = `https://wa.me/5513997141174?text=${whatsappMessage}`;
   const selectedCount = Object.values(targets).filter(Boolean).length;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
@@ -277,16 +277,6 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     gradient.addColorStop(1, theme.surface);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 1080);
-    if (shortReady) {
-      ctx.fillStyle = "rgba(0,0,0,.68)";
-      ctx.fillRect(64, 575, 430, 62);
-      ctx.strokeStyle = theme.accent;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(64, 575, 430, 62);
-      ctx.fillStyle = theme.accent;
-      ctx.font = "700 23px Arial";
-      ctx.fillText("▶  VÍDEO NO PRÓXIMO SLIDE", 88, 615);
-    }
     ctx.fillStyle = theme.ink;
     ctx.font = "700 57px Arial";
     wrapText(ctx, headline, 64, 710, 900, 66, 3);
@@ -343,7 +333,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       ctx.textAlign = "center";
       ctx.fillStyle = "#F4D987";
       ctx.font = "600 35px Arial";
-      ctx.fillText("WhatsApp: (13) 99772-6767", 540, 925);
+      ctx.fillText("WhatsApp: (13) 99714-1174", 540, 925);
       ctx.fillStyle = "#FFF8EA";
       ctx.font = "500 27px Arial";
       ctx.fillText("Site e contato: links no perfil do canal", 540, 970);
@@ -552,7 +542,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               <>
                 {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
                 <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
-                {shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}
+
                 <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
               </>
             )}
@@ -578,7 +568,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && (
                 <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
-                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}{shortReady && <div className="absolute left-5 top-[53%] flex items-center gap-2 border px-3 py-2 text-[11px] font-bold uppercase tracking-[.08em]" style={{ borderColor: theme.accent, background: "rgba(0,0,0,.65)", color: theme.accent }}><Play className="h-3.5 w-3.5 fill-current" /> Vídeo no próximo slide</div>}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
+                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
                 </button>
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}

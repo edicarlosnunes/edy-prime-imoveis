@@ -51,8 +51,8 @@ function captionFor(property: any, headers: Headers) {
     property.suites > 0 ? `${property.suites} suíte(s)` : null,
     property.parking > 0 ? `${property.parking} vaga(s)` : null,
     `Mais informações: ${site}`,
-    "WhatsApp: https://wa.me/5513997726767",
-    "Contato: (13) 99772-6767. Nos Shorts, acesse os links no perfil do canal.",
+    "WhatsApp: https://wa.me/5513997141174",
+    "Contato: (13) 99714-1174. Nos Shorts, acesse os links no perfil do canal.",
     "#Shorts",
   ].filter(Boolean).join("\n").slice(0, 4900);
 }
