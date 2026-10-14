@@ -8,6 +8,7 @@ import { site as brand, whatsappLink } from "../../lib/site";
 import { filterProperties, hasAnyFilter, useSearch } from "./search-store";
 import { isSold } from "../../lib/property-sold";
 import { SoldRibbon, SoldSimilarCta } from "./sold-ribbon";
+import { PropertyCoverInfo } from "./property-cover-info";
 
 const statusLabel: Record<string, string> = {
   disponivel: "Disponível",
@@ -19,7 +20,7 @@ const statusLabel: Record<string, string> = {
 function CardSkeleton() {
   return (
     <div className="animate-pulse">
-      <div className="aspect-[4/3] w-full bg-bone" />
+      <div className="aspect-square w-full bg-bone" />
       <div className="mt-5 h-3 w-24 bg-bone" />
       <div className="mt-3 h-5 w-full bg-bone" />
       <div className="mt-3 h-4 w-32 bg-bone" />
@@ -101,14 +102,15 @@ export function Showcase() {
             className="reveal group flex flex-col"
             data-reveal-delay={(index % 3) * 80}
           >
-            <Link href={`/imovel/${property.slug}`} className="relative block overflow-hidden">
+            <Link href={`/imovel/${property.slug}`} className="relative block overflow-hidden" style={{ containerType: "inline-size" }}>
               <img
                 src={property.image}
                 alt={property.title}
                 loading="lazy"
                 decoding="async"
-                className="aspect-[4/3] w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
+                className="aspect-square w-full object-cover transition-transform duration-[900ms] ease-out group-hover:scale-[1.05]"
               />
+              <PropertyCoverInfo property={property} />
               {isSold(property.status) ? (
                 <SoldRibbon size="card" />
               ) : (
