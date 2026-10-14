@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { upload } from "@vercel/blob/client";
+import { recordBookVideo } from "../../lib/book-video";
 import { useQuery } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -145,6 +147,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [demoIndex, setDemoIndex] = useState(0);
   const [downloading, setDownloading] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [youtubeProgress, setYoutubeProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, other: false });
   const [otherTarget, setOtherTarget] = useState("");
@@ -207,7 +210,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const demoSteps = useMemo<DemoStep[]>(() => {
     const steps: DemoStep[] = [{ kind: "cover", label: customCoverUrl ? "Capa personalizada" : "Capa premium E. Santos" }];
     if (shortVideoUrl) steps.push({ kind: "video", label: "Vídeo curto", url: shortVideoUrl });
-    for (const [index, image] of bookPhotos.entries()) {
+    for (const image of bookPhotos) {
       steps.push({ kind: "photo", label: `Foto ${images.indexOf(image) + 1}`, url: image.url });
     }
     steps.push({ kind: "cta", label: "Contato + CTA" });
@@ -421,17 +424,29 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ force: false }),
+      body: JSON.stringify({ force: false, book: true }),
     });
     if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Shorts."));
     const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
-    const source = await fetch(prepared.videoUrl);
-    if (!source.ok) throw new Error("Não foi possível abrir o vídeo curto armazenado.");
-    const blob = await source.blob();
+    setYoutubeProgress("Preparando as imagens do Book…");
+    const [cover, cta, photos] = await Promise.all([
+      buildCoverCanvas(), buildCtaCanvas(),
+      Promise.all(bookPhotos.map((image) => buildSocialPhotoCanvas(image.url))),
+    ]);
+    const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress: setYoutubeProgress });
+    const extension = blob.type === "video/mp4" ? "mp4" : "webm";
+    setYoutubeProgress("Salvando o Book completo…");
+    const asset = await upload(`properties/${propertyId}/book-youtube/book-${Date.now()}.${extension}`, blob, {
+      access: "public", handleUploadUrl: "/api/admin/property-videos/upload",
+      clientPayload: JSON.stringify({ propertyId, kind: "short_social" }),
+      multipart: true, contentType: blob.type,
+      onUploadProgress: ({ percentage }) => setYoutubeProgress(`Salvando o Book completo: ${Math.round(percentage)}%`),
+    });
+    setYoutubeProgress("Enviando o Book completo ao YouTube…");
     const sent = await fetch(prepared.uploadUrl, {
-      method: "PUT",
-      headers: { authorization: `Bearer ${prepared.accessToken}`, "content-type": prepared.mime || blob.type || "video/mp4" },
-      body: blob,
+      method: "PUT", credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ bookVideoUrl: asset.url }),
     });
     const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
     if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o Short.");
@@ -439,16 +454,18 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       method: "POST",
       credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ videoId: youtube.id }),
+      body: JSON.stringify({ videoId: youtube.id, book: true }),
     });
     if (!complete.ok) throw new Error(await responseError(complete, "Short enviado, mas o CRM não registrou o retorno."));
     const result = await complete.json() as { message?: string };
-    return result.message || "YouTube Shorts publicado.";
+    setYoutubeProgress("");
+    return result.message || "Book completo enviado ao YouTube Shorts.";
   }
 
   async function publishSelectedChannels() {
     if (!propertyId || selectedCount === 0) return;
     setPublishing(true);
+    setYoutubeProgress("");
     setError(null);
     setChannelResults({});
     const run = async (target: SocialTarget, fn: () => Promise<string>) => {
@@ -561,6 +578,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             {!shortReady && <p className="mt-2 text-[11px] text-muted">Sem vídeo curto: Instagram e Facebook continuam liberados. YouTube Shorts fica disponível quando houver vídeo.</p>}
             {targets.other && <div className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 p-3"><label className="block text-xs font-medium text-deep">Outras integrações</label><select value={otherTarget} onChange={(event) => setOtherTarget(event.target.value)} className="mt-2 w-full max-w-md rounded-[5px] border border-line bg-white px-3 py-2 text-sm" disabled><option value="">Nenhuma integração adicional configurada</option></select><p className="mt-2 text-[11px] text-amber-800">Outros — pendente. Só aparecerão aqui plataformas realmente configuradas no CRM.</p></div>}
             <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn></div>
+            {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{(["instagram", "facebook", "youtube", "other"] as SocialTarget[]).map((key) => { const result = channelResults[key]; if (!result) return null; const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "Outros"; const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"; return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>; })}</div>}
           </div>
         </div>

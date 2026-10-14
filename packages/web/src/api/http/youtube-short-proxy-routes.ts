@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { del } from "@vercel/blob";
 import { and, desc, eq } from "drizzle-orm";
 import * as schema from "../database/schema";
 import { propertyVideos } from "../database/property-videos-schema";
@@ -88,14 +89,14 @@ export function registerYoutubeShortProxyRoutes(app: Hono) {
       .limit(1);
     if (!video?.url || !video.size) return c.json({ error: "Cadastre o vídeo curto antes de publicar." }, 400);
 
-    const body = await c.req.json().catch(() => ({})) as { force?: unknown };
+    const body = await c.req.json().catch(() => ({})) as { force?: unknown; book?: unknown };
     const [previous] = await db
       .select()
       .from(schema.propertyChannels)
       .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, "youtube_short")))
       .orderBy(desc(schema.propertyChannels.id))
       .limit(1);
-    if (previous?.status === "publicado" && body.force !== true) {
+    if (previous?.status === "publicado" && body.force !== true && !(body.book === true && !previous.message?.includes("Book completo"))) {
       return c.json({ error: "Este vídeo curto já foi enviado ao YouTube Shorts." }, 409);
     }
 
@@ -141,17 +142,38 @@ export function registerYoutubeShortProxyRoutes(app: Hono) {
       return c.json({ error: { message: "Vídeo curto não encontrado no CRM." } }, 404);
     }
 
+    let bookVideoUrl: string | null = null;
+    if (c.req.header("content-type")?.includes("application/json")) {
+      const body = await c.req.json().catch(() => ({})) as { bookVideoUrl?: unknown };
+      try {
+        const url = new URL(String(body.bookVideoUrl ?? ""));
+        const stored = new URL(video.url);
+        if (url.protocol !== "https:" || url.origin !== stored.origin || !url.hostname.endsWith(".blob.vercel-storage.com") || !url.pathname.startsWith(`/properties/${propertyId}/book-youtube/`) || url.search || url.hash) throw new Error();
+        bookVideoUrl = url.toString();
+      } catch {
+        return c.json({ error: { message: "Arquivo do Book completo inválido." } }, 400);
+      }
+    }
+    const [previous] = await db.select().from(schema.propertyChannels)
+      .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, "youtube_short")))
+      .orderBy(desc(schema.propertyChannels.id)).limit(1);
+    if (previous?.status === "publicado" && (!bookVideoUrl || previous.message?.includes("Book completo"))) {
+      return c.json({ error: { message: "Este conteúdo já foi enviado ao YouTube Shorts." } }, 409);
+    }
+    if (property.published !== 1 || property.status !== "disponivel") return c.json({ error: { message: "O imóvel precisa estar publicado e disponível." } }, 400);
     try {
       const current = await readConfig(db, "youtube_publicacao");
+      if (current.row?.enabled !== 1) throw new Error("YouTube não está conectado para publicação.");
       const accessToken = await freshYouTubeAccessToken(current.config);
 
-      const sourceResponse = await fetch(video.url);
+      const sourceResponse = await fetch(bookVideoUrl || video.url, { redirect: "error" });
       if (!sourceResponse.ok) {
         throw new Error(`O CRM não conseguiu abrir o vídeo armazenado (HTTP ${sourceResponse.status}).`);
       }
       const videoBytes = await sourceResponse.arrayBuffer();
       if (videoBytes.byteLength === 0) throw new Error("O arquivo do vídeo curto está vazio.");
-      const mime = video.mime || sourceResponse.headers.get("content-type") || "video/mp4";
+      const mime = bookVideoUrl ? sourceResponse.headers.get("content-type") : video.mime || sourceResponse.headers.get("content-type") || "video/mp4";
+      if (!mime || (bookVideoUrl && !["video/mp4", "video/webm"].includes(mime.split(";")[0]))) throw new Error("Formato do vídeo não suportado.");
 
       const start = new URL(YOUTUBE_UPLOAD_URL);
       start.searchParams.set("uploadType", "resumable");
@@ -198,6 +220,8 @@ export function registerYoutubeShortProxyRoutes(app: Hono) {
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Falha no upload do YouTube Short.";
       return c.json({ error: { message } }, 400);
+    } finally {
+      if (bookVideoUrl) await del(bookVideoUrl).catch(() => {});
     }
   });
 }

@@ -397,11 +397,11 @@ export function registerPropertyVideoRoutes(app: Hono) {
     const user = await resolveSession(c.req.raw.headers);
     if (!user) return c.json({ error: "Não autorizado" }, 401);
     const propertyId = Number(c.req.param("propertyId"));
-    const body = await c.req.json().catch(() => ({})) as { videoId?: unknown };
+    const body = await c.req.json().catch(() => ({})) as { videoId?: unknown; book?: unknown };
     const videoId = String(body.videoId ?? "").trim();
     if (!Number.isSafeInteger(propertyId) || propertyId <= 0 || !videoId) return c.json({ error: "Retorno do YouTube inválido" }, 400);
     const link = `https://www.youtube.com/watch?v=${videoId}`;
-    const message = `Vídeo curto enviado ao YouTube Shorts como privado. ID: ${videoId}. URL: ${link}`;
+    const message = `${body.book === true ? "Book completo" : "Vídeo curto"} enviado ao YouTube Shorts como privado. ID: ${videoId}. URL: ${link}`;
     await saveChannel(propertyId, "youtube_short", "publicado", message, 1);
     const db = await getDb();
     await logEvent(db, "youtube_publicacao", "sync", true, message);
