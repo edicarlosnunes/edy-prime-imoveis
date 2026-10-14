@@ -37,7 +37,8 @@ export function PropertyCoverInfo({ property }: { property: CoverProperty }) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute inset-x-0 bottom-0 space-y-[1.4cqw] p-[5cqw] font-sans text-black"
+      className="pointer-events-none absolute inset-x-0 bottom-0 space-y-[1.4cqw] p-[5cqw] font-sans text-white"
+      style={{ textShadow: "0 1px 3px rgba(0,0,0,.95), 0 0 1px rgba(0,0,0,.8)" }}
     >
       <p className="line-clamp-3 text-[clamp(17px,4.32cqw,24px)] font-bold leading-[1.15] tracking-[-0.015em]">
         {headline}
@@ -46,7 +47,7 @@ export function PropertyCoverInfo({ property }: { property: CoverProperty }) {
         {price.discounted && (
           <span className="text-[clamp(11px,2.8cqw,16px)]">De <span className="line-through">{formatBRL(price.original)}</span></span>
         )}
-        <span className="text-[clamp(14px,3.45cqw,20px)] font-bold text-[#E8B44F]">
+        <span className="text-[clamp(14px,3.45cqw,20px)] font-bold text-[#F2D45C]">
           {price.discounted ? "Por " : ""}{price.current > 0 ? formatBRL(price.current) : "Consulte o valor"}
         </span>
       </div>
