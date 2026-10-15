@@ -26,7 +26,7 @@ type DemoStep =
   | { kind: "video"; label: string; url: string }
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
-type SocialTarget = "instagram" | "facebook" | "youtube" | "tiktok" | "other";
+type SocialTarget = "instagram" | "facebook" | "youtube" | "tiktok";
 type ChannelResult = { status: "success" | "error" | "pending"; message: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
@@ -150,9 +150,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [publishing, setPublishing] = useState(false);
   const [youtubeProgress, setYoutubeProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, tiktok: false, other: false });
-  const [otherTarget, setOtherTarget] = useState("");
+  const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, tiktok: false });
   const [channelResults, setChannelResults] = useState<Partial<Record<SocialTarget, ChannelResult>>>({});
+
+  const destinations = useQuery(orpc.adminIntegrations.publicationTargets.queryOptions({ refetchInterval: 15_000 }));
 
   const detail = useQuery({
     ...orpc.adminProperties.get.queryOptions({ input: { id: propertyId ?? 0 } }),
@@ -162,6 +163,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   useEffect(() => {
     setDemoIndex(0);
     setChannelResults({});
+    setTargets({ instagram: false, facebook: false, youtube: false, tiktok: false });
     if (propertyId === null) {
       setShortVideoUrl(null);
       setCustomCoverUrl(null);
@@ -208,7 +210,13 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
   const whatsappMessage = encodeURIComponent(`Olá! Vi o imóvel ${property?.title || "que vocês anunciaram"}${property?.code ? ` (código ${property.code})` : ""} e gostaria de receber mais informações.`);
   const whatsappUrl = `https://wa.me/5513997141174?text=${whatsappMessage}`;
-  const selectedCount = Object.values(targets).filter(Boolean).length;
+  const destinationRows = (destinations.data ?? []).map((target) => ({
+    ...target,
+    ready: !destinations.isError && target.ready && (target.key !== "youtube" || shortReady),
+    reason: target.key === "youtube" && target.ready && !shortReady ? "Adicione um vídeo curto ao imóvel" : target.reason,
+  }));
+  const selectedKeys = destinationRows.filter((target) => target.ready && targets[target.key as SocialTarget]).map((target) => target.key);
+  const selectedCount = selectedKeys.length;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
     const steps: DemoStep[] = [{ kind: "cover", label: customCoverUrl ? "Capa personalizada" : "Capa premium E. Santos" }];
@@ -489,12 +497,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       }
     };
     const jobs: Promise<void>[] = [];
-    if (targets.instagram) jobs.push(run("instagram", publishInstagramBook));
-    if (targets.facebook) jobs.push(run("facebook", publishFacebook));
-    if (targets.youtube) jobs.push(run("youtube", publishYoutubeShort));
-    if (targets.other) {
-      setChannelResults((current) => ({ ...current, other: { status: "pending", message: otherTarget ? "Integração selecionada ainda pendente de adaptador de publicação." : "Nenhuma integração adicional configurada." } }));
-    }
+    if (selectedKeys.includes("instagram")) jobs.push(run("instagram", publishInstagramBook));
+    if (selectedKeys.includes("facebook")) jobs.push(run("facebook", publishFacebook));
+    if (selectedKeys.includes("youtube")) jobs.push(run("youtube", publishYoutubeShort));
     await Promise.allSettled(jobs);
     setPublishing(false);
   }
@@ -581,18 +586,21 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
           <div className="mt-5 border-t border-brass/20 pt-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p><p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p></div><Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge></div>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {([ ["instagram", "Instagram"], ["facebook", "Facebook"], ["youtube", "YouTube Shorts"], ["tiktok", "TikTok — pendente"], ["other", "Outros"] ] as const).map(([key, label]) => {
-                const unavailable = key === "tiktok" || (key === "youtube" && !shortReady);
-                return <label key={key} className={`flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-3 text-sm text-deep ${unavailable ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}><input type="checkbox" checked={targets[key]} disabled={unavailable} onChange={(event) => setTargets((current) => ({ ...current, [key]: event.target.checked }))} /><span>{label}</span></label>;
-              })}
+            <p className="mt-2 text-[11px] text-muted">Marque o quadradinho antes do nome para enviar este imóvel. Depois do nome: ✅ pronta para enviar; ❌ envio ainda pendente.</p>
+            {destinations.isPending && <p role="status" className="mt-3 text-xs text-muted">Conferindo plataformas…</p>}
+            {destinations.isError && <p role="alert" className="mt-3 text-xs text-red-700">Não foi possível conferir as plataformas. <button type="button" className="underline" onClick={() => void destinations.refetch()}>Tentar novamente</button></p>}
+            <div className="mt-3 flex flex-wrap items-start gap-2">
+              {destinationRows.map((target) => (
+                <label key={target.key} title={target.reason} className={`inline-flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-2 text-sm text-deep ${!target.ready || publishing ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                  <input type="checkbox" checked={target.ready && Boolean(targets[target.key as SocialTarget])} disabled={!target.ready || publishing} onChange={(event) => setTargets((current) => ({ ...current, [target.key]: event.target.checked }))} />
+                  <span><span className="font-medium">{target.name}</span><span className={`ml-2 ${target.ready ? "text-emerald-600" : "text-red-600"}`} aria-label={target.ready ? "Pronta para enviar" : "Publicação pendente"}>{target.ready ? "✅" : "❌"}</span><span className="sr-only"> — {target.reason}</span></span>
+                </label>
+              ))}
             </div>
-            <p className="mt-2 text-[11px] text-muted">TikTok aguarda vinculação. <a className="underline" href="/admin/tiktok">Preparar perfil do TikTok</a></p>
-            {!shortReady && <p className="mt-2 text-[11px] text-muted">Sem vídeo curto: Instagram e Facebook continuam liberados. YouTube Shorts fica disponível quando houver vídeo.</p>}
-            {targets.other && <div className="mt-3 rounded-[8px] border border-amber-200 bg-amber-50 p-3"><label className="block text-xs font-medium text-deep">Outras integrações</label><select value={otherTarget} onChange={(event) => setOtherTarget(event.target.value)} className="mt-2 w-full max-w-md rounded-[5px] border border-line bg-white px-3 py-2 text-sm" disabled><option value="">Nenhuma integração adicional configurada</option></select><p className="mt-2 text-[11px] text-amber-800">Outros — pendente. Só aparecerão aqui plataformas realmente configuradas no CRM.</p></div>}
+            <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
             <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn></div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
-            {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{(["instagram", "facebook", "youtube", "other"] as SocialTarget[]).map((key) => { const result = channelResults[key]; if (!result) return null; const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "Outros"; const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"; return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>; })}</div>}
+            {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{(["instagram", "facebook", "youtube", "tiktok"] as SocialTarget[]).map((key) => { const result = channelResults[key]; if (!result) return null; const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "TikTok"; const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"; return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>; })}</div>}
           </div>
         </div>
       )}

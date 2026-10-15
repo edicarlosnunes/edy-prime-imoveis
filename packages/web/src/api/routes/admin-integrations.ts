@@ -108,6 +108,30 @@ function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
 export const adminIntegrations = {
   instagram: adminInstagram,
 
+  /** Lista a central completa; serviços de apoio não permitem envio de anúncios. */
+  publicationTargets: adminBase.handler(async ({ context }) => {
+    const rows = await context.db.select().from(schema.integrations);
+    const byKey = new Map(rows.map((row) => [row.key, row]));
+    const social = [
+      { key: "instagram", name: "Instagram", integration: "instagram_publicacao", required: ["userId", "accessToken"] },
+      { key: "facebook", name: "Facebook", integration: "facebook_publicacao", required: ["pageId", "pageToken"] },
+      { key: "youtube", name: "YouTube Shorts", integration: "youtube_publicacao", required: ["clientId", "clientSecret", "refreshToken"] },
+    ].map((target) => {
+      const row = byKey.get(target.integration);
+      const config = parseConfig(row?.config);
+      const ready = row?.enabled === 1 && row.status === "conectado" && target.required.every((key) => Boolean(config[key]?.trim()));
+      return { key: target.key, name: target.name, ready, reason: ready ? "Pronto para enviar" : "Conexão de publicação pendente" };
+    });
+    return [
+      ...social,
+      { key: "tiktok", name: "TikTok", ready: false, reason: "Envio pelo CRM ainda pendente" },
+      ...INTEGRATIONS.filter((def) => def.key !== "tiktok_publishing").map((def) => {
+        const row = byKey.get(def.key);
+        return { key: def.key, name: def.name, ready: false, reason: def.category !== "Portais de Imóveis" ? "Serviço de apoio; não recebe anúncios por este botão" : row?.status === "conectado" ? "Conta conectada; envio pelo CRM ainda pendente" : "Conexão de publicação pendente" };
+      }),
+    ];
+  }),
+
   /** Catálogo + situação de cada integração, agrupado por categoria. */
   list: adminBase.handler(async ({ context }) => {
     const rows = await context.db.select().from(schema.integrations);
