@@ -149,6 +149,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [downloading, setDownloading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [youtubeProgress, setYoutubeProgress] = useState("");
+  const [generatingVideo, setGeneratingVideo] = useState(false);
+  const [videoProgress, setVideoProgress] = useState("");
+  const [completeVideo, setCompleteVideo] = useState<Blob | null>(null);
+  const [completeVideoUrl, setCompleteVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, tiktok: false });
   const [channelResults, setChannelResults] = useState<Partial<Record<SocialTarget, ChannelResult>>>({});
@@ -438,6 +442,42 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return alreadyPublished ? `${bookMessage} O vídeo curto já estava publicado e foi preservado.` : `${bookMessage} Vídeo curto publicado junto como post complementar.`;
   }
 
+  useEffect(() => {
+    setCompleteVideo(null);
+  }, [propertyId, property, themeKey, customCoverUrl, shortVideoUrl]);
+
+  useEffect(() => {
+    if (!completeVideo) { setCompleteVideoUrl(null); return; }
+    const url = URL.createObjectURL(completeVideo);
+    setCompleteVideoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [completeVideo]);
+
+  async function buildCompleteVideo(onProgress: (message: string) => void) {
+    if (completeVideo) return completeVideo;
+    if (!shortVideoUrl || !primary) throw new Error("Cadastre as fotos e o vídeo curto antes de gerar o vídeo completo.");
+    onProgress("Preparando capa, fotos e encerramento…");
+    const [cover, cta, photos] = await Promise.all([
+      buildCoverCanvas(), buildCtaCanvas(true),
+      Promise.all(bookPhotos.map((image) => buildSocialPhotoCanvas(image.url))),
+    ]);
+    const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress });
+    setCompleteVideo(blob);
+    return blob;
+  }
+
+  async function generateCompleteVideo() {
+    setGeneratingVideo(true);
+    setError(null);
+    try {
+      await buildCompleteVideo(setVideoProgress);
+      setVideoProgress("Vídeo completo pronto. Confira a prévia e baixe o arquivo.");
+    } catch (caught) {
+      setVideoProgress("");
+      setError(caught instanceof Error ? caught.message : "Não foi possível gerar o vídeo completo.");
+    } finally { setGeneratingVideo(false); }
+  }
+
   async function publishYoutubeShort() {
     if (!propertyId || !shortVideoUrl) throw new Error("Vídeo curto não encontrado.");
     const session = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-session`, {
@@ -448,12 +488,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     });
     if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Shorts."));
     const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
-    setYoutubeProgress("Preparando as imagens do Book…");
-    const [cover, cta, photos] = await Promise.all([
-      buildCoverCanvas(), buildCtaCanvas(true),
-      Promise.all(bookPhotos.map((image) => buildSocialPhotoCanvas(image.url))),
-    ]);
-    const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress: setYoutubeProgress });
+    const blob = await buildCompleteVideo(setYoutubeProgress);
     const extension = blob.type === "video/mp4" ? "mp4" : "webm";
     setYoutubeProgress("Salvando o Book completo…");
     const asset = await upload(`properties/${propertyId}/book-youtube/book-${Date.now()}.${extension}`, blob, {
@@ -584,6 +619,18 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="mt-3 flex items-center justify-between gap-3"><Btn type="button" tone="outline" disabled={demoIndex === 0} onClick={() => setDemoIndex((current) => Math.max(0, current - 1))}><ChevronLeft className="h-3.5 w-3.5" /> Anterior</Btn><p className="text-center text-[11px] font-medium text-deep">{currentDemo.label}</p><Btn type="button" tone="outline" disabled={demoIndex >= demoSteps.length - 1} onClick={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))}>Próximo <ChevronRight className="h-3.5 w-3.5" /></Btn></div>
           </div>
 
+          <div className="mt-5 rounded-[10px] border border-brass/30 bg-white p-4">
+            <p className="text-sm font-semibold text-deep">Vídeo completo do imóvel</p>
+            <p className="mt-1 text-[11px] text-muted">Capa → vídeo curto com o áudio original → fotos → encerramento com contato. Formato vertical 1080×1920, até 3 minutos. A montagem leva aproximadamente o tempo do vídeo; mantenha esta aba visível.</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Btn type="button" tone="brass" disabled={!shortReady || generatingVideo || publishing} onClick={() => void generateCompleteVideo()}>{generatingVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}{generatingVideo ? "Gerando vídeo…" : completeVideo ? "Vídeo completo gerado" : "Gerar vídeo completo"}</Btn>
+              {completeVideoUrl && completeVideo && <a className="inline-flex items-center gap-2 rounded border border-line px-3 py-2 text-xs font-medium text-deep" href={completeVideoUrl} download={`book-completo-${property?.code || propertyId}.${completeVideo.type === "video/mp4" ? "mp4" : "webm"}`}><Download className="h-3.5 w-3.5" />Baixar vídeo completo</a>}
+            </div>
+            {!shortReady && <p className="mt-2 text-[11px] text-muted">Adicione o vídeo curto acima para liberar a montagem.</p>}
+            {videoProgress && <p role="status" className="mt-2 text-xs text-muted">{videoProgress}</p>}
+            {completeVideoUrl && <div className="mt-3"><video src={completeVideoUrl} controls playsInline className="mx-auto max-h-[480px] max-w-full rounded-lg bg-black" /><p className="mt-2 text-[11px] text-muted">Arquivo pronto para baixar e enviar ao TikTok, Instagram ou YouTube. Gerar e baixar não publica. Ao selecionar YouTube abaixo, o CRM reaproveita este vídeo. Instagram e Facebook mantêm seus envios atuais. Baixe o arquivo antes de sair desta tela.</p></div>}
+          </div>
+
           <div className="mt-5 border-t border-brass/20 pt-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p><p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p></div><Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge></div>
             <p className="mt-2 text-[11px] text-muted">Marque o quadradinho antes do nome para enviar este imóvel. Depois do nome: ✅ pronta para enviar; ❌ envio ainda pendente.</p>
@@ -591,14 +638,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             {destinations.isError && <p role="alert" className="mt-3 text-xs text-red-700">Não foi possível conferir as plataformas. <button type="button" className="underline" onClick={() => void destinations.refetch()}>Tentar novamente</button></p>}
             <div className="mt-3 flex flex-wrap items-start gap-2">
               {destinationRows.map((target) => (
-                <label key={target.key} title={target.reason} className={`inline-flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-2 text-sm text-deep ${!target.ready || publishing ? "cursor-not-allowed" : "cursor-pointer"}`}>
-                  <input type="checkbox" checked={target.ready && Boolean(targets[target.key as SocialTarget])} disabled={!target.ready || publishing} onChange={(event) => setTargets((current) => ({ ...current, [target.key]: event.target.checked }))} />
+                <label key={target.key} title={target.reason} className={`inline-flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-2 text-sm text-deep ${!target.ready || publishing || generatingVideo ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                  <input type="checkbox" checked={target.ready && Boolean(targets[target.key as SocialTarget])} disabled={!target.ready || publishing || generatingVideo} onChange={(event) => setTargets((current) => ({ ...current, [target.key]: event.target.checked }))} />
                   <span><span className="font-medium">{target.name}</span><span className={`ml-2 ${target.ready ? "text-emerald-600" : "text-red-600"}`} aria-label={target.ready ? "Pronta para enviar" : "Publicação pendente"}>{target.ready ? "✅" : "❌"}</span><span className="sr-only"> — {target.reason}</span></span>
                 </label>
               ))}
             </div>
             <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
-            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn></div>
+            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn></div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{(["instagram", "facebook", "youtube", "tiktok"] as SocialTarget[]).map((key) => { const result = channelResults[key]; if (!result) return null; const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "TikTok"; const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"; return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>; })}</div>}
           </div>
