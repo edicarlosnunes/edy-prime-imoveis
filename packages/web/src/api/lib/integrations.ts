@@ -176,12 +176,16 @@ export const INTEGRATIONS: IntegrationDef[] = [
     mark: "ML",
     purpose: "Publicar imóveis no Mercado Livre.",
     method:
-      "Não há hoje caminho oficial de publicação de imóveis por API/feed liberado para imobiliárias no Brasil. Anúncio é manual no painel do Mercado Livre.",
-    pending: ["Depende do Mercado Livre liberar publicação de imóveis por API ou XML."],
-    fields: [],
-    canTest: false,
+      "Autorização oficial OAuth do Mercado Livre para conectar a conta ao CRM. A conexão não publica imóveis: o envio e os custos de anúncio precisam ser validados separadamente.",
+    pending: ["Criar aplicação com VIS e permissão de publicação", "Salvar o App ID e o Client Secret e conectar a conta", "Validar elegibilidade e custos antes de implementar o envio de imóveis"],
+    fields: [
+      { key: "clientId", label: "App ID (Client ID)", type: "text" },
+      { key: "clientSecret", label: "Client Secret", type: "password", secret: true, help: "Salvo somente no servidor. Não envie pelo chat." },
+    ],
+    canTest: true,
     canSync: false,
-    available: false,
+    docsUrl: "https://developers.mercadolivre.com.br/pt_br/publica-imoveis",
+    available: true,
   },
 
   /* ---------------------------------------------------- entrada de leads */

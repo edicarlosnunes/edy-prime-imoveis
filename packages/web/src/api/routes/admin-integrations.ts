@@ -61,6 +61,8 @@ function mergeConfig(existing: ConfigMap, incoming: ConfigMap, secretKeys: Set<s
 
 function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
   switch (key) {
+    case "mercadolivre":
+      return [{ label: "URI de redirect (retorno da autorização)", url: `${baseUrl}/api/oauth/mercadolivre/callback` }];
     case "feed_imoveis":
       return [{ label: "Feed geral", url: `${baseUrl}/feed/imoveis.xml` }];
     case "zap_vivareal":
@@ -192,6 +194,9 @@ export const adminIntegrations = {
 
       const { config: existing } = await readConfig(context.db, input.key);
       const merged = mergeConfig(existing, incoming, secretKeys);
+      if (input.key === "mercadolivre" && (merged.clientId !== existing.clientId || merged.clientSecret !== existing.clientSecret)) {
+        for (const field of ["accessToken", "refreshToken", "tokenExpiresAt", "sellerId", "sellerName", "oauthState", "oauthSession", "oauthExpiresAt", "codeVerifier"]) delete merged[field];
+      }
 
       /* Tokens do webhook de leads são gerados pelo servidor: um por origem.
          Slot vazio, fraco ou herdado dos literais revogados ("zap", "olx",
@@ -205,7 +210,7 @@ export const adminIntegrations = {
 
       const previousStatus = (await getIntegrationRow(context.db, input.key))?.status ?? "";
       const status =
-        previousStatus === "conectado" && !def.selfServed
+        previousStatus === "conectado" && !def.selfServed && (input.key !== "mercadolivre" || Boolean(merged.accessToken))
           ? "conectado"
           : statusFromConfig(def, merged);
 
@@ -236,6 +241,10 @@ export const adminIntegrations = {
       if (!def) throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
       if (def.key === "tiktok_publishing" && input.enabled) {
         throw new ORPCError("BAD_REQUEST", { message: "TikTok aguarda vinculação e validação da publicação" });
+      }
+      if (def.key === "mercadolivre" && input.enabled) {
+        const current = await readConfig(context.db, input.key);
+        if (!current.config.accessToken || current.row?.status !== "conectado") throw new ORPCError("BAD_REQUEST", { message: "Conecte e teste a conta do Mercado Livre primeiro." });
       }
       if (!def.available && input.enabled) {
         throw new ORPCError("BAD_REQUEST", { message: "Integração não disponível" });
@@ -271,7 +280,7 @@ export const adminIntegrations = {
     }
 
     const row = await getIntegrationRow(context.db, input.key);
-    const keepConnected = row?.status === "conectado" && !result.ok && !def.selfServed;
+    const keepConnected = row?.status === "conectado" && !result.ok && !def.selfServed && input.key !== "mercadolivre";
     await saveIntegration(context.db, input.key, {
       status: keepConnected ? "conectado" : result.status,
       lastError: result.ok ? null : result.message,
@@ -301,7 +310,7 @@ export const adminIntegrations = {
     .handler(async ({ input, context }) => {
       const def = findIntegration(input.key);
       if (!def) throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
-      if (def.category !== "Portais de Imóveis" || !def.available) {
+      if (def.category !== "Portais de Imóveis" || !def.available || def.key === "mercadolivre") {
         throw new ORPCError("BAD_REQUEST", { message: "Confirmação manual só vale para portais." });
       }
 

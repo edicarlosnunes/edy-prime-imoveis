@@ -1,4 +1,5 @@
 import type { RouterClient } from "@orpc/server";
+import { handleMercadoLivreOAuthRequest } from "./http/mercadolivre-oauth-routes";
 import { eq } from "drizzle-orm";
 import { createApp } from "./__core/app";
 import { ping } from "./routes/ping";
@@ -106,6 +107,10 @@ export type AppRouter = typeof router;
 export type AppRouterClient = RouterClient<AppRouter>;
 
 const app = createApp(router);
+app.all("/api/oauth/mercadolivre/*", async (c) => {
+  const response = await handleMercadoLivreOAuthRequest(c.req.raw);
+  return response ?? c.notFound();
+});
 
 /* Arquivos públicos (feed/sitemap/robots/prerender), webhooks e vídeos. */
 registerFeedRoutes(app);

@@ -139,7 +139,7 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
   const test = useTestIntegration();
   const confirm = useConfirmPortal();
   const rotate = useRotateWebhookToken();
-  const isPortal = item.category === "Portais de Imóveis";
+  const isPortal = item.category === "Portais de Imóveis" && item.key !== "mercadolivre";
 
   async function run(action: () => Promise<string>) {
     setError(null);
@@ -245,6 +245,20 @@ function Detail({ item, onClose }: { item: Item; onClose: () => void }) {
             </div>
           )}
 
+          {item.key === "mercadolivre" && (
+            <div className="rounded-[3px] border border-line px-3 py-3">
+              <p className="text-xs text-ink">Salve as credenciais e conecte a conta. A autorização não publica anúncios nem contrata pacotes.</p>
+              <Btn tone="brass" disabled={save.isPending} onClick={() => run(async () => {
+                await save.mutateAsync({ key: item.key, config: values });
+                const response = await fetch("/api/oauth/mercadolivre/start", { method: "POST", credentials: "same-origin" });
+                const result = await response.json();
+                if (!response.ok || !result.url) throw new Error(result.message || "Não foi possível iniciar a conexão.");
+                window.location.assign(result.url);
+                return "Abrindo autorização no Mercado Livre…";
+              })}>Conectar conta do Mercado Livre</Btn>
+              <p className="mt-2 text-[11px] text-muted">Depois de autorizar, abra esta integração e use Testar conexão. O envio de imóveis ainda não está habilitado.</p>
+            </div>
+          )}
           {isPortal && item.available && (
             <div className="rounded-[3px] border border-line px-3 py-3">
               <p className="label-xs text-muted">Confirmação do portal</p>

@@ -8,6 +8,7 @@ import { pickModel } from "../agent/model";
 import { feedProperties, feedXml } from "./feed";
 import type { ConfigMap, IntegrationStatus } from "./integrations";
 import type { AdminDb } from "./admin-base";
+import { testMercadoLivre } from "./mercadolivre";
 
 export interface TestResult {
   ok: boolean;
@@ -38,6 +39,8 @@ export async function runTest(
   baseUrl: string,
 ): Promise<TestResult> {
   switch (key) {
+    case "mercadolivre":
+      return testMercadoLivre(db);
     /* ---------------------------------------------------------- WhatsApp */
     case "whatsapp_cloud": {
       const token = config.accessToken ?? "";
