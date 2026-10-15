@@ -10,7 +10,7 @@
  */
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, like } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
 import { audit } from "../lib/audit";
 import { clientIp, siteBaseUrl } from "../lib/base-url";
@@ -37,6 +37,7 @@ import {
   randomWebhookToken,
 } from "../lib/lead-webhook-token";
 import { adminInstagram } from "./admin-instagram";
+import { OLX_MANUAL_REASON, propertyPublicationChecks } from "../lib/publication-checklist";
 
 const keyInput = z.object({ key: z.string().min(2).max(60) });
 
@@ -127,9 +128,31 @@ export const adminIntegrations = {
       { key: "tiktok", name: "TikTok", ready: false, reason: "Envio pelo CRM ainda pendente" },
       ...INTEGRATIONS.filter((def) => def.key !== "tiktok_publishing").map((def) => {
         const row = byKey.get(def.key);
-        return { key: def.key, name: def.name, ready: false, reason: def.category !== "Portais de Imóveis" ? "Serviço de apoio; não recebe anúncios por este botão" : row?.status === "conectado" ? "Conta conectada; envio pelo CRM ainda pendente" : "Conexão de publicação pendente" };
+        return { key: def.key, name: def.name, ready: false, reason: def.key === "olx" ? OLX_MANUAL_REASON : def.category !== "Portais de Imóveis" ? "Serviço de apoio; não recebe anúncios por este botão" : row?.status === "conectado" ? "Conta conectada; envio pelo CRM ainda pendente" : "Conexão de publicação pendente" };
       }),
     ];
+  }),
+
+  publicationChecks: adminBase.input(z.object({ propertyId: z.number().int().positive() })).handler(async ({ input, context }) => {
+    const rows = await context.db.select().from(schema.propertyChannels)
+      .where(and(eq(schema.propertyChannels.propertyId, input.propertyId), like(schema.propertyChannels.channel, "diagnostic_%")))
+      .orderBy(desc(schema.propertyChannels.id)).limit(100);
+    const seen = new Set<string>();
+    return rows.flatMap((row) => {
+      const key = row.channel.slice("diagnostic_".length);
+      if (seen.has(key)) return [];
+      seen.add(key);
+      try { return [{ key, at: row.updatedAt.toISOString(), checks: JSON.parse(row.message || "[]") as { ok: boolean; label: string; detail: string }[] }]; }
+      catch { return []; }
+    });
+  }),
+
+  diagnosePublication: adminBase.input(z.object({ propertyId: z.number().int().positive(), key: z.string().min(2).max(60) })).handler(async ({ input, context }) => {
+    if (!["instagram", "facebook", "youtube", "tiktok", ...INTEGRATIONS.map((def) => def.key)].includes(input.key)) throw new ORPCError("BAD_REQUEST", { message: "Plataforma inválida." });
+    const checks = await propertyPublicationChecks(context.db, input.propertyId, input.key);
+    const now = new Date();
+    await context.db.insert(schema.propertyChannels).values({ propertyId: input.propertyId, channel: `diagnostic_${input.key}`, authorized: 0, status: "aguardando", message: JSON.stringify(checks), updatedAt: now });
+    return { key: input.key, checks, at: now.toISOString() };
   }),
 
   /** Catálogo + situação de cada integração, agrupado por categoria. */

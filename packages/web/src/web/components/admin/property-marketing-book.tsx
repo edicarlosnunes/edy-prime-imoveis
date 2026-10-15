@@ -15,7 +15,7 @@ import {
   Send,
   Sparkles,
 } from "lucide-react";
-import { orpc } from "../../lib/api";
+import { client, orpc } from "../../lib/api";
 import { Badge, Btn } from "./ui";
 
 type ThemeKey = "ouro" | "azul" | "oliva" | "claro";
@@ -26,8 +26,8 @@ type DemoStep =
   | { kind: "video"; label: string; url: string }
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
-type SocialTarget = "instagram" | "facebook" | "youtube" | "tiktok";
-type ChannelResult = { status: "success" | "error" | "pending"; message: string };
+type SocialTarget = string;
+type ChannelResult = { status: "success" | "error" | "pending"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
 
@@ -159,6 +159,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, tiktok: false });
   const [channelResults, setChannelResults] = useState<Partial<Record<SocialTarget, ChannelResult>>>({});
 
+  const [openReason, setOpenReason] = useState<string | null>(null);
+  const history = useQuery({ ...orpc.adminIntegrations.publicationChecks.queryOptions({ input: { propertyId: propertyId ?? 0 } }), enabled: propertyId !== null });
+
+
   const destinations = useQuery(orpc.adminIntegrations.publicationTargets.queryOptions({ refetchInterval: 15_000 }));
 
   const detail = useQuery({
@@ -200,6 +204,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return () => { alive = false; };
   }, [propertyId]);
 
+  useEffect(() => {
+    if (history.data) setChannelResults(Object.fromEntries(history.data.map((entry) => [entry.key, { status: "pending" as const, message: "Último checklist salvo; nenhum anúncio enviado neste teste.", checks: entry.checks, at: entry.at }])));
+  }, [history.data]);
+
   const property = detail.data;
   const images = property?.images ?? [];
   const primary = useMemo(() => images.find((image) => image.isPrimary === 1) ?? images[0] ?? null, [images]);
@@ -225,7 +233,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     ready: !destinations.isError && target.ready && (target.key !== "youtube" || shortReady),
     reason: target.key === "youtube" && target.ready && !shortReady ? "Adicione um vídeo curto ao imóvel" : target.reason,
   }));
-  const selectedKeys = destinationRows.filter((target) => target.ready && targets[target.key as SocialTarget]).map((target) => target.key);
+  const selectedKeys = destinationRows.filter((target) => target.key !== "olx" && targets[target.key as SocialTarget]).map((target) => target.key);
   const selectedCount = selectedKeys.length;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
@@ -569,9 +577,19 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       }
     };
     const jobs: Promise<void>[] = [];
-    if (selectedKeys.includes("instagram")) jobs.push(run("instagram", publishInstagramBook));
-    if (selectedKeys.includes("facebook")) jobs.push(run("facebook", publishFacebook));
-    if (selectedKeys.includes("youtube")) jobs.push(run("youtube", publishYoutubeShort));
+    for (const key of selectedKeys) {
+      const ready = destinationRows.find((target) => target.key === key)?.ready;
+      const publish = key === "instagram" ? publishInstagramBook : key === "facebook" ? publishFacebook : key === "youtube" ? publishYoutubeShort : null;
+      if (ready && publish) jobs.push(run(key, publish));
+      else jobs.push((async () => {
+        try {
+          const result = await client.adminIntegrations.diagnosePublication({ propertyId, key });
+          setChannelResults((current) => ({ ...current, [key]: { status: "pending", message: "Checklist executado. Nenhum anúncio enviado.", checks: result.checks, at: result.at } }));
+        } catch (caught) {
+          setChannelResults((current) => ({ ...current, [key]: { status: "error", message: caught instanceof Error ? caught.message : "Falha ao consultar a plataforma." } }));
+        }
+      })());
+    }
     await Promise.allSettled(jobs);
     setPublishing(false);
   }
@@ -672,21 +690,36 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
           <div className="mt-5 border-t border-brass/20 pt-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p><p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p></div><Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge></div>
-            <p className="mt-2 text-[11px] text-muted">Marque o quadradinho antes do nome para enviar este imóvel. Depois do nome: ✅ pronta para enviar; ❌ envio ainda pendente.</p>
+            <p className="mt-2 text-[11px] text-muted">Marque apenas as plataformas desejadas. ✅ publica pelo fluxo disponível. ❌ executa o checklist e informa o que falta, sem simular envio. ⓘ mostra o motivo. OLX: anúncio manual.</p>
             {destinations.isPending && <p role="status" className="mt-3 text-xs text-muted">Conferindo plataformas…</p>}
             {destinations.isError && <p role="alert" className="mt-3 text-xs text-red-700">Não foi possível conferir as plataformas. <button type="button" className="underline" onClick={() => void destinations.refetch()}>Tentar novamente</button></p>}
             <div className="mt-3 flex flex-wrap items-start gap-2">
               {destinationRows.map((target) => (
-                <label key={target.key} title={target.reason} className={`inline-flex items-center gap-2 rounded-[8px] border border-line bg-white px-3 py-2 text-sm text-deep ${!target.ready || publishing || generatingVideo ? "cursor-not-allowed" : "cursor-pointer"}`}>
-                  <input type="checkbox" checked={target.ready && Boolean(targets[target.key as SocialTarget])} disabled={!target.ready || publishing || generatingVideo} onChange={(event) => setTargets((current) => ({ ...current, [target.key]: event.target.checked }))} />
-                  <span><span className="font-medium">{target.name}</span><span className={`ml-2 ${target.ready ? "text-emerald-600" : "text-red-600"}`} aria-label={target.ready ? "Pronta para enviar" : "Publicação pendente"}>{target.ready ? "✅" : "❌"}</span><span className="sr-only"> — {target.reason}</span></span>
-                </label>
+                <div key={target.key} className="rounded-[8px] border border-line bg-white px-3 py-2 text-sm text-deep">
+                  <div className="inline-flex items-center gap-2">
+                    <label className={`inline-flex items-center gap-2 ${publishing || generatingVideo || target.key === "olx" ? "cursor-not-allowed" : "cursor-pointer"}`}>
+                      <input type="checkbox" checked={target.key !== "olx" && Boolean(targets[target.key])} disabled={target.key === "olx" || publishing || generatingVideo} onChange={(event) => setTargets((current) => ({ ...current, [target.key]: event.target.checked }))} />
+                      <span className="font-medium">{target.name}</span><span aria-label={target.ready ? "Pronta para enviar" : "Envio pendente; permite diagnóstico"}>{target.ready ? "✅" : "❌"}</span>
+                    </label>
+                    <button type="button" aria-label={`Ver motivo: ${target.name}`} aria-expanded={openReason === target.key} onClick={() => setOpenReason((current) => current === target.key ? null : target.key)} className="rounded px-1 text-amber-700" title="Ver situação e motivo">ⓘ</button>
+                  </div>
+                  {openReason === target.key && <p className="mt-2 max-w-sm text-xs text-muted">{target.reason}</p>}
+                </div>
               ))}
             </div>
             <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
-            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "PUBLICAR NOS CANAIS SELECIONADOS"}</Btn></div>
+            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
-            {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-2 sm:grid-cols-2">{(["instagram", "facebook", "youtube", "tiktok"] as SocialTarget[]).map((key) => { const result = channelResults[key]; if (!result) return null; const label = key === "instagram" ? "Instagram" : key === "facebook" ? "Facebook" : key === "youtube" ? "YouTube Shorts" : "TikTok"; const tone = result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-800"; return <div key={key} className={`rounded-[7px] border p-3 text-xs ${tone}`}><strong>{label}</strong> — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "pendente"}<p className="mt-1 font-normal">{result.message}</p></div>; })}</div>}
+            {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.entries(channelResults).map(([key, result]) => {
+              if (!result) return null;
+              const label = destinationRows.find((target) => target.key === key)?.name || key;
+              return <div key={key} className={`rounded-[7px] border p-3 text-xs ${result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                <strong>{label} — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
+                <p className="mt-1">{result.message}</p>
+                {result.at && <p className="mt-1 text-[10px]">Conferido em {new Date(result.at).toLocaleString("pt-BR")}</p>}
+                {result.checks && <ul className="mt-2 space-y-2">{result.checks.map((check, index) => <li key={index}><strong>{check.ok ? "✅" : "⚠️"} {check.label}</strong><p>{check.detail}</p></li>)}</ul>}
+              </div>;
+            })}</div>}
           </div>
         </div>
       )}
