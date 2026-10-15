@@ -153,6 +153,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [videoProgress, setVideoProgress] = useState("");
   const [completeVideo, setCompleteVideo] = useState<Blob | null>(null);
   const [completeVideoUrl, setCompleteVideoUrl] = useState<string | null>(null);
+  const [pendingVideoSave, setPendingVideoSave] = useState(false);
+  const [savedVideoUrl, setSavedVideoUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<Record<SocialTarget, boolean>>({ instagram: false, facebook: false, youtube: false, tiktok: false });
   const [channelResults, setChannelResults] = useState<Partial<Record<SocialTarget, ChannelResult>>>({});
@@ -168,6 +170,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setDemoIndex(0);
     setChannelResults({});
     setTargets({ instagram: false, facebook: false, youtube: false, tiktok: false });
+    setSavedVideoUrl(null);
+    setPendingVideoSave(false);
+    setVideoProgress("");
     if (propertyId === null) {
       setShortVideoUrl(null);
       setCustomCoverUrl(null);
@@ -181,6 +186,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       .then((payload) => {
         const short = payload.videos?.find((video) => video.kind === "short_social");
         if (alive) {
+          setSavedVideoUrl(payload.videos?.find((video) => video.kind === "book_complete")?.url ?? null);
           setShortVideoUrl(short?.url ?? null);
           if (!short?.url) setTargets((current) => ({ ...current, youtube: false }));
         }
@@ -453,8 +459,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return () => URL.revokeObjectURL(url);
   }, [completeVideo]);
 
-  async function buildCompleteVideo(onProgress: (message: string) => void) {
-    if (completeVideo) return completeVideo;
+  async function buildCompleteVideo(onProgress: (message: string) => void, fresh = false) {
+    if (!fresh && completeVideo) return completeVideo;
     if (!shortVideoUrl || !primary) throw new Error("Cadastre as fotos e o vídeo curto antes de gerar o vídeo completo.");
     onProgress("Preparando capa, fotos e encerramento…");
     const [cover, cta, photos] = await Promise.all([
@@ -463,15 +469,50 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     ]);
     const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress });
     setCompleteVideo(blob);
+    setPendingVideoSave(true);
     return blob;
+  }
+
+  async function saveCompleteVideo(blob: Blob, onProgress: (message: string) => void) {
+    if (!propertyId) throw new Error("Salve o imóvel antes de guardar o vídeo.");
+    const extension = blob.type === "video/mp4" ? "mp4" : "webm";
+    const fileName = `book-completo-${property?.code || propertyId}.${extension}`;
+    onProgress("Salvando vídeo completo no CRM…");
+    const asset = await upload(`properties/${propertyId}/book-youtube/book-${Date.now()}.${extension}`, blob, {
+      access: "public", handleUploadUrl: "/api/admin/property-videos/upload",
+      clientPayload: JSON.stringify({ propertyId, kind: "book_complete" }),
+      multipart: true, contentType: blob.type,
+      onUploadProgress: ({ percentage }) => onProgress(`Salvando no CRM: ${Math.round(percentage)}%`),
+    });
+    const response = await fetch("/api/admin/property-videos/attach", {
+      method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ propertyId, kind: "book_complete", url: asset.url, pathname: asset.pathname, fileName, mime: blob.type, size: blob.size }),
+    });
+    if (!response.ok) throw new Error(await responseError(response, "Vídeo gerado, mas não foi possível salvá-lo no CRM. Tente salvar novamente antes de sair."));
+    setSavedVideoUrl(asset.url);
+    setPendingVideoSave(false);
+    return asset.url;
+  }
+
+  async function retrySaveCompleteVideo() {
+    if (!completeVideo) return;
+    setGeneratingVideo(true);
+    setError(null);
+    try {
+      await saveCompleteVideo(completeVideo, setVideoProgress);
+      setVideoProgress("Vídeo completo salvo no cadastro deste imóvel.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Falha ao salvar o vídeo."); }
+    finally { setGeneratingVideo(false); }
   }
 
   async function generateCompleteVideo() {
     setGeneratingVideo(true);
     setError(null);
     try {
-      await buildCompleteVideo(setVideoProgress);
-      setVideoProgress("Vídeo completo pronto. Confira a prévia e baixe o arquivo.");
+      const blob = await buildCompleteVideo(setVideoProgress, true);
+      // Um arquivo novo só substitui o anterior depois da confirmação do servidor.
+      await saveCompleteVideo(blob, setVideoProgress);
+      setVideoProgress("Vídeo completo salvo no CRM e vinculado ao EPI deste imóvel.");
     } catch (caught) {
       setVideoProgress("");
       setError(caught instanceof Error ? caught.message : "Não foi possível gerar o vídeo completo.");
@@ -488,20 +529,16 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     });
     if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Shorts."));
     const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
-    const blob = await buildCompleteVideo(setYoutubeProgress);
-    const extension = blob.type === "video/mp4" ? "mp4" : "webm";
-    setYoutubeProgress("Salvando o Book completo…");
-    const asset = await upload(`properties/${propertyId}/book-youtube/book-${Date.now()}.${extension}`, blob, {
-      access: "public", handleUploadUrl: "/api/admin/property-videos/upload",
-      clientPayload: JSON.stringify({ propertyId, kind: "short_social" }),
-      multipart: true, contentType: blob.type,
-      onUploadProgress: ({ percentage }) => setYoutubeProgress(`Salvando o Book completo: ${Math.round(percentage)}%`),
-    });
+    let bookVideoUrl = pendingVideoSave ? null : savedVideoUrl;
+    if (!bookVideoUrl) {
+      const blob = await buildCompleteVideo(setYoutubeProgress);
+      bookVideoUrl = await saveCompleteVideo(blob, setYoutubeProgress);
+    }
     setYoutubeProgress("Enviando o Book completo ao YouTube…");
     const sent = await fetch(prepared.uploadUrl, {
       method: "PUT", credentials: "same-origin",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ bookVideoUrl: asset.url }),
+      body: JSON.stringify({ bookVideoUrl }),
     });
     const youtube = await sent.json().catch(() => ({})) as { id?: string; error?: { message?: string } };
     if (!sent.ok || !youtube.id) throw new Error(youtube.error?.message || "O YouTube não concluiu o Short.");
@@ -623,12 +660,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <p className="text-sm font-semibold text-deep">Vídeo completo do imóvel</p>
             <p className="mt-1 text-[11px] text-muted">Capa → vídeo curto com o áudio original → fotos → encerramento com contato. Formato vertical 1080×1920, até 3 minutos. A montagem leva aproximadamente o tempo do vídeo; mantenha esta aba visível.</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Btn type="button" tone="brass" disabled={!shortReady || generatingVideo || publishing} onClick={() => void generateCompleteVideo()}>{generatingVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}{generatingVideo ? "Gerando vídeo…" : completeVideo ? "Vídeo completo gerado" : "Gerar vídeo completo"}</Btn>
-              {completeVideoUrl && completeVideo && <a className="inline-flex items-center gap-2 rounded border border-line px-3 py-2 text-xs font-medium text-deep" href={completeVideoUrl} download={`book-completo-${property?.code || propertyId}.${completeVideo.type === "video/mp4" ? "mp4" : "webm"}`}><Download className="h-3.5 w-3.5" />Baixar vídeo completo</a>}
+              <Btn type="button" tone="brass" disabled={!shortReady || generatingVideo || publishing} onClick={() => void generateCompleteVideo()}>{generatingVideo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Film className="h-3.5 w-3.5" />}{generatingVideo ? "Gerando vídeo…" : savedVideoUrl ? "Gerar nova versão" : "Gerar vídeo completo"}</Btn>
+              {(savedVideoUrl || completeVideoUrl) && <a className="inline-flex items-center gap-2 rounded border border-line px-3 py-2 text-xs font-medium text-deep" href={savedVideoUrl || completeVideoUrl!} target="_blank" rel="noreferrer" download><Download className="h-3.5 w-3.5" />Baixar vídeo completo</a>}
             </div>
+            {completeVideo && pendingVideoSave && !generatingVideo && <Btn type="button" tone="outline" onClick={() => void retrySaveCompleteVideo()}>Salvar vídeo no CRM</Btn>}
+            {savedVideoUrl && <p className="mt-2 text-xs text-emerald-700">✅ Vídeo completo salvo no CRM · {property?.code || `Imóvel ${propertyId}`}. Ao alterar fotos, capa ou vídeo, gere uma nova versão para atualizar o arquivo salvo.</p>}
             {!shortReady && <p className="mt-2 text-[11px] text-muted">Adicione o vídeo curto acima para liberar a montagem.</p>}
             {videoProgress && <p role="status" className="mt-2 text-xs text-muted">{videoProgress}</p>}
-            {completeVideoUrl && <div className="mt-3"><video src={completeVideoUrl} controls playsInline className="mx-auto max-h-[480px] max-w-full rounded-lg bg-black" /><p className="mt-2 text-[11px] text-muted">Arquivo pronto para baixar e enviar ao TikTok, Instagram ou YouTube. Gerar e baixar não publica. Ao selecionar YouTube abaixo, o CRM reaproveita este vídeo. Instagram e Facebook mantêm seus envios atuais. Baixe o arquivo antes de sair desta tela.</p></div>}
+            {(savedVideoUrl || completeVideoUrl) && <div className="mt-3"><video src={pendingVideoSave && completeVideoUrl ? completeVideoUrl : savedVideoUrl || completeVideoUrl!} controls playsInline className="mx-auto max-h-[480px] max-w-full rounded-lg bg-black" /><p className="mt-2 text-[11px] text-muted">Arquivo pronto para baixar e enviar ao TikTok, Instagram ou YouTube. Gerar e baixar não publica. Ao selecionar YouTube abaixo, o CRM reaproveita este vídeo. Instagram e Facebook mantêm seus envios atuais. O arquivo salvo continua disponível ao reabrir este cadastro, inclusive em outro computador.</p></div>}
           </div>
 
           <div className="mt-5 border-t border-brass/20 pt-4">

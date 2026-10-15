@@ -9,7 +9,7 @@ import { getDb, resolveSession } from "../lib/auth";
 import { logEvent, readConfig, saveIntegration } from "../lib/integrations";
 import { siteBaseUrl } from "../lib/base-url";
 
-const VIDEO_KINDS = ["short_social", "youtube_long"] as const;
+const VIDEO_KINDS = ["short_social", "youtube_long", "book_complete"] as const;
 type VideoKind = (typeof VIDEO_KINDS)[number];
 const MAX_VIDEO_BYTES = 1024 * 1024 * 1024; // 1 GB por arquivo
 const ALLOWED_VIDEO_TYPES = [
@@ -269,7 +269,7 @@ async function freshYouTubeAccessToken(config: Record<string, string>) {
 }
 
 export function registerPropertyVideoRoutes(app: Hono) {
-  /** Lista os dois slots do imóvel. */
+  /** Lista vídeos originais e Book completo salvo do imóvel. */
   app.get("/api/admin/property-videos/:propertyId", async (c) => {
     const user = await resolveSession(c.req.raw.headers);
     if (!user) return c.json({ error: "Não autorizado" }, 401);
@@ -432,6 +432,7 @@ export function registerPropertyVideoRoutes(app: Hono) {
             throw new Error("Imóvel não encontrado");
           }
           if (!isVideoKind(payload.kind)) throw new Error("Tipo de vídeo inválido");
+          if (payload.kind === "book_complete" && !_pathname.startsWith(`properties/${propertyId}/book-youtube/`)) throw new Error("Destino do Book inválido");
           return {
             allowedContentTypes: ALLOWED_VIDEO_TYPES,
             maximumSizeInBytes: MAX_VIDEO_BYTES,
@@ -478,6 +479,7 @@ export function registerPropertyVideoRoutes(app: Hono) {
     if (!isVideoKind(body.kind)) return c.json({ error: "Tipo de vídeo inválido" }, 400);
     const url = String(body.url ?? "").trim();
     if (!safeBlobUrl(url)) return c.json({ error: "Arquivo de vídeo inválido" }, 400);
+    if (body.kind === "book_complete" && !new URL(url).pathname.startsWith(`/properties/${propertyId}/book-youtube/`)) return c.json({ error: "O Book precisa pertencer a este imóvel." }, 400);
     const size = Number(body.size ?? 0);
     if (!Number.isFinite(size) || size <= 0 || size > MAX_VIDEO_BYTES) {
       return c.json({ error: "Tamanho de vídeo inválido" }, 400);

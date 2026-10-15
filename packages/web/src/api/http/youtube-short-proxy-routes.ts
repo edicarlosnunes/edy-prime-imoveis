@@ -138,6 +138,7 @@ export function registerYoutubeShortProxyRoutes(app: Hono) {
     }
 
     let bookVideoUrl: string | null = null;
+    let keepSavedBook = false;
     if (c.req.header("content-type")?.includes("application/json")) {
       const body = await c.req.json().catch(() => ({})) as { bookVideoUrl?: unknown };
       try {
@@ -148,6 +149,11 @@ export function registerYoutubeShortProxyRoutes(app: Hono) {
       } catch {
         return c.json({ error: { message: "Arquivo do Book completo inválido." } }, 400);
       }
+    }
+    if (bookVideoUrl) {
+      const [savedBook] = await db.select({ url: propertyVideos.url }).from(propertyVideos)
+        .where(and(eq(propertyVideos.propertyId, propertyId), eq(propertyVideos.kind, "book_complete"))).limit(1);
+      keepSavedBook = savedBook?.url === bookVideoUrl;
     }
     const [previous] = await db.select().from(schema.propertyChannels)
       .where(and(eq(schema.propertyChannels.propertyId, propertyId), eq(schema.propertyChannels.channel, "youtube_short")))
@@ -216,7 +222,7 @@ export function registerYoutubeShortProxyRoutes(app: Hono) {
       const message = caught instanceof Error ? caught.message : "Falha no upload do YouTube Short.";
       return c.json({ error: { message } }, 400);
     } finally {
-      if (bookVideoUrl) await del(bookVideoUrl).catch(() => {});
+      if (bookVideoUrl && !keepSavedBook) await del(bookVideoUrl).catch(() => {});
     }
   });
 }

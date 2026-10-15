@@ -13,7 +13,7 @@ export const propertyVideos = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     propertyId: integer("property_id").notNull(),
-    /** short_social | youtube_long */
+    /** short_social | youtube_long | book_complete */
     kind: text("kind").notNull(),
     url: text("url").notNull(),
     pathname: text("pathname"),
