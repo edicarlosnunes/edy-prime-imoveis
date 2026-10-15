@@ -703,12 +703,12 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                     </label>
                     <button type="button" aria-label={`Ver motivo: ${target.name}`} aria-expanded={openReason === target.key} onClick={() => setOpenReason((current) => current === target.key ? null : target.key)} className="rounded px-1 text-amber-700" title="Ver situação e motivo">ⓘ</button>
                   </div>
-                  {openReason === target.key && <p className="mt-2 max-w-sm text-xs text-muted">{target.reason}</p>}
+                  {openReason === target.key && <div className="mt-2 max-w-sm text-xs text-muted"><p>{target.reason}</p>{channelResults[target.key]?.checks?.filter((check) => !check.ok).map((check, index) => <p key={index} className="mt-2">⚠️ {check.label}: {check.detail}</p>)}</div>}
                 </div>
               ))}
             </div>
             <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
-            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Publicando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
+            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Processando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.entries(channelResults).map(([key, result]) => {
               if (!result) return null;

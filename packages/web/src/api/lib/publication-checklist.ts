@@ -18,7 +18,10 @@ export async function mercadoLivreChecks(db: AdminDb, price: number, type: strin
     const { config } = await readConfig(db, "mercadolivre");
     const get = async (path: string) => {
       const response = await fetch(`https://api.mercadolibre.com${path}`, { headers: { authorization: `Bearer ${config.accessToken}` }, signal: AbortSignal.timeout(12000) });
-      if (!response.ok) throw new Error(`Consulta ao Mercado Livre recusada (HTTP ${response.status}).`);
+      if (!response.ok) {
+        const step = path.includes("available_listing_types") ? "modalidades da conta" : path.includes("listing_prices") ? "custos do anúncio" : "categorias de imóveis";
+        throw new Error(`Consulta de ${step} recusada pelo Mercado Livre (HTTP ${response.status}).`);
+      }
       return await response.json();
     };
     if (type !== "apartamento" || purpose !== "venda") {
