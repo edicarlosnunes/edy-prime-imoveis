@@ -20,7 +20,15 @@ export async function mercadoLivreChecks(db: AdminDb, price: number, type: strin
       const response = await fetch(`https://api.mercadolibre.com${path}`, { headers: { authorization: `Bearer ${config.accessToken}` }, signal: AbortSignal.timeout(12000) });
       if (!response.ok) {
         const step = path.includes("available_listing_types") ? "modalidades da conta" : path.includes("listing_prices") ? "custos do anúncio" : "categorias de imóveis";
-        throw new Error(`Consulta de ${step} recusada pelo Mercado Livre (HTTP ${response.status}).`);
+        const payload = await response.json().catch(() => ({})) as { code?: unknown; error?: unknown; blocked_by?: unknown; message?: unknown };
+        const clean = (value: unknown) => {
+          if (typeof value !== "string") return "";
+          let safe = value;
+          for (const secret of [config.accessToken, config.refreshToken, config.clientSecret].filter(Boolean)) safe = safe.split(secret!).join("[oculto]");
+          return safe.replace(/Bearer\s+\S+/gi, "Bearer [oculto]").replace(/[\r\n]/g, " ").slice(0, 200);
+        };
+        const details = [clean(payload.code || payload.error), clean(payload.blocked_by), clean(payload.message)].filter(Boolean).join(" · ");
+        throw new Error(`Consulta de ${step} [GET ${path.split("?")[0]}] recusada pelo Mercado Livre (HTTP ${response.status})${details ? `: ${details}` : "."}`);
       }
       return await response.json();
     };

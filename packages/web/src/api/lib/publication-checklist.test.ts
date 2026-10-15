@@ -20,7 +20,7 @@ function api(options: { free?: boolean; missingFee?: boolean; fail?: boolean }) 
     const path = new URL(String(url)).pathname;
     let body: unknown;
     if (path === "/users/me") body = { id: 42, nickname: "Conta teste", site_id: "MLB" };
-    else if (options.fail) return Response.json({ error: "forbidden" }, { status: 403 });
+    else if (options.fail) return Response.json({ code: "PA_UNAUTHORIZED_RESULT_FROM_POLICIES", blocked_by: "PolicyAgent", message: "Refused test-token test-refresh" }, { status: 403 });
     else if (path === "/sites/MLB/categories") body = [{ id: "MLBROOT", name: "Imóveis" }];
     else if (path === "/categories/MLBROOT") body = { children_categories: [{ id: "MLBAPT", name: "Apartamentos" }] };
     else if (path === "/categories/MLBAPT") body = { children_categories: [{ id: "MLBSALE", name: "Venda" }] };
@@ -51,4 +51,6 @@ test("provider failure reports HTTP code without exposing credentials", async ()
   const result = await mercadoLivreChecks(db(), 590000, "apartamento", "venda");
   expect(result.find((c) => c.label === "Consulta ao Mercado Livre")?.detail).toContain("403");
   expect(JSON.stringify(result)).not.toContain("test-token");
+  expect(JSON.stringify(result)).not.toContain("test-refresh");
+  expect(JSON.stringify(result)).toContain("PolicyAgent");
 });
