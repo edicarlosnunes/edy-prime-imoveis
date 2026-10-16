@@ -1,6 +1,6 @@
 export type AuthorizationData = Record<'owner'|'document'|'phone'|'email'|'ownerAddress'|'propertyAddress'|'type'|'bedrooms'|'parking'|'floors'|'price'|'commission'|'startDate'|'endDate'|'notes'|'city',string>;
 export function authorizationLines(d:AuthorizationData,date:string) {
-return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718-F','Rua Ipiranga Rosa, 492, apartamento 1003','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
+return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário CNAE 55.918','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
 `Eu, ${d.owner}, CPF ${d.document},`,
 `Contato: ${d.phone} | E-mail: ${d.email||'Não informado'}`,
 ...(d.ownerAddress ? [`Endereço do proprietário: ${d.ownerAddress}`] : []),
@@ -35,7 +35,8 @@ export function authorizationPdf(d:AuthorizationData,now=new Date(),logoJpeg?:st
  const pages:string[][]=[];for(let i=0;i<wrapped.length;i+=48)pages.push(wrapped.slice(i,i+48));
  const objects=['','','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'];const kids:string[]=[];if(logoJpeg)objects.push(`<< /Type /XObject /Subtype /Image /Width 240 /Height 240 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logoJpeg.length} >>\nstream\n${logoJpeg}\nendstream`);
  pages.forEach((page,index)=>{const id=objects.length+1; kids.push(`${id} 0 R`);
- const text=(logoJpeg?'q 64 0 0 64 48 762 cm /Logo Do Q\n':'')+ansi(`BT /F1 11 Tf 14 TL 48 ${logoJpeg?740:790} Td\n${page.map((l,i)=>`${i?'T* ':''}(${escaped(l)}) Tj`).join('\n')}\nET\nBT /F1 9 Tf 48 28 Td (Página ${index+1} de ${pages.length}) Tj ET`);
+ const header=logoJpeg&&index===0;
+ const text=(logoJpeg?'q 64 0 0 64 48 762 cm /Logo Do Q\n':'')+ansi((header?`BT /F1 10 Tf 14 TL 128 814 Td\n${page.slice(0,4).map((l,i)=>`${i?'T* ':''}(${escaped(l)}) Tj`).join('\n')}\nET\n`:'')+`BT /F1 11 Tf 14 TL 48 ${logoJpeg?740:790} Td\n${page.slice(header?4:0).map((l,i)=>`${i?'T* ':''}(${escaped(l)}) Tj`).join('\n')}\nET\nBT /F1 9 Tf 48 28 Td (Página ${index+1} de ${pages.length}) Tj ET`);
  objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R >> ${logoJpeg ? "/XObject << /Logo 4 0 R >>" : ""} >> /Contents ${id+1} 0 R >>`,`<< /Length ${text.length} >>\nstream\n${text}\nendstream`);
  });objects[0]='<< /Type /Catalog /Pages 2 0 R >>';objects[1]=`<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>`;
  let out='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';const offsets=[0];objects.forEach((o,i)=>{offsets.push(out.length);out+=`${i+1} 0 obj\n${o}\nendobj\n`;});const xref=out.length;
