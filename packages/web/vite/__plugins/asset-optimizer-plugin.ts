@@ -197,7 +197,7 @@ export default function assetOptimizerPlugin(): Plugin {
 			const files = await walk(outDir).catch(() => [] as string[]);
 			// A arte oficial deve ser publicada byte a byte, sem recompressão.
 			const images = files.filter(
-				(file) => IMAGE_EXT.test(file) && !["esantos-logo.png", "og-esantos.png"].includes(path.basename(file)),
+				(file) => IMAGE_EXT.test(file) && !["esantos-logo.png", "og-esantos.png", "autorizacao-logo-enviado.png"].includes(path.basename(file)),
 			);
 			const videos = files.filter((file) => VIDEO_EXT.test(file));
 			if (images.length === 0 && videos.length === 0) return;
