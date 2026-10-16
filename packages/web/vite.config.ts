@@ -27,6 +27,7 @@ export default defineConfig(({ mode }) => {
 				input: {
 					main: path.resolve(__dirname, "index.html"),
 					cadastro: path.resolve(__dirname, "cadastro.html"),
+                    locacao: path.resolve(__dirname, "locacao.html"),
                     autorizacao: path.resolve(__dirname, "autorizacao.html"),
 				},
 			},

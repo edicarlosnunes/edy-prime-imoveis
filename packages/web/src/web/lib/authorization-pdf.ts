@@ -21,8 +21,11 @@ return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário 
 function ansi(t:string){return t.normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF\n]/g,'?');}
 function escaped(t:string){return ansi(t).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');}
 export function authorizationPdf(d:AuthorizationData,now=new Date(),logoJpeg?:string):Uint8Array {
+ return pdfFromAuthorizationLines(authorizationLines(d,now.toLocaleDateString('pt-BR')),logoJpeg);
+}
+export function pdfFromAuthorizationLines(lines:string[],logoJpeg?:string):Uint8Array {
  const wrapped:string[]=[];
- for(const line of authorizationLines(d,now.toLocaleDateString('pt-BR'))){
+ for(const line of lines){
   let current='';
   for(const word of line.replace(/\s+/g,' ').split(' ')){
    if((current+' '+word).length>83&&current){wrapped.push(current);current='';}
