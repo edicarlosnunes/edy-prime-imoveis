@@ -30,6 +30,18 @@
       "destination": "/cadastro.html"
     },
     {
+      "source": "/autorizacao",
+      "destination": "/autorizacao.html"
+    },
+    {
+      "source": "/autorizacao/",
+      "destination": "/autorizacao.html"
+    },
+    {
+      "source": "/autorizacao-venda",
+      "destination": "/autorizacao.html"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
