@@ -38,6 +38,7 @@ function App() {
     <Provider>
       <Switch>
         <Route path="/" component={Index} />
+        <Route path="/autorizar" component={AutorizacaoVenda} />
         <Route path="/autorizacao" component={AutorizacaoVenda} />
         <Route path="/autorizacao-venda" component={AutorizacaoVenda} />
         <Route path="/link-captacao/:token" component={LinkCaptacaoToken} />

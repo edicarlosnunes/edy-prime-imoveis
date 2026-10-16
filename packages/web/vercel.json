@@ -42,6 +42,10 @@
       "destination": "/autorizacao.html"
     },
     {
+      "source": "/autorizar",
+      "destination": "/autorizacao.html"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
