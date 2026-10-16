@@ -17,7 +17,8 @@ export function readCompleted(storage?:Pick<Storage,'getItem'>):{data:Authorizat
 }
 export function restoredPdf(pdf:string){try{return new File([Uint8Array.from(atob(pdf),c=>c.charCodeAt(0))],'Autorizacao-de-venda-E-Santos.pdf',{type:'application/pdf'});}catch{return null;}}
 export default function AutorizacaoVenda(){
- const [completed,setCompleted]=useState(()=>readCompleted());
+ // Test phase: ignore saved records and keep repeat submissions available.
+ const completed=null as ReturnType<typeof readCompleted>;
  const logoUrl='/autorizacao-esantos-logo.png';
  const [preparing,setPreparing]=useState(false);const [govOpened,setGovOpened]=useState(false);
  const [savedConfirmed,setSavedConfirmed]=useState(false);const [saveHelp,setSaveHelp]=useState('');
@@ -40,7 +41,6 @@ export default function AutorizacaoVenda(){
  setPreparing(true);setGovOpened(false);
  let logo; try { const img=new Image(); img.crossOrigin='anonymous'; img.src=logoUrl; await img.decode(); const canvas=document.createElement('canvas'); canvas.width=240; canvas.height=240; const ctx=canvas.getContext('2d')!; ctx.fillStyle='#000000';ctx.fillRect(0,0,240,240); const scale=Math.min(240/img.naturalWidth,240/img.naturalHeight);ctx.drawImage(img,(240-img.naturalWidth*scale)/2,(240-img.naturalHeight*scale)/2,img.naturalWidth*scale,img.naturalHeight*scale);logo=atob(canvas.toDataURL('image/jpeg',0.95).split(',')[1]); } catch {setPreparing(false);setError('Não foi possível carregar o logo. Atualize a página e tente novamente.');return;}
  try {const blob=new Blob([authorizationPdf(clean,new Date(),logo) as BlobPart],{type:'application/pdf'});const pdfFile=new File([blob],'Autorizacao-de-venda-E-Santos.pdf',{type:'application/pdf'});setGeneratedFile(pdfFile);
- try {const bytes=new Uint8Array(await pdfFile.arrayBuffer());let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);const saved={data:{...data,ownerAddress:'',endDate},pdf:btoa(binary)};localStorage.setItem(SAVED_KEY,JSON.stringify(saved));setCompleted(saved);}catch{setError('O navegador não permitiu guardar esta autorização para reabrir depois. Salve o PDF em Arquivos e mantenha esta aba aberta.');}
  setSavedConfirmed(false);setSaveHelp('');setDownloaded(true);setSaveHelp('PDF preparado. Toque em Salvar PDF em Arquivos e confirme Salvar na janela do celular.');requestAnimationFrame(()=>document.getElementById('authorization-save')?.scrollIntoView({behavior:'smooth',block:'center'}));
 
  }catch{setError('Não foi possível preparar o PDF. Tente novamente; seus dados continuam nesta ficha.');}finally{setPreparing(false);}
