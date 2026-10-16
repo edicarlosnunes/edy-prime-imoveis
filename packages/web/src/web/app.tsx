@@ -1,4 +1,5 @@
 import { Route, Switch } from "wouter";
+import AutorizacaoVenda from "./pages/autorizacao-venda";
 import Index from "./pages/index";
 import AdminLogin from "./pages/admin/login";
 import AdminDashboard from "./pages/admin/dashboard";
@@ -37,6 +38,7 @@ function App() {
     <Provider>
       <Switch>
         <Route path="/" component={Index} />
+        <Route path="/autorizacao-venda" component={AutorizacaoVenda} />
         <Route path="/link-captacao/:token" component={LinkCaptacaoToken} />
         <Route path="/link-captacao" component={LinkCaptacao} />
         <Route path="/cadastro" component={LinkCaptacao} />
