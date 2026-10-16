@@ -64,6 +64,8 @@ function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
   switch (key) {
     case "mercadolivre":
       return [{ label: "URI de redirect (retorno da autorização)", url: `${baseUrl}/api/oauth/mercadolivre/callback` }];
+    case "imovelguide":
+      return [{ label: "XML exclusivo para o Imóvel Guide", url: `${baseUrl}/feed/imovelguide.xml` }];
     case "feed_imoveis":
       return [{ label: "Feed geral", url: `${baseUrl}/feed/imoveis.xml` }];
     case "zap_vivareal":
@@ -128,6 +130,7 @@ export const adminIntegrations = {
       { key: "tiktok", name: "TikTok", ready: false, reason: "Envio pelo CRM ainda pendente" },
       ...INTEGRATIONS.filter((def) => def.key !== "tiktok_publishing").map((def) => {
         const row = byKey.get(def.key);
+        if (def.key === "imovelguide") return { key: def.key, name: def.name, ready: row?.enabled === 1 && row.status === "conectado", reason: "Selecionar e enviar inclui este imóvel no XML exclusivo. A publicação depende da importação pelo Imóvel Guide. Para retirar, use Portais → Imóvel Guide. Confirme a leitura em Integrações somente após conferir o anúncio no portal." };
         return { key: def.key, name: def.name, ready: false, reason: def.key === "olx" ? OLX_MANUAL_REASON : def.category !== "Portais de Imóveis" ? "Serviço de apoio; não recebe anúncios por este botão" : row?.status === "conectado" ? "Conta conectada; envio pelo CRM ainda pendente" : "Conexão de publicação pendente" };
       }),
     ];

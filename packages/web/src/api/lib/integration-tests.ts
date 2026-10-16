@@ -98,8 +98,9 @@ export async function runTest(
     /* ------------------------------------------------------ portais XML */
     case "zap_vivareal":
     case "olx":
+    case "imovelguide":
     case "imovelweb": {
-      const channel = key === "zap_vivareal" ? "zap" : (key as "olx" | "imovelweb");
+      const channel = key === "zap_vivareal" ? "zap" : (key as "olx" | "imovelweb" | "imovelguide");
       const properties = await feedProperties(db, channel);
       const xml = feedXml(properties, { baseUrl, channel, imageVariant: "marcada" });
       const valid = xml.startsWith("<?xml") && xml.includes("</Carga>");
@@ -109,8 +110,8 @@ export async function runTest(
       }
       return {
         ok: true,
-        status: config.accountId ? "configurando" : "aguardando_credencial",
-        message: `Feed pronto e válido em ${url} com ${properties.length} imóvel(is) autorizado(s). O portal lê o arquivo por conta dele — marque "Confirmar leitura do portal" só depois que ele importar.`,
+        status: key === "imovelguide" || config.accountId ? "configurando" : "aguardando_credencial",
+        message: `XML gerado em ${url} com ${properties.length} imóvel(is) autorizado(s). O portal lê o arquivo por conta dele — marque "Confirmar leitura do portal" só depois que ele importar.`,
       };
     }
 

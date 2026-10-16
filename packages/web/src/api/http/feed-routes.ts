@@ -23,6 +23,7 @@ const FILE_TO_CHANNEL: Record<string, (typeof FEED_CHANNELS)[number]> = {
   "vivareal.xml": "zap",
   "olx.xml": "olx",
   "imovelweb.xml": "imovelweb",
+  "imovelguide.xml": "imovelguide",
 };
 
 const INTEGRATION_BY_CHANNEL: Record<string, string> = {
@@ -30,6 +31,7 @@ const INTEGRATION_BY_CHANNEL: Record<string, string> = {
   zap: "zap_vivareal",
   olx: "olx",
   imovelweb: "imovelweb",
+  imovelguide: "imovelguide",
 };
 
 function escapeHtml(value: string) {

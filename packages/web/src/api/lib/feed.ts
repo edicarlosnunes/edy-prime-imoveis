@@ -11,7 +11,7 @@ import * as schema from "../database/schema";
 import { propertySlug } from "./slug";
 import type { AdminDb } from "./admin-base";
 
-export const FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb"] as const;
+export const FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb", "imovelguide"] as const;
 export type FeedChannel = (typeof FEED_CHANNELS)[number];
 
 export interface FeedProperty {
@@ -66,7 +66,7 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     .where(eq(schema.propertyChannels.channel, channel));
 
   const allowed = new Set(
-    authorizations.filter((row) => row.authorized === 1).map((row) => row.propertyId),
+    Array.from(new Map(authorizations.sort((a, b) => a.id - b.id).map((row) => [row.propertyId, row])).values()).filter((row) => row.authorized === 1).map((row) => row.propertyId),
   );
 
   const eligible = rows.filter(
@@ -162,6 +162,7 @@ export interface FeedOptions {
  * "conectado" depois que o próprio portal confirmar a leitura.
  */
 export function feedXml(properties: FeedProperty[], options: FeedOptions) {
+  if (options.channel === "imovelguide") return guideFeedXml(properties, options);
   const now = new Date().toISOString();
   const lines: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -280,4 +281,28 @@ export function robotsTxt(baseUrl: string, indexable: boolean) {
     `Sitemap: ${baseUrl}/sitemap.xml`,
     "",
   ].join("\n");
+}
+
+/** Carga XML dedicada. A aceitação do formato deve ser confirmada pelo portal. */
+export function guideFeedXml(properties: FeedProperty[], options: FeedOptions) {
+  const items = properties.map((p) => {
+    const fields = [tag("CodigoImovel", p.code), tag("TituloImovel", p.title),
+      tag("TipoImovel", typeLabel[p.type] ?? "Imóvel"), tag("Finalidade", p.purpose === "locacao" ? "Aluguel" : "Venda"),
+      tag("PrecoVenda", p.purpose === "locacao" ? null : p.price),
+      tag("PrecoAluguel", p.purpose === "venda" ? null : p.price),
+      tag("PrecoCondominio", p.condoFee), tag("IPTU", p.iptu), tag("Observacao", p.description),
+      tag("Estado", "São Paulo"), tag("UF", "SP"), tag("Cidade", p.city), tag("Bairro", p.district),
+      tag("QtdDormitorios", p.bedrooms), tag("QtdSuites", p.suites), tag("QtdBanheiros", p.bathrooms),
+      tag("QtdVagas", p.parking), tag("AreaUtil", p.areaUtil), tag("AreaTotal", p.areaTotal),
+      tag("UrlImovel", `${options.baseUrl}/imovel/${p.slug}`)].join("");
+    const primary = p.images.findIndex((i) => i.isPrimary);
+    const photos = p.images.map((i, index) => {
+      const chosen = options.imageVariant === "original" ? i.originalUrl ?? i.url : i.url;
+      const url = new URL(chosen, options.baseUrl).href;
+      return `        <Foto><URLArquivo>${esc(url)}</URLArquivo><Principal>${index === (primary < 0 ? 0 : primary) ? 1 : 0}</Principal></Foto>`;
+    }).join("\n");
+    // Não expor endereço exato, complemento ou dados privados do proprietário.
+    return `    <Imovel>\n${fields}      <Fotos>\n${photos}\n      </Fotos>\n    </Imovel>`;
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<Carga>\n  <Imoveis>\n${items.join("\n")}\n  </Imoveis>\n</Carga>`;
 }

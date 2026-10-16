@@ -163,6 +163,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const history = useQuery({ ...orpc.adminIntegrations.publicationChecks.queryOptions({ input: { propertyId: propertyId ?? 0 } }), enabled: propertyId !== null });
 
 
+  const guideAuthorization = useQuery({ ...orpc.adminChannels.forProperty.queryOptions({ input: { propertyId: propertyId ?? 0 } }), enabled: propertyId !== null });
+  const guideIncluded = guideAuthorization.data?.some((row) => row.channel === "imovelguide" && row.authorized) ?? false;
   const destinations = useQuery(orpc.adminIntegrations.publicationTargets.queryOptions({ refetchInterval: 15_000 }));
 
   const detail = useQuery({
@@ -580,7 +582,12 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     for (const key of selectedKeys) {
       const ready = destinationRows.find((target) => target.key === key)?.ready;
       const publish = key === "instagram" ? publishInstagramBook : key === "facebook" ? publishFacebook : key === "youtube" ? publishYoutubeShort : null;
-      if (ready && publish) jobs.push(run(key, publish));
+      if (key === "imovelguide") jobs.push(run(key, async () => {
+        await client.adminChannels.setAuthorized({ propertyId, channel: "imovelguide", authorized: true });
+        await guideAuthorization.refetch();
+        return "Imóvel incluído no XML do Imóvel Guide. Aguarda leitura e validação pelo portal; isto ainda não confirma publicação.";
+      }));
+      else if (ready && publish) jobs.push(run(key, publish));
       else jobs.push((async () => {
         try {
           const result = await client.adminIntegrations.diagnosePublication({ propertyId, key });
@@ -690,7 +697,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
           <div className="mt-5 border-t border-brass/20 pt-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p><p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p></div><Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge></div>
-            <p className="mt-2 text-[11px] text-muted">Marque apenas as plataformas desejadas. ✅ publica pelo fluxo disponível. ❌ executa o checklist e informa o que falta, sem simular envio. ⓘ mostra o motivo. OLX: anúncio manual.</p>
+            <p className="mt-2 text-[11px] text-muted">Marque apenas as plataformas desejadas. Imóvel Guide: o envio inclui no XML e aguarda importação. ✅ publica pelo fluxo disponível. ❌ executa o checklist e informa o que falta, sem simular envio. ⓘ mostra o motivo. OLX: anúncio manual.</p>
+            {guideIncluded && <div className="mt-3 rounded border border-green-200 p-3 text-xs"><p>Imóvel autorizado no XML do Imóvel Guide. Aguarda leitura e validação pelo portal.</p><button type="button" disabled={publishing} className="mt-2 underline" onClick={async () => { try { await client.adminChannels.setAuthorized({ propertyId, channel: "imovelguide", authorized: false }); await guideAuthorization.refetch(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Falha ao retirar do XML."); } }}>Retirar este imóvel do XML do Imóvel Guide</button></div>}
             {destinations.isPending && <p role="status" className="mt-3 text-xs text-muted">Conferindo plataformas…</p>}
             {destinations.isError && <p role="alert" className="mt-3 text-xs text-red-700">Não foi possível conferir as plataformas. <button type="button" className="underline" onClick={() => void destinations.refetch()}>Tentar novamente</button></p>}
             <div className="mt-3 flex flex-wrap items-start gap-2">

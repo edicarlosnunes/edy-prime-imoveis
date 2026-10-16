@@ -83,6 +83,14 @@ const feedFields: IntegrationField[] = [
 
 export const INTEGRATIONS: IntegrationDef[] = [
   {
+    key: "imovelguide", category: "Portais de Imóveis", name: "Imóvel Guide", mark: "IG",
+    purpose: "Disponibilizar somente os imóveis autorizados em um XML exclusivo para o Imóvel Guide.",
+    method: "Cole o endereço do XML em Imóvel Guide → Integrar XML. O portal importa o arquivo; não exige token nesta tela. Formato sujeito à validação do portal.",
+    pending: ["Selecionar imóveis no final do cadastro", "Cadastrar o endereço XML no Imóvel Guide", "Conferir a importação e confirmar a leitura somente depois de ver o anúncio no portal"],
+    fields: [imageVariantField, ...feedFields], canTest: true, canSync: false,
+    docsUrl: "https://imovelguide.com.br/integre-seus-imoveis", available: true,
+  },
+  {
     key: "tiktok_publishing",
     category: "Publicação em redes sociais",
     name: "TikTok",

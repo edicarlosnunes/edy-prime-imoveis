@@ -10,7 +10,7 @@ import { clientIp, siteBaseUrl } from "../lib/base-url";
 import { FEED_CHANNELS, feedProperties } from "../lib/feed";
 import * as schema from "../database/schema";
 
-const channelEnum = z.enum(["feed", "zap", "olx", "imovelweb"]);
+const channelEnum = z.enum(["feed", "zap", "olx", "imovelweb", "imovelguide"]);
 
 export const adminChannels = {
   /** Canais de um imóvel. */
@@ -22,7 +22,7 @@ export const adminChannels = {
         .from(schema.propertyChannels)
         .where(eq(schema.propertyChannels.propertyId, input.propertyId));
       return FEED_CHANNELS.map((channel) => {
-        const row = rows.find((item) => item.channel === channel);
+        const row = rows.filter((item) => item.channel === channel).sort((a, b) => b.id - a.id)[0];
         return {
           channel,
           authorized: row?.authorized === 1,

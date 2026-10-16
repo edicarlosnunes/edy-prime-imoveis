@@ -16,6 +16,7 @@ const CHANNELS = [
   { key: "zap", label: "ZAP / VivaReal" },
   { key: "olx", label: "OLX" },
   { key: "imovelweb", label: "Imovelweb" },
+  { key: "imovelguide", label: "Imóvel Guide" },
 ] as const;
 
 function PortalsPage() {
