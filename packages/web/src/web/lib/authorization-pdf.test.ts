@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { authorizationLines, authorizationPdf, type AuthorizationData } from './authorization-pdf';
+import { authorizationCommission, authorizationLines, authorizationPdf, type AuthorizationData } from './authorization-pdf';
 const data:AuthorizationData={owner:'José da Conceição',document:'00000000000',phone:'00000000000',email:'teste@example.com',ownerAddress:'Rua do Proprietário, 10',propertyAddress:'Rua do Imóvel, 20, apto 3, Praia Grande/SP',type:'Apartamento',bedrooms:'2',parking:'1',floors:'',price:'590.000,00',commission:'5',startDate:'2026-10-16',endDate:'2026-12-15',notes:'Condição (teste) com acentos e barra \\',city:'Praia Grande/SP'};
 test('authorization uses only supplied commercial terms and leaves signature pending',()=>{
  const lines=authorizationLines(data,'16/10/2026').join('\n');
@@ -11,4 +11,8 @@ test('PDF cross reference points to each object despite accented characters',()=
  const xref=Number(raw.match(/startxref\n(\d+)/)?.[1]);expect(raw.slice(xref,xref+4)).toBe('xref');
  const offsets=raw.slice(xref).split('\n').filter(l=>/^\d{10} 00000 n/.test(l));
  offsets.forEach((line,i)=>expect(raw.slice(Number(line.slice(0,10)))).toStartWith(`${i+1} 0 obj`));
+});
+
+test('blank commission defaults to six and negotiated percentages are respected',()=>{
+ expect(authorizationCommission('')).toBe(6);expect(authorizationCommission('   ')).toBe(6);expect(authorizationCommission('6%')).toBe(6);expect(authorizationCommission('5,5 %')).toBe(5.5);expect(Number.isNaN(authorizationCommission('abc'))).toBe(true);expect(authorizationLines({...data,commission:''},'16/10/2026').join(' ')).toContain('6% sobre o valor da venda');
 });

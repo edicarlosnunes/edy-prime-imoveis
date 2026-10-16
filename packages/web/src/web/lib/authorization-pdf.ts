@@ -1,3 +1,4 @@
+export function authorizationCommission(value:string):number { const text=value.trim(); return text === '' ? 6 : /^\d+(?:[.,]\d+)?\s*%?$/.test(text) ? Number(text.replace(/\s*%$/, '').replace(',','.')) : NaN; }
 export type AuthorizationData = Record<'owner'|'document'|'phone'|'email'|'ownerAddress'|'propertyAddress'|'type'|'bedrooms'|'parking'|'floors'|'price'|'commission'|'startDate'|'endDate'|'notes'|'city',string>;
 export function authorizationLines(d:AuthorizationData,date:string) {
 return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário CNAE 55.918','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
@@ -12,7 +13,7 @@ return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário 
 ...(d.floors ? [`Pavimentos: ${d.floors}.`] : []),
 `Preço autorizado de venda: R$ ${d.price}`,
 'Autorizo a divulgação no site, portais e redes sociais, o uso de fotos e informações para divulgar a venda, a apresentação do imóvel a interessados e o recebimento e encaminhamento de propostas.',
-`Comissão de intermediação acordada: ${d.commission}% sobre o valor da venda.`,
+`Comissão de intermediação acordada: ${authorizationCommission(d.commission).toLocaleString('pt-BR')}% sobre o valor da venda.`,
 `Validade da autorização: de ${d.startDate.split('-').reverse().join('/')} até ${d.endDate.split('-').reverse().join('/')}.`,
 'Esta autorização de venda é SEM exclusividade.',
 ...(d.notes.trim()?[`Observações e condições adicionais: ${d.notes}`]:[]),`Local e data do preenchimento: ${d.city}, ${date}.`,
