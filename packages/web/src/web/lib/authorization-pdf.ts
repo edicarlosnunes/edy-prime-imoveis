@@ -4,7 +4,6 @@ export function authorizationLines(d:AuthorizationData,date:string) {
 return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário CNAE 55.918','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
 `Eu, ${d.owner}, CPF ${d.document},`,
 `Contato: ${d.phone} | E-mail: ${d.email||'Não informado'}`,
-...(d.ownerAddress ? [`Endereço do proprietário: ${d.ownerAddress}`] : []),
 'autorizo a E. Santos, Gestor Imobiliário, CRECI 134718-F, a divulgar e intermediar a venda do meu imóvel abaixo identificado.',
 `Tipo do imóvel: ${d.type}`,
 `Endereço completo do imóvel: ${d.propertyAddress}`,
