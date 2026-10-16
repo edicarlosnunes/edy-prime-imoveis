@@ -1,12 +1,20 @@
-export type AuthorizationData = Record<'owner'|'document'|'identity'|'phone'|'email'|'ownerAddress'|'propertyAddress'|'type'|'area'|'price'|'commission'|'days'|'exclusive'|'notes'|'city',string>;
+export type AuthorizationData = Record<'owner'|'document'|'identity'|'phone'|'email'|'ownerAddress'|'propertyAddress'|'type'|'bedrooms'|'parking'|'floors'|'price'|'commission'|'days'|'notes'|'city',string>;
 export function authorizationLines(d:AuthorizationData,date:string) {
 return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718-F','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
-`Proprietário(a): ${d.owner}`,`CPF/CNPJ: ${d.document} | Identidade: ${d.identity}`,`Contato: ${d.phone} | E-mail: ${d.email||'Não informado'}`,`Endereço do proprietário: ${d.ownerAddress}`,`Imóvel: ${d.type} | Área informada (m²): ${d.area||'Não informada'}`,`Endereço completo do imóvel: ${d.propertyAddress}`,`Preço autorizado de venda: R$ ${d.price}`,
-'O(A) proprietário(a) autoriza E. Santos a intermediar a negociação do imóvel identificado nesta autorização.',
-'Autoriza a divulgação do imóvel nos canais da imobiliária, incluindo site, portais e redes sociais.',
-'Autoriza o uso das fotos e das informações do imóvel exclusivamente para fins de divulgação da venda.',
-'Autoriza a apresentação do imóvel a interessados e o recebimento e a apresentação de propostas.',
-`Comissão de intermediação: ${d.commission}% sobre o valor da venda.`, `Prazo de vigência: ${d.days} dias, contado da assinatura.`,d.exclusive==='sim'?'Autorização com EXCLUSIVIDADE.':'Autorização SEM exclusividade.',
+`Eu, ${d.owner}, CPF/CNPJ ${d.document}${d.identity ? `, identidade ${d.identity}` : ''},`,
+`Contato: ${d.phone} | E-mail: ${d.email||'Não informado'}`,
+...(d.ownerAddress ? [`Endereço do proprietário: ${d.ownerAddress}`] : []),
+'autorizo a E. Santos, Gestor Imobiliário, CRECI 134718-F, a divulgar e intermediar a venda do meu imóvel abaixo identificado.',
+`Tipo do imóvel: ${d.type}`,
+`Endereço completo do imóvel: ${d.propertyAddress}`,
+...(d.bedrooms ? [`Dormitórios: ${d.bedrooms} e demais dependências.`] : []),
+...(d.parking ? [`Vagas de garagem: ${d.parking}.`] : []),
+...(d.floors ? [`Pavimentos: ${d.floors}.`] : []),
+`Preço autorizado de venda: R$ ${d.price}`,
+'Autorizo a divulgação no site, portais e redes sociais, o uso de fotos e informações para divulgar a venda, a apresentação do imóvel a interessados e o recebimento e encaminhamento de propostas.',
+`Comissão de intermediação acordada: ${d.commission}% sobre o valor da venda.`,
+`Prazo desta autorização: ${d.days} dias, contado da assinatura.`,
+'Esta autorização de venda é SEM exclusividade.',
 ...(d.notes.trim()?[`Observações e condições adicionais: ${d.notes}`]:[]),`Local e data do preenchimento: ${d.city}, ${date}.`,
 'Confira os dados e as condições antes de assinar. O preenchimento não equivale a assinatura.','Assinatura do(a) proprietário(a):','','________________________________________________________',d.owner,'Espaço para assinatura eletrônica do proprietário.','Após assinar, envie o PDF original assinado ao corretor pelo WhatsApp ou e-mail.'];
 }
