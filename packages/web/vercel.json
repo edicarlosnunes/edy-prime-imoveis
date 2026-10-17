@@ -57,6 +57,5 @@
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
-  ],
-  "buildCommand": "bun vercel-api/build.ts && bunx vite build"
+  ]
 }

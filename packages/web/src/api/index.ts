@@ -1,4 +1,3 @@
-import {registerAuthorizationLinkRoutes} from './http/authorization-link-routes';
 import type { RouterClient } from "@orpc/server";
 import { handleMercadoLivreOAuthRequest } from "./http/mercadolivre-oauth-routes";
 import { eq } from "drizzle-orm";
@@ -114,7 +113,6 @@ app.all("/api/oauth/mercadolivre/*", async (c) => {
 });
 
 /* Arquivos públicos (feed/sitemap/robots/prerender), webhooks e vídeos. */
-registerAuthorizationLinkRoutes(app);
 registerFeedRoutes(app);
 registerWebhookRoutes(app);
 registerFacebookVideoRoute(app);
