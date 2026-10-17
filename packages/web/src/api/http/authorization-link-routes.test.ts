@@ -28,3 +28,11 @@ test('completion route freezes canonical fields and rejects later changes from a
  expect((await send()).status).toBe(409);
  const reopened=await app.request('/api/authorization-links/document',{headers:{'x-authorization-link':token}});const result=await reopened.json();expect(result.completed).toBe(true);expect(result.data.owner).toBe('Pessoa teste');expect(result.data.condominium).toBe('450,00');expect(result.data.iptu).toBe('120,00');db.close();
 });
+test('completing an individual authorization never blocks the issuer from creating more blank links',async()=>{
+ const {app,store,db}=setup(true);const first=await store.create('venda');await store.complete(first,{owner:'Primeiro cliente'},'documento');
+ for(const kind of ['venda','locacao','venda']){
+  const result=await app.request('/api/authorization-links/create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({kind})});
+  expect(result.status).toBe(200);const created=await result.json();expect(created.token).not.toBe(first);const record=await store.read(created.token);expect(record?.completed_at).toBeNull();expect(record?.data_json).toBeNull();
+ }
+ expect((await store.read(first))?.completed_at).toBeTruthy();db.close();
+});
