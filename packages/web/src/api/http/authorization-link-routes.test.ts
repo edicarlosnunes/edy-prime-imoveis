@@ -1,8 +1,8 @@
 import {test,expect} from 'bun:test';
 import {createClient} from '@libsql/client';
 import {Hono} from 'hono';
-import {authorizationLinkStore,registerAuthorizationLinkRoutes} from './authorization-link-routes';
-function setup(authorized=false){const db=createClient({url:':memory:'});const store=authorizationLinkStore(db);const app=new Hono();registerAuthorizationLinkRoutes(app,{store:async()=>store,session:async()=>authorized?{id:1,name:'Corretor',email:'teste@example.com',role:'admin'}:null});return {db,store,app};}
+import {authorizationLinkStore,authorizationDeviceStore,ISSUER_DEVICE_COOKIE,registerAuthorizationLinkRoutes} from './authorization-link-routes';
+function setup(authorized=false){const db=createClient({url:':memory:'});const store=authorizationLinkStore(db);const app=new Hono();registerAuthorizationLinkRoutes(app,{store:async()=>store,devices:async()=>({allowed:async()=>authorized,activate:async()=>null})});return {db,store,app};}
 test('only authorized issuer can create links; generic and unknown tokens cannot read a form',async()=>{
  const {app,db}=setup();expect((await app.request('/api/authorization-links/create',{method:'POST',headers:{'content-type':'application/json'},body:'{"kind":"venda"}'})).status).toBe(401);
  expect((await app.request('/api/authorization-links/document')).status).toBe(400);
@@ -35,4 +35,20 @@ test('completing an individual authorization never blocks the issuer from creati
   expect(result.status).toBe(200);const created=await result.json();expect(created.token).not.toBe(first);const record=await store.read(created.token);expect(record?.completed_at).toBeNull();expect(record?.data_json).toBeNull();
  }
  expect((await store.read(first))?.completed_at).toBeTruthy();db.close();
+});
+
+test('device activation is independent of admin login and cannot be reused on another browser',async()=>{
+ const db=createClient({url:':memory:'});const devices=authorizationDeviceStore(db);const {sha256Hex}=await import('../lib/auth');const secret='b'.repeat(64);const hash=await sha256Hex(secret);
+ expect(await devices.activate('c'.repeat(64),hash)).toBeNull();
+ const device=await devices.activate(secret,hash);expect(device).toMatch(/^[a-f0-9]{64}$/);
+ expect(await devices.activate(secret,hash)).toBeNull();
+ expect(await devices.allowed(new Headers({'cookie':'epi_admin=old-crm-session'}))).toBe(false);
+ expect(await devices.allowed(new Headers({'cookie':ISSUER_DEVICE_COOKIE+'='+device}))).toBe(true);
+ expect(await devices.allowed(new Headers())).toBe(false);db.close();
+});
+test('activation endpoint returns its own persistent HttpOnly cookie, with no username or password',async()=>{
+ const db=createClient({url:':memory:'});const devices=authorizationDeviceStore(db);const {sha256Hex}=await import('../lib/auth');const secret='d'.repeat(64);const app=new Hono();registerAuthorizationLinkRoutes(app,{store:async()=>authorizationLinkStore(db),devices:async()=>devices,activationHash:await sha256Hex(secret)});
+ const r=await app.request('/api/authorization-links/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({activation:secret})});
+ expect(r.status).toBe(200);const cookie=r.headers.get('set-cookie')!;expect(cookie).toContain(ISSUER_DEVICE_COOKIE+'=');expect(cookie).toContain('HttpOnly');expect(cookie).toContain('Secure');expect(cookie).toContain('Max-Age=31536000');
+ const access=await app.request('/api/authorization-links/access',{headers:{cookie}});expect((await access.json()).authorized).toBe(true);db.close();
 });
