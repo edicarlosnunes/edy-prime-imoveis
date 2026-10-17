@@ -1,3 +1,4 @@
+import AuthorizationLinks from "./pages/authorization-links";
 import { Route, Switch } from "wouter";
 import AutorizacaoLocacao from "./pages/autorizacao-locacao";
 import AutorizacaoVenda from "./pages/autorizacao-venda";
@@ -39,6 +40,7 @@ function App() {
     <Provider>
       <Switch>
         <Route path="/" component={Index} />
+        <Route path="/autorizacoes" component={AuthorizationLinks} />
         <Route path="/locacao" component={AutorizacaoLocacao} />
         <Route path="/autorizar" component={AutorizacaoVenda} />
         <Route path="/autorizacao" component={AutorizacaoVenda} />
