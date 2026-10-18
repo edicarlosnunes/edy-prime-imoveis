@@ -2,6 +2,22 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/joaquim/venda",
+      "destination": "/joaquim-venda.html"
+    },
+    {
+      "source": "/joaquim/venda/",
+      "destination": "/joaquim-venda.html"
+    },
+    {
+      "source": "/joaquim/locacao",
+      "destination": "/joaquim-locacao.html"
+    },
+    {
+      "source": "/joaquim/locacao/",
+      "destination": "/joaquim-locacao.html"
+    },
+    {
       "source": "/locacao/",
       "destination": "/locacao.html"
     },

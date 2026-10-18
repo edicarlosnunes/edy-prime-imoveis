@@ -27,6 +27,8 @@ export default defineConfig(({ mode }) => {
 				input: {
 					main: path.resolve(__dirname, "index.html"),
 					cadastro: path.resolve(__dirname, "cadastro.html"),
+                    joaquimVenda: path.resolve(__dirname, 'joaquim-venda.html'),
+                    joaquimLocacao: path.resolve(__dirname, 'joaquim-locacao.html'),
                     locacao: path.resolve(__dirname, "locacao.html"),
                     autorizacao: path.resolve(__dirname, "autorizacao.html"),
 				},
