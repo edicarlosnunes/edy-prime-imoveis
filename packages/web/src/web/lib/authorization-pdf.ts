@@ -9,7 +9,6 @@ return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário 
 `Endereço completo do imóvel: ${d.propertyAddress}`,
 ...(d.bedrooms ? [`Dormitórios: ${d.bedrooms} e demais dependências.`] : []),
 ...(d.parking ? [`Vagas de garagem: ${d.parking}.`] : []),
-...(d.floors ? [`Pavimentos: ${d.floors}.`] : []),
 `Preço autorizado de venda: R$ ${d.price}`,
 'Autorizo a divulgação no site, portais e redes sociais, o uso de fotos e informações para divulgar a venda, a apresentação do imóvel a interessados e o recebimento e encaminhamento de propostas.',
 `Comissão de intermediação acordada: ${authorizationCommission(d.commission).toLocaleString('pt-BR')}% sobre o valor da venda.`,

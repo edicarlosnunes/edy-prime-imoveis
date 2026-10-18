@@ -7,7 +7,7 @@ export function rentalAuthorizationLines(d:RentalAuthorizationData,date:string){
 'autorizo E. Santos, Gestor Imobiliário, CRECI 134718-F, a divulgar e intermediar a locação do meu imóvel abaixo identificado.',
 `Tipo do imóvel: ${d.type}`,`Endereço completo do imóvel: ${d.propertyAddress}`,
 ...(d.bedrooms?[`Dormitórios: ${d.bedrooms} e demais dependências.`]:[]),
-...(d.parking?[`Vagas de garagem: ${d.parking}.`]:[]),...(d.floors?[`Pavimentos: ${d.floors}.`]:[]),
+...(d.parking?[`Vagas de garagem: ${d.parking}.`]:[]),
 `Valor mensal do aluguel: R$ ${d.price}`,
 `Condomínio: ${d.condominium?'R$ '+d.condominium:'Não informado'}`,
 `IPTU: ${d.iptu?'R$ '+d.iptu:'Não informado'}`,
