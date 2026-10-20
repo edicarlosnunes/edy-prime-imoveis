@@ -95,9 +95,9 @@ export const INTEGRATIONS: IntegrationDef[] = [
     category: "Publicação em redes sociais",
     name: "TikTok",
     mark: "TT",
-    purpose: "Preparar o perfil para publicar os vídeos dos imóveis.",
-    method: "TikTok Content Posting API, com autorização da conta e aprovação do aplicativo.",
-    pending: ["Cadastrar o aplicativo no TikTok for Developers", "Autorizar a conta e validar uma publicação real"],
+    purpose: "Enviar o Book completo do imóvel ao TikTok pelo conector oficial do Metricool.",
+    method: "Metricool MCP com OAuth autorizado pelo responsável. O envio usa o perfil TikTok validado, respeita os limites da conta e não contrata plano ou impulsionamento.",
+    pending: ["Conectar com Metricool na pasta TikTok", "Testar e confirmar o perfil de destino", "Enviar o Book completo em MP4 e conferir a publicação"],
     fields: [
       { key: "username", label: "Nome de usuário", type: "text" },
       { key: "accountEmail", label: "E-mail da conta", type: "text" },

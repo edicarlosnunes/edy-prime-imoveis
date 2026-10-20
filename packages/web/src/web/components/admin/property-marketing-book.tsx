@@ -1,6 +1,6 @@
 import { negotiationText } from "../../../shared/negotiation";
 import { propertyPrice } from "../../../shared/property-price";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { recordBookVideo } from "../../lib/book-video";
 import { useQuery } from "@tanstack/react-query";
@@ -28,7 +28,7 @@ type DemoStep =
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
 type SocialTarget = string;
-type ChannelResult = { status: "success" | "error" | "pending"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
+type ChannelResult = { status: "success" | "error" | "pending" | "scheduled"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
 
@@ -148,6 +148,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [uploadingCustomCover, setUploadingCustomCover] = useState(false);
   const [demoIndex, setDemoIndex] = useState(0);
   const [downloading, setDownloading] = useState(false);
+  const bookSavePromise = useRef<Promise<string> | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [youtubeProgress, setYoutubeProgress] = useState("");
   const [generatingVideo, setGeneratingVideo] = useState(false);
@@ -208,8 +209,19 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   }, [propertyId]);
 
   useEffect(() => {
-    if (history.data) setChannelResults(Object.fromEntries(history.data.map((entry) => [entry.key, { status: "pending" as const, message: "Último checklist salvo; nenhum anúncio enviado neste teste.", checks: entry.checks, at: entry.at }])));
+    if (history.data) setChannelResults(current => ({...Object.fromEntries(history.data.map((entry) => [entry.key, { status: "pending" as const, message: "Último checklist salvo; nenhum anúncio enviado neste teste.", checks: entry.checks, at: entry.at }])),...(current.tiktok && current.tiktok.status !== "pending" ? {tiktok:current.tiktok} : {})}));
   }, [history.data]);
+
+  useEffect(() => {
+    if (!propertyId) return;
+    let alive=true;
+    void fetch(`/api/admin/property-book/${propertyId}/tiktok-status`,{credentials:"same-origin"}).then(async response => response.ok ? response.json() : null).then(data => {
+      if(!alive || !data?.result) return;
+      const result=data.result;
+      setChannelResults(current=>({...current,tiktok:{status:result.state === "scheduled" ? "scheduled" : "error",message:result.message || "Envio ao TikTok em conferência. Verifique o Metricool antes de repetir."}}));
+    }).catch(()=>{});
+    return ()=>{alive=false;};
+  },[propertyId]);
 
   const property = detail.data;
   const images = property?.images ?? [];
@@ -530,6 +542,16 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     } finally { setGeneratingVideo(false); }
   }
 
+  async function ensureSavedBookVideo() {
+    if (!pendingVideoSave && savedVideoUrl) return savedVideoUrl;
+    if (bookSavePromise.current) return bookSavePromise.current;
+    bookSavePromise.current = (async()=>{
+      const blob=await buildCompleteVideo(setYoutubeProgress);
+      return saveCompleteVideo(blob,setYoutubeProgress);
+    })();
+    try {return await bookSavePromise.current;} finally {bookSavePromise.current=null;}
+  }
+
   async function publishYoutubeShort() {
     if (!propertyId || !shortVideoUrl) throw new Error("Vídeo curto não encontrado.");
     const session = await fetch(`/api/admin/property-videos/${propertyId}/youtube-short-session`, {
@@ -540,11 +562,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     });
     if (!session.ok) throw new Error(await responseError(session, "Não foi possível preparar o YouTube Shorts."));
     const prepared = await session.json() as { uploadUrl: string; accessToken: string; videoUrl: string; mime: string };
-    let bookVideoUrl = pendingVideoSave ? null : savedVideoUrl;
-    if (!bookVideoUrl) {
-      const blob = await buildCompleteVideo(setYoutubeProgress);
-      bookVideoUrl = await saveCompleteVideo(blob, setYoutubeProgress);
-    }
+    const bookVideoUrl = await ensureSavedBookVideo();
     setYoutubeProgress("Enviando o Book completo ao YouTube…");
     const sent = await fetch(prepared.uploadUrl, {
       method: "PUT", credentials: "same-origin",
@@ -565,6 +583,17 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return result.message || "Book completo enviado ao YouTube Shorts.";
   }
 
+  async function publishTiktokBook() {
+    if (!propertyId) throw new Error("Salve o imóvel antes de publicar.");
+    await ensureSavedBookVideo();
+    setYoutubeProgress("Enviando o Book completo ao Metricool para o TikTok…");
+    const response = await fetch(`/api/admin/property-book/${propertyId}/publish-tiktok`, {method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:"{}"});
+    if (!response.ok) throw new Error(await responseError(response,"O Metricool não confirmou o envio ao TikTok."));
+    const result = await response.json() as {message:string};
+    setYoutubeProgress("");
+    return result.message;
+  }
+
   async function publishSelectedChannels() {
     if (!propertyId || selectedCount === 0) return;
     setPublishing(true);
@@ -574,7 +603,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     const run = async (target: SocialTarget, fn: () => Promise<string>) => {
       try {
         const message = await fn();
-        setChannelResults((current) => ({ ...current, [target]: { status: "success", message } }));
+        setChannelResults((current) => ({ ...current, [target]: { status: target === "tiktok" ? "scheduled" : "success", message } }));
       } catch (caught) {
         setChannelResults((current) => ({ ...current, [target]: { status: "error", message: caught instanceof Error ? caught.message : "Erro na publicação." } }));
       }
@@ -582,7 +611,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     const jobs: Promise<void>[] = [];
     for (const key of selectedKeys) {
       const ready = destinationRows.find((target) => target.key === key)?.ready;
-      const publish = key === "instagram" ? publishInstagramBook : key === "facebook" ? publishFacebook : key === "youtube" ? publishYoutubeShort : null;
+      const publish = key === "instagram" ? publishInstagramBook : key === "facebook" ? publishFacebook : key === "youtube" ? publishYoutubeShort : key === "tiktok" ? publishTiktokBook : null;
       if (key === "imovelguide") jobs.push(run(key, async () => {
         await client.adminChannels.setAuthorized({ propertyId, channel: "imovelguide", authorized: true });
         await guideAuthorization.refetch();
@@ -723,7 +752,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               if (!result) return null;
               const label = destinationRows.find((target) => target.key === key)?.name || key;
               return <div key={key} className={`rounded-[7px] border p-3 text-xs ${result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-                <strong>{label} — {result.status === "success" ? "publicado" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
+                <strong>{label} — {result.status === "success" ? "publicado" : result.status === "scheduled" ? "agendado no Metricool" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
                 <p className="mt-1">{result.message}</p>
                 {result.at && <p className="mt-1 text-[10px]">Conferido em {new Date(result.at).toLocaleString("pt-BR")}</p>}
                 {result.checks && <ul className="mt-2 space-y-2">{result.checks.map((check, index) => <li key={index}><strong>{check.ok ? "✅" : "⚠️"} {check.label}</strong><p>{check.detail}</p></li>)}</ul>}

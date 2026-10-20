@@ -75,7 +75,11 @@ export async function propertyPublicationChecks(db: AdminDb, propertyId: number,
   ];
   if (key === "mercadolivre") checks.push(...await mercadoLivreChecks(db, propertyPrice(property).current, property.type, property.purpose));
   else if (key === "olx") checks.push({ ok: false, label: "Publicação manual", detail: OLX_MANUAL_REASON });
-  else if (key === "tiktok") checks.push({ ok: false, label: "Envio pelo CRM", detail: "Publicação de vídeo pelo Metricool já foi testada. Falta ligar o envio do Book completo a este botão do CRM." });
+  else if (key === "tiktok") {
+    const current=await readConfig(db,"metricool_mcp");
+    checks.push({ok:current.row?.enabled === 1 && current.row.status === "conectado",label:"Conexão Metricool",detail:current.row?.status === "conectado" ? `Perfil @${current.config.username} validado. Envio somente para TikTok.` : "Abra Integrações → TikTok, clique em Conectar com Metricool e depois Testar conexão."});
+    checks.push({ok:false,label:"Vídeo completo",detail:"Após conectar, use o botão para gerar/salvar o Book em MP4 e enviar ao Metricool. Agendamento não é confirmação de publicação."});
+  }
   else {
     const definition = findIntegration(key);
     const current = await readConfig(db, key);

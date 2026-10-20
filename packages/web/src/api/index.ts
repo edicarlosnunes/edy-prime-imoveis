@@ -1,3 +1,4 @@
+import { registerMetricoolRoutes } from "./http/metricool-routes";
 import {registerStandaloneAuthorizationRoutes} from './http/standalone-authorization-routes';
 import type { RouterClient } from "@orpc/server";
 import { handleMercadoLivreOAuthRequest } from "./http/mercadolivre-oauth-routes";
@@ -114,6 +115,7 @@ app.get("/api/cron/property-review", async (c) => {
   const {sweepPropertyReviews}=await import("./lib/property-review");
   return c.json({ok:true,...await sweepPropertyReviews(await getDb())});
 });
+registerMetricoolRoutes(app);
 app.all("/api/oauth/mercadolivre/*", async (c) => {
   const response = await handleMercadoLivreOAuthRequest(c.req.raw);
   return response ?? c.notFound();

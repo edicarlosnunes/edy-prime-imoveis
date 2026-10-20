@@ -127,7 +127,7 @@ export const adminIntegrations = {
     });
     return [
       ...social,
-      { key: "tiktok", name: "TikTok", ready: false, reason: "Envio pelo CRM ainda pendente" },
+      { key: "tiktok", name: "TikTok", ready: byKey.get("metricool_mcp")?.enabled === 1 && byKey.get("metricool_mcp")?.status === "conectado", reason: byKey.get("metricool_mcp")?.enabled === 1 && byKey.get("metricool_mcp")?.status === "conectado" ? "Enviar o Book completo pelo Metricool somente para o TikTok; publicação sujeita à confirmação da plataforma." : "Abra Integrações → TikTok, conecte com Metricool e teste o perfil. Nenhum plano pago é contratado." },
       ...INTEGRATIONS.filter((def) => def.key !== "tiktok_publishing").map((def) => {
         const row = byKey.get(def.key);
         if (def.key === "imovelguide") return { key: def.key, name: def.name, ready: row?.enabled === 1 && row.status === "conectado", reason: "Selecionar e enviar inclui este imóvel no XML exclusivo. A publicação depende da importação pelo Imóvel Guide. Para retirar, use Portais → Imóvel Guide. Confirme a leitura em Integrações somente após conferir o anúncio no portal." };
@@ -290,7 +290,7 @@ export const adminIntegrations = {
       const def = findIntegration(input.key);
       if (!def) throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
       if (def.key === "tiktok_publishing" && input.enabled) {
-        throw new ORPCError("BAD_REQUEST", { message: "TikTok aguarda vinculação e validação da publicação" });
+        throw new ORPCError("BAD_REQUEST", { message: "Abra a pasta TikTok, conecte com Metricool e teste o perfil para ativar o envio" });
       }
       if (def.key === "mercadolivre" && input.enabled) {
         const current = await readConfig(context.db, input.key);
