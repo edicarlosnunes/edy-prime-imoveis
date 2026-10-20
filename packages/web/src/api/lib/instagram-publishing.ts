@@ -1,3 +1,4 @@
+import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 const GRAPH_VERSION = "v26.0";
 const GRAPH_BASE = `https://graph.instagram.com/${GRAPH_VERSION}`;
@@ -51,8 +52,8 @@ export function buildInstagramCaption(property: InstagramPropertyForPost) {
   if (property.areaUtil > 0) details.push(`${property.areaUtil} m²`);
   if (details.length) lines.push(`✨ ${details.join(" · ")}`);
 
-  const description = (property.description ?? "").trim();
-  if (description) lines.push("", description.slice(0, 900));
+  const description = publicationDescription(property.description,property.features);
+  if (description) lines.push("", description);
 
   lines.push(
     "",

@@ -1,3 +1,4 @@
+import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 const GRAPH_VERSION = "v26.0";
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -47,9 +48,9 @@ export function buildFacebookCaption(property: FacebookPropertyForPost) {
   if (property.areaUtil > 0) details.push(`${property.areaUtil} m²`);
   if (details.length) lines.push(`✨ ${details.join(" · ")}`);
 
-  const description = (property.description ?? "").trim();
+  const description = publicationDescription(property.description,property.features);
   if (description) {
-    lines.push("", description.slice(0, 900));
+    lines.push("", description);
   }
 
   lines.push("", `🔗 Veja fotos e detalhes: ${property.link}`, `Código do imóvel: ${property.code}`);

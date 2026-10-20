@@ -72,7 +72,7 @@ function parseFeatures(raw: string | null): string[] {
           .filter(
             (item) =>
               !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
-              !item.startsWith(REFERRAL_FEATURE_PREFIX),
+              !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith("__negotiation:"),
           )
       : [];
   } catch {

@@ -1,3 +1,4 @@
+import { negotiationSchema, readNegotiation, NEGOTIATION_PREFIX, negotiationText, withoutNegotiation, withNegotiation } from "../../shared/negotiation";
 import { validatePropertyType } from "../lib/property-type-catalog";
 import { z } from "zod";
 import { and, asc, desc, eq, like, or } from "drizzle-orm";
@@ -83,7 +84,7 @@ function decodeStoredFeatures(raw: string | null | undefined) {
       features: list.filter(
         (item) =>
           !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
-          !item.startsWith(REFERRAL_FEATURE_PREFIX),
+          !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith(NEGOTIATION_PREFIX),
       ),
       opportunityPrice: Number.isFinite(amount) && amount > 0 ? amount : null,
       referralNote,
@@ -104,7 +105,7 @@ function encodeStoredFeatures(
       (item) =>
         item.length > 0 &&
         !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
-        !item.startsWith(REFERRAL_FEATURE_PREFIX),
+        !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith(NEGOTIATION_PREFIX),
     );
   if (opportunityPrice && opportunityPrice > 0) {
     clean.push(`${OPPORTUNITY_FEATURE_PREFIX}${opportunityPrice}`);
@@ -129,6 +130,7 @@ const propertyInput = z.object({
   price: z.number().min(0).max(999_999_999),
   opportunityPrice: z.number().min(0).max(999_999_999).nullable().optional(),
   referralNote: z.string().max(600).nullable().optional(),
+  negotiation: negotiationSchema.refine(value => negotiationText(value).length <= 1300, {message:"Resuma as condições de negociação para até 1.300 caracteres no total."}).optional(),
   condoFee: z.number().min(0).max(999_999).nullable().optional(),
   iptu: z.number().min(0).max(999_999).nullable().optional(),
   district: z.string().max(120).default(""),
@@ -182,9 +184,12 @@ function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().to
     parking: input.parking,
     areaUtil: input.areaUtil,
     areaTotal: input.areaTotal ?? null,
-    description: input.description?.trim() || null,
+    description: input.negotiation ? withNegotiation(input.description,input.negotiation) || null : input.description?.trim() || null,
     highlight: input.highlight?.trim() || null,
-    features: encodeStoredFeatures(input.features, input.opportunityPrice, input.referralNote),
+    features: JSON.stringify([
+      ...JSON.parse(encodeStoredFeatures(input.features,input.opportunityPrice,input.referralNote)),
+      ...(input.negotiation && negotiationText(input.negotiation) ? [NEGOTIATION_PREFIX + encodeURIComponent(JSON.stringify(input.negotiation))] : []),
+    ]),
     status: input.status,
     published: input.published ? 1 : 0,
     featured: input.featured ? 1 : 0,
@@ -297,6 +302,7 @@ export const adminProperties = {
           features: JSON.stringify(decoded.features),
           opportunityPrice: decoded.opportunityPrice,
           referralNote: decoded.referralNote,
+          negotiation: readNegotiation(row.features),
           imageCount: own.length,
           cover: (own.find((image) => image.isPrimary === 1) ?? own[0])?.url ?? null,
           /* Eixos novos, informativos para a tela — o `status` antigo segue
@@ -324,6 +330,8 @@ export const adminProperties = {
         features: JSON.stringify(decoded.features),
         opportunityPrice: decoded.opportunityPrice,
         referralNote: decoded.referralNote,
+          negotiation: readNegotiation(row.features),
+          description: withoutNegotiation(row.description,readNegotiation(row.features)),
         images: await loadImages(context.db, row.id),
       };
     }),
@@ -453,7 +461,7 @@ export const adminProperties = {
       if (!existingProperty) throw new ORPCError("NOT_FOUND", {message:"Imóvel não encontrado."});
       await validatePropertyType(context.db, input.type, existingProperty.type);
       const { id, ...rest } = input;
-      const row = toRow(rest as z.infer<typeof propertyInput>);
+      const row = toRow({...rest, negotiation: rest.negotiation ?? readNegotiation(existingProperty.features)} as z.infer<typeof propertyInput>);
       const [clash] = await context.db
         .select({ id: schema.properties.id })
         .from(schema.properties)

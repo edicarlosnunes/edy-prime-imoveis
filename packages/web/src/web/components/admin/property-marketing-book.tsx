@@ -1,3 +1,4 @@
+import { negotiationText } from "../../../shared/negotiation";
 import { propertyPrice } from "../../../shared/property-price";
 import { useEffect, useMemo, useState } from "react";
 import { upload } from "@vercel/blob/client";
@@ -623,7 +624,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-3">
           <label className="block max-w-sm text-xs text-deep"><span className="mb-1 block font-medium">Estilo da capa</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
-          <div className="rounded-[10px] border border-line bg-bone/30 p-3"><div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div><p className="mt-2 text-[11px] leading-relaxed text-muted">{property?.description?.trim() ? shortenDescription(property.description, 340) : "A descrição já existente será usada; este módulo não cria uma segunda descrição."}</p></div>
+          <div className="rounded-[10px] border border-line bg-bone/30 p-3"><div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div><p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-muted">{property?.negotiation && negotiationText(property.negotiation)}{property?.negotiation && negotiationText(property.negotiation) ? "\n\n" : ""}{property?.description?.trim() ? shortenDescription(property.description, 340) : "A descrição já existente será usada; este módulo não cria uma segunda descrição."}</p></div>
           <div className="rounded-[10px] border border-line bg-white p-3">
             <p className="text-xs font-medium text-deep">Ordem oficial do Book</p>
             <ol className="mt-2 space-y-1.5 text-[11px] text-muted">

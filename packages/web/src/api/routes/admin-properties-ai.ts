@@ -1,3 +1,4 @@
+import { negotiationSchema, negotiationText } from "../../shared/negotiation";
 import { listPropertyTypes } from "../lib/property-type-catalog";
 /**
  * Geração de conteúdo comercial do imóvel com IA.
@@ -44,6 +45,7 @@ const typeLabel: Record<string, string> = {
 };
 
 const generateInput = z.object({
+  negotiation: negotiationSchema.optional(),
   purpose: purposeEnum,
   type: typeEnum,
   price: z.number().min(0).max(999_999_999).nullable().optional(),
@@ -71,6 +73,7 @@ const money = (value: number) =>
 /** Ficha textual só com o que existe. Campo vazio simplesmente não aparece. */
 function buildSheet(input: GenerateInput, catalogLabel?: string) {
   const lines: string[] = [];
+  if(input.negotiation) { const conditions=negotiationText(input.negotiation); if(conditions) lines.push(conditions); }
   lines.push(`Tipo de imóvel: ${catalogLabel ?? typeLabel[input.type] ?? "imóvel"}`);
   lines.push(`Finalidade: ${purposeLabel[input.purpose] ?? "venda"}`);
   if (input.district.trim()) lines.push(`Bairro: ${input.district.trim()}`);
@@ -104,6 +107,7 @@ const RULES = `REGRAS ABSOLUTAS (quebrar qualquer uma torna o texto inútil):
 2. Nunca mencione: distância ou proximidade da praia, do mar, do comércio, de escolas ou de qualquer ponto; vista (mar, livre, panorâmica); lazer do condomínio (piscina, academia, salão, churrasqueira, portaria, elevador); mobília ou armários; documentação, escritura, financiamento, FGTS, permuta, entrada, parcelamento; andar, posição solar, estado de conservação, reforma, ano de construção; nome de edifício, rua ou número — EXCETO se estiver textualmente na ficha.
 3. Nunca invente número: não crie metragem, quantidade de dormitórios, suítes, banheiros, vagas, valores ou prazos. Se um número não está na ficha, ele não existe.
 3A. PREÇO: quando existir “Valor de oportunidade”, ele é o valor comercial atual e deve ser priorizado em descrição, WhatsApp e portal. Se mencionar os dois valores, use a forma “de [Valor do imóvel] por [Valor de oportunidade]”. Nunca substitua o valor de oportunidade pelo valor do imóvel. Quando não houver valor de oportunidade, use somente o Valor do imóvel.
+3B. As condições de negociação explicitamente informadas na ficha podem ser mencionadas, inclusive permuta, financiamento e débitos. Nunca invente condições nem some ou desconte valores.
 4. Não use superlativo vazio nem promessa ("o melhor da cidade", "oportunidade única", "imperdível", "não perca"). Não prometa retorno de investimento nem valorização.
 5. Tom: sofisticado, premium e profissional, humano e direto. Português do Brasil. Sem emoji. Sem CAIXA ALTA. Sem hashtag.
 6. Se a ficha tiver poucos dados, escreva textos mais curtos — jamais complete com suposição.

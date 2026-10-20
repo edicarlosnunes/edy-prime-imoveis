@@ -1,3 +1,5 @@
+import { NegotiationFields } from "../../components/admin/negotiation-fields";
+import { EMPTY_NEGOTIATION, type Negotiation } from "../../../shared/negotiation";
 import { usePropertyTypes } from "../../queries/property-types";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -121,6 +123,7 @@ interface FormState {
   ownerId: string;
   /** lembrete interno da origem/indicação deste imóvel */
   referralNote: string;
+  negotiation: Negotiation;
   /** marca d'água desligada só neste imóvel */
   watermarkOff: boolean;
   /** vídeo do imóvel no YouTube — opcional */
@@ -153,6 +156,7 @@ const empty: FormState = {
   featured: false,
   ownerId: "",
   referralNote: "",
+  negotiation: EMPTY_NEGOTIATION,
   watermarkOff: false,
   youtubeUrl: "",
 };
@@ -401,6 +405,7 @@ export function PropertyForm({
       featured: row.featured === 1,
       ownerId: row.ownerId ? String(row.ownerId) : "",
       referralNote: row.referralNote ?? "",
+      negotiation: row.negotiation ?? EMPTY_NEGOTIATION,
       watermarkOff: row.watermarkOff === 1,
       youtubeUrl: row.youtubeUrl ?? "",
     });
@@ -631,6 +636,7 @@ export function PropertyForm({
         type: form.type,
         price: softMoney(form.price),
         opportunityPrice: softMoney(form.opportunityPrice),
+        negotiation: form.negotiation,
         condoFee: softMoney(form.condoFee),
         iptu: softMoney(form.iptu),
         district: form.district.trim(),
@@ -793,6 +799,7 @@ export function PropertyForm({
       featured: form.featured,
       ownerId: resolvedOwnerId ? Number(resolvedOwnerId) : null,
       referralNote: form.referralNote.trim() || null,
+      negotiation: form.negotiation,
       watermarkOff: form.watermarkOff,
       youtubeUrl: form.youtubeUrl.trim() || null,
       images: images.map((image) => ({
@@ -1036,6 +1043,7 @@ export function PropertyForm({
                     <Field label="IPTU"><MoneyInput value={form.iptu} onChange={(next) => set("iptu", next)} placeholder="0,00" /></Field>
                   </div>
                   <p className="text-[11px] text-muted">Digite como preferir — 320000, 320000,00 ou 320.000,00. O valor é formatado ao sair do campo e enviado como número.</p>
+                  <NegotiationFields value={form.negotiation} onChange={next=>set("negotiation",next)} types={typeCatalog.rows.filter(row=>row.active).map(row=>row.label)}/>
                 </>
               )}
 

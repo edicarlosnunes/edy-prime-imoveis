@@ -104,7 +104,7 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     areaUtil: row.areaUtil,
     areaTotal: row.areaTotal,
     description: [row.description, propertyPrice(row).discounted ? `Valor: ${formatPropertyPrice(row)}` : null].filter(Boolean).join("\n\n"),
-    features: parseFeatures(row.features).filter((feature) => !feature.startsWith("__opportunity_price:") && !feature.startsWith("__referral_note:")),
+    features: parseFeatures(row.features).filter((feature) => !feature.startsWith("__opportunity_price:") && !feature.startsWith("__referral_note:") && !feature.startsWith("__negotiation:")),
     status: row.status,
     slug: row.slug ?? propertySlug(row),
     updatedAt: row.updatedAt ?? null,

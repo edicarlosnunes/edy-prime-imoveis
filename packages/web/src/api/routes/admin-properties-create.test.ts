@@ -209,3 +209,11 @@ describe("adminProperties.create blank code", () => {
     ).toThrow();
   });
 });
+test("stores public negotiation separately from price and regular IPTU", async () => {
+  const db = new FakeAdminDb();
+  await createProperty(db, {...baseInput, price:110000, iptu:350, negotiation:{methods:["À vista"],swapTypes:[],cash:"80.000,00",details:"",debtAmount:"30.000,00",debtDetails:"IPTU atrasado",debtResponsibility:"Comprador assume"}});
+  expect(db.propertyValues?.price).toBe(110000);
+  expect(db.propertyValues?.iptu).toBe(350);
+  expect(String(db.propertyValues?.description)).toContain("Débitos informados: R$ 30.000,00");
+  expect(String(db.propertyValues?.features)).toContain("__negotiation:");
+});

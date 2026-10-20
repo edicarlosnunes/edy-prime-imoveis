@@ -1,3 +1,4 @@
+import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
 import { and, desc, eq } from "drizzle-orm";
@@ -26,7 +27,7 @@ function captionFor(property: any, headers: Headers) {
   const site = siteBaseUrl(headers);
   return [
     property.title,
-    property.description ? String(property.description).trim().slice(0, 900) : null,
+    publicationDescription(property.description,property.features) || null,
     property.code ? `Código: ${property.code}` : null,
     property.price > 0 ? `Valor: ${formatPropertyPrice(property)}` : null,
     property.district ? `${property.district} · ${property.city}` : property.city,
