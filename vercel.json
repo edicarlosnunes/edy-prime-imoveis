@@ -47,5 +47,11 @@
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/handler.mjs": {
+      "includeFiles": "api/bin/**",
+      "maxDuration": 300
+    }
+  }
 }

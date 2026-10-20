@@ -1,3 +1,4 @@
+import { normalizeBookAsset } from "../lib/book-video-normalize";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
 import { del } from "@vercel/blob";
@@ -286,6 +287,19 @@ export function registerPropertyVideoRoutes(app: Hono) {
     return c.json({ videos: rows }, 200);
   });
 
+  app.post("/api/admin/property-videos/:propertyId/prepare-book", async c => {
+    if(!await resolveSession(c.req.raw.headers))return c.json({error:"Não autorizado"},401);
+    const id=Number(c.req.param("propertyId"));
+    if(!Number.isSafeInteger(id)||id<=0)return c.json({error:"Imóvel inválido"},400);
+    try {
+      const video=await videoFor(id,"book_complete");if(!video)throw new Error("Gere o vídeo completo antes de preparar o envio.");
+      const db=await ensureTable(),asset=await normalizeBookAsset(db,id,video.url);
+      const changed=await db.update(propertyVideos).set({url:asset.url,pathname:asset.pathname,mime:asset.mime,size:asset.size,durationSeconds:Math.round(asset.duration),fileName:`Book-${id}-30fps.mp4`,updatedAt:new Date()}).where(and(eq(propertyVideos.id,video.id),eq(propertyVideos.url,video.url))).returning({id:propertyVideos.id});
+      if(!changed.length)throw new Error("O vídeo foi alterado durante a preparação. Atualize o cadastro e tente novamente.");
+      return c.json({url:asset.url,message:"Book completo preparado e validado em 30 FPS."});
+    }catch(e){return c.json({error:e instanceof Error ? e.message : "Falha ao preparar o Book"},400);}
+  });
+
   /** Publica o vídeo curto nas integrações Meta já conectadas. */
   app.post("/api/admin/property-videos/:propertyId/publish-meta", async (c) => {
     const user = await resolveSession(c.req.raw.headers);
@@ -500,35 +514,38 @@ export function registerPropertyVideoRoutes(app: Hono) {
       .where(and(eq(propertyVideos.propertyId, propertyId), eq(propertyVideos.kind, body.kind)))
       .limit(1);
 
+    let normalized: Awaited<ReturnType<typeof normalizeBookAsset>> | null = null;
+    try {if(body.kind === "book_complete")normalized=await normalizeBookAsset(db, propertyId, url);}
+    catch(e){return c.json({error:e instanceof Error ? e.message : "Falha ao preparar o Book"},400);}
     const now = new Date();
     await db
       .insert(propertyVideos)
       .values({
         propertyId,
         kind: body.kind,
-        url,
-        pathname: String(body.pathname ?? "").trim() || null,
-        fileName: String(body.fileName ?? "").trim() || null,
-        mime: mime || null,
-        size: Math.round(size),
-        durationSeconds: duration || null,
+        url: normalized?.url ?? url,
+        pathname: normalized?.pathname ?? (String(body.pathname ?? "").trim() || null),
+        fileName: normalized ? `Book-${propertyId}-30fps.mp4` : String(body.fileName ?? "").trim() || null,
+        mime: normalized?.mime ?? (mime || null),
+        size: normalized?.size ?? Math.round(size),
+        durationSeconds: normalized ? Math.round(normalized.duration) : duration || null,
         createdAt: now,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [propertyVideos.propertyId, propertyVideos.kind],
         set: {
-          url,
-          pathname: String(body.pathname ?? "").trim() || null,
-          fileName: String(body.fileName ?? "").trim() || null,
-          mime: mime || null,
-          size: Math.round(size),
-          durationSeconds: duration || null,
+          url: normalized?.url ?? url,
+          pathname: normalized?.pathname ?? (String(body.pathname ?? "").trim() || null),
+          fileName: normalized ? `Book-${propertyId}-30fps.mp4` : String(body.fileName ?? "").trim() || null,
+          mime: normalized?.mime ?? (mime || null),
+          size: normalized?.size ?? Math.round(size),
+          durationSeconds: normalized ? Math.round(normalized.duration) : duration || null,
           updatedAt: now,
         },
       });
 
-    if (previous?.url && previous.url !== url) {
+    if (body.kind !== "book_complete" && previous?.url && previous.url !== url) {
       try {
         await del(previous.url);
       } catch (caught) {

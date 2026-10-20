@@ -1,3 +1,4 @@
+import { refreshTikTokAttempt } from "../lib/tiktok-post-status";
 import type { Hono } from "hono";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb, randomHex, resolveSession } from "../lib/auth";
@@ -76,8 +77,8 @@ export function registerMetricoolRoutes(app:Hono) {
     if(!await resolveSession(c.req.raw.headers))return c.json({error:"Sessão expirada"},401);
     const id=Number(c.req.param("propertyId"));if(!Number.isInteger(id)||id<=0)return c.json({error:"Imóvel inválido"},400);
     const db=await getDb();await ensure(db);
-    const rows=await db.all(sql`SELECT state,message,planner_url FROM crm_tiktok_posts WHERE property_id=${id}`) as {state:string;message:string|null;planner_url:string|null}[];
-    return c.json({result:rows[0] ?? null});
+    const result=await refreshTikTokAttempt(db,id);
+    return c.json({result:result ? {state:result.state,message:result.message,planner_url:result.planner_url} : null});
   });
   app.post("/api/admin/property-book/:propertyId/publish-tiktok",async c=>{
     if(!await resolveSession(c.req.raw.headers))return c.json({error:"Sessão expirada"},401);
@@ -92,12 +93,18 @@ export function registerMetricoolRoutes(app:Hono) {
       if(!["video/mp4","video/quicktime"].includes(video.mime ?? ""))throw new Error("O vídeo salvo está em WebM. O TikTok precisa de MP4 ou MOV. Gere novamente em um navegador com gravação MP4 ou salve o Book em MP4 antes de enviar.");
       const asset=new URL(video.url);
       if(asset.protocol !== "https:" || !asset.hostname.endsWith(".blob.vercel-storage.com"))throw new Error("Arquivo do vídeo não está no armazenamento do CRM.");
+      const previous=await refreshTikTokAttempt(db,id,true);
+      if(previous && previous.state !== "rejected")throw new Error(previous.message || "Este imóvel já tem uma solicitação de envio ao TikTok. Confira o planejamento no Metricool antes de repetir.");
+      if(previous?.state === "rejected" && previous.video_url === video.url)throw new Error("O vídeo anterior foi recusado. Prepare a versão corrigida em 30 FPS antes de reenviar.");
+      await db.run(sql`CREATE TABLE IF NOT EXISTS crm_book_video_formats (source_url TEXT PRIMARY KEY, property_id INTEGER NOT NULL, output_url TEXT NOT NULL, pathname TEXT NOT NULL, size INTEGER NOT NULL, duration REAL NOT NULL)`);
+      const verified=await db.all(sql`SELECT output_url FROM crm_book_video_formats WHERE property_id=${id} AND output_url=${video.url} LIMIT 1`);
+      if(!verified.length)throw new Error("Prepare o Book completo em 30 FPS antes de enviar ao TikTok.");
       const current=await readConfig(db,METRICOOL_KEY);
       if(current.row?.status !== "conectado" || current.row.enabled !== 1 || !current.config.brandId)throw new Error("Conecte e teste o Metricool em Integrações → TikTok.");
       const mcp=await openMetricool(await metricoolToken(db));
       const brands=brandList(await mcp.call("get_brand_settings",{}));
       if(!brands.some(b=>b.id === current.config.brandId && b.username === current.config.username))throw new Error("O perfil TikTok vinculado mudou. Teste a conexão antes de publicar.");
-      const lock=await db.all(sql`INSERT INTO crm_tiktok_posts(property_id,video_url,state,created_at) VALUES(${id},${video.url},'sending',${Date.now()}) ON CONFLICT DO NOTHING RETURNING property_id`) as unknown[];
+      const lock=await db.all(sql`INSERT INTO crm_tiktok_posts(property_id,video_url,state,created_at) VALUES(${id},${video.url},'sending',${Date.now()}) ON CONFLICT(property_id) DO UPDATE SET video_url=excluded.video_url,state='sending',message=NULL,external_id=NULL,planner_url=NULL,created_at=excluded.created_at WHERE crm_tiktok_posts.state='rejected' RETURNING property_id`) as unknown[];
       if(!lock.length)throw new Error("Este imóvel já tem uma solicitação de envio ao TikTok. Confira o planejamento no Metricool antes de repetir.");
       claimed=true;
       const caption=[property.title,`Código: ${property.code}`,formatPropertyPrice(property),`${property.district} · ${property.city}`,publicationDescription(property.description,property.features,1000),`Mais informações: https://www.esantoscorretor.com.br/imovel/${property.slug ?? ""}`].filter(Boolean).join("\n").slice(0,2100);

@@ -1,6 +1,6 @@
 // Bundles the Vercel serverless API entry into a dependency-free ESM file.
 // Run with: bun run packages/web/vercel-api/build.ts
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, copyFile, chmod } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 const webRoot = resolve(import.meta.dir, "..");
@@ -40,4 +40,16 @@ for (const target of targets) {
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, code, "utf8");
   console.log(`wrote ${target} (${(code.length / 1024).toFixed(0)} KB)`);
+}
+
+// ffmpeg-static is an install-time dependency; keep the executable next to the API.
+const ffmpeg = (await import("ffmpeg-static")).default;
+if (!ffmpeg) throw new Error("ffmpeg-static não está disponível para esta plataforma");
+for (const root of [webRoot, repoRoot]) {
+  const binary = resolve(root, "api/bin/ffmpeg");
+  await mkdir(dirname(binary), { recursive: true });
+  await copyFile(ffmpeg, binary);
+  await chmod(binary, 0o755);
+  await copyFile(resolve(dirname(ffmpeg), "LICENSE"), resolve(dirname(binary), "LICENSE"));
+  await copyFile(resolve(dirname(ffmpeg), "ffmpeg.README"), resolve(dirname(binary), "ffmpeg.README"));
 }

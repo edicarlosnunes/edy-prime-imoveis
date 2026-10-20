@@ -74,5 +74,11 @@
       "destination": "/index.html"
     }
   ],
-  "buildCommand": "bun vercel-api/build.ts && bunx vite build"
+  "buildCommand": "bun vercel-api/build.ts && bunx vite build",
+  "functions": {
+    "api/handler.mjs": {
+      "includeFiles": "api/bin/**",
+      "maxDuration": 300
+    }
+  }
 }

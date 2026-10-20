@@ -18,7 +18,7 @@ export async function recordBookVideo(options: {
   video.crossOrigin = "anonymous";
   video.preload = "auto";
   video.playsInline = true;
-  const stream = canvas.captureStream(25);
+  const stream = canvas.captureStream(30);
   const audio = new AudioContext();
   let timer: ReturnType<typeof setInterval> | undefined;
   let recorder: MediaRecorder | undefined;
@@ -67,7 +67,7 @@ export async function recordBookVideo(options: {
       recorder!.onstop = () => resolve(new Blob(chunks, { type: mime.split(";")[0] }));
     });
     draw();
-    timer = setInterval(draw, 40);
+    timer = setInterval(draw, 1000 / 30);
     recorder.start(1000);
     options.onProgress("Montando a capa… mantenha esta aba aberta.");
     await wait(3000);

@@ -150,6 +150,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [downloading, setDownloading] = useState(false);
   const bookSavePromise = useRef<Promise<string> | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [tiktokStatusVersion, setTiktokStatusVersion] = useState(0);
   const [youtubeProgress, setYoutubeProgress] = useState("");
   const [generatingVideo, setGeneratingVideo] = useState(false);
   const [videoProgress, setVideoProgress] = useState("");
@@ -218,10 +219,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     void fetch(`/api/admin/property-book/${propertyId}/tiktok-status`,{credentials:"same-origin"}).then(async response => response.ok ? response.json() : null).then(data => {
       if(!alive || !data?.result) return;
       const result=data.result;
-      setChannelResults(current=>({...current,tiktok:{status:result.state === "scheduled" ? "scheduled" : "error",message:result.message || "Envio ao TikTok em conferência. Verifique o Metricool antes de repetir."}}));
+      setChannelResults(current=>({...current,tiktok:{status:result.state === "published" ? "success" : result.state === "scheduled" ? "scheduled" : "error",message:result.message || "Envio ao TikTok em conferência. Verifique o Metricool antes de repetir."}}));
     }).catch(()=>{});
     return ()=>{alive=false;};
-  },[propertyId]);
+  },[propertyId,tiktokStatusVersion]);
 
   const property = detail.data;
   const images = property?.images ?? [];
@@ -507,14 +508,18 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       multipart: true, contentType: blob.type,
       onUploadProgress: ({ percentage }) => onProgress(`Salvando no CRM: ${Math.round(percentage)}%`),
     });
+    onProgress("Ajustando e validando o vídeo completo em 30 FPS…");
     const response = await fetch("/api/admin/property-videos/attach", {
       method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" },
       body: JSON.stringify({ propertyId, kind: "book_complete", url: asset.url, pathname: asset.pathname, fileName, mime: blob.type, size: blob.size }),
     });
     if (!response.ok) throw new Error(await responseError(response, "Vídeo gerado, mas não foi possível salvá-lo no CRM. Tente salvar novamente antes de sair."));
-    setSavedVideoUrl(asset.url);
+    const attached = await response.json() as { video?: { url?: string } };
+    const finalUrl = attached.video?.url;
+    if (!finalUrl) throw new Error("O CRM não confirmou o vídeo preparado.");
+    setSavedVideoUrl(finalUrl);
     setPendingVideoSave(false);
-    return asset.url;
+    return finalUrl;
   }
 
   async function retrySaveCompleteVideo() {
@@ -543,9 +548,14 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   }
 
   async function ensureSavedBookVideo() {
-    if (!pendingVideoSave && savedVideoUrl) return savedVideoUrl;
     if (bookSavePromise.current) return bookSavePromise.current;
     bookSavePromise.current = (async()=>{
+      if (!pendingVideoSave && savedVideoUrl) {
+        setYoutubeProgress("Preparando e conferindo o vídeo completo em 30 FPS…");
+        const response=await fetch(`/api/admin/property-videos/${propertyId}/prepare-book`,{method:"POST",credentials:"same-origin"});
+        if(!response.ok)throw new Error(await responseError(response,"Não foi possível preparar o vídeo."));
+        const prepared=await response.json() as {url:string};setSavedVideoUrl(prepared.url);return prepared.url;
+      }
       const blob=await buildCompleteVideo(setYoutubeProgress);
       return saveCompleteVideo(blob,setYoutubeProgress);
     })();
@@ -754,6 +764,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               return <div key={key} className={`rounded-[7px] border p-3 text-xs ${result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
                 <strong>{label} — {result.status === "success" ? "publicado" : result.status === "scheduled" ? "agendado no Metricool" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
                 <p className="mt-1">{result.message}</p>
+                {key === "tiktok" && <button type="button" className="mt-2 underline" disabled={publishing} onClick={() => setTiktokStatusVersion(value => value + 1)}>Atualizar resultado no Metricool</button>}
                 {result.at && <p className="mt-1 text-[10px]">Conferido em {new Date(result.at).toLocaleString("pt-BR")}</p>}
                 {result.checks && <ul className="mt-2 space-y-2">{result.checks.map((check, index) => <li key={index}><strong>{check.ok ? "✅" : "⚠️"} {check.label}</strong><p>{check.detail}</p></li>)}</ul>}
               </div>;

@@ -75,3 +75,7 @@ packages/mobile/scripts/*
 !packages/web/scripts/
 packages/web/scripts/*
 !packages/web/scripts/migrate.ts
+
+# Generated video converter bundled by the API build
+api/bin/
+packages/web/api/bin/
