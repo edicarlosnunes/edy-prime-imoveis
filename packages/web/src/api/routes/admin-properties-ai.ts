@@ -1,3 +1,4 @@
+import { listPropertyTypes } from "../lib/property-type-catalog";
 /**
  * Geração de conteúdo comercial do imóvel com IA.
  *
@@ -17,22 +18,7 @@ import { gateway, gatewayConfigured } from "../agent/gateway";
 import { FALLBACK_MODEL } from "../agent/model";
 
 const purposeEnum = z.enum(["venda", "locacao", "venda_locacao"]);
-const typeEnum = z.enum([
-  "apartamento",
-  "casa",
-  "cobertura",
-  "sobrado",
-  "terreno",
-  "lote",
-  "sitio",
-  "fazenda",
-  "gleba",
-  "loteamento",
-  "area",
-  "sala_comercial",
-  "chacara",
-  "outro",
-]);
+const typeEnum = z.string().min(1).max(80);
 
 const purposeLabel: Record<string, string> = {
   venda: "venda",
@@ -83,9 +69,9 @@ const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 /** Ficha textual só com o que existe. Campo vazio simplesmente não aparece. */
-function buildSheet(input: GenerateInput) {
+function buildSheet(input: GenerateInput, catalogLabel?: string) {
   const lines: string[] = [];
-  lines.push(`Tipo de imóvel: ${typeLabel[input.type] ?? "imóvel"}`);
+  lines.push(`Tipo de imóvel: ${catalogLabel ?? typeLabel[input.type] ?? "imóvel"}`);
   lines.push(`Finalidade: ${purposeLabel[input.purpose] ?? "venda"}`);
   if (input.district.trim()) lines.push(`Bairro: ${input.district.trim()}`);
   if (input.city.trim()) lines.push(`Cidade: ${input.city.trim()}`);
@@ -186,7 +172,7 @@ export const adminPropertyContent = {
    * Gera os textos comerciais do imóvel. Não grava nada: o retorno vai para
    * revisão do administrador, que decide aplicar campo por campo.
    */
-  generate: adminBase.input(generateInput).handler(async ({ input }) => {
+  generate: adminBase.input(generateInput).handler(async ({ input, context }) => {
     const missing = missingFields(input);
     if (missing.length > 0) {
       throw new ORPCError("BAD_REQUEST", {
@@ -199,7 +185,8 @@ export const adminPropertyContent = {
       });
     }
 
-    const sheet = buildSheet(input);
+    const catalog = await listPropertyTypes(context.db);
+    const sheet = buildSheet(input, catalog.find(row=>row.key===input.type)?.label);
     const prompt = [
       "Você redige anúncios de imóveis para E. Santos, Gestor Imobiliário (CRECI 134718-F), em Praia Grande (SP), com foco em médio e alto padrão.",
       RULES,

@@ -1,3 +1,4 @@
+import { listPropertyTypes, savePropertyType } from "../lib/property-type-catalog";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { adminBase } from "../lib/admin-base";
@@ -29,6 +30,10 @@ const settingsInput = z.object({
 });
 
 export const adminSettings = {
+  propertyTypes: adminBase.handler(({context}) => listPropertyTypes(context.db)),
+  savePropertyType: adminBase.input(z.object({
+    key: z.string().max(80).optional(), label: z.string().min(1).max(80), active: z.boolean(),
+  })).handler(({context,input}) => savePropertyType(context.db,input)),
   get: adminBase.handler(async ({ context }) => {
     const [row] = await context.db.select().from(schema.settings).limit(1);
     if (!row) return null;

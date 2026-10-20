@@ -1,3 +1,4 @@
+import { usePropertyTypes } from "../../queries/property-types";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { Eye, EyeOff, Pencil, Plus, Star, Trash2 } from "lucide-react";
@@ -17,7 +18,6 @@ import {
   labelOf,
   propertyStatusLabel,
   propertyStatuses,
-  propertyTypeLabel,
   purposeLabel,
 } from "../../components/admin/labels";
 import { errorMessage } from "../../lib/admin-session";
@@ -58,6 +58,7 @@ export default function AdminProperties() {
 }
 
 function Content() {
+  const { labels: propertyTypeLabel } = usePropertyTypes();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
   const [editing, setEditing] = useState<number | "new" | null>(null);

@@ -1,3 +1,4 @@
+import { DEFAULT_PROPERTY_TYPES } from "../../shared/property-types";
 import { describe, expect, test } from "bun:test";
 import * as schema from "../database/schema";
 import type { AdminDb } from "../lib/admin-base";
@@ -43,7 +44,8 @@ class FakeAdminDb {
 
   run = async () => {};
 
-  all = async () => {
+  all = async (query: unknown) => {
+    if (JSON.stringify(query).includes("crm_property_types")) return DEFAULT_PROPERTY_TYPES.map(row=>({...row,active:1}));
     this.serialAllocations++;
     this.serialNext++;
     return [{ next: this.serialNext }];

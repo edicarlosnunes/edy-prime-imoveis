@@ -1,3 +1,4 @@
+import { listPropertyTypes } from "../lib/property-type-catalog";
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
@@ -9,6 +10,7 @@ import { PUBLIC_IDENTITY } from "../lib/public-identity";
  * nada quebra — os textos estáticos continuam valendo.
  */
 export const siteConfig = {
+  propertyTypes: base.handler(async () => listPropertyTypes(await getDb())),
   get: base.handler(async () => {
     try {
       const db = await getDb();

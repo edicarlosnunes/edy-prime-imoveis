@@ -1173,3 +1173,11 @@ export const auditLog = sqliteTable(
   },
   (t) => [index("audit_log_created_idx").on(t.createdAt)],
 );
+
+/** Stable keys keep historical property types and serials intact when renamed. */
+export const propertyTypesCatalog = sqliteTable("crm_property_types", {
+  key: text("key").primaryKey(),
+  label: text("label").notNull(),
+  normalizedLabel: text("normalized_label").notNull().unique(),
+  active: integer("active").notNull().default(1),
+});

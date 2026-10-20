@@ -1,3 +1,4 @@
+import { validatePropertyType } from "../lib/property-type-catalog";
 import { z } from "zod";
 import { and, asc, desc, eq, like, or } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
@@ -12,22 +13,7 @@ import { planPropertyFromCapture } from "../lib/capture-conversion";
 
 const statusEnum = z.enum(["disponivel", "reservado", "vendido", "alugado"]);
 const purposeEnum = z.enum(["venda", "locacao", "venda_locacao"]);
-const typeEnum = z.enum([
-  "apartamento",
-  "casa",
-  "cobertura",
-  "sobrado",
-  "terreno",
-  "lote",
-  "sitio",
-  "fazenda",
-  "gleba",
-  "loteamento",
-  "area",
-  "sala_comercial",
-  "chacara",
-  "outro",
-]);
+const typeEnum = z.string().min(1).max(80);
 
 const checklistAnswerEnum = z.enum(["sim", "nao", "nao_sabe", "na"]);
 const docCategoryEnum = z.enum([
@@ -345,6 +331,7 @@ export const adminProperties = {
   create: adminBase
     .input(createPropertyInput)
     .handler(async ({ input, context }) => {
+      await validatePropertyType(context.db, input.type);
       const requestedCode = input.code.trim().toUpperCase();
       const codeIsBlank = requestedCode.length === 0;
       if (!codeIsBlank) await ensurePropertyCodeAvailable(context.db, requestedCode);
@@ -462,6 +449,9 @@ export const adminProperties = {
   update: adminBase
     .input(propertyInput.extend({ id: z.number().int() }))
     .handler(async ({ input, context }) => {
+      const [existingProperty] = await context.db.select().from(schema.properties).where(eq(schema.properties.id,input.id)).limit(1);
+      if (!existingProperty) throw new ORPCError("NOT_FOUND", {message:"Imóvel não encontrado."});
+      await validatePropertyType(context.db, input.type, existingProperty.type);
       const { id, ...rest } = input;
       const row = toRow(rest as z.infer<typeof propertyInput>);
       const [clash] = await context.db

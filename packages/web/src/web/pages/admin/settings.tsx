@@ -1,3 +1,4 @@
+import { PropertyTypesCard } from "../../components/admin/property-types-card";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AdminGuard } from "../../components/admin/guard";
@@ -249,6 +250,7 @@ function Content() {
           </form>
         </Card>
 
+        <PropertyTypesCard />
         <StreetsCard />
 
         <Card title="Senha administrativa">

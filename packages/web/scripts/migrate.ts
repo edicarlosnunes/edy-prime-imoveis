@@ -13,6 +13,9 @@ const db = import.meta.main && url
   : null;
 
 const statements = [
+  `CREATE TABLE IF NOT EXISTS crm_property_types (
+    key TEXT PRIMARY KEY NOT NULL, label TEXT NOT NULL, normalized_label TEXT UNIQUE NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1)`,
   `CREATE TABLE IF NOT EXISTS admin_users (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     email TEXT NOT NULL UNIQUE,

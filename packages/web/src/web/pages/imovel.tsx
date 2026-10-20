@@ -1,3 +1,4 @@
+import { usePropertyTypes } from "../queries/property-types";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 import {
@@ -162,6 +163,7 @@ function ContactForm({ code, title }: { code: string; title: string }) {
 }
 
 function PropertyPage() {
+  const { labels: catalogLabels } = usePropertyTypes();
   const params = useParams();
   const slug = params.slug ?? "";
   const query = usePropertyDetail(slug);
@@ -316,7 +318,7 @@ function PropertyPage() {
                 )}
 
                 <p data-t="caption" className="label-xs mt-8 text-brass">
-                  {typeLabel[property.type] ?? "Imóvel"} · {purposeLabel[property.purpose] ?? property.purpose} ·{" "}
+                  {catalogLabels[property.type] ?? typeLabel[property.type] ?? "Imóvel"} · {purposeLabel[property.purpose] ?? property.purpose} ·{" "}
                   {property.code}
                 </p>
                 <h1 data-t="heading" className="display mt-3 text-[calc(clamp(2rem,3.4vw,2.9rem))] leading-tight text-deep">

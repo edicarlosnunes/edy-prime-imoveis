@@ -1,3 +1,4 @@
+import { DEFAULT_PROPERTY_TYPES } from "../../../shared/property-types";
 /** Rótulos em português compartilhados pelas telas do painel. */
 
 export const LEAD_STAGES = [
@@ -47,39 +48,8 @@ export const purposeLabel: Record<string, string> = {
   venda_locacao: "Venda e locação",
 };
 
-export const propertyTypes = [
-  "apartamento",
-  "casa",
-  "cobertura",
-  "sobrado",
-  "terreno",
-  "lote",
-  "sitio",
-  "fazenda",
-  "gleba",
-  "loteamento",
-  "area",
-  "sala_comercial",
-  "chacara",
-  "outro",
-] as const;
-
-export const propertyTypeLabel: Record<string, string> = {
-  apartamento: "Apartamento",
-  casa: "Casa",
-  cobertura: "Cobertura",
-  sobrado: "Sobrado",
-  terreno: "Terreno",
-  lote: "Lote",
-  sitio: "Sítio",
-  fazenda: "Fazenda",
-  gleba: "Gleba",
-  loteamento: "Loteamento",
-  area: "Área",
-  sala_comercial: "Sala comercial",
-  chacara: "Chácara",
-  outro: "Outro",
-};
+export const propertyTypes = DEFAULT_PROPERTY_TYPES.map(row => row.key);
+export const propertyTypeLabel: Record<string,string> = Object.fromEntries(DEFAULT_PROPERTY_TYPES.map(row => [row.key,row.label]));
 
 export const taskTypes = ["visita", "retorno", "reuniao", "proposta", "follow_up", "outro"] as const;
 

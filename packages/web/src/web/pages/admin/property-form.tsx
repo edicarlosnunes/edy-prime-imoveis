@@ -1,3 +1,4 @@
+import { usePropertyTypes } from "../../queries/property-types";
 import { useEffect, useMemo, useState } from "react";
 import {
   Banknote,
@@ -30,8 +31,6 @@ import {
   captureStatuses,
   propertyStatusLabel,
   propertyStatuses,
-  propertyTypeLabel,
-  propertyTypes,
   purposeLabel,
   purposes,
 } from "../../components/admin/labels";
@@ -98,7 +97,7 @@ interface FormState {
   code: string;
   title: string;
   purpose: (typeof purposes)[number];
-  type: (typeof propertyTypes)[number];
+  type: string;
   /** texto em padrão BR — convertido com parseMoneyInput ao salvar */
   price: string;
   opportunityPrice: string;
@@ -194,6 +193,9 @@ export function PropertyForm({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
+  const typeCatalog = usePropertyTypes();
+  const propertyTypeLabel = typeCatalog.labels;
+  const typeOptions = typeCatalog.rows.filter(row => row.active || (propertyId !== null && row.key === form.type));
   const [guidedCreate] = useState(propertyId === null);
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [section, setSection] = useState<string>("basico");
@@ -428,9 +430,7 @@ export function PropertyForm({
       purpose: purposes.includes(row.intention as FormState["purpose"])
         ? (row.intention as FormState["purpose"])
         : current.purpose,
-      type: propertyTypes.includes(row.propertyType as FormState["type"])
-        ? (row.propertyType as FormState["type"])
-        : current.type,
+      type: row.propertyType || current.type,
       price: current.price || (price === null ? "" : formatMoneyInput(price)),
       /* CÓDIGO do imóvel = serial que a captação já emitiu (o MESMO impresso na
          Ficha Técnica e na Autorização). Nada é gerado aqui e nada é
@@ -886,7 +886,7 @@ export function PropertyForm({
         <PropertyFormHeader
           isNew={propertyId === null}
           code={form.code}
-          typeLabel={propertyTypeLabel[form.type] ?? ""}
+          typeLabel={propertyTypeLabel[form.type] ?? form.type}
           district={form.district}
           statusLabel={propertyStatusLabel[form.status] ?? ""}
           ownerLinked={form.ownerId !== ""}
@@ -961,11 +961,9 @@ export function PropertyForm({
                         value={form.type}
                         onChange={(e) => set("type", e.target.value as FormState["type"])}
                       >
-                        {propertyTypes.map((value) => (
-                          <option key={value} value={value}>
-                            {propertyTypeLabel[value]}
-                          </option>
-                        ))}
+                        <option value="" disabled>Selecione o tipo</option>
+                        {!typeOptions.some(row => row.key === form.type) && form.type && <option value={form.type} disabled>{propertyTypeLabel[form.type] ?? form.type} (indisponível)</option>}
+                        {typeOptions.map(row => <option key={row.key} value={row.key}>{row.label}{row.active ? "" : " (desativado)"}</option>)}
                       </Select>
                     </Field>
                   </div>
