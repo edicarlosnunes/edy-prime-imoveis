@@ -1,5 +1,5 @@
 /**
- * Documentação inteligente + revalidação de 4 meses (V2).
+ * Documentação inteligente + revalidação de 90 dias (V2).
  *
  * Regras que este arquivo protege:
  * - documento RECEBIDO não vira REGULAR sozinho — status é sempre explícito;
@@ -8,6 +8,8 @@
  *   site público e mexeria em dado existente) — só grava datas e histórico;
  * - o ciclo nasce de `portfolio_entry_at`, nunca do Radar ou pré-captação.
  */
+import { configureReview, reviewSettings, reviewChannelReadiness } from "../lib/property-review";
+import { reviewScheduleSchema } from "../../shared/revalidation";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
@@ -49,27 +51,7 @@ const OUTCOMES = [
 
 type Outcome = (typeof OUTCOMES)[number];
 
-const CYCLE_MONTHS = 4;
 const CLOSING: Outcome[] = ["vendido", "nao_deseja_vender"];
-
-/** Soma meses preservando o fim de mês (31/10 + 4 = 28/02). */
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(date.getTime());
-  const targetDay = result.getDate();
-  result.setDate(1);
-  result.setMonth(result.getMonth() + months);
-  const lastDay = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
-  result.setDate(Math.min(targetDay, lastDay));
-  return result;
-}
-
-/** Mesma regra da lib do front (web/lib/property-revalidation.ts). */
-function nextDueFor(outcome: Outcome, at: Date): Date | null {
-  if (CLOSING.includes(outcome)) return null;
-  if (outcome === "retornar_depois") return addMonths(at, 2);
-  if (outcome === "sem_resposta") return new Date(at.getTime() + 15 * 86_400_000);
-  return addMonths(at, CYCLE_MONTHS);
-}
 
 async function ensureProperty(
   db: Awaited<ReturnType<typeof import("../lib/auth").getDb>>,
@@ -85,6 +67,7 @@ async function ensureProperty(
 }
 
 export const adminPropertyDocs = {
+  reviewChannel: adminBase.handler(async ({context}) => reviewChannelReadiness(context.db)),
   /* ------------------------------------------------------------ leitura */
 
   /** Checklist + documentos + revalidação de um imóvel. */
@@ -135,6 +118,7 @@ export const adminPropertyDocs = {
           hasFinanciamento: property.hasFinanciamento,
           hasAluguel: property.hasAluguel,
         },
+        review: await reviewSettings(context.db, input.propertyId),
         revalidation: {
           status: property.status,
           portfolioEntryAt: property.portfolioEntryAt,
@@ -363,13 +347,14 @@ export const adminPropertyDocs = {
 
   /* -------------------------------------------------------- carteira */
 
-  /** Define a entrada na carteira — origem do ciclo de 4 meses. */
+  /** Define a entrada na carteira — origem do ciclo de 90 dias. */
   setPortfolioEntry: adminBase
     .input(
       z.object({
         propertyId: z.number().int().positive(),
         /** ISO date (yyyy-mm-dd). null limpa a data. */
         date: z.string().max(30).nullable(),
+        schedule: reviewScheduleSchema.optional(),
       }),
     )
     .handler(async ({ input, context }) => {
@@ -393,7 +378,8 @@ export const adminPropertyDocs = {
         throw new ORPCError("BAD_REQUEST", { message: "Data inválida" });
       }
 
-      const next = addMonths(entry, CYCLE_MONTHS);
+      const current = await reviewSettings(context.db, input.propertyId);
+      const next = await configureReview(context.db, input.propertyId, input.schedule ?? current.schedule, entry);
       await context.db
         .update(schema.properties)
         .set({ portfolioEntryAt: entry, nextRevalidationAt: next, updatedAt: new Date() })
@@ -423,8 +409,13 @@ export const adminPropertyDocs = {
     .handler(async ({ input, context }) => {
       const property = await ensureProperty(context.db, input.propertyId);
       const now = new Date();
-      const nextDue = nextDueFor(input.outcome, now);
+      const current = await reviewSettings(context.db, input.propertyId);
+      const nextDue = CLOSING.includes(input.outcome) ? null : await configureReview(context.db, input.propertyId, current.schedule.interval === "custom" ? {interval:"custom",date:new Date(now.getTime()+current.repeatDays*86400000).toISOString().slice(0,10)} : current.schedule, now);
 
+      if (CLOSING.includes(input.outcome)) {
+        const {sql} = await import("drizzle-orm");
+        await context.db.run(sql`UPDATE crm_property_reviews SET outcome=${input.outcome},notified=1 WHERE property_id=${input.propertyId}`);
+      }
       await context.db.insert(schema.propertyRevalidations).values({
         propertyId: input.propertyId,
         outcome: input.outcome,

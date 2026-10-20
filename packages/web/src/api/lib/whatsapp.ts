@@ -160,6 +160,8 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
             id?: string;
             type?: string;
             text?: { body?: string };
+            button?: {text?:string;payload?:string};
+            interactive?: {button_reply?:{title?:string;id?:string}};
             image?: { id?: string; mime_type?: string; caption?: string };
           }[];
         };
@@ -174,8 +176,10 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
       const selfPhoneId = (value?.metadata?.phone_number_id ?? "").trim();
       for (const message of value?.messages ?? []) {
         const isText = message.type ? message.type === "text" : Boolean(message.text?.body);
+        const buttonText=message.button?.text ?? message.interactive?.button_reply?.title;
+        const isReviewButton=Boolean(buttonText && /^(sim|não|nao)$/i.test(buttonText));
         const isImage = message.type === "image" && Boolean(message.image?.id);
-        if ((!isText && !isImage) || !message.from) continue;
+        if ((!isText && !isImage && !isReviewButton) || !message.from) continue;
         /* Anti-loop: nada que saiu do nosso próprio número volta como cliente. */
         const from = onlyDigits(message.from);
         if (selfPhone && from === selfPhone) continue;
@@ -183,7 +187,7 @@ export function parseWhatsappWebhook(payload: unknown): IncomingWhatsapp[] {
         out.push({
           from: message.from,
           name: contactName,
-          text: isImage ? "[imagem]" : normalizeWhatsappRoleText(message.text?.body),
+          text: isImage ? "[imagem]" : normalizeWhatsappRoleText(isReviewButton ? buttonText : message.text?.body),
           messageId: message.id ?? null,
           mediaId: isImage ? (message.image?.id ?? null) : null,
           mediaMime: isImage ? (message.image?.mime_type ?? null) : null,

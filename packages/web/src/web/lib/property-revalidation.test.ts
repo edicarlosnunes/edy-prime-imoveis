@@ -28,13 +28,13 @@ describe("addMonths — soma preservando fim de mês", () => {
   });
 });
 
-describe("ciclo de 4 meses", () => {
-  test("o ciclo é de 4 meses", () => {
-    expect(REVALIDATION_CYCLE_MONTHS).toBe(4);
+describe("ciclo padrão de 90 dias", () => {
+  test("o ciclo nominal é de três meses e o padrão conta 90 dias", () => {
+    expect(REVALIDATION_CYCLE_MONTHS).toBe(3);
   });
 
   test("nextRevalidationFrom soma exatamente o ciclo", () => {
-    expect(nextRevalidationFrom(new Date(2026, 2, 1))).toEqual(new Date(2026, 6, 1));
+    expect(nextRevalidationFrom(new Date(2026, 2, 1))).toEqual(new Date(new Date(2026, 2, 1).getTime() + 90*86400000));
   });
 });
 
@@ -96,7 +96,7 @@ describe("revalidationView", () => {
       now,
     );
     expect(view.state).toBe("em_dia");
-    expect(view.dueAt).toEqual(new Date(2026, 11, 1)); // 01/12/2026
+    expect(view.dueAt).toEqual(new Date(new Date(2026, 7, 1).getTime() + 90*86400000)); // 01/12/2026
   });
 
   test("passou de 4 meses sem revalidar: vencida", () => {
@@ -164,15 +164,15 @@ describe("revalidationView", () => {
 describe("applyOutcome", () => {
   const at = new Date(2026, 8, 3);
 
-  test("ainda disponível reinicia ciclo cheio de 4 meses", () => {
+  test("ainda disponível reinicia ciclo cheio de 90 dias", () => {
     const result = applyOutcome("disponivel", at);
     expect(result.lastRevalidationAt).toEqual(at);
-    expect(result.nextRevalidationAt).toEqual(new Date(2027, 0, 3));
+    expect(result.nextRevalidationAt).toEqual(new Date(at.getTime() + 90*86400000));
   });
 
   test("alterou condições também reinicia o ciclo", () => {
     expect(applyOutcome("alterou_condicoes", at).nextRevalidationAt).toEqual(
-      new Date(2027, 0, 3),
+      new Date(at.getTime() + 90*86400000),
     );
   });
 

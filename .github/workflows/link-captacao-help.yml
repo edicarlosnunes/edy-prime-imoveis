@@ -24,3 +24,12 @@ jobs:
           OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$OIDC_RESPONSE")"
 
           curl --fail --silent --show-error             -H "Authorization: Bearer $OIDC_TOKEN"             "https://www.esantoscorretor.com.br/api/cron/link-captacao-help"
+
+      - name: Revalidar disponibilidade dos imoveis
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          REVIEW_OIDC_RESPONSE="$(curl --fail --silent --show-error -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=edy-prime-link-captacao-help")"
+          REVIEW_OIDC_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$REVIEW_OIDC_RESPONSE")"
+          curl --fail --silent --show-error --retry 2 -H "Authorization: Bearer $REVIEW_OIDC_TOKEN" "https://www.esantoscorretor.com.br/api/cron/property-review"

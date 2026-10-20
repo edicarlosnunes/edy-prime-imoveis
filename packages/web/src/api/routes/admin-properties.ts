@@ -1,3 +1,5 @@
+import { configureReview } from "../lib/property-review";
+import { reviewScheduleSchema } from "../../shared/revalidation";
 import { negotiationSchema, readNegotiation, NEGOTIATION_PREFIX, negotiationText, withoutNegotiation, withNegotiation } from "../../shared/negotiation";
 import { validatePropertyType } from "../lib/property-type-catalog";
 import { z } from "zod";
@@ -164,6 +166,7 @@ const createPropertyInput = propertyInput.extend({
   documentationDraft: documentationDraftInput.optional(),
   /** Data escolhida na etapa Revalidação. Se ausente, usa o momento do cadastro. */
   portfolioEntryDate: z.string().max(30).nullable().optional(),
+  reviewSchedule: reviewScheduleSchema.optional(),
 });
 
 function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().toUpperCase()) {
@@ -387,6 +390,8 @@ export const adminProperties = {
         if (!Number.isNaN(parsed.getTime())) portfolioEntryAt = parsed;
       }
 
+      const {reviewDue} = await import("../../shared/revalidation");
+      if (reviewDue(portfolioEntryAt,input.reviewSchedule ?? {interval:"90d"}) <= portfolioEntryAt) throw new ORPCError("BAD_REQUEST", {message:"A revisão deve ser posterior à entrada na carteira"});
       const [created] = await context.db
         .insert(schema.properties)
         .values({
@@ -401,6 +406,7 @@ export const adminProperties = {
         })
         .returning();
       if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR", { message: "Falha ao criar" });
+      await configureReview(context.db, created.id, input.reviewSchedule ?? {interval:"90d"}, portfolioEntryAt);
       await syncImages(context.db, created.id, input.images);
 
       for (const item of draft?.checklist ?? []) {

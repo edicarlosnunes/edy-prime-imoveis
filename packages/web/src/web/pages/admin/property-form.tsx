@@ -1,3 +1,5 @@
+import { ReviewScheduleFields } from "../../components/admin/review-schedule-fields";
+import { DEFAULT_REVIEW, type ReviewSchedule } from "../../../shared/revalidation";
 import { NegotiationFields } from "../../components/admin/negotiation-fields";
 import { EMPTY_NEGOTIATION, type Negotiation } from "../../../shared/negotiation";
 import { usePropertyTypes } from "../../queries/property-types";
@@ -218,6 +220,7 @@ export function PropertyForm({
   const [documentationDraft, setDocumentationDraft] = useState<PropertyDocumentationDraft>(
     EMPTY_PROPERTY_DOCUMENTATION_DRAFT,
   );
+  const [reviewSchedule, setReviewSchedule] = useState<ReviewSchedule>(DEFAULT_REVIEW);
   const [portfolioEntryDate, setPortfolioEntryDate] = useState(() => {
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -274,6 +277,7 @@ export function PropertyForm({
         section?: string;
         documentationDraft?: PropertyDocumentationDraft;
         portfolioEntryDate?: string;
+        reviewSchedule?: ReviewSchedule;
         newOwner?: {
           name?: string;
           phone?: string;
@@ -302,6 +306,7 @@ export function PropertyForm({
             : [],
         });
       }
+      if (parsed.reviewSchedule) setReviewSchedule(parsed.reviewSchedule);
       if (parsed.portfolioEntryDate) setPortfolioEntryDate(parsed.portfolioEntryDate);
       if (parsed.newOwner) {
         setNewOwnerName(parsed.newOwner.name ?? "");
@@ -340,6 +345,7 @@ export function PropertyForm({
           section,
           documentationDraft: safeDocumentationDraft,
           portfolioEntryDate,
+          reviewSchedule,
           newOwner: {
             name: newOwnerName,
             phone: newOwnerPhone,
@@ -366,6 +372,7 @@ export function PropertyForm({
     newOwnerNotes,
     newOwnerPhone,
     portfolioEntryDate,
+    reviewSchedule,
     propertyId,
     section,
   ]);
@@ -830,6 +837,7 @@ export function PropertyForm({
             documents: stagedDocuments,
           },
           portfolioEntryDate,
+          reviewSchedule,
         });
         const plan = planConversion(conversion, {
           type: "property_created",
@@ -1118,7 +1126,7 @@ export function PropertyForm({
                     <p className="mt-1 text-[11px] text-muted">Esta data será gravada junto com o imóvel no clique final. Nenhum cadastro é criado nesta etapa.</p>
                   </div>
                   <Field label="Data de entrada na carteira"><Input type="date" value={portfolioEntryDate} onChange={(event) => setPortfolioEntryDate(event.target.value)} /></Field>
-                  <p className="text-[11px] text-muted">A primeira revalidação será calculada a partir desta data. Os contatos futuros de revalidação serão registrados depois, no imóvel já cadastrado.</p>
+                  <ReviewScheduleFields value={reviewSchedule} onChange={setReviewSchedule} base={portfolioEntryDate} />
                 </div>
               ) : <PropertyRevalidationSection propertyId={propertyId} />)}
 

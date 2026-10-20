@@ -1,3 +1,5 @@
+import { ReviewScheduleFields } from "./review-schedule-fields";
+import { DEFAULT_REVIEW, type ReviewSchedule } from "../../../shared/revalidation";
 /**
  * Seção "Revalidação" do cadastro de imóveis (V2).
  *
@@ -59,6 +61,9 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
   const setPortfolioEntry = useSetPortfolioEntry();
   const registerRevalidation = useRegisterRevalidation();
 
+  const [schedule, setSchedule] = useState<ReviewSchedule | null>(null);
+  const [channel, setChannel] = useState<string | null>(null);
+  const [checkingChannel, setCheckingChannel] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entryDate, setEntryDate] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<RevalidationOutcome>("disponivel");
@@ -108,7 +113,7 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
   async function saveEntry(value: string | null) {
     setError(null);
     try {
-      await setPortfolioEntry.mutateAsync({ propertyId: propertyId!, date: value });
+      await setPortfolioEntry.mutateAsync({ propertyId: propertyId!, date: value, schedule: schedule ?? data?.review.schedule ?? DEFAULT_REVIEW });
     } catch (caught) {
       setError(errorMessage(caught, "Não foi possível salvar a entrada na carteira"));
     }
@@ -174,7 +179,7 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
       <div className="border-t border-line pt-4">
         <p className="label-xs text-muted">Entrada na carteira</p>
         <p className="mt-1 text-[11px] text-muted">
-          Origem do ciclo de 4 meses. Imóveis antigos ficam sem data até alguém informar — nada é
+          Origem da primeira revisão (90 dias por padrão). Imóveis antigos ficam sem data até alguém informar — nada é
           preenchido automaticamente para não vencer a carteira inteira de uma vez.
         </p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -185,12 +190,13 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
               onChange={(e) => setEntryDate(e.target.value)}
             />
           </Field>
+          <div className="w-full"><ReviewScheduleFields value={schedule ?? data?.review.schedule ?? DEFAULT_REVIEW} onChange={setSchedule} base={entryValue} /></div>
           <Btn
             tone="outline"
             disabled={setPortfolioEntry.isPending || !entryValue}
             onClick={() => void saveEntry(entryValue || null)}
           >
-            Salvar entrada
+            Salvar data e prazo
           </Btn>
           {portfolioEntryAt && (
             <Btn
@@ -207,12 +213,21 @@ export function PropertyRevalidationSection({ propertyId }: { propertyId: number
         </div>
       </div>
 
+      <div className="space-y-2 border-t border-line pt-4">
+        <p className="text-sm text-deep">Consulta automática: {data?.review.attempts ?? 0} de 3 tentativas neste ciclo.</p>
+        {data?.review.outcome && <p className="text-sm text-deep">Resposta: {data.review.outcome === "nao" ? "Não está à venda" : data.review.outcome === "outro" ? "Conferir resposta no histórico" : data.review.outcome}</p>}
+        <ErrorNote message={data?.review.error ?? null} />
+        <Btn tone="outline" disabled={checkingChannel} onClick={async()=>{setCheckingChannel(true);try {const {client}=await import("../../lib/api"); const result=await client.adminPropertyDocs.reviewChannel();setChannel(result.reason);}catch(error){setChannel(errorMessage(error,"Falha ao verificar WhatsApp"));}finally{setCheckingChannel(false);}}}>{checkingChannel ? "Verificando…" : "Verificar envio pelo WhatsApp"}</Btn>
+        {channel && <p className="text-sm text-deep">{channel}</p>}
+        <p className="text-xs text-muted">O envio depende dos modelos aprovados no WhatsApp. Falhas e tentativas ficam registradas abaixo.</p>
+        {(data?.review.events ?? []).map((event,index)=><p key={`${event.at}-${index}`} className="text-xs text-muted">{new Date(event.at).toLocaleString("pt-BR")} · {event.kind.startsWith("owner-") ? `Tentativa ${event.kind.slice(6)}` : "Aviso ao responsável"} · {event.state === "sent" ? "Aceito pelo WhatsApp" : event.state === "sending" ? "Envio em conferência" : "Falha"}{event.detail ? ` — ${event.detail}` : ""}</p>)}
+      </div>
       {/* ----------------------------------------------------- desfecho */}
       <div className="border-t border-line pt-4">
         <p className="label-xs text-muted">Registrar contato de revalidação</p>
         <p className="mt-1 text-[11px] text-muted">
           O status do imóvel nunca muda sozinho aqui. Disponível e “alterou condições” reiniciam os
-          4 meses; “retornar depois” reagenda 2 meses; “sem resposta” volta em 15 dias e segue
+          prazo escolhido; os demais contatos ficam registrados e seguem
           pendente; vendido e “não deseja vender” encerram o ciclo preservando o histórico.
         </p>
         <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

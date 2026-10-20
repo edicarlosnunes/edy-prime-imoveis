@@ -108,6 +108,12 @@ export type AppRouter = typeof router;
 export type AppRouterClient = RouterClient<AppRouter>;
 
 const app = createApp(router);
+app.get("/api/cron/property-review", async (c) => {
+  const token=(c.req.header("authorization") ?? "").replace(/^Bearer /, "");
+  if (!(await verifyGithubActionsOidc(token))) return c.json({ok:false,error:"unauthorized"},401);
+  const {sweepPropertyReviews}=await import("./lib/property-review");
+  return c.json({ok:true,...await sweepPropertyReviews(await getDb())});
+});
 app.all("/api/oauth/mercadolivre/*", async (c) => {
   const response = await handleMercadoLivreOAuthRequest(c.req.raw);
   return response ?? c.notFound();

@@ -1,5 +1,5 @@
 /**
- * Revalidação de carteira — ciclo de 4 meses (V2).
+ * Revalidação de carteira — ciclo padrão de 90 dias (V2).
  *
  * Regra definitiva: o prazo nasce da ENTRADA NA CARTEIRA (cadastro do imóvel),
  * nunca do Radar nem de pré-captação. Imóvel sem `portfolioEntryAt` definido
@@ -9,7 +9,7 @@
  * por parâmetro para o cálculo ser testável e determinístico.
  */
 
-export const REVALIDATION_CYCLE_MONTHS = 4;
+export const REVALIDATION_CYCLE_MONTHS = 3;
 
 /* ------------------------------------------------------------- desfechos */
 
@@ -38,7 +38,7 @@ export const REVALIDATION_OUTCOME_LABEL: Record<RevalidationOutcome, string> = {
  */
 export const CLOSING_OUTCOMES: RevalidationOutcome[] = ["vendido", "nao_deseja_vender"];
 
-/** Desfechos que reabrem um ciclo completo de 4 meses. */
+/** Desfechos que reabrem um ciclo completo de 90 dias. */
 export const RENEWING_OUTCOMES: RevalidationOutcome[] = ["disponivel", "alterou_condicoes"];
 
 /**
@@ -70,7 +70,7 @@ export function addMonths(date: Date, months: number): Date {
 
 /** Próxima revalidação a partir de uma data base. */
 export function nextRevalidationFrom(base: Date): Date {
-  return addMonths(base, REVALIDATION_CYCLE_MONTHS);
+  return new Date(base.getTime() + 90 * 86_400_000);
 }
 
 /* ----------------------------------------------------------------- fila */

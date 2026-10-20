@@ -203,6 +203,13 @@ export function registerWebhookRoutes(app: Hono) {
           contactName: message.name,
           contactPhone: message.from,
         });
+        const {receiveReviewReply} = await import("../lib/property-review");
+        if (await receiveReviewReply(db, message.from, message.text)) {
+          await addMessage(db, conversation.id, {direction:"in",author:"cliente",authorName:message.name ?? "Proprietário",body:message.text});
+          await completeInboundEvent(db, claim.eventId);
+          processed++;
+          continue;
+        }
         const senderShare = await latestCaptureShareForSender(db, message.from);
         const priorCaptureState = senderShare?.status === "completed"
           ? await linkCaptacaoState(
