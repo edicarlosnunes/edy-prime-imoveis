@@ -15,12 +15,13 @@ export function remoteTikTokState(value:unknown,externalId:string) {
  if(!provider)return null;
  if(provider.status==='ERROR')return {state:'rejected',message:`TikTok recusou o vídeo: ${String(provider.detailedStatus || 'erro informado pelo Metricool').slice(0,800)}. Prepare uma nova versão do vídeo para reenviar.`};
  if(provider.status==='PUBLISHED')return {state:'published',message:'Publicação no TikTok confirmada pelo Metricool.'};
- if(['PENDING','SCHEDULED','PUBLISHING','PROCESSING'].includes(provider.status))return {state:'scheduled',message:'O envio ainda está pendente ou em processamento no Metricool. Aguarde antes de repetir.'};
+ if(['PUBLISHING','PROCESSING','AWAITING_CONFIRMATION'].includes(provider.status))return {state:'processing',message:'Vídeo enviado ao TikTok; aguardando a confirmação final do Metricool. Não é necessário reenviar.'};
+ if(['PENDING','SCHEDULED'].includes(provider.status))return {state:'scheduled',message:'O vídeo está agendado no Metricool. Aguarde a publicação; não é necessário reenviar.'};
  return null;
 }
 export async function refreshTikTokAttempt(db:AdminDb,id:number,strict=false) {
  const attempt=await readTikTokAttempt(db,id);
- if(!attempt?.external_id||!['scheduled','error','rejected'].includes(attempt.state))return attempt;
+ if(!attempt?.external_id||!['scheduled','processing','error','rejected'].includes(attempt.state))return attempt;
  try {
   const current=await readConfig(db,METRICOOL_KEY);if(!current.config.brandId)return attempt;
   const mcp=await openMetricool(await metricoolToken(db));
@@ -29,8 +30,8 @@ export async function refreshTikTokAttempt(db:AdminDb,id:number,strict=false) {
   if(strict && attempt.state==='rejected' && !result)throw new Error('Não foi possível reconfirmar a falha anterior. Confira o Metricool antes de reenviar.');
   if(result){
    await db.run(sql`UPDATE crm_tiktok_posts SET state=${result.state},message=${result.message} WHERE property_id=${id} AND external_id=${attempt.external_id} AND state=${attempt.state}`);
-   await db.run(sql`UPDATE property_channels SET status=${result.state==='published'?'publicado':'erro'},message=${result.message} WHERE property_id=${id} AND channel='tiktok' AND status='aguardando'`);
+   await db.run(sql`UPDATE property_channels SET status=${result.state==='published'?'publicado':result.state==='rejected'?'erro':'aguardando'},message=${result.message} WHERE property_id=${id} AND channel='tiktok' AND status IN ('aguardando','erro')`);
   }
   return await readTikTokAttempt(db,id);
- }catch(error){if(strict && attempt.state==='rejected')throw error;return {...attempt,message:attempt.state==='scheduled' ? `${attempt.message ?? ''} Não foi possível atualizar o resultado agora; confira o planejamento antes de repetir.` : attempt.message};}
+ }catch(error){if(strict && attempt.state==='rejected')throw error;return {...attempt,message:['scheduled','processing'].includes(attempt.state) ? `${attempt.message ?? ''} Não foi possível atualizar o resultado agora; confira o planejamento antes de repetir.` : attempt.message};}
 }

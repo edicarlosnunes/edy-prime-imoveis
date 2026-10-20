@@ -1,3 +1,4 @@
+import { tiktokResultStatus } from "../../../shared/tiktok-result";
 import { negotiationText } from "../../../shared/negotiation";
 import { propertyPrice } from "../../../shared/property-price";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,7 +29,7 @@ type DemoStep =
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
 type SocialTarget = string;
-type ChannelResult = { status: "success" | "error" | "pending" | "scheduled"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
+type ChannelResult = { status: "success" | "error" | "pending" | "scheduled" | "processing"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
 
@@ -219,7 +220,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     void fetch(`/api/admin/property-book/${propertyId}/tiktok-status`,{credentials:"same-origin"}).then(async response => response.ok ? response.json() : null).then(data => {
       if(!alive || !data?.result) return;
       const result=data.result;
-      setChannelResults(current=>({...current,tiktok:{status:result.state === "published" ? "success" : result.state === "scheduled" ? "scheduled" : "error",message:result.message || "Envio ao TikTok em conferência. Verifique o Metricool antes de repetir."}}));
+      setChannelResults(current=>({...current,tiktok:{status:tiktokResultStatus(result.state),message:result.message || "Envio ao TikTok em conferência. Verifique o Metricool antes de repetir."}}));
     }).catch(()=>{});
     return ()=>{alive=false;};
   },[propertyId,tiktokStatusVersion]);
@@ -599,9 +600,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setYoutubeProgress("Enviando o Book completo ao Metricool para o TikTok…");
     const response = await fetch(`/api/admin/property-book/${propertyId}/publish-tiktok`, {method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:"{}"});
     if (!response.ok) throw new Error(await responseError(response,"O Metricool não confirmou o envio ao TikTok."));
-    const result = await response.json() as {message:string};
+    const result = await response.json() as {message:string; status:string};
     setYoutubeProgress("");
-    return result.message;
+    return {message:result.message,status:tiktokResultStatus(result.status)};
   }
 
   async function publishSelectedChannels() {
@@ -610,10 +611,11 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setYoutubeProgress("");
     setError(null);
     setChannelResults({});
-    const run = async (target: SocialTarget, fn: () => Promise<string>) => {
+    const run = async (target: SocialTarget, fn: () => Promise<string | {message:string;status:ChannelResult["status"]}>) => {
       try {
-        const message = await fn();
-        setChannelResults((current) => ({ ...current, [target]: { status: target === "tiktok" ? "scheduled" : "success", message } }));
+        const result = await fn();
+        const outcome = typeof result === "string" ? {status:"success" as const,message:result} : result;
+        setChannelResults((current) => ({ ...current, [target]: outcome }));
       } catch (caught) {
         setChannelResults((current) => ({ ...current, [target]: { status: "error", message: caught instanceof Error ? caught.message : "Erro na publicação." } }));
       }
@@ -762,7 +764,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               if (!result) return null;
               const label = destinationRows.find((target) => target.key === key)?.name || key;
               return <div key={key} className={`rounded-[7px] border p-3 text-xs ${result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-                <strong>{label} — {result.status === "success" ? "publicado" : result.status === "scheduled" ? "agendado no Metricool" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
+                <strong>{label} — {result.status === "success" ? "publicado" : result.status === "scheduled" ? "agendado no Metricool" : result.status === "processing" ? "em processamento" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
                 <p className="mt-1">{result.message}</p>
                 {key === "tiktok" && <button type="button" className="mt-2 underline" disabled={publishing} onClick={() => setTiktokStatusVersion(value => value + 1)}>Atualizar resultado no Metricool</button>}
                 {result.at && <p className="mt-1 text-[10px]">Conferido em {new Date(result.at).toLocaleString("pt-BR")}</p>}

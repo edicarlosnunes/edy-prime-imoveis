@@ -94,7 +94,8 @@ export function registerMetricoolRoutes(app:Hono) {
       const asset=new URL(video.url);
       if(asset.protocol !== "https:" || !asset.hostname.endsWith(".blob.vercel-storage.com"))throw new Error("Arquivo do vídeo não está no armazenamento do CRM.");
       const previous=await refreshTikTokAttempt(db,id,true);
-      if(previous && previous.state !== "rejected")throw new Error(previous.message || "Este imóvel já tem uma solicitação de envio ao TikTok. Confira o planejamento no Metricool antes de repetir.");
+      if(previous && ["scheduled","processing","sending","published"].includes(previous.state))return c.json({status:previous.state,message:previous.message || "Envio ao TikTok em andamento. Aguarde antes de repetir."});
+      if(previous && previous.state !== "rejected")throw new Error(previous.message || "Não foi possível confirmar a tentativa anterior. Confira o Metricool antes de repetir.");
       if(previous?.state === "rejected" && previous.video_url === video.url)throw new Error("O vídeo anterior foi recusado. Prepare a versão corrigida em 30 FPS antes de reenviar.");
       await db.run(sql`CREATE TABLE IF NOT EXISTS crm_book_video_formats (source_url TEXT PRIMARY KEY, property_id INTEGER NOT NULL, output_url TEXT NOT NULL, pathname TEXT NOT NULL, size INTEGER NOT NULL, duration REAL NOT NULL)`);
       const verified=await db.all(sql`SELECT output_url FROM crm_book_video_formats WHERE property_id=${id} AND output_url=${video.url} LIMIT 1`);

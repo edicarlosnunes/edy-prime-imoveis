@@ -1,3 +1,4 @@
+import {tiktokResultStatus} from "../../shared/tiktok-result";
 import {test,expect,beforeEach,afterEach,mock} from "bun:test";
 import {createClient,type Client} from "@libsql/client";
 import {drizzle} from "drizzle-orm/libsql";
@@ -69,7 +70,7 @@ test("validates actual TikTok profile before enabling destination",async()=>{
 });
 test("submits only saved full MP4, records scheduled receipt and blocks repeated clicks",async()=>{
  const first=await post('/api/admin/property-book/16/publish-tiktok');expect(first.status).toBe(200);expect((await first.json()).status).toBe('scheduled');
- expect((await post('/api/admin/property-book/16/publish-tiktok')).status).toBe(400);expect(posts).toBe(1);
+ expect((await post('/api/admin/property-book/16/publish-tiktok')).status).toBe(200);expect(posts).toBe(1);
  const stored=await (await app.request('/api/admin/property-book/16/tiktok-status')).json();expect(stored.result.state).toBe('scheduled');expect(stored.result.message).toContain('ainda precisa ser confirmada');
  const channels=await db.all(sql`SELECT channel,status FROM property_channels`);expect(channels).toEqual([{channel:'tiktok',status:'aguardando'}]);
 });
@@ -92,11 +93,21 @@ test("confirmed remote rejection exposes cause and releases only a corrected ver
 test("missing remote record, network failures and ambiguous sends do not unlock repeat posting",async()=>{
  await post('/api/admin/property-book/16/publish-tiktok');
  const absent=await (await app.request('/api/admin/property-book/16/tiktok-status')).json();expect(absent.result.state).toBe('scheduled');
- expect((await post('/api/admin/property-book/16/publish-tiktok')).status).toBe(400);
+ expect((await post('/api/admin/property-book/16/publish-tiktok')).status).toBe(200);
  globalThis.fetch=async()=>{throw new Error('timeout');};
  const unavailable=await (await app.request('/api/admin/property-book/16/tiktok-status')).json();expect(unavailable.result.state).toBe('scheduled');expect(unavailable.result.message).toContain('Não foi possível atualizar');expect(posts).toBe(1);
 });
 test("unverified output cannot be posted even if its extension is MP4",async()=>{
  await db.run(sql`DELETE FROM crm_book_video_formats`);
  const response=await post('/api/admin/property-book/16/publish-tiktok');expect(response.status).toBe(400);expect((await response.json()).error).toContain('30 FPS');expect(posts).toBe(0);
+});
+
+test("awaiting confirmation stays informational, then published is green without resending",async()=>{
+ await post('/api/admin/property-book/16/publish-tiktok');remoteStatus="AWAITING_CONFIRMATION";
+ let state=await (await app.request('/api/admin/property-book/16/tiktok-status')).json();expect(state.result.state).toBe('processing');expect(tiktokResultStatus(state.result.state)).toBe('processing');
+ const repeated=await post('/api/admin/property-book/16/publish-tiktok');expect(repeated.status).toBe(200);expect((await repeated.json()).status).toBe('processing');expect(posts).toBe(1);
+ const channels=await db.all(sql`SELECT status FROM property_channels`);expect(channels).toEqual([{status:'aguardando'}]);
+ remoteStatus="PUBLISHED";state=await (await app.request('/api/admin/property-book/16/tiktok-status')).json();expect(state.result.state).toBe('published');expect(tiktokResultStatus(state.result.state)).toBe('success');
+ const done=await post('/api/admin/property-book/16/publish-tiktok');expect(done.status).toBe(200);expect((await done.json()).status).toBe('published');expect(posts).toBe(1);
+ expect(await db.all(sql`SELECT status FROM property_channels`)).toEqual([{status:'publicado'}]);
 });
