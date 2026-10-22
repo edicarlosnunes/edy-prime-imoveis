@@ -18,7 +18,7 @@ type SoldProperty = {
 type Size = "card" | "hero";
 
 const RIBBON_BASE =
-  "pointer-events-none absolute -rotate-45 bg-gradient-to-r from-[#063d23] via-[#0e7a41] to-[#063d23] text-center leading-none font-bold text-white uppercase ring-1 ring-white/25 ring-inset";
+  "pointer-events-none absolute -rotate-45 bg-gradient-to-r from-[#991b1b] via-[#b91c1c] to-[#991b1b] text-center leading-none font-bold text-[#fde047] uppercase ring-1 ring-white/25 ring-inset";
 
 const RIBBON_SIZE: Record<Size, string> = {
   card: "top-[20%] -left-[12%] w-[64%] py-2 text-[0.68rem] tracking-[0.24em] shadow-[0_10px_24px_rgba(3,32,18,0.5)] sm:py-2.5 sm:text-[0.8rem] sm:tracking-[0.28em]",
