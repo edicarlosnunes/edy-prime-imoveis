@@ -476,7 +476,11 @@ export const adminProperties = {
       if (clash && clash.id !== id) {
         throw new ORPCError("CONFLICT", { message: "Já existe um imóvel com esse código" });
       }
-      await context.db.update(schema.properties).set(row).where(eq(schema.properties.id, id));
+      const statusChanged = row.status !== existingProperty.status;
+      await context.db.update(schema.properties).set({ ...row, ...(statusChanged ? {
+        commercialStatus: row.status === "vendido" ? "VENDIDO" : row.status === "reservado" ? "RESERVADO" : row.status === "disponivel" ? "ATIVO_PARA_VENDA" : null,
+        commercialStatusAt: new Date(),
+      } : {}) }).where(eq(schema.properties.id, id));
       await syncImages(context.db, id, input.images);
       return { id };
     }),
@@ -505,7 +509,15 @@ export const adminProperties = {
       const patch: Record<string, unknown> = { updatedAt: new Date() };
       if (input.published !== undefined) patch.published = input.published ? 1 : 0;
       if (input.featured !== undefined) patch.featured = input.featured ? 1 : 0;
-      if (input.status) patch.status = input.status;
+      if (input.status) {
+        const [existing] = await context.db.select().from(schema.properties).where(eq(schema.properties.id, input.id)).limit(1);
+        if (!existing) throw new ORPCError("NOT_FOUND", { message: "Imóvel não encontrado" });
+        patch.status = input.status;
+        if (existing.status !== input.status) {
+          patch.commercialStatus = input.status === "vendido" ? "VENDIDO" : input.status === "reservado" ? "RESERVADO" : input.status === "disponivel" ? "ATIVO_PARA_VENDA" : null;
+          patch.commercialStatusAt = new Date();
+        }
+      }
       await context.db.update(schema.properties).set(patch).where(eq(schema.properties.id, input.id));
       return { ok: true };
     }),
@@ -534,6 +546,8 @@ export const adminProperties = {
           code: schema.properties.code,
           status: schema.properties.status,
           commercialStatus: schema.properties.commercialStatus,
+          commercialStatusAt: schema.properties.commercialStatusAt,
+          updatedAt: schema.properties.updatedAt,
         })
         .from(schema.properties)
         .where(eq(schema.properties.id, input.id))
@@ -544,7 +558,7 @@ export const adminProperties = {
       const now = new Date();
       await context.db
         .update(schema.properties)
-        .set({ commercialStatus: input.status, commercialStatusAt: now, updatedAt: now })
+        .set({ commercialStatus: input.status, commercialStatusAt: before === input.status ? (row.commercialStatusAt ?? row.updatedAt) : now, updatedAt: now })
         .where(eq(schema.properties.id, input.id));
 
       await context.db.insert(schema.auditLog).values({

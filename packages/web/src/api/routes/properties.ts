@@ -4,7 +4,7 @@ import { base } from "../__core/app";
 import * as schema from "../database/schema";
 import { getDb } from "../lib/auth";
 import { codeFromSlug, propertySlug } from "../lib/slug";
-import { showcaseVisible } from "../lib/commercial-status";
+import { effectiveCommercialStatus, showcaseVisible } from "../lib/commercial-status";
 
 /**
  * Vitrine pública — os imóveis vêm do banco (cadastrados no /admin).
@@ -131,7 +131,7 @@ export const properties = {
         parking: row.parking,
         area: row.areaUtil,
         areaTotal: row.areaTotal,
-        status: row.status,
+        status: effectiveCommercialStatus(row) === "VENDIDO" ? "vendido" : row.status,
         highlight: row.highlight ?? "",
         description: row.description ?? "",
         features: parseFeatures(row.features),
@@ -198,7 +198,7 @@ export const properties = {
           parking: item.parking,
           area: item.areaUtil,
           areaTotal: item.areaTotal,
-          status: item.status,
+          status: effectiveCommercialStatus(item) === "VENDIDO" ? "vendido" : item.status,
           highlight: item.highlight ?? "",
           description: item.description ?? "",
           features: parseFeatures(item.features),

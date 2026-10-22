@@ -103,6 +103,8 @@ export type ShowcaseInput = {
   status?: string | null;
   commercialStatus?: string | null;
   /** Pausa da regra de 12 meses (`portfolio-lifecycle.ts`). */
+  commercialStatusAt?: Date | null;
+  updatedAt?: Date | null;
   pausedAt?: Date | null;
   /** Status do cadastro (`capture-registration.ts`). */
   registrationStatus?: string | null;
@@ -123,11 +125,19 @@ const HIDDEN_REGISTRATION = new Set(["PAUSADO", "ARQUIVADO"]);
  * Nada é excluído: o registro continua no CRM com todo o histórico. Esta
  * função só responde se o imóvel entra na listagem pública.
  */
-export function showcaseDecision(row: ShowcaseInput): ShowcaseDecision {
+export const SOLD_SHOWCASE_DAYS = 20;
+
+export function showcaseDecision(row: ShowcaseInput, now = new Date()): ShowcaseDecision {
   const published = row.published === true || row.published === 1;
   if (!published) return { visible: false, reason: "Imóvel não publicado." };
 
-  if (hiddenByCommercialStatus(row)) {
+  const sold = effectiveCommercialStatus(row) === "VENDIDO";
+  const soldAt = row.commercialStatusAt ?? row.updatedAt;
+  const recentSale = sold && soldAt instanceof Date && Number.isFinite(soldAt.getTime())
+    && now.getTime() >= soldAt.getTime()
+    && now.getTime() < soldAt.getTime() + SOLD_SHOWCASE_DAYS * 86400000;
+
+  if (hiddenByCommercialStatus(row) && !recentSale) {
     const status = effectiveCommercialStatus(row) as CommercialStatus;
     return { visible: false, reason: `Status comercial: ${COMMERCIAL_STATUS_LABEL[status]}.` };
   }

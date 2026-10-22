@@ -78,3 +78,14 @@ describe("vitrine ativa", () => {
     expect(showcaseVisible({ published: 1, status: "disponivel", commercialStatus: null, registrationStatus: null })).toBe(true);
   });
 });
+
+ test("venda publicada fica 20 dias, inclusive por status comercial", () => {
+ const at = new Date("2026-10-22T12:00:00Z");
+ const row = {published:1,status:"disponivel",commercialStatus:"VENDIDO",commercialStatusAt:at};
+ expect(showcaseDecision(row,at).visible).toBe(true);
+ expect(showcaseDecision(row,new Date(at.getTime()+20*86400000-1)).visible).toBe(true);
+ expect(showcaseDecision(row,new Date(at.getTime()+20*86400000)).visible).toBe(false);
+ expect(showcaseDecision({...row,published:0},at).visible).toBe(false);
+ expect(showcaseDecision({...row,registrationStatus:"ARQUIVADO"},at).visible).toBe(false);
+ expect(showcaseDecision({...row,commercialStatusAt:null,updatedAt:at},at).visible).toBe(true);
+ });
