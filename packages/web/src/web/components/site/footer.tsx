@@ -85,7 +85,7 @@ export function Footer() {
                   className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
                 >
                   <MessageCircle className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
-                  <span>(13) 99714-1174 <span className="block text-xs text-[#c8c5bd]">Contato direto com o corretor</span></span>
+                  <span>(13) 99714-1174 <span className="block text-xs text-[#c8c5bd]">Atendimento direto com o corretor</span></span>
                 </a>
               </li>
               <li>
