@@ -61,11 +61,12 @@ export function Hero() {
           {hero.eyebrow.trim() && (
             <p
               data-t="caption"
+              style={{ color: "#f8d477", fontWeight: 600, textShadow: "0 1px 3px #000, 0 2px 8px rgba(0,0,0,0.8)" }}
               className={`reveal label-xs flex items-center gap-3 text-brass-soft ${
                 centered ? "justify-center" : ""
               }`}
             >
-              <span className="h-px w-10 bg-brass-soft/70" />
+              <span className="h-px w-10 bg-[#f8d477]" />
               {hero.eyebrow}
             </p>
           )}
@@ -89,7 +90,8 @@ export function Hero() {
           {hero.subtitle.trim() && (
             <p
               data-t="subheading"
-              className={`reveal mt-7 max-w-xl text-[17px] leading-relaxed text-white/75 ${
+              style={{ color: "#ffffff", fontWeight: 500, textShadow: "0 1px 3px #000, 0 2px 8px rgba(0,0,0,0.8)" }}
+              className={`reveal mt-7 max-w-xl text-[17px] leading-relaxed text-white ${
                 centered ? "mx-auto" : ""
               }`}
               data-reveal-delay="160"
@@ -151,9 +153,10 @@ export function Hero() {
                   <li
                     key={item.id}
                     data-t="info"
-                    className="flex min-w-0 items-center gap-2.5 border border-white/12 bg-white/[0.04] px-4 py-2.5 text-[12.5px] leading-snug text-white/80 backdrop-blur-sm"
+                    style={{ color: "#ffffff", backgroundColor: "rgba(0,0,0,0.7)", fontWeight: 500 }}
+                    className="flex min-w-0 items-center gap-2.5 border border-white/25 bg-black/70 px-4 py-2.5 text-[12.5px] leading-snug text-white backdrop-blur-sm"
                   >
-                    <Icon className="h-4 w-4 shrink-0 text-brass-soft" strokeWidth={1.5} />
+                    <Icon className="h-4 w-4 shrink-0 text-[#f8d477]" strokeWidth={1.5} />
                     {item.text}
                   </li>
                 );
