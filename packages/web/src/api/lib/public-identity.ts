@@ -24,7 +24,11 @@ export function previewPublicSiteContent(value: unknown): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
   const data = record(value);
   const menu = record(data.menu);
-  data.menu = { ...menu, logoText: PUBLIC_IDENTITY.name, logoSuffix: "", logoUrl: PUBLIC_IDENTITY.logo };
+  const theme = record(data.theme);
+  const configuredLogo = typeof theme.logoUrl === "string" ? theme.logoUrl.trim() : "";
+  const legacyLogo = typeof menu.logoUrl === "string" ? menu.logoUrl.trim() : "";
+  const logo = configuredLogo || legacyLogo || PUBLIC_IDENTITY.logo;
+  data.menu = { ...menu, logoText: PUBLIC_IDENTITY.name, logoSuffix: "", logoUrl: logo };
 
   const sections = record(data.sections);
   const sobre = record(sections.sobre);
@@ -41,9 +45,9 @@ export function previewPublicSiteContent(value: unknown): unknown {
   };
 
   data.theme = {
-    ...record(data.theme),
-    logoUrl: PUBLIC_IDENTITY.logo,
-    faviconUrl: PUBLIC_IDENTITY.logo,
+    ...theme,
+    logoUrl: logo,
+    faviconUrl: typeof theme.faviconUrl === "string" && theme.faviconUrl.trim() ? theme.faviconUrl.trim() : logo,
   };
   data.seo = {
     ...record(data.seo),

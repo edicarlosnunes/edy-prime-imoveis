@@ -26,8 +26,8 @@ describe("identidade pública da prévia", () => {
       email: old.company.email,
       whatsapp: old.company.whatsapp,
     });
-    expect(result.theme.logoUrl).toBe("/esantos-logo.png");
-    expect(result.theme.faviconUrl).toBe("/esantos-logo.png");
+    expect(result.theme.logoUrl).toBe("/api/media/old");
+    expect(result.theme.faviconUrl).toBe("/api/media/old");
     expect(result.seo.ogImageUrl).toBe("https://www.esantoscorretor.com.br/og-esantos.png");
     expect(old.company.name).toBe("Edy Prime");
     expect(old.theme.logoUrl).toBe("/api/media/old");
@@ -65,3 +65,11 @@ describe("identidade pública da prévia", () => {
     }
   });
 });
+ test("logo publicado do Editor tem prioridade e padrão só é fallback", () => {
+ const result = previewPublicSiteContent({theme:{logoUrl:" /api/media/new ",faviconUrl:"/api/media/icon"},menu:{logoUrl:"/legacy"}}) as any;
+ expect(result.theme.logoUrl).toBe("/api/media/new");
+ expect(result.menu.logoUrl).toBe("/api/media/new");
+ expect(result.theme.faviconUrl).toBe("/api/media/icon");
+ expect((previewPublicSiteContent({theme:{},menu:{logoUrl:"/legacy"}}) as any).theme.logoUrl).toBe("/legacy");
+ expect((previewPublicSiteContent({}) as any).theme.logoUrl).toBe("/esantos-logo.png");
+ });
