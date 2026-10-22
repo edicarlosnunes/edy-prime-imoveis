@@ -1,7 +1,7 @@
 import {pdfFromAuthorizationLines,type AuthorizationData} from './authorization-pdf';
 export type RentalAuthorizationData=AuthorizationData & {condominium:string;iptu:string};
 export function rentalAuthorizationLines(d:RentalAuthorizationData,date:string){return [
-'E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | (Perito Imobiliário CNAI 55918)','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE LOCAÇÃO / INTERMEDIAÇÃO',
+'E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | (Perito Imobiliário CNAI 55.918)','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE LOCAÇÃO / INTERMEDIAÇÃO',
 `Eu, ${d.owner}, CPF ${d.document},`,
 `Contato: ${d.phone} | E-mail: ${d.email||'Não informado'}`,
 'autorizo E. Santos, Gestor Imobiliário, CRECI 134718-F, a divulgar e intermediar a locação do meu imóvel abaixo identificado.',
