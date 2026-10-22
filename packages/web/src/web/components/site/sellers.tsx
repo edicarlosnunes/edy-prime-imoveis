@@ -3,7 +3,7 @@ import { site, whatsappLink } from "../../lib/site";
 import { OwnerForm } from "./owner-form";
 
 /** Registro de perito avaliador. Credencial fixa da corretora, como `site.creci`. */
-export const CNAI = "PERITO CNAI 55.918";
+export const CNAI = "(Perito Imobiliário CNAI 55918)";
 
 const benefits = [
   {
@@ -65,8 +65,7 @@ export function Sellers() {
             Descubra o valor real do seu imóvel
           </h2>
           <p data-t="subheading" className="mt-5 max-w-xl text-base leading-relaxed text-white/70">
-            Uma boa negociação começa por uma avaliação bem fundamentada. Como Perito Avaliador
-            Imobiliário, realizo análises com critérios técnicos, conhecimento do mercado local e
+            Uma boa negociação começa por uma avaliação bem fundamentada. Como Perito Imobiliário CNAI 55918, realizo análises com critérios técnicos, conhecimento do mercado local e
             atenção às características específicas de cada imóvel.
           </p>
 

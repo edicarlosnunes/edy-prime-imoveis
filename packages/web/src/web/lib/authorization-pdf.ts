@@ -1,7 +1,7 @@
 export function authorizationCommission(value:string):number { const text=value.trim(); return text === '' ? 6 : /^\d+(?:[.,]\d+)?\s*%?$/.test(text) ? Number(text.replace(/\s*%$/, '').replace(',','.')) : NaN; }
 export type AuthorizationData = Record<'owner'|'document'|'phone'|'email'|'ownerAddress'|'propertyAddress'|'type'|'bedrooms'|'parking'|'floors'|'price'|'commission'|'startDate'|'endDate'|'notes'|'city',string>;
 export function authorizationLines(d:AuthorizationData,date:string) {
-return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | Perito imobiliário CNAE 55.918','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
+return ['E. SANTOS | GESTOR IMOBILIÁRIO','CRECI 134718 F | (Perito Imobiliário CNAI 55918)','Rua Guimaraes Rosa, 492/163','esantosgestorimobiliario@gmail.com','AUTORIZAÇÃO DE VENDA / INTERMEDIAÇÃO',
 `Eu, ${d.owner}, CPF ${d.document},`,
 `Contato: ${d.phone} | E-mail: ${d.email||'Não informado'}`,
 'autorizo a E. Santos, Gestor Imobiliário, CRECI 134718-F, a divulgar e intermediar a venda do meu imóvel abaixo identificado.',

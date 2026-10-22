@@ -40,7 +40,7 @@ import { siteBaseUrl } from "../lib/base-url";
 const BROKER_FALLBACK = {
   name: "E. Santos",
   creci: "CRECI 134718-F",
-  cnai: "PERITO CNAI 55.918",
+  cnai: "(Perito Imobiliário CNAI 55918)",
   phone: "(13) 99772-6767",
   email: "edyprimeimoveis@gmail.com",
 };
