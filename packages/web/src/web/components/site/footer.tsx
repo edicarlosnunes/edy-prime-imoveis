@@ -1,7 +1,7 @@
 import { Facebook, Instagram, Mail, MessageCircle } from "lucide-react";
 import { Link } from "wouter";
 import { LEGAL_ENTITY_NOTICE } from "../../lib/legal-entity";
-import { site, whatsappLink } from "../../lib/site";
+import { site } from "../../lib/site";
 import { resolveLogoUrl } from "../../lib/site-content";
 import { useSiteContent } from "./content";
 import { Lines } from "./hero";
@@ -79,13 +79,13 @@ export function Footer() {
             <ul data-t="footer" className="mt-5 space-y-3 text-sm">
               <li>
                 <a
-                  href={whatsappLink(`Olá, ${site.broker}. Vim pelo site.`)}
+                  href={`https://wa.me/5513997141174?text=${encodeURIComponent(`Olá, ${site.broker}. Vim pelo site e gostaria de falar diretamente com você.`)}`}
                   target="_blank"
                   rel="noreferrer"
                   className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
                 >
                   <MessageCircle className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
-                  {site.whatsappLabel}
+                  <span>(13) 99714-1174 <span className="block text-xs text-[#c8c5bd]">Contato direto com o corretor</span></span>
                 </a>
               </li>
               <li>
