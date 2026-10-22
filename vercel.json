@@ -4,6 +4,14 @@
   "outputDirectory": "packages/web/dist",
   "rewrites": [
     {
+      "source": "/proposta",
+      "destination": "/proposta.html"
+    },
+    {
+      "source": "/proposta/",
+      "destination": "/proposta.html"
+    },
+    {
       "source": "/locacao/",
       "destination": "/locacao.html"
     },

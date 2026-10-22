@@ -1,3 +1,4 @@
+import Proposta from './pages/proposta';
 import JoaquimVenda from './pages/joaquim-autorizacao-venda';
 import JoaquimLocacao from './pages/joaquim-autorizacao-locacao';
 import { Route, Switch } from "wouter";
@@ -44,6 +45,7 @@ function App() {
         <Route path="/joaquim/venda" component={JoaquimVenda} />
         <Route path="/joaquim/locacao" component={JoaquimLocacao} />
         <Route path="/locacao" component={AutorizacaoLocacao} />
+        <Route path="/proposta" component={Proposta} />
         <Route path="/autorizar" component={AutorizacaoVenda} />
         <Route path="/autorizacao" component={AutorizacaoVenda} />
         <Route path="/autorizacao-venda" component={AutorizacaoVenda} />
