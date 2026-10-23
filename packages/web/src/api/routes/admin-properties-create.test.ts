@@ -217,3 +217,9 @@ test("stores public negotiation separately from price and regular IPTU", async (
   expect(String(db.propertyValues?.description)).toContain("Débitos informados: R$ 30.000,00");
   expect(String(db.propertyValues?.features)).toContain("__negotiation:");
 });
+test('stores Meta public location independently from internal address', async () => {
+ const db = new FakeAdminDb();
+ await createProperty(db, {...baseInput, address:'Endereço interno reservado', metaLocation:{address:'Rua para divulgação, 10',region:'SP',latitude:-24.01,longitude:-46.41}});
+ expect(db.propertyValues?.address).toBe('Endereço interno reservado');
+ expect(String(db.propertyValues?.features)).toContain('__meta_location:');
+});

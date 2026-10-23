@@ -16,6 +16,7 @@ import { siteBaseUrl } from "../lib/base-url";
 import { FEED_CHANNELS, feedProperties, feedXml, robotsTxt, sitemapXml } from "../lib/feed";
 import { parseConfig } from "../lib/integrations";
 import { propertySlug } from "../lib/slug";
+import { metaHomeFeed } from "../lib/meta-home-feed";
 
 const FILE_TO_CHANNEL: Record<string, (typeof FEED_CHANNELS)[number]> = {
   "imoveis.xml": "feed",
@@ -43,6 +44,22 @@ function escapeHtml(value: string) {
 }
 
 export function registerFeedRoutes(app: Hono) {
+  // Separate Meta export. Never substitute the existing portal feeds.
+  app.get("/api/feed/meta.csv", async (c) => {
+    const db = await getDb();
+    const items = await feedProperties(db, "feed");
+    const result = metaHomeFeed(items.map(item => ({ ...item, address: item.metaLocation?.address || null, region: item.metaLocation?.region, latitude: item.metaLocation?.latitude, longitude: item.metaLocation?.longitude })), siteBaseUrl(c.req.raw.headers));
+    if (result.issues.length || !result.count) {
+      return c.json({ ready: false, count: result.count, issues: result.issues,
+        message: "Feed Meta indisponível: complete os campos obrigatórios dos imóveis autorizados no Feed geral. Nenhum dado foi enviado à Meta." }, 422);
+    }
+    return new Response(result.csv, { headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": 'attachment; filename="meta-imoveis.csv"',
+      "cache-control": "no-store",
+    } });
+  });
+
   /** XML lido pelos portais. */
   app.get("/api/feed/:file", async (c) => {
     const file = c.req.param("file");

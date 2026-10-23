@@ -1,3 +1,4 @@
+import { readMetaLocation } from "../../shared/meta-location";
 import { formatPropertyPrice, propertyPrice } from "../../shared/property-price";
 /**
  * Feed XML dos imóveis + sitemap + robots.
@@ -15,6 +16,7 @@ export const FEED_CHANNELS = ["feed", "zap", "olx", "imovelweb", "imovelguide"] 
 export type FeedChannel = (typeof FEED_CHANNELS)[number];
 
 export interface FeedProperty {
+  metaLocation?: ReturnType<typeof readMetaLocation>;
   id: number;
   code: string;
   title: string;
@@ -86,6 +88,7 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     .orderBy(asc(schema.propertyImages.sortOrder), asc(schema.propertyImages.id));
 
   return eligible.map((row) => ({
+    metaLocation: readMetaLocation(row.features),
     id: row.id,
     code: row.code,
     title: row.title,
@@ -104,7 +107,7 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     areaUtil: row.areaUtil,
     areaTotal: row.areaTotal,
     description: [row.description, propertyPrice(row).discounted ? `Valor: ${formatPropertyPrice(row)}` : null].filter(Boolean).join("\n\n"),
-    features: parseFeatures(row.features).filter((feature) => !feature.startsWith("__opportunity_price:") && !feature.startsWith("__referral_note:") && !feature.startsWith("__negotiation:")),
+    features: parseFeatures(row.features).filter((feature) => !feature.startsWith("__opportunity_price:") && !feature.startsWith("__referral_note:") && !feature.startsWith("__negotiation:") && !feature.startsWith("__meta_location:")),
     status: row.status,
     slug: row.slug ?? propertySlug(row),
     updatedAt: row.updatedAt ?? null,

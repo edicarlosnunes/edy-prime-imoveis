@@ -1,3 +1,4 @@
+import { type MetaLocation, metaLocationSchema } from "../../../shared/meta-location";
 import { ReviewScheduleFields } from "../../components/admin/review-schedule-fields";
 import { DEFAULT_REVIEW, type ReviewSchedule } from "../../../shared/revalidation";
 import { NegotiationFields } from "../../components/admin/negotiation-fields";
@@ -110,6 +111,7 @@ interface FormState {
   district: string;
   city: string;
   address: string;
+  metaLocation: MetaLocation;
   bedrooms: string;
   suites: string;
   bathrooms: string;
@@ -144,6 +146,7 @@ const empty: FormState = {
   district: "",
   city: "Praia Grande",
   address: "",
+  metaLocation: metaLocationSchema.parse({}),
   bedrooms: "0",
   suites: "0",
   bathrooms: "0",
@@ -398,6 +401,7 @@ export function PropertyForm({
       district: row.district,
       city: row.city,
       address: row.address ?? "",
+      metaLocation: row.metaLocation ?? metaLocationSchema.parse({}),
       bedrooms: String(row.bedrooms),
       suites: String(row.suites),
       bathrooms: String(row.bathrooms),
@@ -792,6 +796,7 @@ export function PropertyForm({
       district: form.district.trim(),
       city: form.city.trim() || "Praia Grande",
       address: form.address.trim() || null,
+      metaLocation: form.metaLocation ?? metaLocationSchema.parse({}),
       bedrooms: Math.trunc(num(form.bedrooms)),
       suites: Math.trunc(num(form.suites)),
       bathrooms: Math.trunc(num(form.bathrooms)),
@@ -1024,6 +1029,16 @@ export function PropertyForm({
                   <Field label="Endereço" hint="Uso interno. Não aparece no site nem nos portais.">
                     <Input value={form.address} onChange={(e) => set("address", e.target.value)} />
                   </Field>
+                  <fieldset className="rounded-xl border border-line p-4 space-y-3">
+                    <legend className="px-2 font-semibold">Localização pública para o catálogo Meta</legend>
+                    <p className="text-sm text-muted">Preencha apenas a localização autorizada para divulgação. Estes dados serão enviados no feed Meta dos imóveis marcados em Feed geral. O endereço interno acima não será usado neste feed.</p>
+                    <Field label="Endereço para divulgação na Meta"><Input value={form.metaLocation?.address ?? ""} onChange={e => set("metaLocation", {...(form.metaLocation ?? metaLocationSchema.parse({})), address:e.target.value})} /></Field>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <Field label="UF"><Input maxLength={2} placeholder="SP" value={form.metaLocation?.region ?? ""} onChange={e => set("metaLocation", {...(form.metaLocation ?? metaLocationSchema.parse({})), region:e.target.value.toUpperCase()})} /></Field>
+                      <Field label="Latitude"><Input type="number" step="any" min={-90} max={90} value={form.metaLocation?.latitude ?? ""} onChange={e => set("metaLocation", {...(form.metaLocation ?? metaLocationSchema.parse({})), latitude:e.target.value === "" ? null : Number(e.target.value)})} /></Field>
+                      <Field label="Longitude"><Input type="number" step="any" min={-180} max={180} value={form.metaLocation?.longitude ?? ""} onChange={e => set("metaLocation", {...(form.metaLocation ?? metaLocationSchema.parse({})), longitude:e.target.value === "" ? null : Number(e.target.value)})} /></Field>
+                    </div>
+                  </fieldset>
                 </>
               )}
 

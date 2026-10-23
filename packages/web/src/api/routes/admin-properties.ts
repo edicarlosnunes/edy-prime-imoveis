@@ -1,3 +1,4 @@
+import { META_LOCATION_PREFIX, metaLocationSchema, readMetaLocation } from "../../shared/meta-location";
 import { configureReview } from "../lib/property-review";
 import { reviewScheduleSchema } from "../../shared/revalidation";
 import { negotiationSchema, readNegotiation, NEGOTIATION_PREFIX, negotiationText, withoutNegotiation, withNegotiation } from "../../shared/negotiation";
@@ -86,7 +87,7 @@ function decodeStoredFeatures(raw: string | null | undefined) {
       features: list.filter(
         (item) =>
           !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
-          !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith(NEGOTIATION_PREFIX),
+          !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith(NEGOTIATION_PREFIX) && !item.startsWith(META_LOCATION_PREFIX),
       ),
       opportunityPrice: Number.isFinite(amount) && amount > 0 ? amount : null,
       referralNote,
@@ -107,7 +108,7 @@ function encodeStoredFeatures(
       (item) =>
         item.length > 0 &&
         !item.startsWith(OPPORTUNITY_FEATURE_PREFIX) &&
-        !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith(NEGOTIATION_PREFIX),
+        !item.startsWith(REFERRAL_FEATURE_PREFIX) && !item.startsWith(NEGOTIATION_PREFIX) && !item.startsWith(META_LOCATION_PREFIX),
     );
   if (opportunityPrice && opportunityPrice > 0) {
     clean.push(`${OPPORTUNITY_FEATURE_PREFIX}${opportunityPrice}`);
@@ -138,6 +139,7 @@ const propertyInput = z.object({
   district: z.string().max(120).default(""),
   city: z.string().max(120).default("Praia Grande"),
   address: z.string().max(300).nullable().optional(),
+  metaLocation: metaLocationSchema.optional(),
   bedrooms: z.number().int().min(0).max(40).default(0),
   suites: z.number().int().min(0).max(40).default(0),
   bathrooms: z.number().int().min(0).max(40).default(0),
@@ -191,6 +193,7 @@ function toRow(input: z.infer<typeof propertyInput>, code = input.code.trim().to
     highlight: input.highlight?.trim() || null,
     features: JSON.stringify([
       ...JSON.parse(encodeStoredFeatures(input.features,input.opportunityPrice,input.referralNote)),
+      ...(input.metaLocation ? [META_LOCATION_PREFIX + encodeURIComponent(JSON.stringify(input.metaLocation))] : []),
       ...(input.negotiation && negotiationText(input.negotiation) ? [NEGOTIATION_PREFIX + encodeURIComponent(JSON.stringify(input.negotiation))] : []),
     ]),
     status: input.status,
@@ -303,6 +306,7 @@ export const adminProperties = {
         return {
           ...row,
           features: JSON.stringify(decoded.features),
+          metaLocation: readMetaLocation(row.features),
           opportunityPrice: decoded.opportunityPrice,
           referralNote: decoded.referralNote,
           negotiation: readNegotiation(row.features),
@@ -331,6 +335,7 @@ export const adminProperties = {
       return {
         ...row,
         features: JSON.stringify(decoded.features),
+          metaLocation: readMetaLocation(row.features),
         opportunityPrice: decoded.opportunityPrice,
         referralNote: decoded.referralNote,
           negotiation: readNegotiation(row.features),
@@ -467,7 +472,7 @@ export const adminProperties = {
       if (!existingProperty) throw new ORPCError("NOT_FOUND", {message:"Imóvel não encontrado."});
       await validatePropertyType(context.db, input.type, existingProperty.type);
       const { id, ...rest } = input;
-      const row = toRow({...rest, negotiation: rest.negotiation ?? readNegotiation(existingProperty.features)} as z.infer<typeof propertyInput>);
+      const row = toRow({...rest, metaLocation: rest.metaLocation ?? readMetaLocation(existingProperty.features), negotiation: rest.negotiation ?? readNegotiation(existingProperty.features)} as z.infer<typeof propertyInput>);
       const [clash] = await context.db
         .select({ id: schema.properties.id })
         .from(schema.properties)
