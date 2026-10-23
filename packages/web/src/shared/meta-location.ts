@@ -2,7 +2,7 @@ import { z } from 'zod';
 export const META_LOCATION_PREFIX = '__meta_location:';
 export const metaLocationSchema = z.object({
   address: z.string().max(300).default(''),
-  region: z.string().regex(/^$|^[A-Z]{2}$/).default(''),
+  region: z.string().trim().toUpperCase().regex(/^$|^[A-Z]{2}$/).default(''),
   latitude: z.number().finite().min(-90).max(90).nullable().default(null),
   longitude: z.number().finite().min(-180).max(180).nullable().default(null),
 });
