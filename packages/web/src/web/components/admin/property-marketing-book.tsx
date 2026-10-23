@@ -29,7 +29,7 @@ type DemoStep =
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
 type SocialTarget = string;
-type ChannelResult = { status: "success" | "error" | "pending" | "scheduled" | "processing"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
+type ChannelResult = { status: "success" | "error" | "pending" | "scheduled" | "processing" | "included"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
 
@@ -168,6 +168,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
 
   const guideAuthorization = useQuery({ ...orpc.adminChannels.forProperty.queryOptions({ input: { propertyId: propertyId ?? 0 } }), enabled: propertyId !== null });
+  const feedIncluded = guideAuthorization.data?.some((row) => row.channel === "feed" && row.authorized) ?? false;
   const guideIncluded = guideAuthorization.data?.some((row) => row.channel === "imovelguide" && row.authorized) ?? false;
   const destinations = useQuery(orpc.adminIntegrations.publicationTargets.queryOptions({ refetchInterval: 15_000 }));
 
@@ -211,7 +212,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   }, [propertyId]);
 
   useEffect(() => {
-    if (history.data) setChannelResults(current => ({...Object.fromEntries(history.data.map((entry) => [entry.key, { status: "pending" as const, message: "Último checklist salvo; nenhum anúncio enviado neste teste.", checks: entry.checks, at: entry.at }])),...(current.tiktok && current.tiktok.status !== "pending" ? {tiktok:current.tiktok} : {})}));
+    if (history.data) setChannelResults(current => ({...Object.fromEntries(history.data.map((entry) => [entry.key, { status: "pending" as const, message: "Último checklist salvo; nenhum anúncio enviado neste teste.", checks: entry.checks, at: entry.at }])),...current}));
   }, [history.data]);
 
   useEffect(() => {
@@ -247,8 +248,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const whatsappUrl = `https://wa.me/5513997141174?text=${whatsappMessage}`;
   const destinationRows = (destinations.data ?? []).map((target) => ({
     ...target,
-    ready: !destinations.isError && target.ready && (target.key !== "youtube" || shortReady),
-    reason: target.key === "youtube" && target.ready && !shortReady ? "Adicione um vídeo curto ao imóvel" : target.reason,
+    ready: target.key === "feed_imoveis" || !destinations.isError && target.ready && (target.key !== "youtube" || shortReady),
+    reason: target.key === "feed_imoveis" ? "Autoriza este imóvel no feed público XML e no CSV da Meta. O portal ainda precisa importar e validar os dados." : target.key === "youtube" && target.ready && !shortReady ? "Adicione um vídeo curto ao imóvel" : target.reason,
   }));
   const selectedKeys = destinationRows.filter((target) => target.key !== "olx" && targets[target.key as SocialTarget]).map((target) => target.key);
   const selectedCount = selectedKeys.length;
@@ -624,7 +625,12 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     for (const key of selectedKeys) {
       const ready = destinationRows.find((target) => target.key === key)?.ready;
       const publish = key === "instagram" ? publishInstagramBook : key === "facebook" ? publishFacebook : key === "youtube" ? publishYoutubeShort : key === "tiktok" ? publishTiktokBook : null;
-      if (key === "imovelguide") jobs.push(run(key, async () => {
+      if (key === "feed_imoveis") jobs.push(run(key, async () => {
+        await client.adminChannels.setAuthorized({ propertyId, channel: "feed", authorized: true });
+        await guideAuthorization.refetch();
+        return { status: "included", message: "Imóvel autorizado no feed público XML e no CSV da Meta. A importação e a publicação dependem da validação do portal. Confira o CSV da Meta para verificar eventuais pendências." };
+      }));
+      else if (key === "imovelguide") jobs.push(run(key, async () => {
         await client.adminChannels.setAuthorized({ propertyId, channel: "imovelguide", authorized: true });
         await guideAuthorization.refetch();
         return "Imóvel incluído no XML do Imóvel Guide. Aguarda leitura e validação pelo portal; isto ainda não confirma publicação.";
@@ -739,7 +745,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
           <div className="mt-5 border-t border-brass/20 pt-4">
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold uppercase tracking-[.08em] text-deep">Destinos de publicação</p><p className="mt-1 text-[11px] text-muted">Selecione os canais. Cada canal é enviado de forma independente.</p></div><Badge tone={selectedCount > 0 ? "green" : "amber"}>{selectedCount > 0 ? `${selectedCount} SELECIONADO${selectedCount > 1 ? "S" : ""}` : "NENHUM SELECIONADO"}</Badge></div>
-            <p className="mt-2 text-[11px] text-muted">Marque apenas as plataformas desejadas. Imóvel Guide: o envio inclui no XML e aguarda importação. ✅ publica pelo fluxo disponível. ❌ executa o checklist e informa o que falta, sem simular envio. ⓘ mostra o motivo. OLX: anúncio manual.</p>
+            <p className="mt-2 text-[11px] text-muted">Marque apenas as plataformas desejadas. Feed XML e Imóvel Guide: o envio autoriza a inclusão no arquivo e aguarda importação. ✅ publica pelo fluxo disponível. ❌ executa o checklist e informa o que falta, sem simular envio. ⓘ mostra o motivo. OLX: anúncio manual.</p>
+            {feedIncluded && <div className="mt-3 rounded border border-green-200 p-3 text-xs"><p>Imóvel autorizado no feed público. A publicação ainda depende da importação pelo portal.</p><a className="mt-2 inline-block underline" href="/feed/meta.csv" target="_blank" rel="noreferrer">Conferir CSV da Meta</a><button type="button" disabled={publishing} className="ml-3 mt-2 underline" onClick={async () => { try { await client.adminChannels.setAuthorized({ propertyId, channel: "feed", authorized: false }); await guideAuthorization.refetch(); setChannelResults(current => { const next = {...current}; delete next.feed_imoveis; return next; }); } catch (caught) { setError(caught instanceof Error ? caught.message : "Falha ao retirar do feed."); } }}>Retirar este imóvel do feed público</button></div>}
             {guideIncluded && <div className="mt-3 rounded border border-green-200 p-3 text-xs"><p>Imóvel autorizado no XML do Imóvel Guide. Aguarda leitura e validação pelo portal.</p><button type="button" disabled={publishing} className="mt-2 underline" onClick={async () => { try { await client.adminChannels.setAuthorized({ propertyId, channel: "imovelguide", authorized: false }); await guideAuthorization.refetch(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Falha ao retirar do XML."); } }}>Retirar este imóvel do XML do Imóvel Guide</button></div>}
             {destinations.isPending && <p role="status" className="mt-3 text-xs text-muted">Conferindo plataformas…</p>}
             {destinations.isError && <p role="alert" className="mt-3 text-xs text-red-700">Não foi possível conferir as plataformas. <button type="button" className="underline" onClick={() => void destinations.refetch()}>Tentar novamente</button></p>}
@@ -763,8 +770,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.entries(channelResults).map(([key, result]) => {
               if (!result) return null;
               const label = destinationRows.find((target) => target.key === key)?.name || key;
-              return <div key={key} className={`rounded-[7px] border p-3 text-xs ${result.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-                <strong>{label} — {result.status === "success" ? "publicado" : result.status === "scheduled" ? "agendado no Metricool" : result.status === "processing" ? "em processamento" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
+              return <div key={key} className={`rounded-[7px] border p-3 text-xs ${(result.status === "success" || result.status === "included") ? "border-emerald-200 bg-emerald-50 text-emerald-800" : result.status === "error" ? "border-red-200 bg-red-50 text-red-700" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+                <strong>{label} — {result.status === "included" ? "autorizado no feed" : result.status === "success" ? "publicado" : result.status === "scheduled" ? "agendado no Metricool" : result.status === "processing" ? "em processamento" : result.status === "error" ? "erro" : "checklist / pendências"}</strong>
                 <p className="mt-1">{result.message}</p>
                 {key === "tiktok" && <button type="button" className="mt-2 underline" disabled={publishing} onClick={() => setTiktokStatusVersion(value => value + 1)}>Atualizar resultado no Metricool</button>}
                 {result.at && <p className="mt-1 text-[10px]">Conferido em {new Date(result.at).toLocaleString("pt-BR")}</p>}
