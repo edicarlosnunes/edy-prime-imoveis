@@ -4,7 +4,7 @@ import { DEFAULT_REVIEW, type ReviewSchedule } from "../../../shared/revalidatio
 import { NegotiationFields } from "../../components/admin/negotiation-fields";
 import { EMPTY_NEGOTIATION, type Negotiation } from "../../../shared/negotiation";
 import { usePropertyTypes } from "../../queries/property-types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Banknote,
   CalendarClock,
@@ -202,6 +202,7 @@ export function PropertyForm({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
+  const hydratedPropertyId = useRef<number | null>(null);
   const typeCatalog = usePropertyTypes();
   const propertyTypeLabel = typeCatalog.labels;
   const typeOptions = typeCatalog.rows.filter(row => row.active || (propertyId !== null && row.key === form.type));
@@ -382,7 +383,9 @@ export function PropertyForm({
 
   useEffect(() => {
     const row = detail.data;
-    if (!row) return;
+    // Background refresh (including returning from Maps) must not replace edits.
+    if (!row || hydratedPropertyId.current === row.id) return;
+    hydratedPropertyId.current = row.id;
     let features: string[] = [];
     try {
       features = row.features ? (JSON.parse(row.features) as string[]) : [];
