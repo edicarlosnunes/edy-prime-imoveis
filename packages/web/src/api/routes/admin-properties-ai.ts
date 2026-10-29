@@ -15,7 +15,7 @@ import { z } from "zod";
 import { ORPCError } from "@orpc/server";
 import { generateText } from "ai";
 import { adminBase } from "../lib/admin-base";
-import { gateway, gatewayConfigured } from "../agent/gateway";
+import { effectiveModel, gateway, gatewayConfigured } from "../agent/gateway";
 import { FALLBACK_MODEL } from "../agent/model";
 
 const purposeEnum = z.enum(["venda", "locacao", "venda_locacao"]);
@@ -183,7 +183,7 @@ export const adminPropertyContent = {
         message: `Preencha antes: ${missing.join(", ")}. A IA só escreve com dados reais do cadastro.`,
       });
     }
-    if (!gatewayConfigured()) {
+    if (!gatewayConfigured("content")) {
       throw new ORPCError("BAD_REQUEST", {
         message: "Provedor de IA não configurado no servidor.",
       });
@@ -202,7 +202,7 @@ export const adminPropertyContent = {
     let text = "";
     try {
       const result = await generateText({
-        model: gateway(FALLBACK_MODEL),
+        model: gateway(FALLBACK_MODEL, "content"),
         temperature: 0.6,
         prompt,
       });
@@ -230,7 +230,7 @@ export const adminPropertyContent = {
 
     return {
       ok: true as const,
-      model: FALLBACK_MODEL,
+      model: effectiveModel(FALLBACK_MODEL, "content"),
       content: parsed.data,
       /** eco do que foi enviado — ajuda o admin a conferir a origem do texto */
       usedFields: sheet.split("\n"),

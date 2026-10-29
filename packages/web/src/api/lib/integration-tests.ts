@@ -3,7 +3,7 @@
  * quando não existe forma de testar sem credencial/contrato, o retorno diz isso.
  */
 import { generateText } from "ai";
-import { gateway } from "../agent/gateway";
+import { effectiveModel, gateway, gatewayConfigured } from "../agent/gateway";
 import { pickModel } from "../agent/model";
 import { feedProperties, feedXml } from "./feed";
 import type { ConfigMap, IntegrationStatus } from "./integrations";
@@ -231,16 +231,16 @@ export async function runTest(
 
     /* ---------------------------------------------------------------- IA */
     case "ai_gateway": {
-      if (!process.env.AI_GATEWAY_BASE_URL || !process.env.AI_GATEWAY_API_KEY) {
+      if (!gatewayConfigured()) {
         return {
           ok: false,
           status: "erro",
           message:
-            "As variáveis AI_GATEWAY_BASE_URL / AI_GATEWAY_API_KEY não estão disponíveis neste ambiente.",
+            "As credenciais do provedor de IA selecionado não estão disponíveis neste ambiente.",
         };
       }
       try {
-        const model = pickModel(null, config.defaultModel);
+        const model = effectiveModel(pickModel(null, config.defaultModel));
         const { text } = await generateText({
           model: gateway(model),
           prompt: 'Responda apenas com a palavra "ok".',
