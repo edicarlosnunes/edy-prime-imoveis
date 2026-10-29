@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useSearch } from "wouter";
 import { MessageCircle, Plus } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
@@ -37,11 +38,16 @@ type StatusFilter = "" | "aberto" | "perdido" | "ganho";
 type TierFilter = "" | "quente" | "morno" | "frio";
 
 function Content() {
+  const params = new URLSearchParams(useSearch());
+  const requestedStatus = params.get("status");
+  const stage = params.get("stage");
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("aberto");
+  const [status, setStatus] = useState<StatusFilter>(() =>
+    requestedStatus === "todos" ? "" : requestedStatus === "perdido" || requestedStatus === "ganho" ? requestedStatus : "aberto",
+  );
   const [tier, setTier] = useState<TierFilter>("");
   const [view, setView] = useState<"funil" | "lista">(() =>
-    typeof window !== "undefined" && window.innerWidth < 768 ? "lista" : "funil",
+    params.get("view") === "lista" || (typeof window !== "undefined" && window.innerWidth < 768) ? "lista" : "funil",
   );
   const [open, setOpen] = useState<number | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +61,10 @@ function Content() {
 
   /* Filtro por temperatura é local: o score já vem no lead. */
   const leads = useMemo(
-    () => (tier ? (data ?? []).filter((lead) => (lead.scoreTier ?? "frio") === tier) : (data ?? [])),
-    [data, tier],
+    () => (data ?? []).filter((lead) =>
+      (!tier || (lead.scoreTier ?? "frio") === tier) && (!stage || lead.stage === stage),
+    ),
+    [data, tier, stage],
   );
 
   async function moveStage(id: number, stage: (typeof LEAD_STAGES)[number]) {

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "wouter";
 import { useEffect } from "react";
 import { Minus, Plus, X } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -101,27 +102,34 @@ export function Stat({
   hint,
   icon,
   tone,
+  href,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
   icon?: ReactNode;
   tone?: StatTone;
+  href?: string;
 }) {
-  return (
-    <div
-      className={cn(
-        "admin-card rounded-[4px] border border-line bg-white px-4 py-5",
-        tone && `admin-stat-${tone}`,
-      )}
-    >
+  const className = cn(
+    "admin-card rounded-[4px] border border-line bg-white px-4 py-5",
+    tone && `admin-stat-${tone}`,
+    href && "block cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass",
+  );
+  const content = (
+    <>
       <div className="flex items-start justify-between gap-3">
         <p className="label-xs text-muted">{label}</p>
         {icon && <span className="admin-stat-icon">{icon}</span>}
       </div>
       <p className="admin-stat display mt-2 text-4xl text-deep">{value}</p>
       {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className={className}>{content}</Link>
+  ) : (
+    <div className={className}>{content}</div>
   );
 }
 

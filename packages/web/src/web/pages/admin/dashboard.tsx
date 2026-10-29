@@ -85,6 +85,7 @@ function Content() {
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
+          href="/admin/imoveis"
           label="Imóveis"
           value={data.properties.total}
           hint={`${data.properties.published} publicados`}
@@ -92,6 +93,7 @@ function Content() {
           icon={<Building2 className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/imoveis?status=vendido,reservado"
           label="Vendidos / reservados"
           value={data.properties.sold + data.properties.reserved}
           hint={`${data.properties.sold} vendidos · ${data.properties.reserved} reservados`}
@@ -99,6 +101,7 @@ function Content() {
           icon={<KeyRound className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/leads?status=todos&view=lista"
           label="Leads"
           value={data.leads.total}
           hint={`${data.leads.new} novos`}
@@ -106,6 +109,7 @@ function Content() {
           icon={<Users className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/leads?status=todos&stage=visita_agendada&view=lista"
           label="Visitas agendadas"
           value={data.leads.scheduledVisits}
           hint="no funil"
@@ -113,6 +117,7 @@ function Content() {
           icon={<CalendarCheck className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/propostas"
           label="Propostas"
           value={data.deals.total}
           hint={`${data.deals.open} em aberto`}
@@ -120,6 +125,7 @@ function Content() {
           icon={<FileSignature className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/leads?status=todos&stage=negociacao&view=lista"
           label="Em negociação"
           value={data.leads.negotiating}
           hint="leads na etapa"
@@ -127,6 +133,7 @@ function Content() {
           icon={<Handshake className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/propostas?status=fechada"
           label="Vendas fechadas"
           value={data.deals.closed}
           hint={shortMoney(data.money.vgvClosed)}
@@ -134,6 +141,7 @@ function Content() {
           icon={<CheckCircle2 className="h-4 w-4" />}
         />
         <Stat
+          href="/admin/leads?status=perdido&view=lista"
           label="Leads perdidos"
           value={data.leads.lost}
           hint={`${data.leads.open} em aberto`}

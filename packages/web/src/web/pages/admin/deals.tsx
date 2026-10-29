@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearch } from "wouter";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
@@ -88,6 +89,7 @@ export default function AdminDeals() {
 }
 
 function Content() {
+  const statusFilter = new URLSearchParams(useSearch()).get("status");
   const [form, setForm] = useState<FormState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,7 +100,7 @@ function Content() {
   const save = useSaveDeal(form?.id ? "update" : "create");
   const remove = useRemoveDeal();
 
-  const deals = data ?? [];
+  const deals = (data ?? []).filter((deal) => !statusFilter || deal.status === statusFilter);
   const open = deals.filter((deal) => deal.status !== "recusada" && deal.status !== "fechada");
   const closed = deals.filter((deal) => deal.status === "fechada");
   const sum = (list: typeof deals, field: "offerPrice" | "commissionValue") =>

@@ -102,7 +102,11 @@ function Content() {
     }),
     [search, status],
   );
-  const { data, isLoading } = useAdminProperties(filters);
+  const { data: allProperties, isLoading } = useAdminProperties(filters);
+  const dashboardStatuses = new URLSearchParams(search_).get("status")?.split(",");
+  const data = dashboardStatuses
+    ? allProperties?.filter((property) => dashboardStatuses.includes(property.status))
+    : allProperties;
   const patch = usePatchProperty();
   const remove = useRemoveProperty();
   const commercial = useSetCommercialStatus();
