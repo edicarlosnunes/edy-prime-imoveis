@@ -23,7 +23,7 @@ import { readConfig } from "../lib/integrations";
 import { ownerPhoneKey } from "../lib/owner-identity";
 import { captureFlowPrompt, captureSnapshot, captureTools } from "./owner-capture";
 import { classifyContactIntent, INTENT_QUESTION } from "./capture-intent";
-import { hasLinkToken, linkCaptacaoReply, linkCaptacaoState } from "./link-captacao";
+import { hasLinkToken, linkCaptacaoReply, linkCaptacaoState, propertyInquiryTurns } from "./link-captacao";
 import { handoffAllowance, looksLikeHandoffText } from "./handoff-guard";
 
 export interface AgentRow {
@@ -242,15 +242,19 @@ export async function agentReply(
   const phone = ownerPhoneKey(options.phone) ? (options.phone ?? null) : null;
 
   /**
-   * LINK_CAPTACAO tem precedência sobre tudo o que vem depois.
+   * LINK_CAPTACAO mantém seu roteiro, salvo uma nova consulta explícita
+   * pelos botões de atendimento do site.
    *
    * Quem entrou pelo link de captação já declarou o que quer: cadastrar um
    * imóvel para venda. Esse fluxo tem roteiro próprio e texto fixo, então ele
    * responde o turno inteiro — sem classificação de intenção, sem busca de
    * imóveis, sem o roteiro do WhatsApp. O atendimento de comprador só é
-   * alcançado quando o fluxo do link não está ativo, exatamente como antes.
+   * alcançado quando o fluxo do link não está ativo ou quando o contato
+   * inicia explicitamente uma consulta do site, preservando a ficha anterior.
    */
-  if (phone) {
+  const inquiryTurns = propertyInquiryTurns(turns);
+  if (inquiryTurns) turns = inquiryTurns;
+  if (phone && !inquiryTurns) {
     const linkState = await linkCaptacaoState(db, phone, turns);
     if (linkState?.active) {
       const linkReply = await linkCaptacaoReply(
@@ -278,7 +282,7 @@ export async function agentReply(
     }
   }
 
-  const snapshot = phone ? await captureSnapshot(db, phone) : null;
+  const snapshot = phone && !inquiryTurns ? await captureSnapshot(db, phone) : null;
 
   /**
    * O telefone identifica o contato; ele NÃO define a intenção.

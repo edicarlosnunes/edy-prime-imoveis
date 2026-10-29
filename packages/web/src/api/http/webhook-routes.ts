@@ -32,6 +32,7 @@ import {
 import { captureSnapshot, linkCaptureSession } from "../agent/owner-capture";
 import {
   isReusableGenericLinkEntry,
+  propertyInquiryTurns,
   linkCaptacaoState,
 } from "../agent/link-captacao";
 import {
@@ -218,10 +219,14 @@ export function registerWebhookRoutes(app: Hono) {
               await conversationTurns(db, conversation.id),
             )
           : null;
-        const completionGuard = senderShare?.status === "completed" &&
+        const inquiryTurns = propertyInquiryTurns([
+          ...await conversationTurns(db, conversation.id),
+          { role: "user", content: message.text },
+        ]);
+        const completionGuard = !inquiryTurns && senderShare?.status === "completed" &&
           !isReusableGenericLinkEntry(message.text) &&
           !priorCaptureState?.genericPublic;
-        const snapshotBeforeInbound = senderShare?.status === "redeemed"
+        const snapshotBeforeInbound = !inquiryTurns && senderShare?.status === "redeemed"
           ? await captureSnapshot(db, message.from, senderShare.captureId ?? undefined)
           : null;
         const sessionBeforeInbound = snapshotBeforeInbound?.ownerId

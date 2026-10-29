@@ -36,6 +36,7 @@ import {
   linkCaptacaoState,
   linkCaptacaoUrl,
   linkQuestion,
+  propertyInquiryTurns,
 } from "./link-captacao";
 import {
   bindCaptureShareToCapture,
@@ -2908,5 +2909,91 @@ describe("7. respostas após a identificação no link genérico", () => {
     expect(salvo.saved).toBe(true);
     const [depois] = await db.all<{ notes: string | null }>(sql`SELECT notes FROM owners LIMIT 1`);
     expect(depois?.notes ?? "").not.toContain("[LINK_CAPTACAO_FICHA_ATIVA:");
+  });
+});
+
+
+describe("consulta do site separada da captação", () => {
+  test.each([
+    "Olá, E. Santos. Tenho interesse no imóvel AP-2026-000012 (Apartamento Tupy). Pode me passar mais detalhes?",
+    "Olá, E. Santos. Enviei o formulário sobre o imóvel AP-2026-000012.",
+    "Olá, E. Santos. Vi seu site e quero informações sobre imóveis em Praia Grande.",
+    "Olá, E. Santos. Vim pelo site e quero informações sobre imóveis.",
+    "Olá, E. Santos. Quero informações sobre imóveis em Praia Grande.",
+    "Olá, E. Santos. Quero conversar sobre imóveis em Praia Grande.",
+    "Olá, E. Santos. Vi seu site e quero atendimento para encontrar um imóvel em Praia Grande.",
+    "Olá, E. Santos. Não encontrei no site o imóvel que procuro. Pode me ajudar?",
+    "Olá, E. Santos. Não encontrei no site o que procuro. Estou buscando: casa",
+    "Olá, E. Santos. Acabei de preencher o formulário no site. Meu nome é Maria e procuro: casa.",
+    "Olá! Vim pelo site e quero falar com um corretor.",
+  ])("reconhece entrada pública: %s", body => {
+    const turns = [
+      { role: "user" as const, content: LINK_CAPTACAO_MESSAGE },
+      { role: "assistant" as const, content: CLOSING_MESSAGE },
+      { role: "user" as const, content: body },
+      { role: "assistant" as const, content: "Qual bairro?" },
+      { role: "user" as const, content: "Tupy" },
+    ];
+    expect(propertyInquiryTurns(turns)).toEqual(turns.slice(2));
+    expect(propertyInquiryTurns([...turns, { role: "user", content: LINK_CAPTACAO_MESSAGE }])).toBeNull();
+    expect(propertyInquiryTurns([...turns, { role: "user", content: "Quero avaliar meu imóvel" }])).toBeNull();
+  });
+
+  test("token concluído não intercepta consulta nem continuação; replay continua protegido", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).includes("graph.facebook.com")) {
+        graphCalls.push({ url: String(input), body: String(init?.body ?? "") });
+        return new Response(JSON.stringify({ messages: [{ id: "wamid.out.inquiry" }] }), { status: 200 });
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    try {
+      app = new Hono();
+      registerWebhookRoutes(app);
+      const token = await issueCaptureShareToken(db, 1);
+      expect((await redeemCaptureShareToken(db, token, PHONE)).ok).toBe(true);
+      await db.run(sql`UPDATE capture_share_tokens SET status = 'completed' WHERE sender_phone = '5513997141174'`);
+      const before = await db.all(sql`SELECT * FROM capture_share_tokens`);
+      expect((await latestCaptureShareForSender(db, PHONE))?.status).toBe("completed");
+      behavior = async (call) => {
+        expect(call.tools.salvarCadastroVenda).toBeUndefined();
+        expect(call.messages.some(m => m.content.includes("solicite um novo link"))).toBe(false);
+        return { text: "ATENDIMENTO DO IMÓVEL", steps: [] };
+      };
+      const first = await postWhatsapp("Olá, tenho interesse no imóvel AP-2026-000012.");
+      expect(first.body.processed).toBe(1);
+      expect(modelCalls).toBe(1);
+      expect(JSON.parse(graphCalls.at(-1)!.body).text.body).toBe("ATENDIMENTO DO IMÓVEL");
+      await postWhatsapp("Qual o valor do condomínio?");
+      expect(modelCalls).toBe(2);
+      expect(await db.all(sql`SELECT * FROM capture_share_tokens`)).toEqual(before);
+      const called = modelCalls;
+      await postWhatsapp(`LINK_CAPTACAO:${token}`);
+      expect(modelCalls).toBe(called);
+      expect(await db.all(sql`SELECT * FROM capture_share_tokens`)).toEqual(before);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  test("consulta preserva ficha pendente e entrada de captação retoma o roteiro", async () => {
+    const c = await conversation("separacao-site");
+    await entrarPeloLink(c.id);
+    await linkTurn(c.id, "Maria de Souza", { nome: "Maria de Souza" });
+    const before = await db.all(sql`SELECT * FROM property_captures`);
+    const owners = await db.all(sql`SELECT * FROM owners`);
+    behavior = async (call) => {
+      expect(call.tools.salvarCadastroVenda).toBeUndefined();
+      return { text: "ATENDIMENTO DO IMÓVEL", steps: [] };
+    };
+    await addMessage(db, c.id, { direction: "in", author: "cliente", body: "Olá, tenho interesse no imóvel AP-2026-000012." });
+    expect((await aiTurn(db, c.id, BASE_URL)).text).toBe("ATENDIMENTO DO IMÓVEL");
+    await addMessage(db, c.id, { direction: "in", author: "cliente", body: "Pode mandar fotos?" });
+    expect((await aiTurn(db, c.id, BASE_URL)).text).toBe("ATENDIMENTO DO IMÓVEL");
+    expect(await db.all(sql`SELECT * FROM property_captures`)).toEqual(before);
+    expect(await db.all(sql`SELECT * FROM owners`)).toEqual(owners);
+    const resumed = await linkTurn(c.id, "Quero cadastrar meu imóvel para venda");
+    expect(resumed.reply).not.toBe("ATENDIMENTO DO IMÓVEL");
   });
 });

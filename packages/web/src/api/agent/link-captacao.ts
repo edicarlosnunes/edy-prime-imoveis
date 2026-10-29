@@ -42,6 +42,7 @@ import {
 import { gateway, gatewayConfigured } from "./gateway";
 import { pickModel } from "./model";
 import { handoffAllowance } from "./handoff-guard";
+import { messageIntent } from "./capture-intent";
 import type { AgentReply, AgentRow, AgentTurn } from "./broker";
 import { intakeLead } from "../lib/lead-intake";
 import {
@@ -367,6 +368,38 @@ export const hasLinkToken = (text: string | null | undefined) => {
     isGenericLinkStart(text)
   );
 };
+
+/**
+ * A consulta explícita a um anúncio abre atendimento de interessado, mesmo
+ * quando este telefone tem captação anterior. Só recorta o contexto usado
+ * pela IA: não encerra, apaga ou altera a ficha nem o histórico persistido.
+ * Uma nova entrada de captação/intenção de proprietário devolve o controle
+ * aos guardas existentes (inclusive tokens usados e retomada de cadastro).
+ */
+export function propertyInquiryTurns(turns: readonly AgentTurn[]): AgentTurn[] | null {
+  let start = -1;
+  turns.forEach((turn, index) => {
+    if (turn.role !== "user") return;
+    if (hasLinkToken(turn.content) || messageIntent(turn.content) === "proprietario") {
+      start = -1;
+      return;
+    }
+    const text = fold(turn.content);
+    const siteInquiry = [
+      /\b(?:tenho|estou com) interesse\b[^.!?]{0,35}\bimovel\s+[a-z]{2,4}-\d{4}-\d{6}\b/,
+      /\benviei o formulario sobre o imovel\s+[a-z]{2,4}-\d{4}-\d{6}\b/,
+      /\bquero (?:informacoes|conversar) sobre imoveis\b/,
+      /\bvi seu site e quero atendimento para encontrar um imovel\b/,
+      /\bnao encontrei no site (?:o imovel que procuro|o que procuro)\b/,
+      /\bacabei de preencher o formulario no site\b.*\bprocuro:/,
+      /\bvim pelo site e quero falar com um corretor\b/,
+    ].some(pattern => pattern.test(text));
+    if (siteInquiry) {
+      start = index;
+    }
+  });
+  return start < 0 ? null : turns.slice(start);
+}
 
 /* ------------------------------------------------------------- roteiro */
 
@@ -867,6 +900,7 @@ export async function linkCaptacaoState(
   turns: readonly AgentTurn[],
 ): Promise<LinkCaptacaoState | null> {
   if (!ownerPhoneKey(phone)) return null;
+  if (propertyInquiryTurns(turns)) return null;
   const userMessages = turns.filter((turn) => turn.role === "user");
   const currentShare = await latestCaptureShareForSender(db, phone!);
   const verifiedTokens = new Map<string, { id: number; captureId: number | null }>();
