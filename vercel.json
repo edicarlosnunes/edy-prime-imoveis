@@ -73,5 +73,32 @@
       "includeFiles": "api/bin/**",
       "maxDuration": 300
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/cadastro",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/cadastro/",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/link-captacao",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/link-captacao/",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/link-captacao/:token",
+      "destination": "/formulario-imovel/:token",
+      "permanent": false
+    }
+  ]
 }

@@ -66,14 +66,6 @@
       "destination": "/formulario.html"
     },
     {
-      "source": "/cadastro",
-      "destination": "/cadastro.html"
-    },
-    {
-      "source": "/cadastro/",
-      "destination": "/cadastro.html"
-    },
-    {
       "source": "/autorizacao",
       "destination": "/autorizacao.html"
     },
@@ -100,5 +92,32 @@
       "includeFiles": "api/bin/**",
       "maxDuration": 300
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/cadastro",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/cadastro/",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/link-captacao",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/link-captacao/",
+      "destination": "/captar",
+      "permanent": false
+    },
+    {
+      "source": "/link-captacao/:token",
+      "destination": "/formulario-imovel/:token",
+      "permanent": false
+    }
+  ]
 }

@@ -30,8 +30,6 @@ import AdminAutomations from "./pages/admin/automations";
 import AdminWatermark from "./pages/admin/watermark";
 import AdminAudit from "./pages/admin/audit";
 import PropertyPage from "./pages/imovel";
-import LinkCaptacao from "./pages/link-captacao";
-import LinkCaptacaoToken from "./pages/link-captacao-token";
 import Privacidade from "./pages/privacidade";
 import Termos from "./pages/termos";
 import ExclusaoDeDados from "./pages/exclusao-de-dados";
@@ -52,10 +50,10 @@ function App() {
         <Route path="/autorizacao-venda" component={AutorizacaoVenda} />
         <Route path="/captar" component={PermanentCaptureForm} />
         <Route path="/captar/" component={PermanentCaptureForm} />
-        <Route path="/formulario-imovel/:token" component={PropertyCaptureForm} />
-        <Route path="/link-captacao/:token" component={LinkCaptacaoToken} />
-        <Route path="/link-captacao" component={LinkCaptacao} />
-        <Route path="/cadastro" component={LinkCaptacao} />
+        <Route path="/formulario-imovel/:token" component={() => <PropertyCaptureForm/>} />
+        <Route path="/link-captacao/:token" component={() => <PropertyCaptureForm/>} />
+        <Route path="/link-captacao" component={PermanentCaptureForm} />
+        <Route path="/cadastro" component={PermanentCaptureForm} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/imoveis" component={AdminProperties} />

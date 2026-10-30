@@ -39,13 +39,18 @@ export async function submitPropertyCaptureForm(db: AdminDb, input: import("../.
       throw new ORPCError("BAD_REQUEST", { message: "Este link expirou ou já foi utilizado. Peça um novo link à equipe." });
     }
     // The browser normalizes the facade to JPEG; verify the bytes and cap storage.
-    let image: Buffer;
+    const submittedPhotos = [input.photo, ...(input.extraPhotos || [])];
+    if (submittedPhotos.length > 10) throw new ORPCError("BAD_REQUEST", {message:"Envie no máximo 10 fotos."});
+    let images: Buffer[];
     try {
-      const bytes = Buffer.from(input.photo.split(",")[1], "base64");
-      if (bytes.length < 100 || bytes.length > 2 * 1024 * 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) throw new Error("image");
-      image = bytes;
+      images = submittedPhotos.map(photo => {
+        const bytes = Buffer.from(photo.split(",")[1], "base64");
+        if (bytes.length < 100 || bytes.length > 2 * 1024 * 1024 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[bytes.length - 2] !== 0xff || bytes[bytes.length - 1] !== 0xd9) throw new Error("image");
+        return bytes;
+      });
+      if (images.reduce((sum, image) => sum + image.length, 0) > 2_800_000) throw new Error("total");
     } catch {
-      throw new ORPCError("BAD_REQUEST", { message: "Não foi possível ler a foto. Escolha uma imagem JPG, PNG ou WebP da fachada." });
+      throw new ORPCError("BAD_REQUEST", { message: "Não foi possível ler as fotos. Escolha imagens JPG, PNG ou WebP e tente novamente." });
     }
     const tokenHash = await sha256Hex(input.token);
     await db.transaction(async (tx) => {
@@ -62,13 +67,15 @@ export async function submitPropertyCaptureForm(db: AdminDb, input: import("../.
         complements: { unit: input.complement }, askingPrice: captureFormPrice(input.price), message: captureFormNotes(input),
       });
       if (!result.captureId) throw new Error("Não foi possível registrar a captação. Tente novamente.");
-      const mediaId = crypto.randomUUID();
-      await tx.insert(schema.media).values({ id: mediaId, mime: "image/jpeg", size: image.length,
-        data: image.toString("base64"), name: "fachada-formulario.jpg", alt: "Fachada provisória enviada pelo proprietário" });
       const [capture] = await tx.select().from(schema.propertyCaptures).where(eq(schema.propertyCaptures.id, result.captureId));
       const photos = parseOwnerPhotos(capture.ownerPhotos);
-      if (photos.length >= 30) throw new ORPCError("BAD_REQUEST", { message: "Esta captação já tem o limite de fotos. Entre em contato com a equipe." });
-      photos.push({ url: `/api/media/${mediaId}`, caption: "Fachada · aguarda conferência da equipe", source: "proprietario", addedAt: new Date().toISOString(), primary: photos.length === 0 });
+      if (photos.length + images.length > 30) throw new ORPCError("BAD_REQUEST", { message: "Esta captação atingiu o limite de fotos. Entre em contato com a equipe." });
+      for (const [index, image] of images.entries()) {
+        const mediaId = crypto.randomUUID();
+        await tx.insert(schema.media).values({ id: mediaId, mime: "image/jpeg", size: image.length,
+          data: image.toString("base64"), name: index === 0 ? "fachada-formulario.jpg" : `imovel-formulario-${index + 1}.jpg`, alt: index === 0 ? "Fachada enviada pelo proprietário" : "Foto do imóvel enviada pelo proprietário" });
+        photos.push({ url: `/api/media/${mediaId}`, caption: `${index === 0 ? "Fachada" : "Imóvel"} · aguarda conferência da equipe`, source: "proprietario", addedAt: new Date().toISOString(), primary: photos.length === 0 });
+      }
       await tx.update(schema.propertyCaptures).set({ ownerPhotos: JSON.stringify(photos), intention: capture.intention || input.intention })
         .where(eq(schema.propertyCaptures.id, result.captureId));
       await tx.update(schema.captureShareTokens).set({ captureId: result.captureId, senderPhone: input.phone.replace(/\D/g, "") })

@@ -24,6 +24,7 @@ export const propertyCaptureFormSchema = z.object({
   observations: z.string().max(1000),
   consent: z.literal(true, { error: "Confirme o envio dos dados para cadastro e contato" }),
   website: z.string().max(0).default(""),
+  extraPhotos: z.array(z.string().max(340_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/)).max(9).default([]),
   photo: z.string().max(2_800_000).regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+=*$/),
 });
 export type PropertyCaptureFormInput = z.infer<typeof propertyCaptureFormSchema>;

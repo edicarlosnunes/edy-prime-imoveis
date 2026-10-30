@@ -64,3 +64,24 @@ test("permanent URL creates independent visitor sessions and resumes an unfinish
  expect((await startPublicCaptureSession(f.db,second.token)).token).toBe(second.token);
  f.client.close();
 });
+
+test("ten photos arrive in the same capture with facade first", async()=>{
+ const f=await fixture();
+ const input=propertyCaptureFormSchema.parse({...f.input,intention:"locacao",extraPhotos:Array(9).fill(f.input.photo)});
+ await submitPropertyCaptureForm(f.db,input);
+ const [capture]=await f.db.select().from(schema.propertyCaptures);
+ expect(capture.intention).toBe("locacao");
+ const photos=JSON.parse(capture.ownerPhotos!);
+ expect(photos).toHaveLength(10);expect(photos[0].caption).toContain("Fachada");expect(photos[0].primary).toBe(true);
+ expect(photos.slice(1).every((photo: {primary:boolean})=>!photo.primary)).toBe(true);
+ expect(await f.db.select().from(schema.media)).toHaveLength(10);
+ expect(propertyCaptureFormSchema.safeParse({...f.input,extraPhotos:Array(10).fill(f.input.photo)}).success).toBe(false);
+ f.client.close();
+});
+test("invalid additional photo rejects the entire submission without consuming token",async()=>{
+ const f=await fixture();
+ await expect(submitPropertyCaptureForm(f.db,{...f.input,extraPhotos:["data:image/jpeg;base64,YWJj"]})).rejects.toThrow();
+ expect(await f.db.select().from(schema.owners)).toHaveLength(0);
+ expect(await f.db.select().from(schema.media)).toHaveLength(0);
+ expect((await f.db.select().from(schema.captureShareTokens))[0].status).toBe("active");f.client.close();
+});

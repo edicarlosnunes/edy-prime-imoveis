@@ -144,7 +144,7 @@ function Content() {
   const isOfficialDomain = typeof window !== "undefined" &&
     isOfficialCaptureHost(window.location.hostname);
   const canIssueExclusiveLinks = isOfficialDomain;
-  async function generateExclusiveCaptureLink(asForm = false) {
+  async function generateExclusiveCaptureLink() {
     if (!canIssueExclusiveLinks) {
       setShareLinkStatus("Geração indisponível na prévia protegida. Gere e compartilhe o link pelo domínio público oficial.");
       return;
@@ -152,8 +152,8 @@ function Content() {
     setShareLinkStatus("");
     try {
       const result = await issueCaptureLink.mutateAsync({});
-      setExclusiveLink({ id: result.id, url: asForm ? captureShareUrl(result.token).replace("/link-captacao/", "/formulario-imovel/") : captureShareUrl(result.token) });
-      setShareLinkStatus(asForm ? "Formulário por etapas gerado. Envie este link ao proprietário. Expira em 30 dias e aceita um envio." : "Link exclusivo gerado. Ele expira em 30 dias se não for usado.");
+      setExclusiveLink({ id: result.id, url: captureShareUrl(result.token).replace("/link-captacao/", "/formulario-imovel/") });
+      setShareLinkStatus("Formulário por etapas gerado. Envie este link ao proprietário. Expira em 30 dias e aceita um envio.");
     } catch (error) {
       setShareLinkStatus(errorMessage(error));
     }
@@ -207,7 +207,7 @@ function Content() {
           <p className="mt-1 text-sm text-muted">Acesse as entradas existentes ou acompanhe cadastros por origem.</p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          <HubCard icon={Link2} title="Link de captação" description="Consulte as fichas originadas pelo link e compartilhe o início do atendimento pelo WhatsApp." action="Ver registros e link" onClick={() => showSource("link_captacao")} />
+          <HubCard icon={Link2} title="Formulário de captação" description="Envie a ficha de venda ou locação e confira os cadastros recebidos, com até 10 fotos." action="Ver registros e link" onClick={() => showSource("link_captacao")} />
           <HubCard icon={Radar} title="Radar de captação" description="Acompanhe as captações e etapas já registradas no CRM." action="Ver radar" onClick={() => document.getElementById("radar-section")?.scrollIntoView({ behavior: "smooth" })} />
           <HubCard icon={Globe2} title="Captação pelo site" description="Consulte cadastros cuja origem está registrada como site." action="Ver captações" onClick={() => showSource("site")} />
           <HubCard icon={Plus} title="Cadastro pela equipe" description="Abra a ficha completa do imóvel e vincule um proprietário já cadastrado." action="Abrir ficha" onClick={() => navigate("/admin/imoveis/novo?from=captacao")} />
@@ -218,7 +218,7 @@ function Content() {
         <span>Origem do CRM: <b className="text-deep">{sourceLabel}</b> · este filtro usa a origem gravada no servidor.</span>
         <button type="button" onClick={() => showSource(undefined)} className="font-medium text-brass hover:underline">Limpar filtro</button>
       </div>}
-      {source === "link_captacao" && <Card title="Link de captação">
+      {source === "link_captacao" && <Card title="Formulário de captação">
         <div className="mb-5">
           <h3 className="font-medium text-deep">Formulário de imóvel · link fixo para compartilhar</h3>
           <p className="mb-3 mt-1 text-sm text-muted">Salve este endereço no celular e envie aos proprietários pelo seu WhatsApp 1174. O cliente preenche as etapas e envia o cadastro diretamente para o CRM.</p>
@@ -234,8 +234,7 @@ function Content() {
           <p className="mb-3 mt-1 text-sm text-muted">Se precisar de um endereço individual, gere um abaixo. Ele expira em 30 dias se não for usado; para compartilhar com vários proprietários, use o formulário fixo acima.</p>
           {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está fora dos domínios oficiais autorizados para emissão. Não gere nem compartilhe links em prévias; a emissão está disponível apenas nos domínios públicos de produção.</p>}
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Btn data-testid="button-generate-exclusive-capture-link" tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink()}>{issueCaptureLink.isPending ? "Gerando…" : "Gerar link exclusivo"}</Btn>
-            <Btn tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink(true)}>Gerar formulário de imóvel</Btn>
+            <Btn data-testid="button-generate-exclusive-capture-link" tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink()}>{issueCaptureLink.isPending ? "Gerando…" : "Gerar formulário individual"}</Btn>
             {exclusiveLink && <>
               <Input data-testid="input-exclusive-capture-link" aria-label="Endereço exclusivo do link de captação" readOnly value={exclusiveLink.url}/>
               <Btn data-testid="button-copy-exclusive-capture-link" tone="outline" onClick={() => void copyExclusiveCaptureLink()}>Copiar link</Btn>
