@@ -1,3 +1,4 @@
+import PropertyCaptureForm from "./pages/property-capture-form";
 import Proposta from './pages/proposta';
 import JoaquimVenda from './pages/joaquim-autorizacao-venda';
 import JoaquimLocacao from './pages/joaquim-autorizacao-locacao';
@@ -49,6 +50,7 @@ function App() {
         <Route path="/autorizar" component={AutorizacaoVenda} />
         <Route path="/autorizacao" component={AutorizacaoVenda} />
         <Route path="/autorizacao-venda" component={AutorizacaoVenda} />
+        <Route path="/formulario-imovel/:token" component={PropertyCaptureForm} />
         <Route path="/link-captacao/:token" component={LinkCaptacaoToken} />
         <Route path="/link-captacao" component={LinkCaptacao} />
         <Route path="/cadastro" component={LinkCaptacao} />

@@ -4,6 +4,7 @@ import type { RouterClient } from "@orpc/server";
 import { handleMercadoLivreOAuthRequest } from "./http/mercadolivre-oauth-routes";
 import { eq } from "drizzle-orm";
 import { createApp } from "./__core/app";
+import { propertyCaptureForms } from "./routes/property-capture-forms";
 import { ping } from "./routes/ping";
 import { leads } from "./routes/leads";
 import { owners } from "./routes/owners";
@@ -85,6 +86,7 @@ export const router = {
   adminCaptures,
   adminCaptureLinks,
   captureShareLinks,
+  propertyCaptureForms,
   adminStreets,
   adminDocuments,
   adminCapturePhotos,

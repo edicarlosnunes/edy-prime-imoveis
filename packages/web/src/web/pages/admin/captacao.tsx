@@ -144,7 +144,7 @@ function Content() {
   const isOfficialDomain = typeof window !== "undefined" &&
     isOfficialCaptureHost(window.location.hostname);
   const canIssueExclusiveLinks = isOfficialDomain;
-  async function generateExclusiveCaptureLink() {
+  async function generateExclusiveCaptureLink(asForm = false) {
     if (!canIssueExclusiveLinks) {
       setShareLinkStatus("Geração indisponível na prévia protegida. Gere e compartilhe o link pelo domínio público oficial.");
       return;
@@ -152,8 +152,8 @@ function Content() {
     setShareLinkStatus("");
     try {
       const result = await issueCaptureLink.mutateAsync({});
-      setExclusiveLink({ id: result.id, url: captureShareUrl(result.token) });
-      setShareLinkStatus("Link exclusivo gerado. Ele expira em 30 dias se não for usado.");
+      setExclusiveLink({ id: result.id, url: asForm ? captureShareUrl(result.token).replace("/link-captacao/", "/formulario-imovel/") : captureShareUrl(result.token) });
+      setShareLinkStatus(asForm ? "Formulário por etapas gerado. Envie este link ao proprietário. Expira em 30 dias e aceita um envio." : "Link exclusivo gerado. Ele expira em 30 dias se não for usado.");
     } catch (error) {
       setShareLinkStatus(errorMessage(error));
     }
@@ -235,6 +235,7 @@ function Content() {
           {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está fora dos domínios oficiais autorizados para emissão. Não gere nem compartilhe links em prévias; a emissão está disponível apenas nos domínios públicos de produção.</p>}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Btn data-testid="button-generate-exclusive-capture-link" tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink()}>{issueCaptureLink.isPending ? "Gerando…" : "Gerar link exclusivo"}</Btn>
+            <Btn tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink(true)}>Gerar formulário de imóvel</Btn>
             {exclusiveLink && <>
               <Input data-testid="input-exclusive-capture-link" aria-label="Endereço exclusivo do link de captação" readOnly value={exclusiveLink.url}/>
               <Btn data-testid="button-copy-exclusive-capture-link" tone="outline" onClick={() => void copyExclusiveCaptureLink()}>Copiar link</Btn>
