@@ -1041,6 +1041,7 @@ export function PropertyForm({
                       <Field label="Latitude"><Input type="number" step="any" min={-90} max={90} value={form.metaLocation?.latitude ?? ""} onChange={e => set("metaLocation", {...(form.metaLocation ?? metaLocationSchema.parse({})), latitude:e.target.value === "" ? null : Number(e.target.value)})} /></Field>
                       <Field label="Longitude"><Input type="number" step="any" min={-180} max={180} value={form.metaLocation?.longitude ?? ""} onChange={e => set("metaLocation", {...(form.metaLocation ?? metaLocationSchema.parse({})), longitude:e.target.value === "" ? null : Number(e.target.value)})} /></Field>
                     </div>
+                    <p className="rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-200">Atenção: confira os sinais e as casas decimais da latitude e da longitude. Para imóveis em Praia Grande, ambas devem ter o sinal de menos (−).</p>
                   </fieldset>
                 </>
               )}
