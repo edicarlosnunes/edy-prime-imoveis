@@ -3,14 +3,34 @@ import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, CheckCircle2, Home, Camera } from "lucide-react";
 import { client, orpc } from "../lib/api";
+import { usePublishedContent } from "../queries/site";
+import { mergeSiteContent, resolveLogoUrl } from "../lib/site-content";
 import { propertyCaptureFormSchema } from "../../shared/property-capture-form";
 
 const empty = { name:"", phone:"", email:"", intention:"venda", propertyType:"apartamento", cep:"", street:"", number:"", complement:"", neighborhood:"", city:"Praia Grande", state:"SP", area:"", bedrooms:"", bathrooms:"", suites:"", parking:"", balcony:"", view:"", furnished:"", amenities:"", price:"", condominium:"", iptu:"", negotiation:"", occupancy:"", deed:"", financing:"", debts:"", observations:"", website:"" };
 type Answers = typeof empty;
 const steps = ["Proprietário", "Localização", "Características", "Valores", "Situação do imóvel", "Foto e revisão"];
 const control = "mt-2 w-full rounded-lg border border-stone-300 bg-white px-3 py-3 text-base text-stone-900 outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-700/20";
-export default function PropertyCaptureForm() {
-  const { token = "" } = useParams<{token:string}>();
+export function PermanentCaptureForm() {
+  const session = useQuery({
+    queryKey: ["public-property-capture-session"], staleTime: Infinity, retry: false,
+    queryFn: async () => {
+      let previousToken: string | undefined;
+      try { previousToken = sessionStorage.getItem("public-property-capture-token") || undefined; } catch { /* optional draft */ }
+      const result = await client.propertyCaptureForms.start({previousToken});
+      try { sessionStorage.setItem("public-property-capture-token", result.token); } catch { /* optional draft */ }
+      return result;
+    },
+  });
+  if (session.data) return <PropertyCaptureForm publicToken={session.data.token}/>;
+  return <div className="min-h-screen bg-[#f5f3ed] p-8 text-center text-stone-800"><img src="/esantos-logo.png" alt="E. Santos Gestor Imobiliário" className="mx-auto mb-6 h-24"/><p role={session.isError ? "alert" : "status"}>{session.isError ? "Não foi possível abrir o formulário agora. Atualize a página e tente novamente." : "Preparando seu formulário…"}</p></div>;
+}
+export default function PropertyCaptureForm({publicToken}: {publicToken?:string} = {}) {
+  const params = useParams<{token:string}>();
+  const token = publicToken ?? params.token ?? "";
+  const published = usePublishedContent();
+  const content = mergeSiteContent(published.data?.data);
+  const logo = resolveLogoUrl(content) || "/esantos-logo.png";
   const link = useQuery({ ...orpc.propertyCaptureForms.resolve.queryOptions({input:{token}}), enabled:Boolean(token), retry:1 });
   const [answers, setAnswers] = useState(empty);
   const [step, setStep] = useState(0);
@@ -65,7 +85,14 @@ export default function PropertyCaptureForm() {
     finally { setBusy(false); }
   }
   return <div className="min-h-screen bg-[#f5f3ed] px-4 py-8 text-stone-900 sm:py-12"><main className="mx-auto max-w-2xl">
-    <header className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm"><div className="h-2 bg-[#bc9349]"/><div className="p-6 sm:p-8"><p className="mb-3 text-xs font-semibold uppercase tracking-[.18em] text-amber-800">E. Santos · Gestor Imobiliário</p><h1 className="font-serif text-3xl sm:text-4xl">Cadastre seu imóvel</h1><p className="mt-4 text-sm leading-6 text-stone-600">Conte um pouco sobre o imóvel que deseja vender ou alugar. Nossa equipe receberá as informações para conferir o cadastro e entrar em contato.</p><p className="mt-3 text-xs text-stone-500">Não precisa entrar em uma conta Google. Campos com * são obrigatórios. Quando não souber uma informação, escreva “Não sei”.</p></div></header>
+    <header className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
+      <div className="relative isolate flex min-h-52 items-end overflow-hidden bg-[#10251f] p-6 sm:min-h-64 sm:p-8">
+        <img src={content.hero.imageUrl || "/images/hero.jpg"} alt="Paisagem do litoral de Praia Grande" className="absolute inset-0 -z-20 h-full w-full object-cover"/>
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-black/85 via-black/55 to-black/20"/>
+        <div className="flex flex-wrap items-center gap-5"><img src={logo} alt="E. Santos Gestor Imobiliário" className="h-24 w-24 rounded-xl bg-black/65 p-2 object-contain sm:h-28 sm:w-28"/><div><p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-[#f4d28d]">E. Santos · Gestor Imobiliário</p><h1 className="font-serif text-3xl text-white sm:text-4xl">Cadastre seu imóvel</h1><p className="mt-2 text-sm text-white/85">Seu imóvel, nossa próxima oportunidade.</p></div></div>
+      </div>
+      <div className="border-t-4 border-[#bc9349] p-6 sm:px-8"><p className="text-sm leading-6 text-stone-600">Conte um pouco sobre o imóvel que deseja vender ou alugar. Nossa equipe receberá as informações para conferir o cadastro e entrar em contato.</p><p className="mt-3 text-xs text-stone-500">Não precisa entrar em uma conta Google. Campos com * são obrigatórios. Quando não souber uma informação, escreva “Não sei”.</p></div>
+    </header>
     {done ? <section className="mt-5 rounded-2xl border border-green-200 bg-white p-8" role="status"><CheckCircle2 className="mb-4 h-10 w-10 text-green-700"/><h2 className="text-2xl font-semibold">Cadastro recebido!</h2><p className="mt-3 leading-7">Obrigado. Sua ficha e a foto da fachada foram enviadas à equipe para análise. Entraremos em contato pelo WhatsApp informado.</p><p className="mt-4 text-sm text-stone-500">Este envio não publica anúncios automaticamente.</p></section>
     : link.isLoading ? <p role="status" className="p-6">Validando seu link…</p>
     : link.isError ? <p role="alert" className="p-6">Não foi possível validar o link. Verifique a conexão e atualize a página.</p>

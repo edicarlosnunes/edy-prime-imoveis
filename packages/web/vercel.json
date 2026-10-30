@@ -54,6 +54,18 @@
       "destination": "/api/handler?__path=/api/prerender/imovel/:slug"
     },
     {
+      "source": "/captar",
+      "destination": "/formulario.html"
+    },
+    {
+      "source": "/captar/",
+      "destination": "/formulario.html"
+    },
+    {
+      "source": "/formulario-imovel/:token",
+      "destination": "/formulario.html"
+    },
+    {
       "source": "/cadastro",
       "destination": "/cadastro.html"
     },

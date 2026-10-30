@@ -2,6 +2,7 @@
  * Não reconhecer *.vercel.app nem aceitar sufixos parecidos.
  * Os links recém-emitidos sempre usam o endereço oficial novo.
  */
+export const PUBLIC_CAPTURE_FORM_URL = "https://www.esantoscorretor.com.br/captar";
 export const PUBLIC_CAPTURE_URL = "https://www.esantoscorretor.com.br/link-captacao";
 export const PERMANENT_CAPTURE_URL = "https://esantoscorretor.com.br/cadastro";
 

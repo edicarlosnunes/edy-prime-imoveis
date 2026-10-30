@@ -5,12 +5,29 @@ import { base } from "../__core/app";
 import { getDb, sha256Hex } from "../lib/auth";
 import type { AdminDb } from "../lib/admin-base";
 import * as schema from "../database/schema";
-import { validateCaptureShareToken } from "../lib/capture-share-tokens";
+import { validateCaptureShareToken, issueCaptureShareTokenRecord } from "../lib/capture-share-tokens";
 import { intakeOwner } from "../lib/owner-intake";
 import { parseOwnerPhotos } from "../lib/capture-photos";
 import { propertyCaptureFormSchema, captureFormNotes, captureFormPrice } from "../../shared/property-capture-form";
 
+import { createRateLimiter } from "../lib/lead-webhook-token";
+const limitPublicSessions = createRateLimiter(15, 60 * 60 * 1000);
+
+/** A reusable public URL creates an independent, opaque session for each visitor. */
+export async function startPublicCaptureSession(db: AdminDb, previousToken?: string) {
+  if (previousToken && await validateCaptureShareToken(db, previousToken)) return { token: previousToken };
+  // 0 identifies a public form session, not an administrator or WhatsApp sender.
+  const { token } = await issueCaptureShareTokenRecord(db, 0);
+  return { token };
+}
 export const propertyCaptureForms = {
+  start: base.input(z.object({ previousToken: z.string().max(128).optional() })).handler(async ({input, context}) => {
+    const db = await getDb();
+    if (input.previousToken && await validateCaptureShareToken(db, input.previousToken)) return {token:input.previousToken};
+    const ip = context.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (limitPublicSessions(ip)) throw new ORPCError("TOO_MANY_REQUESTS", {message:"Muitas tentativas. Aguarde um pouco antes de abrir um novo formulário."});
+    return startPublicCaptureSession(db);
+  }),
   resolve: base.input(z.object({ token: z.string().max(128) })).handler(async ({ input }) => ({
     valid: Boolean(await validateCaptureShareToken(await getDb(), input.token)),
   })),

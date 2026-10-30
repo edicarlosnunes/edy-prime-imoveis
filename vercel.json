@@ -52,6 +52,18 @@
       "destination": "/autorizacao.html"
     },
     {
+      "source": "/captar",
+      "destination": "/formulario.html"
+    },
+    {
+      "source": "/captar/",
+      "destination": "/formulario.html"
+    },
+    {
+      "source": "/formulario-imovel/:token",
+      "destination": "/formulario.html"
+    },
+    {
       "source": "/((?!api).*)",
       "destination": "/index.html"
     }

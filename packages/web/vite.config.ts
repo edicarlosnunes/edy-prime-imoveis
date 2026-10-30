@@ -26,6 +26,7 @@ export default defineConfig(({ mode }) => {
 			rollupOptions: {
 				input: {
 					main: path.resolve(__dirname, "index.html"),
+                    formulario: path.resolve(__dirname, "formulario.html"),
 					cadastro: path.resolve(__dirname, "cadastro.html"),
                     joaquimVenda: path.resolve(__dirname, 'joaquim-venda.html'),
                     joaquimLocacao: path.resolve(__dirname, 'joaquim-locacao.html'),

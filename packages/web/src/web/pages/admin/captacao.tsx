@@ -20,7 +20,7 @@ import { DOC_KIND_LABELS, DOC_TRACK_LABELS } from "../../../api/lib/capture-docu
 import { REGISTRATION_STATUSES, REGISTRATION_STATUS_LABEL, REGISTRATION_STATUS_TONE, normalizeRegistrationStatus } from "../../../api/lib/capture-registration";
 import { DEFAULT_PRIORITY_CITIES, OUTSIDE_PRIORITY_LABEL } from "../../../api/lib/priority-area";
 import { useSetCaptureRegistrationStatus } from "../../queries/admin";
-import { captureShareUrl, isOfficialCaptureHost, PERMANENT_CAPTURE_URL } from "../../lib/capture-public-url";
+import { captureShareUrl, isOfficialCaptureHost, PUBLIC_CAPTURE_FORM_URL } from "../../lib/capture-public-url";
 import { useAdminCaptures, useCapture, useCreateCapture, useMarkCaptureLost, useReopenCapture, useSetCaptureDocStatus, useSetCaptureNextAction, useSetCaptureStage, useSaveCaptureAppraisal, useMarkCaptureConverted, useSetCaptureChecklist, useAddCapturePhotos, useRemoveCapturePhoto, useCaptureDocuments, useGenerateCaptureDocument, useSetOwnerIdentity, useClearOwnerDuplicate, useCapturePromotedPhotos, usePromoteCapturePhoto, useDemoteCapturePhoto, useSetCapturePhotoPrimary, useMoveCapturePhoto, useIssueCaptureShareLink, useRevokeCaptureShareLink } from "../../queries/admin";
 
 /* Item 7 — a lista é PRIORIDADE, não limite: cidade de fora não é bloqueada,
@@ -169,7 +169,7 @@ function Content() {
   }
   async function copyPermanentCaptureLink() {
     try {
-      await navigator.clipboard.writeText(PERMANENT_CAPTURE_URL);
+      await navigator.clipboard.writeText(PUBLIC_CAPTURE_FORM_URL);
       setPermanentLinkStatus("Link fixo copiado.");
     } catch {
       setPermanentLinkStatus("Não foi possível copiar automaticamente. Selecione o endereço exibido e copie manualmente.");
@@ -220,18 +220,18 @@ function Content() {
       </div>}
       {source === "link_captacao" && <Card title="Link de captação">
         <div className="mb-5">
-          <h3 className="font-medium text-deep">Link fixo para compartilhar</h3>
-          <p className="mb-3 mt-1 text-sm text-muted">Salve ou copie este mesmo endereço para qualquer cliente. Ele prepara a conversa no WhatsApp; o cliente precisa tocar em Enviar.</p>
+          <h3 className="font-medium text-deep">Formulário de imóvel · link fixo para compartilhar</h3>
+          <p className="mb-3 mt-1 text-sm text-muted">Salve este endereço no celular e envie aos proprietários pelo seu WhatsApp 1174. O cliente preenche as etapas e envia o cadastro diretamente para o CRM.</p>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Input data-testid="input-permanent-capture-link" aria-label="Link fixo de captação" readOnly value={PERMANENT_CAPTURE_URL} />
+            <Input data-testid="input-permanent-capture-link" aria-label="Link fixo de captação" readOnly value={PUBLIC_CAPTURE_FORM_URL} />
             <Btn data-testid="button-copy-permanent-capture-link" tone="brass" onClick={() => void copyPermanentCaptureLink()}>Copiar link fixo</Btn>
-            <a href={PERMANENT_CAPTURE_URL} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded border border-line px-4 py-2 text-sm text-deep hover:bg-bone/50">Abrir link</a>
+            <a href={PUBLIC_CAPTURE_FORM_URL} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded border border-line px-4 py-2 text-sm text-deep hover:bg-bone/50">Abrir link</a>
           </div>
           {permanentLinkStatus && <p role="status" className="mt-2 text-xs text-muted">{permanentLinkStatus}</p>}
         </div>
         <div className="border-t border-line pt-5">
           <h3 className="font-medium text-deep">Links individuais temporários</h3>
-          <p className="mb-3 mt-1 text-sm text-muted">Se precisar de um endereço individual, gere um abaixo. Ele expira em 30 dias se não for usado; para o link que fica salvo no celular, use o link fixo acima.</p>
+          <p className="mb-3 mt-1 text-sm text-muted">Se precisar de um endereço individual, gere um abaixo. Ele expira em 30 dias se não for usado; para compartilhar com vários proprietários, use o formulário fixo acima.</p>
           {!isOfficialDomain && <p role="note" className="mb-3 rounded border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">Você está fora dos domínios oficiais autorizados para emissão. Não gere nem compartilhe links em prévias; a emissão está disponível apenas nos domínios públicos de produção.</p>}
           <div className="flex flex-col gap-2 sm:flex-row">
             <Btn data-testid="button-generate-exclusive-capture-link" tone="brass" disabled={!canIssueExclusiveLinks || issueCaptureLink.isPending} onClick={() => void generateExclusiveCaptureLink()}>{issueCaptureLink.isPending ? "Gerando…" : "Gerar link exclusivo"}</Btn>

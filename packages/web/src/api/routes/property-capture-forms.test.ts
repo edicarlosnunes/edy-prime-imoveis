@@ -49,3 +49,18 @@ test("a second unit from the same owner produces a separate capture",async()=>{
  expect(await f.db.select().from(schema.owners)).toHaveLength(1);
  expect(await f.db.select().from(schema.propertyCaptures)).toHaveLength(2);f.client.close();
 });
+
+test("permanent URL creates independent visitor sessions and resumes an unfinished form", async()=>{
+ const f=await fixture();
+ const {startPublicCaptureSession}=await import("./property-capture-forms");
+ const first=await startPublicCaptureSession(f.db);
+ const second=await startPublicCaptureSession(f.db);
+ expect(first.token).not.toBe(second.token);
+ expect((await startPublicCaptureSession(f.db,first.token)).token).toBe(first.token);
+ expect(await f.db.select().from(schema.owners)).toHaveLength(0);
+ await submitPropertyCaptureForm(f.db,{...f.input,token:first.token});
+ const next=await startPublicCaptureSession(f.db,first.token);
+ expect(next.token).not.toBe(first.token);
+ expect((await startPublicCaptureSession(f.db,second.token)).token).toBe(second.token);
+ f.client.close();
+});
