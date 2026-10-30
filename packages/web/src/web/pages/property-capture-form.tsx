@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, CheckCircle2, Home, Camera } from "lucide-react";
 import { client, orpc } from "../lib/api";
 import { usePublishedContent } from "../queries/site";
-import { mergeSiteContent, resolveLogoUrl } from "../lib/site-content";
+import { mergeSiteContent } from "../lib/site-content";
 import { propertyCaptureFormSchema } from "../../shared/property-capture-form";
 
 const empty = { name:"", phone:"", email:"", intention:"venda", propertyType:"apartamento", cep:"", street:"", number:"", complement:"", neighborhood:"", city:"Praia Grande", state:"SP", area:"", bedrooms:"", bathrooms:"", suites:"", parking:"", balcony:"", view:"", furnished:"", amenities:"", price:"", condominium:"", iptu:"", negotiation:"", occupancy:"", deed:"", financing:"", debts:"", observations:"", website:"" };
@@ -30,7 +30,7 @@ export default function PropertyCaptureForm({publicToken}: {publicToken?:string}
   const token = publicToken ?? params.token ?? "";
   const published = usePublishedContent();
   const content = mergeSiteContent(published.data?.data);
-  const logo = resolveLogoUrl(content) || "/esantos-logo.png";
+  const logo = "/esantos-logo-transparente.png";
   const link = useQuery({ ...orpc.propertyCaptureForms.resolve.queryOptions({input:{token}}), enabled:Boolean(token), retry:1 });
   const [answers, setAnswers] = useState(empty);
   const [step, setStep] = useState(0);
@@ -86,10 +86,10 @@ export default function PropertyCaptureForm({publicToken}: {publicToken?:string}
   }
   return <div className="min-h-screen bg-[#f5f3ed] px-4 py-8 text-stone-900 sm:py-12"><main className="mx-auto max-w-2xl">
     <header className="overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-      <div className="relative isolate flex min-h-52 items-end overflow-hidden bg-[#10251f] p-6 sm:min-h-64 sm:p-8">
+      <div className="relative isolate flex min-h-52 items-start overflow-hidden bg-[#10251f] p-6 sm:min-h-80 sm:p-8">
         <img src={content.hero.imageUrl || "/images/hero.jpg"} alt="Paisagem do litoral de Praia Grande" className="absolute inset-0 -z-20 h-full w-full object-cover"/>
         <div className="absolute inset-0 -z-10 bg-gradient-to-r from-black/85 via-black/55 to-black/20"/>
-        <div className="flex flex-wrap items-center gap-5"><img src={logo} alt="E. Santos Gestor Imobiliário" className="h-24 w-24 rounded-xl bg-black/65 p-2 object-contain sm:h-28 sm:w-28"/><div><p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-[#f4d28d]">E. Santos · Gestor Imobiliário</p><h1 className="font-serif text-3xl text-white sm:text-4xl">Cadastre seu imóvel</h1><p className="mt-2 text-sm text-white/85">Seu imóvel, nossa próxima oportunidade.</p></div></div>
+        <div className="flex flex-col items-start gap-4"><img src={logo} alt="E. Santos Gestor Imobiliário" className="h-24 w-24 object-contain sm:h-28 sm:w-28"/><div><p className="mb-2 text-xs font-semibold uppercase tracking-[.16em] text-[#f4d28d]">E. Santos · Gestor Imobiliário</p><h1 className="font-serif text-3xl text-white sm:text-4xl">Cadastre seu imóvel</h1><p className="mt-2 text-sm text-white/85">Seu imóvel, nossa próxima oportunidade.</p></div></div>
       </div>
       <div className="border-t-4 border-[#bc9349] p-6 sm:px-8"><p className="text-sm leading-6 text-stone-600">Conte um pouco sobre o imóvel que deseja vender ou alugar. Nossa equipe receberá as informações para conferir o cadastro e entrar em contato.</p><p className="mt-3 text-xs text-stone-500">Não precisa entrar em uma conta Google. Campos com * são obrigatórios. Quando não souber uma informação, escreva “Não sei”.</p></div>
     </header>
