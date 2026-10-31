@@ -22,7 +22,7 @@ import { Badge, Btn } from "./ui";
 
 type ThemeKey = "ouro" | "azul" | "oliva" | "claro";
 type VideoRow = { kind?: string; url?: string };
-type Theme = { label: string; accent: string; ink: string; surface: string; overlay: string };
+type Theme = { label: string; accent: string; ink: string; surface: string; overlay: string; coverBottom: string };
 type DemoStep =
   | { kind: "cover"; label: string }
   | { kind: "video"; label: string; url: string }
@@ -34,10 +34,10 @@ type ChannelResult = { status: "success" | "error" | "pending" | "scheduled" | "
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
 
 const THEMES: Record<ThemeKey, Theme> = {
-  ouro: { label: "Ouro premium", accent: "#D1A24B", ink: "#FFF8EA", surface: "#20150D", overlay: "rgba(21,12,7,.76)" },
-  azul: { label: "Azul executivo", accent: "#D7B56D", ink: "#F7F3EA", surface: "#0C1B2B", overlay: "rgba(7,20,34,.78)" },
-  oliva: { label: "Oliva sofisticado", accent: "#D8BE7A", ink: "#FFFDF4", surface: "#253027", overlay: "rgba(23,35,26,.78)" },
-  claro: { label: "Clean premium", accent: "#8A6329", ink: "#1B1712", surface: "#F3EEE4", overlay: "rgba(244,239,229,.88)" },
+  ouro: { label: "Ouro premium", accent: "#D1A24B", ink: "#FFF8EA", surface: "#20150D", overlay: "rgba(21,12,7,.48)", coverBottom: "rgba(32,21,13,.68)" },
+  azul: { label: "Azul executivo", accent: "#D7B56D", ink: "#F7F3EA", surface: "#0C1B2B", overlay: "rgba(7,20,34,.50)", coverBottom: "rgba(12,27,43,.68)" },
+  oliva: { label: "Oliva sofisticado", accent: "#D8BE7A", ink: "#FFFDF4", surface: "#253027", overlay: "rgba(23,35,26,.50)", coverBottom: "rgba(37,48,39,.68)" },
+  claro: { label: "Clean premium", accent: "#8A6329", ink: "#1B1712", surface: "#F3EEE4", overlay: "rgba(244,239,229,.88)", coverBottom: "#F3EEE4" },
 };
 
 function money(value: number | null | undefined) {
@@ -318,7 +318,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     const gradient = ctx.createLinearGradient(0, 330, 0, 1080);
     gradient.addColorStop(0, "rgba(0,0,0,0.02)");
     gradient.addColorStop(0.52, theme.overlay);
-    gradient.addColorStop(1, theme.surface);
+    gradient.addColorStop(1, theme.coverBottom);
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 1080, 1080);
     ctx.fillStyle = theme.ink;
@@ -691,7 +691,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             ) : (
               <>
                 {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
-                <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />
+                <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />
 
                 <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
               </>
@@ -718,7 +718,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && (
                 <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
-                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.surface} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
+                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
                 </button>
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
