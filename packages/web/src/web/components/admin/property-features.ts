@@ -20,7 +20,6 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
       "Playground",
       "Quadra",
       "Sauna",
-      "Espaço gourmet",
       "Portaria 24h",
       "Elevador",
     ],
@@ -28,6 +27,8 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   {
     label: "Imóvel",
     items: [
+      "Espaço gourmet",
+      "Rancho da cozinha",
       "Varanda gourmet",
       "Sacada",
       "Suíte",
