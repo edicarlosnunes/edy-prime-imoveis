@@ -1,3 +1,4 @@
+import { withPropertyLink } from "../lib/property-publication-link";
 import { refreshTikTokAttempt } from "../lib/tiktok-post-status";
 import type { Hono } from "hono";
 import { and, desc, eq, sql } from "drizzle-orm";
@@ -108,7 +109,7 @@ export function registerMetricoolRoutes(app:Hono) {
       const lock=await db.all(sql`INSERT INTO crm_tiktok_posts(property_id,video_url,state,created_at) VALUES(${id},${video.url},'sending',${Date.now()}) ON CONFLICT(property_id) DO UPDATE SET video_url=excluded.video_url,state='sending',message=NULL,external_id=NULL,planner_url=NULL,created_at=excluded.created_at WHERE crm_tiktok_posts.state='rejected' RETURNING property_id`) as unknown[];
       if(!lock.length)throw new Error("Este imóvel já tem uma solicitação de envio ao TikTok. Confira o planejamento no Metricool antes de repetir.");
       claimed=true;
-      const caption=[property.title,`Código: ${property.code}`,formatPropertyPrice(property),`${property.district} · ${property.city}`,publicationDescription(property.description,property.features,1000),`Mais informações: https://www.esantoscorretor.com.br/imovel/${property.slug ?? ""}`].filter(Boolean).join("\n").slice(0,2100);
+      const caption=withPropertyLink([property.title,`Código: ${property.code}`,formatPropertyPrice(property),`${property.district} · ${property.city}`,publicationDescription(property.description,property.features,1000)].filter(Boolean).join("\n"),property,"https://www.esantoscorretor.com.br",2100);
       const date=new Date(Date.now()+120000).toISOString();
       const localDate=new Date(new Date(date).getTime()-3*3600000).toISOString().slice(0,19);
       const info=JSON.stringify({providers:[{network:"tiktok"}],text:caption,media:[video.url],publicationDate:{dateTime:localDate,timezone:"America/Sao_Paulo"},autoPublish:true,draft:false,shortener:false,saveExternalMediaFiles:true,tiktokData:{privacyOption:"PUBLIC_TO_EVERYONE",commercialContentOwnBrand:true,commercialContentThirdParty:false,autoAddMusic:false,title:property.title.slice(0,90)}});

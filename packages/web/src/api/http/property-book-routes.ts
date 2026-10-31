@@ -1,3 +1,4 @@
+import { withPropertyLink } from "../lib/property-publication-link";
 import { put } from "@vercel/blob";
 import { prepareInstagramImage } from "../lib/instagram-image-delivery";
 import { publicationDescription } from "../../shared/negotiation";
@@ -27,7 +28,7 @@ function sleep(ms: number) {
 
 function captionFor(property: any, headers: Headers) {
   const site = siteBaseUrl(headers);
-  return [
+  return withPropertyLink([
     property.title,
     publicationDescription(property.description,property.features) || null,
     property.code ? `Código: ${property.code}` : null,
@@ -36,8 +37,7 @@ function captionFor(property: any, headers: Headers) {
     property.bedrooms > 0 ? `${property.bedrooms} dormitório(s)` : null,
     property.suites > 0 ? `${property.suites} suíte(s)` : null,
     property.parking > 0 ? `${property.parking} vaga(s)` : null,
-    `Mais informações: ${site}`,
-  ].filter(Boolean).join("\n\n").slice(0, 2100);
+  ].filter(Boolean).join("\n\n"), property, site, 2100);
 }
 
 function safePublicUrl(value: unknown) {

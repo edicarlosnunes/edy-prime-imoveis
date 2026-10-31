@@ -1,3 +1,4 @@
+import { withPropertyLink } from "../lib/property-publication-link";
 import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
@@ -15,7 +16,7 @@ type MetaError = { message?: string; code?: number; error_subcode?: number };
 
 function propertyCaption(property: any, headers: Headers) {
   const site = siteBaseUrl(headers);
-  return [
+  return withPropertyLink([
     property.title,
     publicationDescription(property.description,property.features) || null,
     property.code ? `Código: ${property.code}` : null,
@@ -24,8 +25,7 @@ function propertyCaption(property: any, headers: Headers) {
     property.bedrooms > 0 ? `${property.bedrooms} dormitório(s)` : null,
     property.suites > 0 ? `${property.suites} suíte(s)` : null,
     property.parking > 0 ? `${property.parking} vaga(s)` : null,
-    `Mais informações: ${site}`,
-  ].filter(Boolean).join("\n\n").slice(0, 5000);
+  ].filter(Boolean).join("\n\n"), property, site, 5000);
 }
 
 function safePublicUrl(value: unknown) {

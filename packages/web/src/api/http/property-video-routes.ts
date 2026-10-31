@@ -1,3 +1,4 @@
+import { withPropertyLink } from "../lib/property-publication-link";
 import { normalizeBookAsset } from "../lib/book-video-normalize";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
@@ -94,7 +95,7 @@ function safeBlobUrl(value: string) {
 
 function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propertyForPublishing>>>, headers: Headers) {
   const site = siteBaseUrl(headers);
-  return [
+  return withPropertyLink([
     property.title,
     property.code ? `Código: ${property.code}` : null,
     property.price > 0 ? `Valor: ${formatPropertyPrice(property)}` : null,
@@ -102,8 +103,7 @@ function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propert
     property.bedrooms > 0 ? `${property.bedrooms} dormitório(s)` : null,
     property.suites > 0 ? `${property.suites} suíte(s)` : null,
     property.parking > 0 ? `${property.parking} vaga(s)` : null,
-    `Mais informações: ${site}`,
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n"), property, site, 2100);
 }
 
 async function latestChannel(propertyId: number, channel: string) {
