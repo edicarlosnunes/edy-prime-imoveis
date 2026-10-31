@@ -1,3 +1,5 @@
+import { put } from "@vercel/blob";
+import { prepareInstagramImage } from "../lib/instagram-image-delivery";
 import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
@@ -221,17 +223,32 @@ export function registerPropertyBookRoutes(app: Hono) {
     }
 
     try {
+      const publicImage = (url: string) => prepareInstagramImage(
+        url,
+        siteBaseUrl(c.req.raw.headers),
+        async (id) => {
+          const [image] = await db.select({ mime: schema.media.mime, data: schema.media.data })
+            .from(schema.media).where(eq(schema.media.id, id)).limit(1);
+          return image ?? null;
+        },
+        async (id, bytes) => {
+          const saved = await put(`social/instagram/${propertyId}/${id}.jpg`, bytes, {
+            access: "public", addRandomSuffix: true, contentType: "image/jpeg",
+          });
+          return saved.url;
+        },
+      );
       const children: string[] = [];
-      children.push(await createImageChild(config.userId, config.accessToken, coverUrl, "Capa"));
+      children.push(await createImageChild(config.userId, config.accessToken, await publicImage(coverUrl), "Capa"));
       if (video?.url) {
         children.push(await createVideoChild(config.userId, config.accessToken, video.url));
       }
       const selectedPhotoUrls = photoUrls.slice(0, video?.url ? 7 : 8);
       for (let index = 0; index < selectedPhotoUrls.length; index += 1) {
         const photoUrl = selectedPhotoUrls[index];
-        children.push(await createImageChild(config.userId, config.accessToken, photoUrl, `Foto ${index + 1}`));
+        children.push(await createImageChild(config.userId, config.accessToken, await publicImage(photoUrl), `Foto ${index + 1}`));
       }
-      children.push(await createImageChild(config.userId, config.accessToken, ctaUrl, "Encerramento/CTA"));
+      children.push(await createImageChild(config.userId, config.accessToken, await publicImage(ctaUrl), "Encerramento/CTA"));
 
       const parentResponse = await fetch(`${INSTAGRAM_GRAPH_BASE}/${config.userId}/media`, {
         method: "POST",
