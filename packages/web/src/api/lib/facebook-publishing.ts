@@ -1,3 +1,4 @@
+import { withPropertyLink } from "./property-publication-link";
 import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 const GRAPH_VERSION = "v26.0";
@@ -53,8 +54,8 @@ export function buildFacebookCaption(property: FacebookPropertyForPost) {
     lines.push("", description);
   }
 
-  lines.push("", `🔗 Veja fotos e detalhes: ${property.link}`, `Código do imóvel: ${property.code}`);
-  return lines.join("\n");
+  lines.push("", `Código do imóvel: ${property.code}`);
+  return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 5000);
 }
 
 async function graphJson(path: string, init: RequestInit, token: string) {
