@@ -55,6 +55,7 @@ export const CATEGORIES = [
   "Entrada de Leads",
   "WhatsApp",
   "Instagram / Facebook / Meta",
+  "LinkedIn",
   "Google",
   "XML / Feeds",
   "Site Edy Prime",
@@ -297,6 +298,30 @@ export const INTEGRATIONS: IntegrationDef[] = [
     canTest: true,
     canSync: false,
     docsUrl: "https://developers.facebook.com/docs/whatsapp/cloud-api",
+    available: true,
+  },
+
+  {
+    key: "linkedin_ads",
+    category: "LinkedIn",
+    name: "LinkedIn Ads — conexão",
+    mark: "in",
+    purpose: "Validar acesso à conta de anúncios do LinkedIn. A publicação automática ainda não está habilitada.",
+    method: "Advertising API oficial. O teste consulta a conta, sem criar campanha ou contratar impulsionamento.",
+    pending: [
+      "Conta no LinkedIn Campaign Manager e acesso administrativo",
+      "Aplicativo autorizado para Advertising API pelo LinkedIn",
+      "Token autorizado para r_ads; criação de anúncios exige rw_ads e função adequada na conta",
+      "Após validar a conexão, concluir o envio da fila e a revisão de orçamento antes de anunciar",
+    ],
+    fields: [
+      { key: "accountId", label: "ID da conta de anúncios", type: "text", help: "Número da conta no Campaign Manager. Não é o ID do perfil." },
+      { key: "accessToken", label: "Token autorizado do LinkedIn", type: "password", secret: true, help: "Salvo com proteção no servidor. Não envie o token no chat." },
+      { key: "apiVersion", label: "Versão da API (AAAAMM)", type: "text", placeholder: "202609", help: "Versão suportada da Marketing API; padrão 202609." },
+    ],
+    canTest: true,
+    canSync: false,
+    docsUrl: "https://learn.microsoft.com/en-us/linkedin/marketing/quick-start",
     available: true,
   },
 

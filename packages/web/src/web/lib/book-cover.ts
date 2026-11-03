@@ -54,8 +54,6 @@ export async function buildPremiumCover(input: CoverInput) {
   }
   ctx.fillStyle = input.accent;
   ctx.fillRect(0, 630, 1080, 7);
-  ctx.fillStyle = "rgba(242,240,235,.96)";
-  ctx.fillRect(34, 30, 128, 128);
   ctx.drawImage(logo, 46, 42, 104, 104);
   ctx.fillStyle = "#38332A";
   const words = input.headline.trim().split(/\s+/);
