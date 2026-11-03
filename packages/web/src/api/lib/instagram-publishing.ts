@@ -1,3 +1,4 @@
+import { withPropertyLink } from "./property-publication-link";
 import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 const GRAPH_VERSION = "v26.0";
@@ -57,12 +58,11 @@ export function buildInstagramCaption(property: InstagramPropertyForPost) {
 
   lines.push(
     "",
-    `🔗 Mais fotos e detalhes: ${property.link}`,
     `Código do imóvel: ${property.code}`,
     "",
     "#imoveis #imobiliaria #corretordeimoveis",
   );
-  return lines.join("\n").slice(0, 2200);
+  return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 2200);
 }
 
 type GraphBody = {
