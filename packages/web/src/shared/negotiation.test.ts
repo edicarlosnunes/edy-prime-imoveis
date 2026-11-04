@@ -23,3 +23,10 @@ test("public captions preserve full conditions despite a long description and hi
  expect(negotiationText(EMPTY_NEGOTIATION)).toBe("");
  expect(readNegotiation("quebrado")).toEqual(EMPTY_NEGOTIATION);
 });
+
+test("preserva hashtags no fim de descrições longas ao publicar", () => {
+ const tags = "#ESantosCorretor #PraiaGrande #Tupi #Sobrado #Imoveis";
+ const result = publicationDescription("x".repeat(2000) + "\n\n" + tags, null);
+ expect(result.endsWith(tags)).toBe(true);
+ expect(result.length).toBeLessThanOrEqual(900);
+});

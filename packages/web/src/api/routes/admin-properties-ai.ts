@@ -1,3 +1,4 @@
+import { contentCustomizationSchema, customizationInstructions } from "../../shared/content-customization";
 import { negotiationSchema, negotiationText } from "../../shared/negotiation";
 import { listPropertyTypes } from "../lib/property-type-catalog";
 /**
@@ -45,6 +46,7 @@ const typeLabel: Record<string, string> = {
 };
 
 const generateInput = z.object({
+  customization: contentCustomizationSchema.default(() => contentCustomizationSchema.parse({})),
   negotiation: negotiationSchema.optional(),
   purpose: purposeEnum,
   type: typeEnum,
@@ -109,7 +111,7 @@ const RULES = `REGRAS ABSOLUTAS (quebrar qualquer uma torna o texto inútil):
 3A. PREÇO: quando existir “Valor de oportunidade”, ele é o valor comercial atual e deve ser priorizado em descrição, WhatsApp e portal. Se mencionar os dois valores, use a forma “de [Valor do imóvel] por [Valor de oportunidade]”. Nunca substitua o valor de oportunidade pelo valor do imóvel. Quando não houver valor de oportunidade, use somente o Valor do imóvel.
 3B. As condições de negociação explicitamente informadas na ficha podem ser mencionadas, inclusive permuta, financiamento e débitos. Nunca invente condições nem some ou desconte valores.
 4. Não use superlativo vazio nem promessa ("o melhor da cidade", "oportunidade única", "imperdível", "não perca"). Não prometa retorno de investimento nem valorização.
-5. Tom: sofisticado, premium e profissional, humano e direto. Português do Brasil. Sem emoji. Sem CAIXA ALTA. Sem hashtag.
+5. Tom: sofisticado, premium e profissional, humano e direto. Português do Brasil. Sem CAIXA ALTA. Emojis e hashtags somente nos campos e nas condições autorizadas pela PERSONALIZAÇÃO COMERCIAL.
 6. Se a ficha tiver poucos dados, escreva textos mais curtos — jamais complete com suposição.
 7. Não cite o nome da imobiliária, telefone, link, preço em texto de SEO nem chamada para ação com contato inventado.`;
 
@@ -117,7 +119,7 @@ const FORMAT = `Responda SOMENTE com um objeto JSON válido, sem cercas de códi
 {
   "title": "título profissional do anúncio, 45 a 80 caracteres, sem preço",
   "highlight": "frase curta de destaque para o card do site, 40 a 90 caracteres, sem ponto final obrigatório",
-  "description": "descrição comercial completa para a página do imóvel, 2 a 4 parágrafos curtos separados por \\n\\n, entre 500 e 1100 caracteres",
+  "description": "descrição comercial completa para a página do imóvel, 2 a 4 parágrafos curtos separados por \\n\\n, até 1800 caracteres, com abertura criativa, características, preço e convite conforme a personalização",
   "whatsapp": "versão curta para enviar no WhatsApp, até 400 caracteres, pode usar quebras de linha e traços simples como marcadores",
   "portal": "descrição para portais imobiliários, texto corrido objetivo, até 700 caracteres, sem contato e sem link",
   "metaTitle": "meta title de SEO, até 60 caracteres",
@@ -196,6 +198,7 @@ export const adminPropertyContent = {
       RULES,
       "FICHA DO IMÓVEL (única fonte de verdade):",
       sheet,
+      customizationInstructions(input.customization, input),
       FORMAT,
     ].join("\n\n");
 
@@ -233,7 +236,7 @@ export const adminPropertyContent = {
       model: effectiveModel(FALLBACK_MODEL, "content"),
       content: parsed.data,
       /** eco do que foi enviado — ajuda o admin a conferir a origem do texto */
-      usedFields: sheet.split("\n"),
+      usedFields: [...sheet.split("\n"), ...customizationInstructions(input.customization, input).split("\n")],
     };
   }),
 };

@@ -1,3 +1,4 @@
+import { CONTENT_CHOICES, DEFAULT_CONTENT_CUSTOMIZATION, contentCustomizationSchema, type ContentCustomization } from "../../../shared/content-customization";
 import { type MetaLocation, metaLocationSchema } from "../../../shared/meta-location";
 import { ReviewScheduleFields } from "../../components/admin/review-schedule-fields";
 import { DEFAULT_REVIEW, type ReviewSchedule } from "../../../shared/revalidation";
@@ -211,6 +212,13 @@ export function PropertyForm({
   const [section, setSection] = useState<string>("basico");
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [contentCustomization, setContentCustomization] = useState<ContentCustomization>(() => {
+    try { return contentCustomizationSchema.parse(JSON.parse(localStorage.getItem("esantos:content-customization:v1") || "{}")); }
+    catch { return { ...DEFAULT_CONTENT_CUSTOMIZATION }; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("esantos:content-customization:v1", JSON.stringify(contentCustomization)); } catch { /* preferências seguem disponíveis nesta sessão */ }
+  }, [contentCustomization]);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiContent, setAiContent] = useState<GeneratedContent | null>(null);
@@ -646,6 +654,7 @@ export function PropertyForm({
     setAiOpen(true);
     try {
       const result = await generate.mutateAsync({
+        customization: contentCustomization,
         purpose: form.purpose,
         type: form.type,
         price: softMoney(form.price),
@@ -1112,6 +1121,25 @@ export function PropertyForm({
 
               {section === "descricao" && (
                 <>
+                  <fieldset className="rounded-[10px] border border-line p-4 space-y-3" disabled={generate.isPending}>
+                    <legend className="px-1 text-sm font-semibold">Personalizar descrição com IA</legend>
+                    <p className="text-xs text-muted">Marque os apelos que deseja combinar. A IA organiza o texto usando apenas a ficha deste imóvel. Preferências lembradas neste navegador.</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {CONTENT_CHOICES.map(([key, label]) => (
+                        <label key={key} className="flex items-start gap-2 text-sm text-deep">
+                          <input type="checkbox" className="mt-1" checked={contentCustomization[key]} onChange={(e) => setContentCustomization(current => ({ ...current, [key]: e.target.checked }))} />
+                          <span>{label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <label className="block text-sm text-deep">Destino do convite
+                      <select className="mt-1 block w-full rounded-lg border border-line bg-transparent p-2" value={contentCustomization.destination} onChange={(e) => setContentCustomization(current => ({ ...current, destination: e.target.value as ContentCustomization["destination"] }))}>
+                        <option value="whatsapp">Contato pelo WhatsApp</option><option value="form">Cadastro pelo formulário</option>
+                      </select>
+                    </label>
+                    <p className="text-xs text-muted">“Saia do aluguel” vale para residenciais à venda de R$250 mil a R$600 mil. Simulação exige “Financiamento” nas condições de negociação. Marcar não altera as condições do imóvel.</p>
+                    <p className="text-xs text-muted">Depois de marcar, clique em “Gerar conteúdo com IA”. Você pode revisar antes de usar e salvar.</p>
+                  </fieldset>
                   <div className="flex flex-wrap items-center gap-3 rounded-[10px] border border-brass/40 bg-brass/5 px-3 py-3">
                     <Btn tone="brass" onClick={() => void runGenerate()} disabled={generate.isPending}><Sparkles className="h-3.5 w-3.5" />{generate.isPending ? "Gerando…" : "Gerar conteúdo com IA"}</Btn>
                     <p className="text-[11px] text-muted">Usa somente os dados já cadastrados deste imóvel. Você revisa antes de aplicar — nada é publicado automaticamente.</p>

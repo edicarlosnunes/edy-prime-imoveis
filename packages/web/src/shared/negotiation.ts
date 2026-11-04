@@ -40,5 +40,9 @@ export function withNegotiation(description: string | null | undefined, value: N
 // Reserve space for the complete conditions before shortening the descriptive prose.
 export function publicationDescription(description: string | null | undefined, features: string | null | undefined, maxProse=900) {
   const value=readNegotiation(features);
-  return [negotiationText(value),withoutNegotiation(description,value).slice(0,negotiationText(value) ? Math.min(maxProse,400) : maxProse)].filter(Boolean).join("\n\n");
+  const prose = withoutNegotiation(description,value);
+  const tags = prose.match(/(?:#[\p{L}\p{N}_]+[ \n]*)+$/u)?.[0]?.trim() || "";
+  const body = tags ? prose.slice(0, prose.lastIndexOf(tags)).trim() : prose;
+  const limit = negotiationText(value) ? Math.min(maxProse,400) : maxProse;
+  return [negotiationText(value), body.slice(0, Math.max(0, limit - (tags ? tags.length + 2 : 0))).trim(), tags].filter(Boolean).join("\n\n");
 }

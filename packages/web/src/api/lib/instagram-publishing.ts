@@ -60,7 +60,7 @@ export function buildInstagramCaption(property: InstagramPropertyForPost) {
     "",
     `Código do imóvel: ${property.code}`,
     "",
-    "#imoveis #imobiliaria #corretordeimoveis",
+    /#[\p{L}\p{N}_]+/u.test(description) ? "" : "#imoveis #imobiliaria #corretordeimoveis",
   );
   return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 2200);
 }
