@@ -1,3 +1,4 @@
+import { testLinkedInAds } from "./linkedin-ads";
 /**
  * Testes REAIS de conexão. Nada aqui finge sucesso:
  * quando não existe forma de testar sem credencial/contrato, o retorno diz isso.
@@ -39,6 +40,8 @@ export async function runTest(
   baseUrl: string,
 ): Promise<TestResult> {
   switch (key) {
+    case "linkedin_ads":
+      return testLinkedInAds(config);
     case "mercadolivre":
       return testMercadoLivre(db);
     /* ---------------------------------------------------------- WhatsApp */

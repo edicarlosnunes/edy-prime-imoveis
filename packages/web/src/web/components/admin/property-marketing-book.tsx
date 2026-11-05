@@ -1,3 +1,4 @@
+import { buildPremiumCover } from "../../lib/book-cover";
 import { tiktokResultStatus } from "../../../shared/tiktok-result";
 import { negotiationText } from "../../../shared/negotiation";
 import { propertyPrice } from "../../../shared/property-price";
@@ -68,24 +69,6 @@ function cropImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, width
   ctx.drawImage(image, sx, sy, sourceWidth, sourceHeight, 0, 0, width, height);
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number, maxLines: number) {
-  const words = text.trim().split(/\s+/);
-  let line = "";
-  let lineNo = 0;
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (ctx.measureText(candidate).width > maxWidth && line) {
-      ctx.fillText(line, x, y + lineNo * lineHeight);
-      lineNo += 1;
-      if (lineNo >= maxLines) return;
-      line = word;
-    } else {
-      line = candidate;
-    }
-  }
-  if (line && lineNo < maxLines) ctx.fillText(line, x, y + lineNo * lineHeight);
-}
-
 async function loadImage(url: string) {
   const image = new Image();
   image.crossOrigin = "anonymous";
@@ -141,6 +124,8 @@ function YoutubePlayBadge({ large = false }: { large?: boolean }) {
 }
 
 export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string | null>(null);
+  const [coverPreviewError, setCoverPreviewError] = useState<string | null>(null);
   const [ctaPreviewUrl, setCtaPreviewUrl] = useState<string | null>(null);
   const [ctaPreviewError, setCtaPreviewError] = useState<string | null>(null);
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
@@ -239,8 +224,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const previousPriceText = pricing.discounted ? money(pricing.original) : null;
   const info = [
     formatInfo("dorm.", property?.bedrooms),
-    formatInfo("suíte", property?.suites),
-    formatInfo("vaga", property?.parking),
+    formatInfo(Number(property?.suites) === 1 ? "suíte" : "suítes", property?.suites),
+    formatInfo(Number(property?.parking) === 1 ? "vaga" : "vagas", property?.parking),
     formatInfo("m²", property?.areaUtil),
   ].filter(Boolean).join(" · ");
   const location = [property?.district, property?.city].filter(Boolean).join(" · ");
@@ -308,39 +293,24 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   async function buildCoverCanvas() {
     if (customCoverUrl) return buildSocialPhotoCanvas(customCoverUrl);
     if (!primary?.url || !property) throw new Error("Cadastre ao menos uma foto para gerar a capa premium.");
-    const image = await loadImage(primary.url);
-    const canvas = document.createElement("canvas");
-    canvas.width = 1080;
-    canvas.height = 1080;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Seu navegador não conseguiu preparar a capa.");
-    cropImage(ctx, image, 1080, 1080);
-    const gradient = ctx.createLinearGradient(0, 330, 0, 1080);
-    gradient.addColorStop(0, "rgba(0,0,0,0.02)");
-    gradient.addColorStop(0.52, theme.overlay);
-    gradient.addColorStop(1, theme.coverBottom);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 1080, 1080);
-    ctx.shadowColor = "rgba(0,0,0,.8)";
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    ctx.fillStyle = theme.ink;
-    ctx.font = "700 57px Arial";
-    wrapText(ctx, headline, 64, 710, 900, 66, 3);
-    if (previousPriceText) {
-      ctx.fillStyle = theme.ink;
-      ctx.font = "500 28px Arial";
-      ctx.fillText(`De ${previousPriceText}`, 64, 879);
-    }
-    ctx.fillStyle = theme.accent;
-    ctx.font = "700 43px Arial";
-    ctx.fillText(`${previousPriceText ? "Por " : ""}${priceText}`, 64, 930);
-    ctx.fillStyle = theme.ink;
-    ctx.font = "500 27px Arial";
-    if (location) ctx.fillText(location, 64, 980);
-    if (info) ctx.fillText(info, 64, 1025);
-    return canvas;
+    return buildPremiumCover({
+      photos: [primary.url, ...images.filter((item) => item.url !== primary.url).map((item) => item.url)].slice(0, 3),
+      headline, location, info, price: priceText, previousPrice: previousPriceText, accent: theme.accent,
+    });
   }
+
+  useEffect(() => {
+    let alive = true;
+    setCoverPreviewUrl(null);
+    setCoverPreviewError(null);
+    if (!primary || !property) return;
+    void buildCoverCanvas().then((canvas) => {
+      if (alive) setCoverPreviewUrl(canvas.toDataURL("image/jpeg", .92));
+    }).catch((caught) => {
+      if (alive) setCoverPreviewError(caught instanceof Error ? caught.message : "Não foi possível preparar a capa.");
+    });
+    return () => { alive = false; };
+  }, [property, primary, themeKey, customCoverUrl]);
 
   async function buildCtaCanvas(youtube = false) {
     if (!property) throw new Error("Imóvel não carregado.");
@@ -689,16 +659,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
         <div>
           <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line" style={{ background: theme.surface }}>
-            {customCoverUrl ? (
-              <img src={customCoverUrl} alt="Capa personalizada do Book" className="absolute inset-0 h-full w-full object-cover" />
-            ) : (
-              <>
-                {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
-                <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />
-
-                <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink, textShadow: "0 2px 6px rgba(0,0,0,.8)" }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
-              </>
-            )}
+            {coverPreviewUrl ? <img src={coverPreviewUrl} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-contain" /> : <div className="flex h-full items-center justify-center p-6 text-sm text-white">{coverPreviewError || "Preparando capa…"}</div>}
             {customCoverUrl && <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] text-white">Capa personalizada</span>}
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -721,7 +682,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && (
                 <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
-                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink, textShadow: "0 2px 6px rgba(0,0,0,.8)" }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
+                  {coverPreviewUrl ? <img src={coverPreviewUrl} alt="Capa premium" className="absolute inset-0 h-full w-full object-contain" /> : <span>{coverPreviewError || "Preparando capa…"}</span>}
+                  {shortReady && <YoutubePlayBadge large />}
                 </button>
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
