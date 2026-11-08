@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import type { AdminDb } from "./admin-base";
 import { findIntegration, readConfig } from "./integrations";
 import { testMercadoLivre } from "./mercadolivre";
+import { isCampaignPropertyType } from "./campaign-publication";
 import * as schema from "../database/schema";
 
 export type PublicationCheck = { ok: boolean; label: string; detail: string };
@@ -67,10 +68,11 @@ export async function propertyPublicationChecks(db: AdminDb, propertyId: number,
   const [property] = await db.select().from(schema.properties).where(eq(schema.properties.id, propertyId)).limit(1);
   if (!property) throw new Error("Imóvel não encontrado.");
   const photos = await db.select({ id: schema.propertyImages.id }).from(schema.propertyImages).where(eq(schema.propertyImages.propertyId, propertyId));
+  const isCampaign = await isCampaignPropertyType(db, property.type);
   const checks: PublicationCheck[] = [
     { ok: property.status === "disponivel" && property.published === 1, label: "Imóvel disponível e publicado no site", detail: property.code },
     { ok: Boolean(property.title && property.description), label: "Título e descrição", detail: property.title && property.description ? "Preenchidos no cadastro." : "Complete o título e a descrição." },
-    { ok: property.price > 0, label: "Preço", detail: property.price > 0 ? "Preço preenchido." : "Informe o preço do imóvel." },
+    { ok: isCampaign || property.price > 0, label: "Preço", detail: isCampaign ? "Não exigido para campanhas." : property.price > 0 ? "Preço preenchido." : "Informe o preço do imóvel." },
     { ok: photos.length > 0, label: "Fotos", detail: `${photos.length} foto(s) cadastrada(s).` },
   ];
   if (key === "mercadolivre") checks.push(...await mercadoLivreChecks(db, propertyPrice(property).current, property.type, property.purpose));
@@ -81,10 +83,21 @@ export async function propertyPublicationChecks(db: AdminDb, propertyId: number,
     checks.push({ok:false,label:"Vídeo completo",detail:"Após conectar, use o botão para gerar/salvar o Book em MP4 e enviar ao Metricool. Agendamento não é confirmação de publicação."});
   }
   else {
+    const socialIntegrations: Record<string, { integration: string; required: string[] }> = {
+      instagram: { integration: "instagram_publicacao", required: ["userId", "accessToken"] },
+      facebook: { integration: "facebook_publicacao", required: ["pageId", "pageToken"] },
+      youtube: { integration: "youtube_publicacao", required: ["clientId", "clientSecret", "refreshToken"] },
+    };
+    const social = socialIntegrations[key];
     const definition = findIntegration(key);
-    const current = await readConfig(db, key);
+    const current = await readConfig(db, social?.integration ?? key);
     if (definition && definition.category !== "Portais de Imóveis") checks.push({ ok: false, label: "Tipo de integração", detail: "Serviço de apoio do CRM; não é um destino de anúncios. " + definition.purpose });
-    else {
+    else if (social) {
+      const hasCredentials = social.required.every((field) => Boolean(current.config[field]?.trim()));
+      const connected = current.row?.enabled === 1 && current.row.status === "conectado" && hasCredentials;
+      checks.push({ ok: connected, label: "Conexão da plataforma", detail: connected ? "Integração configurada e autorizada no CRM. Isto não confirma validade atual do token na API externa." : "Integração ainda não está pronta; confira a conexão em Integrações." });
+      checks.push({ ok: connected, label: "Envio por este botão", detail: connected ? "Canal habilitado no CRM. O envio real depende de confirmação da plataforma." : "O canal não está liberado para envio neste momento." });
+    } else {
       checks.push({ ok: current.row?.status === "conectado", label: "Conexão da plataforma", detail: current.row?.status === "conectado" ? "Conexão registrada no CRM." : "Conexão ainda não concluída." });
       for (const detail of definition?.pending ?? []) checks.push({ ok: false, label: "Requisito a conferir", detail });
       checks.push({ ok: false, label: "Envio por este botão", detail: "Ainda não disponível para esta plataforma. Nenhum anúncio foi publicado." });
