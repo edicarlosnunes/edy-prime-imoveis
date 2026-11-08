@@ -73,10 +73,10 @@ const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 /** Ficha textual só com o que existe. Campo vazio simplesmente não aparece. */
-function buildSheet(input: GenerateInput, catalogLabel?: string) {
+function buildSheet(input: GenerateInput, catalogLabel?: string, isCampaign = false) {
   const lines: string[] = [];
   if(input.negotiation) { const conditions=negotiationText(input.negotiation); if(conditions) lines.push(conditions); }
-  if (input.type.toLowerCase() === "campanha") {
+  if (isCampaign) {
     lines.push("Tipo: campanha publicitária institucional; não é anúncio de um imóvel.");
     if (input.title.trim()) lines.push(`Tema da campanha: ${input.title.trim()}`);
     return lines.join("\n");
@@ -185,7 +185,9 @@ export const adminPropertyContent = {
    * revisão do administrador, que decide aplicar campo por campo.
    */
   generate: adminBase.input(generateInput).handler(async ({ input, context }) => {
-    const missing = missingFields(input);
+    const catalog = await listPropertyTypes(context.db);
+    const isCampaign = catalog.some(row => row.key === input.type && row.label.trim().toLocaleLowerCase("pt-BR") === "campanha");
+    const missing = isCampaign ? (input.title.trim().length >= 3 ? [] : ["título da campanha"]) : missingFields(input);
     if (missing.length > 0) {
       throw new ORPCError("BAD_REQUEST", {
         message: `Preencha antes: ${missing.join(", ")}. A IA só escreve com dados reais do cadastro.`,
@@ -197,9 +199,7 @@ export const adminPropertyContent = {
       });
     }
 
-    const catalog = await listPropertyTypes(context.db);
-    const sheet = buildSheet(input, catalog.find(row=>row.key===input.type)?.label);
-    const isCampaign = input.type.toLowerCase() === "campanha";
+    const sheet = buildSheet(input, catalog.find(row=>row.key===input.type)?.label, isCampaign);
     const prompt = isCampaign
       ? [
           "Você redige uma CAMPANHA PUBLICITÁRIA para E. Santos, Gestor Imobiliário, em Praia Grande (SP). Não está anunciando imóvel específico.",
