@@ -207,7 +207,9 @@ export function PropertyForm({
   const hydratedPropertyId = useRef<number | null>(null);
   const typeCatalog = usePropertyTypes();
   const propertyTypeLabel = typeCatalog.labels;
-  const isCampaign = typeCatalog.rows.some(row => row.key === form.type && row.label.trim().toLocaleLowerCase("pt-BR") === "campanha");
+  const isCampaign = form.type.trim().toLocaleLowerCase("pt-BR") === "campanha" ||
+    typeCatalog.rows.some(row => row.key === form.type && row.label.trim().toLocaleLowerCase("pt-BR") === "campanha") ||
+    (propertyTypeLabel[form.type] ?? "").trim().toLocaleLowerCase("pt-BR") === "campanha";
   const typeOptions = typeCatalog.rows.filter(row => row.active || (propertyId !== null && row.key === form.type));
   const [guidedCreate] = useState(propertyId === null);
   const [images, setImages] = useState<GalleryImage[]>([]);
@@ -936,6 +938,7 @@ export function PropertyForm({
           district={form.district}
           statusLabel={propertyStatusLabel[form.status] ?? ""}
           ownerLinked={form.ownerId !== ""}
+          isCampaign={isCampaign}
           imageCount={images.length}
           percent={progress.percent}
         />
@@ -1215,7 +1218,10 @@ export function PropertyForm({
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
           <p className="text-[11px] text-muted">{progress.missing.length === 0 ? "Cadastro completo." : `Faltam: ${progress.missing.map((item) => item.label).join(", ")}.`}</p>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            {isCampaign && propertyId !== null && ["caracteristicas", "valores", "proprietario", "documentacao"].includes(section) && nextSection && (
+              <Btn type="button" tone="outline" onClick={() => { setError(null); setSection(nextSection.id); }}>CAMPANHA · Pular etapa</Btn>
+            )}
             <Btn tone="outline" onClick={onClose}>Cancelar</Btn>
             {guidedCanAdvance ? (
               <>
