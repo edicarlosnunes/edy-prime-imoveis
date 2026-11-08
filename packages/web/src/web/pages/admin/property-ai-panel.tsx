@@ -92,7 +92,8 @@ export function PropertyAiPanel({
   if (!open) return null;
   // Render outside the property-form modal so nested overlays never share its stacking context.
   return createPortal(
-    <Modal open={open} onClose={onClose} wide title="Conteúdo gerado com IA">
+    <div className="admin-shell">
+      <Modal open={open} onClose={onClose} wide title="Conteúdo gerado com IA">
       <div className="space-y-4">
         <p className="rounded-[10px] border border-line px-3 py-2.5 text-xs text-muted">
           Os textos abaixo foram escritos apenas com os dados cadastrados deste imóvel. Nada foi
@@ -170,7 +171,8 @@ export function PropertyAiPanel({
           </Btn>
         </div>
       </div>
-    </Modal>,
+      </Modal>
+    </div>,
     document.body,
   );
 }
