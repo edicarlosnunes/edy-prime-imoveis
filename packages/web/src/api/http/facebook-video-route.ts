@@ -162,6 +162,23 @@ async function stageFacebookPhoto(pageId: string, pageToken: string, imageUrl: s
 }
 
 export function registerFacebookVideoRoute(app: Hono) {
+  // Read-only lookup of the original post; never triggers another Facebook publication.
+  app.get("/api/admin/property-book/:propertyId/facebook-publication", async (c) => {
+    const user = await resolveSession(c.req.raw.headers);
+    if (!user) return c.json({ error: "Não autorizado" }, 401);
+    const propertyId = Number(c.req.param("propertyId"));
+    if (!Number.isSafeInteger(propertyId) || propertyId <= 0) return c.json({ error: "Cadastro inválido" }, 400);
+    const post = await latestChannel(propertyId, "facebook_book");
+    const video = await latestChannel(propertyId, "facebook_video");
+    const read = (row: typeof post) => {
+      if (!row) return null;
+      const msg = row.message || "";
+      const url = msg.match(/URL:\\s*(https:\/\/[^\\s]+)/)?.[1] ?? null;
+      const id = msg.match(/ID:\\s*([\\w_]+)/)?.[1] ?? null;
+      return { status: row.status, id, url, message: msg, lastSyncAt: row.lastSyncAt };
+    };
+    return c.json({ book: read(post), video: read(video) }, 200, { "Cache-Control": "no-store" });
+  });
   app.post("/api/admin/property-book/:propertyId/publish-facebook", async (c) => {
     const user = await resolveSession(c.req.raw.headers);
     if (!user) return c.json({ error: "Não autorizado" }, 401);
