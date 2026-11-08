@@ -14,7 +14,7 @@ const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
 type MetaError = { message?: string; code?: number; error_subcode?: number };
 
-function propertyCaption(property: any, headers: Headers) {
+export function propertyCaption(property: any, headers: Headers) {
   const site = siteBaseUrl(headers);
   return withPropertyLink([
     property.title,
