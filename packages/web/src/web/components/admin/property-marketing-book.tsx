@@ -18,6 +18,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { client, orpc } from "../../lib/api";
+import { usePropertyTypes } from "../../queries/property-types";
 import { Badge, Btn } from "./ui";
 
 type ThemeKey = "ouro" | "azul" | "oliva" | "claro";
@@ -141,6 +142,7 @@ function YoutubePlayBadge({ large = false }: { large?: boolean }) {
 }
 
 export function PropertyMarketingBook({ propertyId }: { propertyId: number | null }) {
+  const typeCatalog = usePropertyTypes();
   const [ctaPreviewUrl, setCtaPreviewUrl] = useState<string | null>(null);
   const [ctaPreviewError, setCtaPreviewError] = useState<string | null>(null);
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
@@ -227,6 +229,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   },[propertyId,tiktokStatusVersion]);
 
   const property = detail.data;
+  const isCampaign = Boolean(property && typeCatalog.rows.some(row => row.key === property.type && row.label.trim().toLocaleLowerCase("pt-BR") === "campanha"));
   const images = property?.images ?? [];
   const primary = useMemo(() => images.find((image) => image.isPrimary === 1) ?? images[0] ?? null, [images]);
   const shortReady = Boolean(shortVideoUrl);
@@ -260,9 +263,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     for (const image of bookPhotos) {
       steps.push({ kind: "photo", label: `Foto ${images.indexOf(image) + 1}`, url: image.url });
     }
-    steps.push({ kind: "cta", label: "Contato + CTA" });
+    if (!isCampaign) steps.push({ kind: "cta", label: "Contato + CTA" });
     return steps.slice(0, 10);
-  }, [bookPhotos, customCoverUrl, images, shortVideoUrl]);
+  }, [bookPhotos, customCoverUrl, images, shortVideoUrl, isCampaign]);
 
   const mediaCount = demoSteps.length;
   const currentDemo = demoSteps[Math.min(demoIndex, Math.max(0, demoSteps.length - 1))] ?? null;
@@ -308,6 +311,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   async function buildCoverCanvas() {
     if (customCoverUrl) return buildSocialPhotoCanvas(customCoverUrl);
     if (!primary?.url || !property) throw new Error("Cadastre ao menos uma foto para gerar a capa premium.");
+    // Campanhas usam a arte pronta, sem títulos, preços, metragem ou legendas sobre ela.
+    if (isCampaign) return buildSocialPhotoCanvas(primary.url);
     const image = await loadImage(primary.url);
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
@@ -344,6 +349,11 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
   async function buildCtaCanvas(youtube = false) {
     if (!property) throw new Error("Imóvel não carregado.");
+    // A montagem do vídeo de campanha também deve preservar a arte fornecida.
+    if (isCampaign) {
+      if (!primary?.url) throw new Error("Cadastre a arte da campanha antes de gerar o vídeo.");
+      return buildSocialPhotoCanvas(customCoverUrl || primary.url);
+    }
     const background = await loadImage(BOOK_CTA_BACKGROUND);
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
@@ -721,7 +731,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && (
                 <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
-                  {customCoverUrl ? <img src={customCoverUrl} alt="Capa personalizada" className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink, textShadow: "0 2px 6px rgba(0,0,0,.8)" }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
+                  {customCoverUrl || isCampaign ? <img src={customCoverUrl || primary.url} alt={isCampaign ? "Arte original da campanha" : "Capa personalizada"} className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink, textShadow: "0 2px 6px rgba(0,0,0,.8)" }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
                 </button>
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
