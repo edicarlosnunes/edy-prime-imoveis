@@ -76,6 +76,11 @@ const money = (value: number) =>
 function buildSheet(input: GenerateInput, catalogLabel?: string) {
   const lines: string[] = [];
   if(input.negotiation) { const conditions=negotiationText(input.negotiation); if(conditions) lines.push(conditions); }
+  if (input.type.toLowerCase() === "campanha") {
+    lines.push("Tipo: campanha publicitária institucional; não é anúncio de um imóvel.");
+    if (input.title.trim()) lines.push(`Tema da campanha: ${input.title.trim()}`);
+    return lines.join("\n");
+  }
   lines.push(`Tipo de imóvel: ${catalogLabel ?? typeLabel[input.type] ?? "imóvel"}`);
   lines.push(`Finalidade: ${purposeLabel[input.purpose] ?? "venda"}`);
   if (input.district.trim()) lines.push(`Bairro: ${input.district.trim()}`);
@@ -165,6 +170,7 @@ const LAND_ONLY_TYPES = [
 
 /** Campos mínimos: sem eles o texto sairia genérico. */
 function missingFields(input: GenerateInput) {
+  if (input.type.toLowerCase() === "campanha") return input.title.trim().length >= 3 ? [] : ["título da campanha"];
   const missing: string[] = [];
   if (!input.district.trim()) missing.push("bairro");
   if (input.areaUtil <= 0) missing.push("área útil");
@@ -193,14 +199,22 @@ export const adminPropertyContent = {
 
     const catalog = await listPropertyTypes(context.db);
     const sheet = buildSheet(input, catalog.find(row=>row.key===input.type)?.label);
-    const prompt = [
-      "Você redige anúncios de imóveis para E. Santos, Gestor Imobiliário (CRECI 134718-F), em Praia Grande (SP), com foco em médio e alto padrão.",
-      RULES,
-      "FICHA DO IMÓVEL (única fonte de verdade):",
-      sheet,
-      customizationInstructions(input.customization, input),
-      FORMAT,
-    ].join("\n\n");
+    const isCampaign = input.type.toLowerCase() === "campanha";
+    const prompt = isCampaign
+      ? [
+          "Você redige uma CAMPANHA PUBLICITÁRIA para E. Santos, Gestor Imobiliário, em Praia Grande (SP). Não está anunciando imóvel específico.",
+          "Use apenas o tema fornecido como conteúdo factual. Não invente ofertas, preços, características, imóveis, prazos, resultados ou promessas. Nunca descreva dormitórios, endereço, metragem, condomínio ou visita a um imóvel específico. Escreva texto objetivo e atraente para divulgação da imobiliária. Preserve um convite de contato pelo WhatsApp sem inventar número. Se hashtags estiverem habilitadas, use 4 ou 5 hashtags gerais e pertinentes; caso contrário, nenhuma. Não afirme fatos ausentes do tema.",
+          "TEMA (fonte de verdade):", sheet,
+          FORMAT,
+        ].join("\n\n")
+      : [
+          "Você redige anúncios de imóveis para E. Santos, Gestor Imobiliário (CRECI 134718-F), em Praia Grande (SP), com foco em médio e alto padrão.",
+          RULES,
+          "FICHA DO IMÓVEL (única fonte de verdade):",
+          sheet,
+          customizationInstructions(input.customization, input),
+          FORMAT,
+        ].join("\n\n");
 
     let text = "";
     try {
