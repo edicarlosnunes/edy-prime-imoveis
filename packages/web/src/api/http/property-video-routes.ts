@@ -1,4 +1,5 @@
 import { withPropertyLink } from "../lib/property-publication-link";
+import { campaignPublicationCaption, isCampaignPropertyType } from "../lib/campaign-publication";
 import { normalizeBookAsset } from "../lib/book-video-normalize";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
@@ -93,7 +94,8 @@ function safeBlobUrl(value: string) {
   }
 }
 
-export function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propertyForPublishing>>>, headers: Headers) {
+export function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propertyForPublishing>>> & { isCampaign?: boolean }, headers: Headers) {
+  if (property.isCampaign) return campaignPublicationCaption(property, 2100);
   const site = siteBaseUrl(headers);
   return withPropertyLink([
     property.title,
@@ -318,7 +320,7 @@ export function registerPropertyVideoRoutes(app: Hono) {
     }
     const video = await videoFor(propertyId, "short_social");
     if (!video?.url) return c.json({ error: "Cadastre o vídeo curto antes de publicar." }, 400);
-    const caption = propertyCaption(property, c.req.raw.headers);
+    const caption = propertyCaption({ ...property, isCampaign: await isCampaignPropertyType(await getDb(), property.type) }, c.req.raw.headers);
     const force = body.force === true;
     const results: Record<string, { ok: boolean; message: string; url?: string | null }> = {};
 
@@ -366,7 +368,7 @@ export function registerPropertyVideoRoutes(app: Hono) {
     try {
       const access = await freshYouTubeAccessToken(current.config);
       const title = `${String(property.title || property.code).slice(0, 85)} #Shorts`;
-      const description = `${propertyCaption(property, c.req.raw.headers)}\n\n#Shorts`.slice(0, 4900);
+      const description = `${propertyCaption({ ...property, isCampaign: await isCampaignPropertyType(db, property.type) }, c.req.raw.headers)}\n\n#Shorts`.slice(0, 4900);
       const start = new URL(YOUTUBE_UPLOAD_URL);
       start.searchParams.set("uploadType", "resumable");
       start.searchParams.set("part", "snippet,status");
