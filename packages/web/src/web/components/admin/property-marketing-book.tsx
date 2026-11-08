@@ -699,8 +699,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
         <div>
           <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line" style={{ background: theme.surface }}>
-            {customCoverUrl ? (
-              <img src={customCoverUrl} alt="Capa personalizada do Book" className="absolute inset-0 h-full w-full object-cover" />
+            {customCoverUrl || isCampaign ? (
+              <img src={customCoverUrl || primary?.url} alt={isCampaign ? "Arte da campanha sem sobreposições" : "Capa personalizada do Book"} className="absolute inset-0 h-full w-full object-cover" />
             ) : (
               <>
                 {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
