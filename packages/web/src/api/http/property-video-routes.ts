@@ -93,7 +93,7 @@ function safeBlobUrl(value: string) {
   }
 }
 
-function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propertyForPublishing>>>, headers: Headers) {
+export function propertyCaption(property: NonNullable<Awaited<ReturnType<typeof propertyForPublishing>>>, headers: Headers) {
   const site = siteBaseUrl(headers);
   return withPropertyLink([
     property.title,
