@@ -1,4 +1,5 @@
 import { withPropertyLink } from "../lib/property-publication-link";
+import { campaignPublicationCaption, isCampaignPropertyType } from "../lib/campaign-publication";
 import { propertyCaption as facebookBookCaption } from "./facebook-video-route";
 import { propertyCaption as youtubeShortCaption } from "./property-video-routes";
 import { tiktokBookCaption } from "./metricool-routes";
@@ -30,6 +31,7 @@ function sleep(ms: number) {
 }
 
 function captionFor(property: any, headers: Headers) {
+  if (property.isCampaign) return campaignPublicationCaption(property, 2100);
   const site = siteBaseUrl(headers);
   return withPropertyLink([
     property.title,
@@ -187,15 +189,18 @@ export function registerPropertyBookRoutes(app: Hono) {
     const [property] = await db.select().from(schema.properties).where(eq(schema.properties.id, id)).limit(1);
     if (!property) return c.json({ error: "Cadastro não encontrado" }, 404);
     const headers = c.req.raw.headers;
+    const isCampaign = await isCampaignPropertyType(db, property.type);
+    const post = { ...property, isCampaign };
     return c.json({
       code: property.code,
-      instagram: captionFor(property, headers),
-      facebook: facebookBookCaption(property, headers),
+      campaign: isCampaign ? campaignPublicationCaption(property, 2100) : null,
+      instagram: captionFor(post, headers),
+      facebook: facebookBookCaption(post, headers),
       youtube: {
         title: `${String(property.title || property.code).slice(0, 85)} #Shorts`,
-        description: `${youtubeShortCaption(property as any, headers)}\n\n#Shorts`.slice(0, 4900),
+        description: `${youtubeShortCaption(post, headers)}\n\n#Shorts`.slice(0, 4900),
       },
-      tiktok: { title: property.title.slice(0, 90), description: tiktokBookCaption(property) },
+      tiktok: { title: property.title.slice(0, 90), description: tiktokBookCaption(post) },
       note: "Textos preparados conforme as rotas de publicação atuais. Esta consulta não envia anúncios.",
     });
   });
@@ -281,7 +286,7 @@ export function registerPropertyBookRoutes(app: Hono) {
         body: new URLSearchParams({
           media_type: "CAROUSEL",
           children: children.join(","),
-          caption: captionFor(property, c.req.raw.headers),
+          caption: captionFor({ ...property, isCampaign: await isCampaignPropertyType(db, property.type) }, c.req.raw.headers),
           access_token: config.accessToken,
         }),
       });
