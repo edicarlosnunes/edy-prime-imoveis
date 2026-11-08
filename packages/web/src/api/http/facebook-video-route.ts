@@ -1,4 +1,5 @@
 import { withPropertyLink } from "../lib/property-publication-link";
+import { campaignPublicationCaption, isCampaignPropertyType } from "../lib/campaign-publication";
 import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 import type { Hono } from "hono";
@@ -15,6 +16,7 @@ const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
 type MetaError = { message?: string; code?: number; error_subcode?: number };
 
 export function propertyCaption(property: any, headers: Headers) {
+  if (property.isCampaign) return campaignPublicationCaption(property, 5000);
   const site = siteBaseUrl(headers);
   return withPropertyLink([
     property.title,
@@ -207,7 +209,7 @@ export function registerFacebookVideoRoute(app: Hono) {
       }
 
       const params = new URLSearchParams({
-        message: propertyCaption(property, c.req.raw.headers),
+        message: propertyCaption({ ...property, isCampaign: await isCampaignPropertyType(db, property.type) }, c.req.raw.headers),
         access_token: pageToken,
       });
       mediaIds.forEach((id, index) => {
@@ -293,7 +295,7 @@ export function registerFacebookVideoRoute(app: Hono) {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
           file_url: video.url,
-          description: propertyCaption(property, c.req.raw.headers),
+          description: propertyCaption({ ...property, isCampaign: await isCampaignPropertyType(db, property.type) }, c.req.raw.headers),
           access_token: pageAccessToken,
         }),
       });
