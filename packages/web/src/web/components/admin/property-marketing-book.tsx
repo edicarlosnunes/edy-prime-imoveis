@@ -31,7 +31,7 @@ type DemoStep =
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
 type SocialTarget = string;
-type DescriptionPreview = {code:string;instagram:string;facebook:string;youtube:{title:string;description:string};tiktok:{title:string;description:string};note:string};
+type DescriptionPreview = {code:string;campaign:string|null;instagram:string;facebook:string;youtube:{title:string;description:string};tiktok:{title:string;description:string};note:string};
 type ChannelResult = { status: "success" | "error" | "pending" | "scheduled" | "processing" | "included"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
@@ -837,7 +837,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                 ];
                 const selected = channels.filter((channel) => targets[channel.key]);
                 const visible = selected.length ? selected : channels;
-                const campaignText = [property?.title, property?.description].filter(Boolean).join("\n\n");
+                const campaignText = previewData.campaign || "";
                 const active = previewTab === "campanha" && isCampaign
                   ? { name: "CAMPANHA · Texto do cadastro", value: campaignText || "A campanha ainda não tem descrição salva." }
                   : visible.find((channel) => channel.key === previewTab) || visible[0];
@@ -855,7 +855,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
                     </div>
                     <p className="mt-3 whitespace-pre-wrap break-words text-sm text-deep">{active.value}</p>
                   </section>
-                  {isCampaign && <p className="text-xs text-amber-600">CAMPANHA mostra a descrição salva no cadastro. As abas das redes exibem as legendas preparadas pelos publicadores atuais, que ainda podem conter informações imobiliárias automáticas; revise antes de enviar.</p>}
+                  {isCampaign && <p className="text-xs text-amber-600">CAMPANHA mostra o texto salvo e os contatos oficiais com o link público de captação. As abas exibem os textos preparados para cada rede. Revise antes de enviar.</p>}
                   <p className="text-xs text-muted">O texto reflete o cadastro salvo no momento desta consulta. Se mudar o cadastro, abra novamente a visualização para atualizar. Esta janela não publica anúncios.</p>
                 </>;
               })()}
