@@ -14,6 +14,7 @@ export function PropertyFormHeader({
   district,
   statusLabel,
   ownerLinked,
+  isCampaign = false,
   imageCount,
   percent,
 }: {
@@ -23,6 +24,7 @@ export function PropertyFormHeader({
   district: string;
   statusLabel: string;
   ownerLinked: boolean;
+  isCampaign?: boolean;
   imageCount: number;
   percent: number;
 }) {
@@ -32,7 +34,7 @@ export function PropertyFormHeader({
 
   const meta = [
     statusLabel,
-    ownerLinked ? "Proprietário vinculado" : "Proprietário pendente",
+    ...(isCampaign ? [] : [ownerLinked ? "Proprietário vinculado" : "Proprietário pendente"]),
     `${imageCount} ${imageCount === 1 ? "foto" : "fotos"}`,
     `Cadastro ${percent}%`,
   ];
@@ -48,9 +50,9 @@ export function PropertyFormHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          <Badge tone={ownerLinked ? "green" : "amber"}>
+          {!isCampaign && <Badge tone={ownerLinked ? "green" : "amber"}>
             {ownerLinked ? "Proprietário vinculado" : "Proprietário pendente"}
-          </Badge>
+          </Badge>}
           <Badge tone="brass">{percent}%</Badge>
         </div>
       </div>
