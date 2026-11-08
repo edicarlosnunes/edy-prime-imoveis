@@ -6,12 +6,13 @@ export async function recordBookVideo(options: {
   cta: HTMLCanvasElement;
   videoUrl: string;
   onProgress: (message: string) => void;
+  addWatermark?: boolean;
 }) {
   if (typeof MediaRecorder === "undefined") throw new Error("Este navegador não permite montar o Book em vídeo.");
   const mime = ["video/mp4", "video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type));
   if (!mime) throw new Error("Seu navegador não possui um formato de gravação compatível.");
-  // Fail before recording if the brand cannot be loaded: never export an unbranded Book.
-  const watermark = await loadBookWatermark();
+  // Existing property Books retain their watermark. Campaigns may disable it explicitly.
+  const watermark = options.addWatermark === false ? null : await loadBookWatermark();
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1920;
@@ -35,7 +36,7 @@ export async function recordBookVideo(options: {
     const width = sourceWidth * scale;
     const height = sourceHeight * scale;
     ctx.drawImage(source, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
-    drawBookWatermark(ctx, watermark, canvas.width, (canvas.height - height) / 2);
+    if (watermark) drawBookWatermark(ctx, watermark, canvas.width, (canvas.height - height) / 2);
   };
   const wait = async (ms: number) => {
     const end = performance.now() + ms;
