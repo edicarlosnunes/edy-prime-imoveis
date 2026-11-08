@@ -156,6 +156,8 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const bookSavePromise = useRef<Promise<string> | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [checkingConnections, setCheckingConnections] = useState(false);
+  const [facebookPublication, setFacebookPublication] = useState<{book:{status:string;id:string|null;url:string|null;message:string}|null;video:{status:string;id:string|null;url:string|null;message:string}|null}|null>(null);
+  const [checkingFacebookPost, setCheckingFacebookPost] = useState(false);
   const [tiktokStatusVersion, setTiktokStatusVersion] = useState(0);
   const [youtubeProgress, setYoutubeProgress] = useState("");
   const [generatingVideo, setGeneratingVideo] = useState(false);
@@ -190,6 +192,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   useEffect(() => {
     setDemoIndex(0);
     setChannelResults({});
+    setFacebookPublication(null);
     setTargets({ instagram: false, facebook: false, youtube: false, tiktok: false });
     setSavedVideoUrl(null);
     setPendingVideoSave(false);
@@ -646,6 +649,20 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     }
   }
 
+  async function findOriginalFacebookPost() {
+    if (!propertyId) return;
+    setCheckingFacebookPost(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/property-book/${propertyId}/facebook-publication`, { credentials: "same-origin", cache: "no-store" });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Não foi possível consultar a publicação original.");
+      setFacebookPublication(result);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Falha ao consultar o Facebook.");
+    } finally { setCheckingFacebookPost(false); }
+  }
+
   async function recheckFacebookConnection() {
     if (!propertyId) return;
     setCheckingConnections(true);
@@ -831,6 +848,19 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             </div>
             <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
             <div className="mt-4 flex flex-wrap items-center gap-2"><Btn type="button" tone="outline" disabled={publishing || generatingVideo} onClick={() => void openDescriptionPreview()}><BookOpen className="h-3.5 w-3.5" /> VISUALIZAR DESCRIÇÃO</Btn><Btn type="button" tone="outline" disabled={publishing || generatingVideo || checkingConnections} onClick={() => void recheckFacebookConnection()}>{checkingConnections ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} {checkingConnections ? "VERIFICANDO FACEBOOK…" : "REVERIFICAR FACEBOOK (SEM ENVIAR)"}</Btn><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo || checkingConnections} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Processando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
+            <div className="mt-2">
+              <Btn type="button" tone="outline" disabled={publishing || checkingFacebookPost} onClick={() => void findOriginalFacebookPost()}>
+                {checkingFacebookPost ? "CONSULTANDO PUBLICAÇÃO…" : "LOCALIZAR PUBLICAÇÃO ORIGINAL NO FACEBOOK (SEM ENVIAR)"}
+              </Btn>
+              {facebookPublication && <div className="mt-2 space-y-2 rounded border border-line p-3 text-xs text-deep">
+                <strong>Registro salvo no CRM · nenhum novo envio foi realizado</strong>
+                {([["Book Premium", facebookPublication.book], ["Vídeo curto", facebookPublication.video]] as const).map(([label, post]) =>
+                  <div key={label}><b>{label}:</b> {post ? `${post.status}${post.id ? ` · ID: ${post.id}` : ""}` : "Sem registro"}
+                    {post?.url && <a className="ml-2 underline" href={post.url} target="_blank" rel="noopener noreferrer">Abrir publicação no Facebook</a>}
+                    {post && !post.url && <p className="text-muted">{post.message || "A plataforma não retornou link direto."}</p>}
+                  </div>)}
+              </div>}
+            </div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.entries(channelResults).map(([key, result]) => {
               if (!result) return null;
