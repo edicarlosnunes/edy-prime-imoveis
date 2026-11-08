@@ -20,7 +20,7 @@ export function useStandaloneAuthorization(kind:StandaloneKind){
  const logo=atob(AUTHORIZATION_LOGO_JPEG);const bytes=kind==='venda'?authorizationPdf(data as AuthorizationData,new Date(),logo):rentalAuthorizationPdf(data as RentalAuthorizationData,new Date(),logo);
  const pdf=btoa(typeof bytes==='string'?bytes:String.fromCharCode(...new Uint8Array(bytes)));
  // Rendering succeeds before consuming the individual link. Same attempt can retry a lost response.
- const value=access.owner||access.token?await finishRecipientAuthorization(await ensureToken(),operation.current):{kind,issuedAt:Date.now(),completed:true,data:null,pdf:null};
+ const value=access.owner||access.token?await finishRecipientAuthorization(await ensureToken(),operation.current,kind==='venda'?{data,pdf}:undefined):{kind,issuedAt:Date.now(),completed:true,data:null,pdf:null};
  const local={...value,data,pdf};setRecord(local);return local;
  }
 
