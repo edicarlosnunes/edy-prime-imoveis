@@ -4,6 +4,7 @@
  * Nada aqui grava no banco nem publica: o administrador lê cada bloco e
  * decide aplicar no formulário. O salvamento continua sendo manual.
  */
+import { createPortal } from "react-dom";
 import { Copy, RefreshCw, Sparkles } from "lucide-react";
 import { Btn, ErrorNote, Modal } from "../../components/admin/ui";
 
@@ -88,7 +89,9 @@ export function PropertyAiPanel({
     }
   }
 
-  return (
+  if (!open) return null;
+  // Render outside the property-form modal so nested overlays never share its stacking context.
+  return createPortal(
     <Modal open={open} onClose={onClose} wide title="Conteúdo gerado com IA">
       <div className="space-y-4">
         <p className="rounded-[10px] border border-line px-3 py-2.5 text-xs text-muted">
@@ -167,6 +170,7 @@ export function PropertyAiPanel({
           </Btn>
         </div>
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   );
 }
