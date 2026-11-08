@@ -43,6 +43,10 @@ export const adminMedia = {
         .select({ data: schema.siteContent.data, status: schema.siteContent.status })
         .from(schema.siteContent);
 
+      const campaignRows = await context.db
+        .select({ draft: schema.campaigns.draft, live: schema.campaigns.live })
+        .from(schema.campaigns);
+
       const inProperties = new Set(
         images
           .map((row) => row.url.match(/\/api\/media\/([a-f0-9]+)/)?.[1])
@@ -53,6 +57,14 @@ export const adminMedia = {
         if (row.status === "archived") continue;
         for (const match of row.data.matchAll(/\/api\/media\/([a-f0-9]+)/g)) {
           inContent.add(match[1]);
+        }
+      }
+
+      for (const row of campaignRows) {
+        for (const data of [row.draft, row.live]) {
+          for (const match of (data ?? "").matchAll(/\/api\/media\/([a-f0-9]+)/g)) {
+            inContent.add(match[1]);
+          }
         }
       }
 
@@ -98,6 +110,13 @@ export const adminMedia = {
           throw new ORPCError("CONFLICT", {
             message: "Imagem em uso em um imóvel. Troque a foto do imóvel antes de excluir.",
           });
+        }
+        const [campaign] = await context.db.select({ slug: schema.campaigns.slug })
+          .from(schema.campaigns)
+          .where(or(like(schema.campaigns.draft, `%"${url}"%`), like(schema.campaigns.live, `%"${url}"%`)))
+          .limit(1);
+        if (campaign) {
+          throw new ORPCError("CONFLICT", { message: "Imagem em uso em uma campanha. Troque a imagem antes de excluir." });
         }
         const contentRows = await context.db
           .select({ data: schema.siteContent.data, status: schema.siteContent.status })

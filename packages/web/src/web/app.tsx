@@ -1,3 +1,5 @@
+import AdminCampaigns from "./pages/admin/campaigns";
+import { CampaignPage } from "./pages/campaign";
 import PropertyCaptureForm, { PermanentCaptureForm } from "./pages/property-capture-form";
 import Proposta from './pages/proposta';
 import JoaquimVenda from './pages/joaquim-autorizacao-venda';
@@ -54,6 +56,9 @@ function App() {
         <Route path="/link-captacao/:token" component={() => <PropertyCaptureForm/>} />
         <Route path="/link-captacao" component={PermanentCaptureForm} />
         <Route path="/cadastro" component={PermanentCaptureForm} />
+        <Route path="/cadastre-seu-imovel">{() => <CampaignPage slug="cadastre-seu-imovel" />}</Route>
+        <Route path="/campanha/:slug">{({ slug }) => <CampaignPage slug={slug} />}</Route>
+        <Route path="/admin/campanhas" component={AdminCampaigns} />
         <Route path="/admin" component={AdminDashboard} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/imoveis" component={AdminProperties} />
