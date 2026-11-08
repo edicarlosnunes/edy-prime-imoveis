@@ -2,6 +2,7 @@ import { tiktokResultStatus } from "../../../shared/tiktok-result";
 import { negotiationText } from "../../../shared/negotiation";
 import { propertyPrice } from "../../../shared/property-price";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { upload } from "@vercel/blob/client";
 import { recordBookVideo } from "../../lib/book-video";
 import { useQuery } from "@tanstack/react-query";
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { client, orpc } from "../../lib/api";
 import { usePropertyTypes } from "../../queries/property-types";
-import { Badge, Btn } from "./ui";
+import { Badge, Btn, Modal } from "./ui";
 
 type ThemeKey = "ouro" | "azul" | "oliva" | "claro";
 type VideoRow = { kind?: string; url?: string };
@@ -30,6 +31,7 @@ type DemoStep =
   | { kind: "photo"; label: string; url: string }
   | { kind: "cta"; label: string };
 type SocialTarget = string;
+type DescriptionPreview = {code:string;instagram:string;facebook:string;youtube:{title:string;description:string};tiktok:{title:string;description:string};note:string};
 type ChannelResult = { status: "success" | "error" | "pending" | "scheduled" | "processing" | "included"; message: string; checks?: { ok: boolean; label: string; detail: string }[]; at?: string };
 
 const BOOK_CTA_BACKGROUND = "/book-cta-premium-bg.jpg";
@@ -166,6 +168,10 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [channelResults, setChannelResults] = useState<Partial<Record<SocialTarget, ChannelResult>>>({});
 
   const [openReason, setOpenReason] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<DescriptionPreview | null>(null);
   const history = useQuery({ ...orpc.adminIntegrations.publicationChecks.queryOptions({ input: { propertyId: propertyId ?? 0 } }), enabled: propertyId !== null });
 
 
@@ -619,6 +625,24 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     return {message:result.message,status:tiktokResultStatus(result.status)};
   }
 
+  async function openDescriptionPreview() {
+    if (!propertyId) return;
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewData(null);
+    try {
+      const response = await fetch(`/api/admin/property-book/${propertyId}/preview-description`, {credentials: "same-origin"});
+      const data = await response.json().catch(() => ({})) as DescriptionPreview & {error?: string};
+      if (!response.ok) throw new Error(data.error || "Não foi possível consultar as descrições.");
+      setPreviewData(data);
+    } catch (caught) {
+      setPreviewError(caught instanceof Error ? caught.message : "Falha ao consultar as descrições.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
   async function publishSelectedChannels() {
     if (!propertyId || selectedCount === 0) return;
     setPublishing(true);
@@ -778,7 +802,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               ))}
             </div>
             <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
-            <div className="mt-4"><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Processando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
+            <div className="mt-4 flex flex-wrap items-center gap-2"><Btn type="button" tone="outline" disabled={publishing || generatingVideo} onClick={() => void openDescriptionPreview()}><BookOpen className="h-3.5 w-3.5" /> VISUALIZAR DESCRIÇÃO</Btn><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Processando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.entries(channelResults).map(([key, result]) => {
               if (!result) return null;
@@ -795,6 +819,37 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
         </div>
       )}
 
+      {previewOpen && createPortal(
+        <div className="admin-shell">
+          <Modal open={previewOpen} onClose={() => setPreviewOpen(false)} title="Visualizar descrição de anúncio" wide>
+            <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+              <p className="text-xs text-muted">Consulta do cadastro salvo. Nenhuma descrição é enviada nem publicada ao abrir esta janela. Confira e corrija o texto no cadastro antes de enviar.</p>
+              {previewLoading && <p className="text-sm text-muted">Carregando descrições reais dos canais…</p>}
+              {previewError && <p role="alert" className="text-sm text-red-600">{previewError}</p>}
+              {previewData && <>
+                <p className="text-xs text-muted">Cadastro: {previewData.code}</p>
+                {([
+                  ["Instagram · Book Premium", previewData.instagram],
+                  ["Facebook · Book e vídeo", previewData.facebook],
+                  ["YouTube · Shorts", `Título: ${previewData.youtube.title}\n\n${previewData.youtube.description}`],
+                  ["TikTok · Metricool", `Título: ${previewData.tiktok.title}\n\n${previewData.tiktok.description}`],
+                ] as [string,string][]).map(([name, value]) => (
+                  <section key={name} className="rounded-[10px] border border-line p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-deep">{name}</h3>
+                      <Btn type="button" tone="outline" onClick={() => void navigator.clipboard.writeText(value)}>Copiar</Btn>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm text-deep">{value}</p>
+                  </section>
+                ))}
+                <p className="text-xs text-muted">Os textos seguem as rotas atuais do CRM. O conteúdo final pode mudar se o cadastro for editado depois desta consulta.</p>
+              </>}
+              <div className="flex justify-end"><Btn type="button" tone="outline" onClick={() => setPreviewOpen(false)}>Fechar</Btn></div>
+            </div>
+          </Modal>
+        </div>,
+        document.body,
+      )}
       {error && <p className="mt-3 rounded-[6px] border border-red-200 bg-red-50 p-3 text-xs text-red-700">{error}</p>}
     </div>
   );
