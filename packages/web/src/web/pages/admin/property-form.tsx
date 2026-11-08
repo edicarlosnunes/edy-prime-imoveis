@@ -528,25 +528,37 @@ export function PropertyForm({
     return [...seen].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [allProperties.data]);
 
-  const progress = useMemo(
-    () =>
-      propertyProgress({
-        code: form.code || (propertyId === null ? "EPI gerado ao salvar" : ""),
-        title: form.title,
-        city: form.city,
-        district: form.district,
-        price: form.price,
-        bedrooms: form.bedrooms,
-        bathrooms: form.bathrooms,
-        areaUtil: form.areaUtil,
-        description: form.description,
-        highlight: form.highlight,
-        features: form.features,
-        ownerId: form.ownerId,
-        imageCount: images.length,
-      }),
-    [form, images.length, propertyId],
-  );
+  const progress = useMemo(() => {
+    const standard = propertyProgress({
+      code: form.code || (propertyId === null ? "EPI gerado ao salvar" : ""),
+      title: form.title,
+      city: form.city,
+      district: form.district,
+      price: form.price,
+      bedrooms: form.bedrooms,
+      bathrooms: form.bathrooms,
+      areaUtil: form.areaUtil,
+      description: form.description,
+      highlight: form.highlight,
+      features: form.features,
+      ownerId: form.ownerId,
+      imageCount: images.length,
+    });
+    if (!isCampaign) return standard;
+    // A campanha é uma peça publicitária, não uma ficha de imóvel:
+    // só título, descrição e mídia são exigidos. Não exibir pendências
+    // de área, dormitórios, valor, proprietário ou diferenciais.
+    const items = standard.items.filter((item) =>
+      ["code", "title", "description", "photos"].includes(item.key),
+    );
+    const total = items.reduce((sum, item) => sum + item.weight, 0);
+    const earned = items.reduce((sum, item) => sum + (item.done ? item.weight : 0), 0);
+    return {
+      items,
+      missing: items.filter((item) => !item.done),
+      percent: total === 0 ? 0 : Math.round((earned / total) * 100),
+    };
+  }, [form, images.length, propertyId, isCampaign]);
 
   const pendingBySection = useMemo(() => {
     const map: Record<string, number> = {};
