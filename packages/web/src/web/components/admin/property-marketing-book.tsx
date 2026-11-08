@@ -155,6 +155,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [downloading, setDownloading] = useState(false);
   const bookSavePromise = useRef<Promise<string> | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [checkingConnections, setCheckingConnections] = useState(false);
   const [tiktokStatusVersion, setTiktokStatusVersion] = useState(0);
   const [youtubeProgress, setYoutubeProgress] = useState("");
   const [generatingVideo, setGeneratingVideo] = useState(false);
@@ -645,6 +646,31 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     }
   }
 
+  async function recheckFacebookConnection() {
+    if (!propertyId) return;
+    setCheckingConnections(true);
+    setError(null);
+    try {
+      const fresh = await destinations.refetch();
+      if (fresh.isError) throw fresh.error ?? new Error("Não foi possível atualizar a integração.");
+      const result = await client.adminIntegrations.diagnosePublication({ propertyId, key: "facebook" });
+      setChannelResults((current) => ({
+        ...current,
+        facebook: {
+          status: "pending",
+          message: "Diagnóstico atualizado sem publicar. Nenhum anúncio enviado.",
+          checks: result.checks,
+          at: result.at,
+        },
+      }));
+      await history.refetch();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível atualizar o diagnóstico do Facebook.");
+    } finally {
+      setCheckingConnections(false);
+    }
+  }
+
   async function publishSelectedChannels() {
     if (!propertyId || selectedCount === 0) return;
     setPublishing(true);
@@ -804,7 +830,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               ))}
             </div>
             <p className="mt-2 text-[11px] text-muted">O ❌ sai automaticamente quando a conexão e o envio estiverem disponíveis. <a className="underline" href="/admin/integracoes">Configurar integrações</a></p>
-            <div className="mt-4 flex flex-wrap items-center gap-2"><Btn type="button" tone="outline" disabled={publishing || generatingVideo} onClick={() => void openDescriptionPreview()}><BookOpen className="h-3.5 w-3.5" /> VISUALIZAR DESCRIÇÃO</Btn><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Processando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
+            <div className="mt-4 flex flex-wrap items-center gap-2"><Btn type="button" tone="outline" disabled={publishing || generatingVideo} onClick={() => void openDescriptionPreview()}><BookOpen className="h-3.5 w-3.5" /> VISUALIZAR DESCRIÇÃO</Btn><Btn type="button" tone="outline" disabled={publishing || generatingVideo || checkingConnections} onClick={() => void recheckFacebookConnection()}>{checkingConnections ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null} {checkingConnections ? "VERIFICANDO FACEBOOK…" : "REVERIFICAR FACEBOOK (SEM ENVIAR)"}</Btn><Btn type="button" tone="brass" disabled={selectedCount === 0 || publishing || generatingVideo || checkingConnections} onClick={() => void publishSelectedChannels()}>{publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} {publishing ? "Processando…" : "ENVIAR / TESTAR SELECIONADOS"}</Btn></div>
             {publishing && youtubeProgress && <p role="status" className="mt-3 text-xs text-muted">{youtubeProgress}</p>}
             {Object.keys(channelResults).length > 0 && <div className="mt-4 grid gap-3 sm:grid-cols-2">{Object.entries(channelResults).map(([key, result]) => {
               if (!result) return null;
