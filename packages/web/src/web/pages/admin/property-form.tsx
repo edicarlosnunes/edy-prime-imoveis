@@ -203,6 +203,7 @@ export function PropertyForm({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
+  const isCampaign = form.type.trim().toLowerCase() === "campanha";
   const hydratedPropertyId = useRef<number | null>(null);
   const typeCatalog = usePropertyTypes();
   const propertyTypeLabel = typeCatalog.labels;
@@ -700,7 +701,7 @@ export function PropertyForm({
 
   async function advance() {
     if (!nextSection) return false;
-    if (section === "proprietario" && !form.ownerId && hasPendingNewOwner()) {
+    if (!isCampaign && section === "proprietario" && !form.ownerId && hasPendingNewOwner()) {
       const createdOwnerId = await createAndLinkOwner();
       if (!createdOwnerId) return false;
     }
@@ -734,7 +735,7 @@ export function PropertyForm({
     let resolvedOwnerId = form.ownerId;
     /* Segurança adicional para quem pula etapas pelo menu lateral: nunca deixa
        um proprietário preenchido desaparecer no clique final. */
-    if (!resolvedOwnerId && hasPendingNewOwner()) {
+    if (!isCampaign && !resolvedOwnerId && hasPendingNewOwner()) {
       const createdOwnerId = await createAndLinkOwner();
       if (!createdOwnerId) {
         setSection("proprietario");
@@ -748,10 +749,10 @@ export function PropertyForm({
     let condoFee: number | null;
     let iptu: number | null;
     try {
-      price = parseMoneyInput(form.price, "Valor do imóvel");
-      opportunityPrice = parseMoneyInput(form.opportunityPrice, "Valor de oportunidade");
-      condoFee = parseMoneyInput(form.condoFee, "Condomínio");
-      iptu = parseMoneyInput(form.iptu, "IPTU");
+      price = isCampaign ? 0 : parseMoneyInput(form.price, "Valor do imóvel");
+      opportunityPrice = isCampaign ? null : parseMoneyInput(form.opportunityPrice, "Valor de oportunidade");
+      condoFee = isCampaign ? null : parseMoneyInput(form.condoFee, "Condomínio");
+      iptu = isCampaign ? null : parseMoneyInput(form.iptu, "IPTU");
     } catch (caught) {
       const message =
         caught instanceof MoneyInputError
@@ -768,7 +769,7 @@ export function PropertyForm({
       fileName: string | null;
     }[] = [];
 
-    if (guidedCreate && documentationDraft.documents.length > 0) {
+    if (!isCampaign && guidedCreate && documentationDraft.documents.length > 0) {
       setUploading(true);
       try {
         for (const doc of documentationDraft.documents) {
@@ -809,21 +810,21 @@ export function PropertyForm({
       city: form.city.trim() || "Praia Grande",
       address: form.address.trim() || null,
       metaLocation: form.metaLocation ?? metaLocationSchema.parse({}),
-      bedrooms: Math.trunc(num(form.bedrooms)),
-      suites: Math.trunc(num(form.suites)),
-      bathrooms: Math.trunc(num(form.bathrooms)),
-      parking: Math.trunc(num(form.parking)),
-      areaUtil: num(form.areaUtil),
-      areaTotal: optionalNum(form.areaTotal),
+      bedrooms: isCampaign ? 0 : Math.trunc(num(form.bedrooms)),
+      suites: isCampaign ? 0 : Math.trunc(num(form.suites)),
+      bathrooms: isCampaign ? 0 : Math.trunc(num(form.bathrooms)),
+      parking: isCampaign ? 0 : Math.trunc(num(form.parking)),
+      areaUtil: isCampaign ? 0 : num(form.areaUtil),
+      areaTotal: isCampaign ? null : optionalNum(form.areaTotal),
       description: form.description.trim() || null,
       highlight: form.highlight.trim() || null,
       features: form.features.map((item) => item.trim()).filter((item) => item.length > 0),
       status: form.status,
       published: form.published,
       featured: form.featured,
-      ownerId: resolvedOwnerId ? Number(resolvedOwnerId) : null,
+      ownerId: isCampaign ? null : resolvedOwnerId ? Number(resolvedOwnerId) : null,
       referralNote: form.referralNote.trim() || null,
-      negotiation: form.negotiation,
+      negotiation: isCampaign ? EMPTY_NEGOTIATION : form.negotiation,
       watermarkOff: form.watermarkOff,
       youtubeUrl: form.youtubeUrl.trim() || null,
       images: images.map((image) => ({
@@ -843,15 +844,15 @@ export function PropertyForm({
         const created = await save.mutateAsync({
           ...payload,
           documentationDraft: {
-            conditions: documentationDraft.conditions,
-            checklist: Object.entries(documentationDraft.checklist).map(
+            conditions: isCampaign ? EMPTY_PROPERTY_DOCUMENTATION_DRAFT.conditions : documentationDraft.conditions,
+            checklist: Object.entries(isCampaign ? {} : documentationDraft.checklist).map(
               ([itemKey, entry]) => ({
                 itemKey,
                 answer: entry.answer,
                 note: entry.note.trim() || null,
               }),
             ),
-            documents: stagedDocuments,
+            documents: isCampaign ? [] : stagedDocuments,
           },
           portfolioEntryDate,
           reviewSchedule,
@@ -1204,7 +1205,12 @@ export function PropertyForm({
           <div className="flex gap-2">
             <Btn tone="outline" onClick={onClose}>Cancelar</Btn>
             {guidedCanAdvance ? (
-              <Btn type="button" tone="brass" onClick={() => void advance()} disabled={createOwner.isPending}>Próximo</Btn>
+              <>
+                {isCampaign && ["caracteristicas", "valores", "proprietario", "documentacao"].includes(section) && (
+                  <Btn type="button" tone="outline" onClick={() => { setError(null); setSection(nextSection!.id); }}>CAMPANHA · Pular etapa</Btn>
+                )}
+                <Btn type="button" tone="brass" onClick={() => void advance()} disabled={createOwner.isPending}>Próximo</Btn>
+              </>
             ) : (
               <Btn type="submit" tone="brass" disabled={save.isPending || uploading || createOwner.isPending || captureBlock !== null}>
                 {save.isPending ? "Salvando…" : guidedFinalSave ? "Finalizar cadastro" : "Salvar imóvel"}
