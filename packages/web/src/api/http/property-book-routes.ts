@@ -1,4 +1,7 @@
 import { withPropertyLink } from "../lib/property-publication-link";
+import { propertyCaption as facebookBookCaption } from "./facebook-video-route";
+import { propertyCaption as youtubeShortCaption } from "./property-video-routes";
+import { tiktokBookCaption } from "./metricool-routes";
 import { put } from "@vercel/blob";
 import { prepareInstagramImage } from "../lib/instagram-image-delivery";
 import { publicationDescription } from "../../shared/negotiation";
@@ -174,6 +177,28 @@ async function createVideoChild(userId: string, accessToken: string, videoUrl: s
 }
 
 export function registerPropertyBookRoutes(app: Hono) {
+  // Read-only preview: reuse the exact caption builders used by publishing routes.
+  // This endpoint does not upload media, schedule posts, or contact social platforms.
+  app.get("/api/admin/property-book/:propertyId/preview-description", async (c) => {
+    if (!await resolveSession(c.req.raw.headers)) return c.json({ error: "Não autorizado" }, 401);
+    const id = Number(c.req.param("propertyId"));
+    if (!Number.isSafeInteger(id) || id <= 0) return c.json({ error: "Cadastro inválido" }, 400);
+    const db = await getDb();
+    const [property] = await db.select().from(schema.properties).where(eq(schema.properties.id, id)).limit(1);
+    if (!property) return c.json({ error: "Cadastro não encontrado" }, 404);
+    const headers = c.req.raw.headers;
+    return c.json({
+      code: property.code,
+      instagram: captionFor(property, headers),
+      facebook: facebookBookCaption(property, headers),
+      youtube: {
+        title: `${String(property.title || property.code).slice(0, 85)} #Shorts`,
+        description: `${youtubeShortCaption(property as any, headers)}\n\n#Shorts`.slice(0, 4900),
+      },
+      tiktok: { title: property.title.slice(0, 90), description: tiktokBookCaption(property) },
+      note: "Textos preparados conforme as rotas de publicação atuais. Esta consulta não envia anúncios.",
+    });
+  });
   app.post("/api/admin/property-book/:propertyId/publish-instagram", async (c) => {
     const user = await resolveSession(c.req.raw.headers);
     if (!user) return c.json({ error: "Não autorizado" }, 401);
