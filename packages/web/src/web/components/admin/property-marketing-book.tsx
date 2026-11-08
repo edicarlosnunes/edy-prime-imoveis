@@ -172,6 +172,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewData, setPreviewData] = useState<DescriptionPreview | null>(null);
+  const [previewTab, setPreviewTab] = useState<string>("instagram");
   const history = useQuery({ ...orpc.adminIntegrations.publicationChecks.queryOptions({ input: { propertyId: propertyId ?? 0 } }), enabled: propertyId !== null });
 
 
@@ -631,6 +632,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewData(null);
+    setPreviewTab(isCampaign ? "campanha" : (selectedKeys.find((key) => ["instagram", "facebook", "youtube", "tiktok"].includes(key)) || "instagram"));
     try {
       const response = await fetch(`/api/admin/property-book/${propertyId}/preview-description`, {credentials: "same-origin"});
       const data = await response.json().catch(() => ({})) as DescriptionPreview & {error?: string};
@@ -826,24 +828,37 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
               <p className="text-xs text-muted">Consulta do cadastro salvo. Nenhuma descrição é enviada nem publicada ao abrir esta janela. Confira e corrija o texto no cadastro antes de enviar.</p>
               {previewLoading && <p className="text-sm text-muted">Carregando descrições reais dos canais…</p>}
               {previewError && <p role="alert" className="text-sm text-red-600">{previewError}</p>}
-              {previewData && <>
-                <p className="text-xs text-muted">Cadastro: {previewData.code}</p>
-                {([
-                  ["Instagram · Book Premium", previewData.instagram],
-                  ["Facebook · Book e vídeo", previewData.facebook],
-                  ["YouTube · Shorts", `Título: ${previewData.youtube.title}\n\n${previewData.youtube.description}`],
-                  ["TikTok · Metricool", `Título: ${previewData.tiktok.title}\n\n${previewData.tiktok.description}`],
-                ] as [string,string][]).map(([name, value]) => (
-                  <section key={name} className="rounded-[10px] border border-line p-3">
+              {previewData && (() => {
+                const channels = [
+                  { key: "instagram", name: "Instagram", value: previewData.instagram },
+                  { key: "facebook", name: "Facebook", value: previewData.facebook },
+                  { key: "youtube", name: "YouTube", value: `Título: ${previewData.youtube.title}\n\n${previewData.youtube.description}` },
+                  { key: "tiktok", name: "TikTok", value: `Título: ${previewData.tiktok.title}\n\n${previewData.tiktok.description}` },
+                ];
+                const selected = channels.filter((channel) => targets[channel.key]);
+                const visible = selected.length ? selected : channels;
+                const campaignText = [property?.title, property?.description].filter(Boolean).join("\n\n");
+                const active = previewTab === "campanha" && isCampaign
+                  ? { name: "CAMPANHA · Texto do cadastro", value: campaignText || "A campanha ainda não tem descrição salva." }
+                  : visible.find((channel) => channel.key === previewTab) || visible[0];
+                return <>
+                  <p className="text-xs text-muted">Cadastro: {previewData.code}{isCampaign ? " · Tipo CAMPANHA" : ""}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {isCampaign && <Btn type="button" tone={previewTab === "campanha" ? "brass" : "outline"} onClick={() => setPreviewTab("campanha")}>CAMPANHA</Btn>}
+                    {visible.map((channel) => <Btn key={channel.key} type="button" tone={previewTab === channel.key ? "brass" : "outline"} onClick={() => setPreviewTab(channel.key)}>{channel.name}</Btn>)}
+                  </div>
+                  {selected.length === 0 && <p className="text-xs text-muted">Nenhuma rede marcada. Mostrando todas para consulta; selecione uma plataforma em Destinos de publicação para filtrar.</p>}
+                  <section className="rounded-[10px] border border-line p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold text-deep">{name}</h3>
-                      <Btn type="button" tone="outline" onClick={() => void navigator.clipboard.writeText(value)}>Copiar</Btn>
+                      <h3 className="text-sm font-semibold text-deep">{active.name}</h3>
+                      <Btn type="button" tone="outline" onClick={() => void navigator.clipboard.writeText(active.value)}>Copiar</Btn>
                     </div>
-                    <p className="mt-3 whitespace-pre-wrap break-words text-sm text-deep">{value}</p>
+                    <p className="mt-3 whitespace-pre-wrap break-words text-sm text-deep">{active.value}</p>
                   </section>
-                ))}
-                <p className="text-xs text-muted">Os textos seguem as rotas atuais do CRM. O conteúdo final pode mudar se o cadastro for editado depois desta consulta.</p>
-              </>}
+                  {isCampaign && <p className="text-xs text-amber-600">CAMPANHA mostra a descrição salva no cadastro. As abas das redes exibem as legendas preparadas pelos publicadores atuais, que ainda podem conter informações imobiliárias automáticas; revise antes de enviar.</p>}
+                  <p className="text-xs text-muted">O texto reflete o cadastro salvo no momento desta consulta. Se mudar o cadastro, abra novamente a visualização para atualizar. Esta janela não publica anúncios.</p>
+                </>;
+              })()}
               <div className="flex justify-end"><Btn type="button" tone="outline" onClick={() => setPreviewOpen(false)}>Fechar</Btn></div>
             </div>
           </Modal>
