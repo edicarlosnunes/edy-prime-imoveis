@@ -15,11 +15,11 @@ export const CAMPAIGN_WHATSAPP_URL = "https://wa.me/5513997141174";
 /** Shared, publication-safe campaign copy. Reserve room for all contacts even if the description is long. */
 export function campaignPublicationCaption(property: { title?: string | null; description?: string | null }, maxLength = 2100): string {
   const footer = [
-    "SITE: " + CAMPAIGN_SITE_URL,
-    "CADASTRO DO IMÓVEL: " + CAMPAIGN_CAPTURE_URL,
-    "AUTORIZAÇÃO DE VENDA: Solicite seu link individual pelo WhatsApp.",
-    "WHATSAPP: " + CAMPAIGN_WHATSAPP_URL,
-    "E-MAIL: " + CAMPAIGN_CONTACT_EMAIL,
+    "Site: " + CAMPAIGN_SITE_URL,
+    "Autorização de venda: https://www.esantoscorretor.com.br/autorizar (solicite seu link individual pelo WhatsApp)",
+    "Cadastre seu imóvel: " + CAMPAIGN_CAPTURE_URL,
+    "E-mail: " + CAMPAIGN_CONTACT_EMAIL,
+    "WhatsApp: " + CAMPAIGN_WHATSAPP_URL,
   ].join("\n");
   const title = (property.title || "").trim();
   const description = (property.description || "").trim();
