@@ -203,10 +203,11 @@ export function PropertyForm({
   onClose: () => void;
 }) {
   const [form, setForm] = useState<FormState>(empty);
-  const isCampaign = form.type.trim().toLowerCase() === "campanha";
+
   const hydratedPropertyId = useRef<number | null>(null);
   const typeCatalog = usePropertyTypes();
   const propertyTypeLabel = typeCatalog.labels;
+  const isCampaign = typeCatalog.rows.some(row => row.key === form.type && row.label.trim().toLocaleLowerCase("pt-BR") === "campanha");
   const typeOptions = typeCatalog.rows.filter(row => row.active || (propertyId !== null && row.key === form.type));
   const [guidedCreate] = useState(propertyId === null);
   const [images, setImages] = useState<GalleryImage[]>([]);
