@@ -16,8 +16,9 @@ export const CAMPAIGN_WHATSAPP_URL = "https://wa.me/5513997141174";
 export function campaignPublicationCaption(property: { title?: string | null; description?: string | null }, maxLength = 2100): string {
   const footer = [
     "Site: " + CAMPAIGN_SITE_URL,
-    "Autorização de venda: https://www.esantoscorretor.com.br/autorizar (solicite seu link individual pelo WhatsApp)",
-    "Cadastre seu imóvel: " + CAMPAIGN_CAPTURE_URL,
+    "Cadastre seu imóvel: Link: " + CAMPAIGN_CAPTURE_URL,
+    "Autorização de venda: Link: https://www.esantoscorretor.com.br/autorizar",
+    "ou solicite seu link individual pelo WhatsApp.",
     "E-mail: " + CAMPAIGN_CONTACT_EMAIL,
     "WhatsApp: " + CAMPAIGN_WHATSAPP_URL,
   ].join("\n");
