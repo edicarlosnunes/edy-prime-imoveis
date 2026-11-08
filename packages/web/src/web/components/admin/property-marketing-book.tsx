@@ -506,7 +506,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
       buildCoverCanvas(), buildCtaCanvas(true),
       Promise.all(bookPhotos.map((image) => buildSocialPhotoCanvas(image.url))),
     ]);
-    const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress });
+    const blob = await recordBookVideo({ cover, cta, photos, videoUrl: shortVideoUrl, onProgress, addWatermark: !isCampaign });
     setCompleteVideo(blob);
     setPendingVideoSave(true);
     return blob;
