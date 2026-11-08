@@ -10,4 +10,4 @@ async function request(path:string,headers:Record<string,string>,body?:unknown){
 export const checkAuthorizationOwner=(owner:string)=>request('owner',{'x-authorization-owner':owner}) as Promise<{kind:StandaloneKind}>;
 export const prepareRecipientAuthorization=(owner:string)=>request('new',{'x-authorization-owner':owner},{}) as Promise<{token:string;kind:StandaloneKind}>;
 export const readRecipientAuthorization=(token:string)=>request('record',{'x-authorization-document':token}) as Promise<StandaloneRecord>;
-export const finishRecipientAuthorization=(token:string,operation:string)=>request('complete',{'x-authorization-document':token},{operation}) as Promise<StandaloneRecord>;
+export const finishRecipientAuthorization=(token:string,operation:string,submission?:{data:Record<string,string>;pdf:string})=>request('complete',{'x-authorization-document':token},submission?{operation,submission}:{operation}) as Promise<StandaloneRecord>;
