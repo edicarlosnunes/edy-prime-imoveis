@@ -21,6 +21,7 @@ import { REGISTRATION_STATUSES, REGISTRATION_STATUS_LABEL, REGISTRATION_STATUS_T
 import { DEFAULT_PRIORITY_CITIES, OUTSIDE_PRIORITY_LABEL } from "../../../api/lib/priority-area";
 import { useSetCaptureRegistrationStatus } from "../../queries/admin";
 import { captureShareUrl, isOfficialCaptureHost, PUBLIC_CAPTURE_FORM_URL } from "../../lib/capture-public-url";
+import { ReceivedAuthorizations } from "../../components/admin/received-authorizations";
 import { useAdminCaptures, useCapture, useCreateCapture, useMarkCaptureLost, useReopenCapture, useSetCaptureDocStatus, useSetCaptureNextAction, useSetCaptureStage, useSaveCaptureAppraisal, useMarkCaptureConverted, useSetCaptureChecklist, useAddCapturePhotos, useRemoveCapturePhoto, useCaptureDocuments, useGenerateCaptureDocument, useSetOwnerIdentity, useClearOwnerDuplicate, useCapturePromotedPhotos, usePromoteCapturePhoto, useDemoteCapturePhoto, useSetCapturePhotoPrimary, useMoveCapturePhoto, useIssueCaptureShareLink, useRevokeCaptureShareLink } from "../../queries/admin";
 
 /* Item 7 — a lista é PRIORIDADE, não limite: cidade de fora não é bloqueada,
@@ -214,6 +215,7 @@ function Content() {
           <HubCard icon={MessageCircle} title="Captação pelo WhatsApp" description="Consulte cadastros cuja origem está registrada como WhatsApp." action="Ver captações" onClick={() => showSource("whatsapp")} />
         </div>
       </section>
+      <ReceivedAuthorizations />
       {sourceLabel && <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-line bg-white px-4 py-3 text-sm">
         <span>Origem do CRM: <b className="text-deep">{sourceLabel}</b> · este filtro usa a origem gravada no servidor.</span>
         <button type="button" onClick={() => showSource(undefined)} className="font-medium text-brass hover:underline">Limpar filtro</button>
