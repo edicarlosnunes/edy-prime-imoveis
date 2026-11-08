@@ -16,6 +16,7 @@ export const CAMPAIGN_WHATSAPP_URL = "https://wa.me/5513997141174";
 export function campaignPublicationCaption(property: { title?: string | null; description?: string | null }, maxLength = 2100): string {
   const footer = [
     "Cadastre seu imóvel: " + CAMPAIGN_CAPTURE_URL,
+    "Autorização de venda: solicite seu link individual pelo WhatsApp.",
     "Site: " + CAMPAIGN_SITE_URL,
     "E-mail: " + CAMPAIGN_CONTACT_EMAIL,
     "WhatsApp: " + CAMPAIGN_WHATSAPP_URL,
