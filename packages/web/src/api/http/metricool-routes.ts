@@ -14,6 +14,9 @@ async function ensure(db:Awaited<ReturnType<typeof getDb>>) {
   await db.run(sql`CREATE TABLE IF NOT EXISTS crm_metricool_oauth (state TEXT PRIMARY KEY, user_id INTEGER NOT NULL, verifier TEXT NOT NULL, expires INTEGER NOT NULL)`);
   await db.run(sql`CREATE TABLE IF NOT EXISTS crm_tiktok_posts (property_id INTEGER PRIMARY KEY, video_url TEXT NOT NULL, state TEXT NOT NULL, message TEXT, external_id TEXT, planner_url TEXT, created_at INTEGER NOT NULL)`);
 }
+export function tiktokBookCaption(property: any) {
+  return withPropertyLink([property.title, `Código: ${property.code}`, formatPropertyPrice(property), `${property.district} · ${property.city}`, publicationDescription(property.description, property.features, 1000)].filter(Boolean).join("\n"), property, "https://www.esantoscorretor.com.br", 2100);
+}
 const back=(message:string)=>Response.redirect(`https://www.esantoscorretor.com.br/admin/tiktok?result=${encodeURIComponent(message)}`,302);
 export function registerMetricoolRoutes(app:Hono) {
   app.get("/api/oauth/metricool/start",async c=>{
@@ -109,7 +112,7 @@ export function registerMetricoolRoutes(app:Hono) {
       const lock=await db.all(sql`INSERT INTO crm_tiktok_posts(property_id,video_url,state,created_at) VALUES(${id},${video.url},'sending',${Date.now()}) ON CONFLICT(property_id) DO UPDATE SET video_url=excluded.video_url,state='sending',message=NULL,external_id=NULL,planner_url=NULL,created_at=excluded.created_at WHERE crm_tiktok_posts.state='rejected' RETURNING property_id`) as unknown[];
       if(!lock.length)throw new Error("Este imóvel já tem uma solicitação de envio ao TikTok. Confira o planejamento no Metricool antes de repetir.");
       claimed=true;
-      const caption=withPropertyLink([property.title,`Código: ${property.code}`,formatPropertyPrice(property),`${property.district} · ${property.city}`,publicationDescription(property.description,property.features,1000)].filter(Boolean).join("\n"),property,"https://www.esantoscorretor.com.br",2100);
+      const caption=tiktokBookCaption(property);
       const date=new Date(Date.now()+120000).toISOString();
       const localDate=new Date(new Date(date).getTime()-3*3600000).toISOString().slice(0,19);
       const info=JSON.stringify({providers:[{network:"tiktok"}],text:caption,media:[video.url],publicationDate:{dateTime:localDate,timezone:"America/Sao_Paulo"},autoPublish:true,draft:false,shortener:false,saveExternalMediaFiles:true,tiktokData:{privacyOption:"PUBLIC_TO_EVERYONE",commercialContentOwnBrand:true,commercialContentThirdParty:false,autoAddMusic:false,title:property.title.slice(0,90)}});
