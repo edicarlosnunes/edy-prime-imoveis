@@ -1,7 +1,7 @@
 import { usePropertyTypes } from "../../queries/property-types";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { Eye, EyeOff, Pencil, Plus, Star, Trash2 } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, MessageCircle, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { AdminGuard } from "../../components/admin/guard";
 import { AdminLayout } from "../../components/admin/layout";
 import {
@@ -77,6 +77,7 @@ function Content() {
     else setEditing((current) => current === "new" ? null : current);
   }, [isCreateRoute, captureId]);
   const [error, setError] = useState<string | null>(null);
+  const [copiedPropertyId, setCopiedPropertyId] = useState<number | null>(null);
 
   async function refreshVideoPending() {
     try {
@@ -118,6 +119,27 @@ function Content() {
       await action;
     } catch (caught) {
       setError(errorMessage(caught, "Não foi possível salvar"));
+    }
+  }
+
+  function publicPropertyUrl(property: { slug?: string | null; code: string }) {
+    const key = property.slug?.trim() || property.code.trim();
+    return new URL(`/imovel/${encodeURIComponent(key)}`, window.location.origin).toString();
+  }
+
+  function shareProperty(property: { slug?: string | null; code: string; title: string }) {
+    const url = publicPropertyUrl(property);
+    const message = `${property.title}\nCódigo: ${property.code}\nVeja fotos, preço e informações atualizadas: ${url}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  }
+
+  async function copyPropertyLink(property: { id: number; slug?: string | null; code: string }) {
+    try {
+      await navigator.clipboard.writeText(publicPropertyUrl(property));
+      setCopiedPropertyId(property.id);
+      setError(null);
+    } catch {
+      setError("Não foi possível copiar o link automaticamente. Abra o imóvel no site e copie o endereço.");
     }
   }
 
@@ -250,6 +272,17 @@ function Content() {
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {property.published === 1 && property.showcaseVisible && (
+                    <>
+                      <Btn tone="outline" onClick={() => shareProperty(property)} title="Enviar o link público deste imóvel">
+                        <MessageCircle className="h-3.5 w-3.5" /> Enviar WhatsApp
+                      </Btn>
+                      <Btn tone="outline" onClick={() => void copyPropertyLink(property)} title="Copiar o link público deste imóvel">
+                        {copiedPropertyId === property.id ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        {copiedPropertyId === property.id ? "Link copiado" : "Copiar link"}
+                      </Btn>
+                    </>
+                  )}
                   <Btn tone="outline" onClick={() => setEditing(property.id)}>
                     <Pencil className="h-3.5 w-3.5" /> Editar
                   </Btn>
