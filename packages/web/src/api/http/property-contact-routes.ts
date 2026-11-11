@@ -17,6 +17,20 @@ export function parseAtendimentoSource(value: string | undefined): Channel | nul
 }
 
 export function registerPropertyContactRoutes(app: Hono) {
+  // Endereço curto: /w/CODIGO/f (Facebook), /i (Instagram),
+  // /t (TikTok), /y (YouTube), /s (site).
+  // O registro acontece apenas na rota original, sem duplicar eventos.
+  app.get("/w/:code/:network", (c) => {
+    const sourceByLetter: Record<string, Channel> = {
+      f: "facebook", i: "instagram", t: "tiktok", y: "youtube", s: "site",
+    };
+    const code = (c.req.param("code") ?? "").trim();
+    const source = sourceByLetter[c.req.param("network") ?? ""];
+    if (!code || code.length > 80 || !source) return c.text("Link inválido", 400);
+    const path = `/api/atendimento/imovel/${encodeURIComponent(code)}?origem=${source}`;
+    c.header("Cache-Control", "no-store, private");
+    return c.redirect(path, 302);
+  });
   app.get("/api/atendimento/imovel/:code", async (c) => {
     const code = (c.req.param("code") ?? "").trim();
     const source = parseAtendimentoSource(c.req.query("origem"));
