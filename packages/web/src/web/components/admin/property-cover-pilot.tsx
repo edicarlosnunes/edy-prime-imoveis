@@ -64,10 +64,7 @@ export function PropertyCoverPilot({ data, images }: { data: CoverData; images: 
           )}
           <div className="absolute inset-0 bg-gradient-to-b from-[#04132b]/80 via-transparent to-[#04132b]/70" />
           <div className="absolute left-0 top-0 max-w-[43%] rounded-br-3xl border-b-2 border-r-2 border-amber-400 bg-[#061631]/95 px-3 py-2 text-center shadow-[0_0_24px_rgba(250,204,21,0.4)] sm:px-6 sm:py-4">
-            <div className="text-lg font-black leading-none text-yellow-400 sm:text-3xl">⌂</div>
-            <div className="font-serif text-[13px] font-bold leading-none text-[#f8d06c] drop-shadow-[0_0_5px_#f6b800] sm:text-2xl">E. Santos</div>
-            <div className="mt-1 text-[7px] font-bold tracking-wide text-yellow-200 sm:text-xs">GESTOR IMOBILIÁRIO</div>
-            <div className="mt-1 h-[2px] rounded-full bg-gradient-to-r from-transparent via-yellow-300 to-transparent shadow-[0_0_8px_#ffd500]" />
+            <img src="/brand/e-santos-logo-original.svg" alt="E. Santos Gestor Imobiliário — logotipo dourado aprovado" className="mx-auto h-auto max-h-28 w-full object-contain" />
           </div>
           <div className="absolute right-2 top-3 max-w-[60%] rounded-lg bg-[#061631]/85 px-2 py-2 text-right sm:right-4 sm:top-4 sm:px-4">
             <h3 className="text-[16px] font-black uppercase leading-tight tracking-tight text-white drop-shadow-lg sm:text-3xl">{title}</h3>
