@@ -89,10 +89,32 @@ export async function runTest(
       try {
         // Consulta somente leitura da Página com o token já armazenado no CRM.
         // Um teste de /me isolado não prova que o webhook leadgen entrega leads.
-        const response = await graph(
-          `${pageId}/subscribed_apps?fields=id,name,subscribed_fields`,
-          token,
-        ) as { data?: Array<{ id?: string; name?: string; subscribed_fields?: string[] }> };
+        const reply = await fetch(
+          `${GRAPH}/${pageId}/subscribed_apps?fields=id,name,subscribed_fields`,
+          { headers: { authorization: `Bearer ${token}` } },
+        );
+        const response = (await reply.json().catch(() => ({}))) as {
+          data?: Array<{ id?: string; name?: string; subscribed_fields?: string[] }>;
+          error?: { code?: number; error_subcode?: number; type?: string };
+        };
+        if (!reply.ok) {
+          // Do not expose raw Meta error messages or credentials in UI/logs.
+          const code = response.error?.code;
+          const subcode = response.error?.error_subcode;
+          const details = [
+            `HTTP ${reply.status}`,
+            typeof code === "number" ? `Meta code ${code}` : null,
+            typeof subcode === "number" ? `subcode ${subcode}` : null,
+          ].filter(Boolean).join(", ");
+          const guidance = code === 190
+            ? "O token da Página foi recusado (pode estar expirado ou revogado)."
+            : code === 10 || code === 200
+              ? "O token não possui acesso suficiente à consulta; verifique as permissões e o acesso da Página."
+              : code === 100
+                ? "A Meta rejeitou esta consulta ou algum parâmetro; verifique a compatibilidade da Graph API."
+                : "A Meta recusou a consulta. Não altere credenciais antes de analisar o código.";
+          return { ok: false, status: "erro", message: `${guidance} [${details}]` };
+        }
         const app = (response.data ?? []).find((item) => item.id === appId);
         if (!app) {
           return {
@@ -115,12 +137,8 @@ export async function runTest(
           message: "Associação confirmada pela API: aplicativo E. Santos Corretor inscrito na Página com leadgen. Ainda falta confirmar a entrega de um formulário ao CRM.",
         };
       } catch (error) {
-        // Não expor tokens na mensagem de erro ao navegador nem no log de teste.
-        const message = error instanceof Error ? error.message : "Falha desconhecida";
-        const reason = /permission|permissions|access|oauth|token/i.test(message)
-          ? "Permissão ou acesso insuficiente para consultar as assinaturas da Página."
-          : "Não foi possível consultar as assinaturas da Página na Graph API.";
-        return { ok: false, status: "erro", message: reason + " Consulte os eventos da integração para diagnóstico." };
+        // Never expose arbitrary exception strings (which may include secrets).
+        return { ok: false, status: "erro", message: "Falha ao executar a consulta à Meta; confira a conectividade do servidor. Nenhuma credencial foi alterada." };
       }
     }
     case "facebook_messenger":
