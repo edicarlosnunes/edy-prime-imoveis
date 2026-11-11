@@ -20,6 +20,10 @@
       "destination": "/locacao.html"
     },
     {
+      "source": "/w/:code/:network",
+      "destination": "/api/handler?__path=/w/:code/:network"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/handler?__path=/api/:path*"
     },
