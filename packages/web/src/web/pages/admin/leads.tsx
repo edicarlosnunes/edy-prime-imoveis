@@ -121,9 +121,9 @@ function Content() {
           {contactStarts.length > 0 && (
             <div className="mt-3 max-h-48 overflow-y-auto text-xs">
               {contactStarts.slice(0, 15).map((item) => (
-                <div key={item.id} className="flex flex-wrap justify-between gap-2 border-t border-line py-2">
+                <div key={item.id} className="grid grid-cols-1 gap-y-1 border-t border-line py-2 sm:grid-cols-[minmax(0,280px)_190px] sm:justify-center sm:items-center sm:gap-x-6">
                   <span className="font-semibold">{item.code} · {item.source.toUpperCase()}</span>
-                  <span className="text-muted">{contactClickTime(item.createdAt)}</span>
+                  <span className="text-muted tabular-nums">{contactClickTime(item.createdAt)}</span>
                 </div>
               ))}
             </div>
