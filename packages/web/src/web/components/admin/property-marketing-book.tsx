@@ -150,6 +150,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const [themeKey, setThemeKey] = useState<ThemeKey>("ouro");
   const [shortVideoUrl, setShortVideoUrl] = useState<string | null>(null);
   const [customCoverUrl, setCustomCoverUrl] = useState<string | null>(null);
+  const [automaticCoverPreview, setAutomaticCoverPreview] = useState<string | null>(null);
   const [uploadingCustomCover, setUploadingCustomCover] = useState(false);
   const [demoIndex, setDemoIndex] = useState(0);
   const [downloading, setDownloading] = useState(false);
@@ -269,7 +270,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   const selectedCount = selectedKeys.length;
 
   const demoSteps = useMemo<DemoStep[]>(() => {
-    const steps: DemoStep[] = [{ kind: "cover", label: customCoverUrl ? "Capa personalizada" : "Capa premium E. Santos" }];
+    const steps: DemoStep[] = [{ kind: "cover", label: customCoverUrl ? "Capa personalizada" : "Capa automática E. Santos · 4 fotos" }];
     if (shortVideoUrl) steps.push({ kind: "video", label: "Vídeo curto", url: shortVideoUrl });
     for (const image of bookPhotos) {
       steps.push({ kind: "photo", label: `Foto ${images.indexOf(image) + 1}`, url: image.url });
@@ -478,6 +479,23 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
     ctx.textAlign = "left";
     return canvas;
   }
+
+  // A prévia vista no Book usa os mesmos pixels do JPEG gerado para publicar.
+  // Assim, a folha 1 aprovada não difere da capa exportada.
+  useEffect(() => {
+    let active = true;
+    if (!property || !primary?.url || isCampaign || customCoverUrl) {
+      setAutomaticCoverPreview(null);
+      return;
+    }
+    void buildCoverCanvas().then((canvas) => {
+      if (active) setAutomaticCoverPreview(canvas.toDataURL("image/jpeg", 0.9));
+    }).catch(() => {
+      if (active) setAutomaticCoverPreview(null);
+    });
+    return () => { active = false; };
+  // Os dados do imóvel são atualizados pela query. Uma nova referência dispara a atualização.
+  }, [property, customCoverUrl, isCampaign, primary?.url, images]);
 
   async function buildCtaCanvas(youtube = false) {
     if (!property) throw new Error("Imóvel não carregado.");
@@ -873,12 +891,12 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-3">
-          <label className="block max-w-sm text-xs text-deep"><span className="mb-1 block font-medium">Estilo da capa</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
+          <label className="block max-w-sm text-xs text-deep"><span className="mb-1 block font-medium">Estilo do encerramento (capa padronizada)</span><select value={themeKey} onChange={(event) => setThemeKey(event.target.value as ThemeKey)} className="w-full rounded-[5px] border border-line bg-white px-3 py-2.5 text-sm">{Object.entries(THEMES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}</select></label>
           <div className="rounded-[10px] border border-line bg-bone/30 p-3"><div className="flex items-center gap-2 text-xs font-medium text-deep"><Sparkles className="h-3.5 w-3.5 text-brass" /> Conteúdo reaproveitado do cadastro</div><p className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-muted">{property?.negotiation && negotiationText(property.negotiation)}{property?.negotiation && negotiationText(property.negotiation) ? "\n\n" : ""}{property?.description?.trim() ? shortenDescription(property.description, 340) : "A descrição já existente será usada; este módulo não cria uma segunda descrição."}</p></div>
           <div className="rounded-[10px] border border-line bg-white p-3">
             <p className="text-xs font-medium text-deep">Ordem oficial do Book</p>
             <ol className="mt-2 space-y-1.5 text-[11px] text-muted">
-              <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> 1. {customCoverUrl ? "Capa personalizada" : "Capa premium E. Santos"}</li>
+              <li className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5" /> 1. {customCoverUrl ? "Capa personalizada" : "Capa piloto automática · 4 fotos reais"}</li>
               {shortReady && <li className="flex items-center gap-2"><Film className="h-3.5 w-3.5" /> 2. Vídeo curto</li>}
               {bookPhotos.map((image, index) => <li key={`${image.url}-${index}`} className="flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5" /> {index + (shortReady ? 3 : 2)}. Foto {images.indexOf(image) + 1}</li>)}
               <li className="flex items-center gap-2"><BookOpen className="h-3.5 w-3.5" /> {mediaCount}. Contato + CTA</li>
@@ -892,12 +910,7 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
             {customCoverUrl || isCampaign ? (
               <img src={customCoverUrl || primary?.url} alt={isCampaign ? "Arte da campanha sem sobreposições" : "Capa personalizada do Book"} className="absolute inset-0 h-full w-full object-cover" />
             ) : (
-              <>
-                {primary?.url && <img src={primary.url} alt="Prévia da capa premium" className="absolute inset-0 h-full w-full object-cover" />}
-                <div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />
-
-                <div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink, textShadow: "0 2px 6px rgba(0,0,0,.8)" }}><h4 className="max-w-[92%] text-2xl font-semibold leading-tight sm:text-3xl">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div>
-              </>
+              <img src={automaticCoverPreview || primary?.url} alt="Capa piloto: foto principal, três fotos reais e informações do cadastro" className="absolute inset-0 h-full w-full object-cover" />
             )}
             {customCoverUrl && <span className="absolute left-3 top-3 rounded-full bg-black/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.08em] text-white">Capa personalizada</span>}
           </div>
@@ -920,9 +933,9 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
           <div className="mx-auto mt-4 max-w-xl">
             <div className="relative aspect-square overflow-hidden rounded-[12px] border border-line bg-black">
               {currentDemo.kind === "cover" && (
-                <button type="button" className="absolute inset-0 block h-full w-full text-left" onClick={() => shortReady && setDemoIndex(1)}>
-                  {customCoverUrl || isCampaign ? <img src={customCoverUrl || primary.url} alt={isCampaign ? "Arte original da campanha" : "Capa personalizada"} className="absolute inset-0 h-full w-full object-cover" /> : <><img src={primary.url} alt="Capa premium" className="absolute inset-0 h-full w-full object-cover" /><div className="absolute inset-0" style={{ background: `linear-gradient(to bottom, transparent 25%, ${theme.overlay} 62%, ${theme.coverBottom} 100%)` }} />{shortReady && <YoutubePlayBadge large />}<div className="absolute inset-x-0 bottom-0 p-6" style={{ color: theme.ink, textShadow: "0 2px 6px rgba(0,0,0,.8)" }}><h4 className="text-3xl font-semibold leading-tight">{headline}</h4>{previousPriceText && <p className="mt-3 text-sm">De <span className="line-through">{previousPriceText}</span></p>}<p className={`${previousPriceText ? "mt-1" : "mt-4"} text-xl font-semibold`} style={{ color: theme.accent }}>{previousPriceText ? "Por " : ""}{priceText}</p><p className="mt-2 text-xs">{location}</p><p className="mt-1 text-xs">{info}</p></div></>}
-                </button>
+                <div className="absolute inset-0">
+                  <img src={customCoverUrl || (isCampaign ? primary.url : automaticCoverPreview || primary.url)} alt="Primeira folha do Book: capa gerada a partir das fotos reais" className="h-full w-full object-cover" />
+                </div>
               )}
               {currentDemo.kind === "video" && <video src={currentDemo.url} className="h-full w-full object-contain" controls autoPlay playsInline onEnded={() => setDemoIndex((current) => Math.min(demoSteps.length - 1, current + 1))} />}
               {currentDemo.kind === "photo" && <img src={currentDemo.url} alt={currentDemo.label} className="h-full w-full object-cover" />}
