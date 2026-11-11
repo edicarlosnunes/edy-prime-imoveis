@@ -1,3 +1,4 @@
+import { propertyContactStartLink } from "./property-publication-link";
 import { listPropertyTypes } from "./property-type-catalog";
 import type { SerialDb } from "./serial-counter";
 
@@ -27,7 +28,9 @@ export function campaignPublicationCaption(property: { title?: string | null; de
     "ou solicite seu link individual pelo WhatsApp.",
     "E-mail: " + CAMPAIGN_CONTACT_EMAIL,
     (property.code ? "Campanha/Referência: " + property.code : "Campanha: CAPTACAO"),
-    "WhatsApp (captação identificada): " + campaignWhatsapp1174Link(source, property.code),
+    "WhatsApp (captação identificada): " + (property.code?.trim()
+      ? propertyContactStartLink({ code: property.code }, source, CAMPAIGN_SITE_URL)
+      : campaignWhatsapp1174Link(source)),
   ].join("\n");
   const title = (property.title || "").trim();
   const description = (property.description || "").trim();
