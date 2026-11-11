@@ -109,7 +109,6 @@ function videoMetadata(property: NonNullable<Awaited<ReturnType<typeof propertyB
     property.parking > 0 ? `Vagas: ${property.parking}` : null,
     property.areaUtil > 0 ? `Área útil: ${property.areaUtil} m²` : null,
     property.description ? `\n${safeText(property.description, 2800)}` : null,
-    "WhatsApp: https://wa.me/5513997141174",
     "Contato: (13) 99714-1174. Nos Shorts, acesse os links no perfil do canal.",
   ].filter(Boolean);
   return { title, description: withPropertyLink(details.join("\n"), property, baseUrl, 4900, "youtube") };

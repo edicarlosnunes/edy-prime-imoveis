@@ -10,17 +10,24 @@ export async function isCampaignPropertyType(db: SerialDb, type: string): Promis
 export const CAMPAIGN_CAPTURE_URL = "https://www.esantoscorretor.com.br/captar";
 export const CAMPAIGN_SITE_URL = "https://www.esantoscorretor.com.br";
 export const CAMPAIGN_CONTACT_EMAIL = "esantosgestorimobiliario@gmail.com";
-export const CAMPAIGN_WHATSAPP_URL = "https://wa.me/5513997141174";
+/** Mensagem de intenção de captação, separada dos imóveis específicos. */
+export function campaignWhatsapp1174Link(source: "facebook" | "instagram" | "tiktok" | "youtube" = "tiktok", campaignCode?: string | null) {
+  const reference = campaignCode?.trim() ? ` Referência do anúncio: ${campaignCode.trim()}.` : "";
+  const message = `Olá! Vim do anúncio de captação no ${source.toUpperCase()}. Quero vender ou colocar um imóvel para locação. Origem: ${source.toUpperCase()}. Tipo: CAPTACAO.${reference}`;
+  return `https://wa.me/5513997141174?text=${encodeURIComponent(message)}`;
+}
+export const CAMPAIGN_WHATSAPP_URL = campaignWhatsapp1174Link();
 
 /** Shared, publication-safe campaign copy. Reserve room for all contacts even if the description is long. */
-export function campaignPublicationCaption(property: { title?: string | null; description?: string | null }, maxLength = 2100): string {
+export function campaignPublicationCaption(property: { title?: string | null; description?: string | null; code?: string | null }, maxLength = 2100, source: "facebook" | "instagram" | "tiktok" | "youtube" = "tiktok"): string {
   const footer = [
     "Site: " + CAMPAIGN_SITE_URL,
     "Cadastre seu imóvel: Link: " + CAMPAIGN_CAPTURE_URL,
     "Autorização de venda: Link: https://www.esantoscorretor.com.br/autorizar",
     "ou solicite seu link individual pelo WhatsApp.",
     "E-mail: " + CAMPAIGN_CONTACT_EMAIL,
-    "WhatsApp: " + CAMPAIGN_WHATSAPP_URL,
+    (property.code ? "Campanha/Referência: " + property.code : "Campanha: CAPTACAO"),
+    "WhatsApp (captação identificada): " + campaignWhatsapp1174Link(source, property.code),
   ].join("\n");
   const title = (property.title || "").trim();
   const description = (property.description || "").trim();
