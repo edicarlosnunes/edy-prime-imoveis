@@ -1197,7 +1197,7 @@ export function PropertyForm({
 
               {section === "publicacao" && (
                 <>
-                  {!isCampaign && (
+                  {!isCampaign && propertyId === null && (
                     <PropertyCoverPilot
                       data={{
                         title: form.title,
