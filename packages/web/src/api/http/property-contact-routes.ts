@@ -7,6 +7,7 @@ import type { Hono } from "hono";
 import * as schema from "../database/schema";
 import { getDb, sha256Hex } from "../lib/auth";
 import { propertyWhatsapp1174Link } from "../lib/property-publication-link";
+import { campaignWhatsapp1174Link, isCampaignPropertyType } from "../lib/campaign-publication";
 
 const CHANNELS = ["facebook", "instagram", "tiktok", "youtube", "site"] as const;
 type Channel = (typeof CHANNELS)[number];
@@ -25,6 +26,7 @@ export function registerPropertyContactRoutes(app: Hono) {
       id: schema.properties.id,
       code: schema.properties.code,
       purpose: schema.properties.purpose,
+      type: schema.properties.type,
     }).from(schema.properties).where(and(
       eq(schema.properties.code, code),
       eq(schema.properties.published, 1),
@@ -62,6 +64,10 @@ export function registerPropertyContactRoutes(app: Hono) {
     }
     c.header("Cache-Control", "no-store, private");
     c.header("Referrer-Policy", "no-referrer");
-    return c.redirect(propertyWhatsapp1174Link(property, source, property.purpose), 302);
+    const isCampaign = await isCampaignPropertyType(db, property.type);
+    const destination = isCampaign
+      ? campaignWhatsapp1174Link(source, property.code)
+      : propertyWhatsapp1174Link(property, source, property.purpose);
+    return c.redirect(destination, 302);
   });
 }

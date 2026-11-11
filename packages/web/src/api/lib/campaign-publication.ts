@@ -1,3 +1,4 @@
+import { propertyContactStartLink } from "./property-publication-link";
 import { listPropertyTypes } from "./property-type-catalog";
 import type { SerialDb } from "./serial-counter";
 
@@ -11,7 +12,7 @@ export const CAMPAIGN_CAPTURE_URL = "https://www.esantoscorretor.com.br/captar";
 export const CAMPAIGN_SITE_URL = "https://www.esantoscorretor.com.br";
 export const CAMPAIGN_CONTACT_EMAIL = "esantosgestorimobiliario@gmail.com";
 /** Mensagem de intenção de captação, separada dos imóveis específicos. */
-export function campaignWhatsapp1174Link(source: "facebook" | "instagram" | "tiktok" | "youtube" = "tiktok", campaignCode?: string | null) {
+export function campaignWhatsapp1174Link(source: "facebook" | "instagram" | "tiktok" | "youtube" | "site" = "tiktok", campaignCode?: string | null) {
   const reference = campaignCode?.trim() ? ` Referência do anúncio: ${campaignCode.trim()}.` : "";
   const message = `Olá! Vim do anúncio de captação no ${source.toUpperCase()}. Quero vender ou colocar um imóvel para locação. Origem: ${source.toUpperCase()}. Tipo: CAPTACAO.${reference}`;
   return `https://wa.me/5513997141174?text=${encodeURIComponent(message)}`;
@@ -27,7 +28,9 @@ export function campaignPublicationCaption(property: { title?: string | null; de
     "ou solicite seu link individual pelo WhatsApp.",
     "E-mail: " + CAMPAIGN_CONTACT_EMAIL,
     (property.code ? "Campanha/Referência: " + property.code : "Campanha: CAPTACAO"),
-    "WhatsApp (captação identificada): " + campaignWhatsapp1174Link(source, property.code),
+    "WhatsApp (captação identificada): " + (property.code?.trim()
+      ? propertyContactStartLink({ code: property.code }, source, CAMPAIGN_SITE_URL)
+      : campaignWhatsapp1174Link(source)),
   ].join("\n");
   const title = (property.title || "").trim();
   const description = (property.description || "").trim();
