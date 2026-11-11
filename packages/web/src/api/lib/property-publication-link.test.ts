@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { propertyMessengerLink, propertyPublicationLink, propertyWhatsapp1174Link, withPropertyLink } from "./property-publication-link.ts";
+import { propertyMessengerLink, propertyPublicationLink, propertyWhatsapp1174Link, propertyContactStartLink, withPropertyLink } from "./property-publication-link.ts";
 
 const domain = "https://www.esantoscorretor.com.br";
 const property = { code: "AP-104", slug: "apartamento-tupi" };
@@ -45,8 +45,20 @@ test("WhatsApp 1174 pré-preenche EPI e origem exata sem integrar conversas", ()
     assert.match(message,/EPI-2026-001/);
     assert.match(message,new RegExp("Origem: " + channel.toUpperCase()));
     const caption = withPropertyLink("Teste", {code:"EPI-2026-001",purpose:"venda"}, domain, 500,channel);
-    assert.ok(caption.includes(link));
+    assert.ok(caption.includes(propertyContactStartLink({code:"EPI-2026-001"},channel,domain)));
+    assert.ok(!caption.includes(link));
   }
   assert.match(new URL(propertyWhatsapp1174Link({code:"EPI-2"},"facebook","locacao")).searchParams.get("text") ?? "",/alugar/);
   assert.throws(() => propertyWhatsapp1174Link({code:"  "},"facebook"), /sem código/);
+});
+
+test("Sistema Y gera rota no CRM, identificada pelo EPI e origem, sem número pessoal", () => {
+  for (const source of ["facebook", "instagram", "tiktok", "youtube"] as const) {
+    const link = new URL(propertyContactStartLink({ code: "AP-104" }, source, domain));
+    assert.equal(link.pathname, "/api/atendimento/imovel/AP-104");
+    assert.equal(link.searchParams.get("origem"), source);
+    assert.equal(link.origin, domain);
+    assert.ok(!link.href.includes("6767"));
+  }
+  assert.throws(() => propertyContactStartLink({code:""}, "facebook",domain),/sem código/);
 });

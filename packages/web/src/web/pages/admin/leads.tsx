@@ -23,7 +23,7 @@ import {
 } from "../../components/admin/labels";
 import { ScoreBadge } from "../../components/admin/score-badge";
 import { errorMessage } from "../../lib/admin-session";
-import { useAdminLeads, useSetLeadStage } from "../../queries/admin";
+import { useAdminLeads, useContactStarts, useSetLeadStage } from "../../queries/admin";
 import { LeadDetail } from "./lead-detail";
 
 export default function AdminLeads() {
@@ -57,6 +57,7 @@ function Content() {
     [search, status],
   );
   const { data, isLoading } = useAdminLeads(filters);
+  const { data: contactStarts = [] } = useContactStarts();
   const setStage = useSetLeadStage();
 
   /* Filtro por temperatura é local: o score já vem no lead. */
@@ -92,6 +93,25 @@ function Content() {
       }
     >
       <div className="space-y-4">
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-deep">Sistema Y — contatos iniciados</p>
+              <p className="text-xs text-muted">Cliques no link EPI nos últimos 30 dias; não são leads confirmados nem mensagens recebidas.</p>
+            </div>
+            <span className="text-2xl font-semibold text-deep">{contactStarts.length}{contactStarts.length === 300 ? "+" : ""}</span>
+          </div>
+          {contactStarts.length > 0 && (
+            <div className="mt-3 max-h-48 overflow-y-auto text-xs">
+              {contactStarts.slice(0, 15).map((item) => (
+                <div key={item.id} className="flex flex-wrap justify-between gap-2 border-t border-line py-2">
+                  <span className="font-semibold">{item.code} · {item.source.toUpperCase()}</span>
+                  <span className="text-muted">{dateLabel(item.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
         <Card>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_200px_200px]">
             <Input

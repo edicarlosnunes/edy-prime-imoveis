@@ -34,6 +34,18 @@ export function propertyWhatsapp1174Link(
   return `https://wa.me/5513997141174?text=${encodeURIComponent(message)}`;
 }
 
+/** Rota Y no próprio CRM: registra o clique não confirmado antes de abrir o WhatsApp. */
+export function propertyContactStartLink(
+  property: { code: string },
+  source: "facebook" | "instagram" | "tiktok" | "youtube" | "site",
+  baseUrl: string,
+) {
+  if (!property.code.trim()) throw new Error("Imóvel sem código para identificar contato");
+  const url = new URL(`/api/atendimento/imovel/${encodeURIComponent(property.code.trim())}`, baseUrl);
+  url.searchParams.set("origem", source);
+  return url.toString();
+}
+
 /** Reserve room for the call to action even when the supplied description is long. */
 export function withPropertyLink(
   body: string,
@@ -49,7 +61,7 @@ export function withPropertyLink(
     link.searchParams.set("utm_campaign", `imovel-${property.code.trim().toLowerCase()}`);
   }
   const whatsapp = source
-    ? `\nWhatsApp (imóvel ${property.code}): ${propertyWhatsapp1174Link(property, source, (property as { purpose?: string }).purpose ?? "venda")}`
+    ? `\nWhatsApp (imóvel ${property.code}): ${propertyContactStartLink(property, source, baseUrl)}`
     : "";
   const essential = `Veja o imóvel ${property.code}: ${link.toString()}${whatsapp}`;
   // Em legendas curtas, omitir o e-mail antes de cortar um link.
