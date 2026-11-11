@@ -41,8 +41,8 @@ export function propertyContactStartLink(
   baseUrl: string,
 ) {
   if (!property.code.trim()) throw new Error("Imóvel sem código para identificar contato");
-  const url = new URL(`/api/atendimento/imovel/${encodeURIComponent(property.code.trim())}`, baseUrl);
-  url.searchParams.set("origem", source);
+  const shortSource = { facebook: "f", instagram: "i", tiktok: "t", youtube: "y", site: "s" }[source];
+  const url = new URL(`/w/${encodeURIComponent(property.code.trim())}/${shortSource}`, baseUrl);
   return url.toString();
 }
 
