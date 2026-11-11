@@ -66,7 +66,7 @@ export function registerPropertyContactRoutes(app: Hono) {
     c.header("Referrer-Policy", "no-referrer");
     const isCampaign = await isCampaignPropertyType(db, property.type);
     const destination = isCampaign
-      ? campaignWhatsapp1174Link(source === "site" ? "facebook" : source, property.code)
+      ? campaignWhatsapp1174Link(source, property.code)
       : propertyWhatsapp1174Link(property, source, property.purpose);
     return c.redirect(destination, 302);
   });
