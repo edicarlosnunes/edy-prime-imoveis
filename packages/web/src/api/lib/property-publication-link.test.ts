@@ -55,8 +55,7 @@ test("WhatsApp 1174 pré-preenche EPI e origem exata sem integrar conversas", ()
 test("Sistema Y gera rota no CRM, identificada pelo EPI e origem, sem número pessoal", () => {
   for (const source of ["facebook", "instagram", "tiktok", "youtube"] as const) {
     const link = new URL(propertyContactStartLink({ code: "AP-104" }, source, domain));
-    assert.equal(link.pathname, "/api/atendimento/imovel/AP-104");
-    assert.equal(link.searchParams.get("origem"), source);
+    assert.equal(link.pathname, "/w/AP-104/" + ({facebook:"f",instagram:"i",tiktok:"t",youtube:"y"} as const)[source]);
     assert.equal(link.origin, domain);
     assert.ok(!link.href.includes("6767"));
   }
