@@ -5,6 +5,15 @@ export function propertyPublicationLink(property: { slug?: string | null; code: 
   return `${baseUrl.replace(/\/$/, "")}/imovel/${encodeURIComponent(key)}`;
 }
 
+/** Link nativo Messenger com referência do imóvel, sem alterar tokens ou WhatsApp. */
+export function propertyMessengerLink(
+  property: { code: string }, pageId: string,
+) {
+  const page = pageId.trim();
+  if (!/^\d{5,25}$/.test(page)) throw new Error("Page ID do Facebook inválido");
+  return `https://m.me/${page}?ref=${encodeURIComponent(`imovel:${property.code.trim()}`)}`;
+}
+
 /** Reserve room for the call to action even when the supplied description is long. */
 export function withPropertyLink(
   body: string,
