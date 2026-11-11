@@ -572,19 +572,34 @@ export function registerWebhookRoutes(app: Hono) {
           if (!data.fields.phone_number && !data.fields.email) {
             throw new Error("Graph API não retornou telefone nem e-mail do lead");
           }
+          const formFields = Object.entries(data.fields)
+            .map(([key, value]) => `${key}: ${value}`)
+            .join("\n");
+          // O anúncio e o formulário devem identificar o imóvel quando a Meta
+          // entrega esse dado. Formulários genéricos continuam funcionando.
+          const propertyCode = metaPropertyReference(
+            [formFields, data.ad ?? ""].join("\n"), null,
+          );
+          const [property] = propertyCode ? await db.select({ id: schema.properties.id })
+            .from(schema.properties).where(eq(schema.properties.code, propertyCode)).limit(1) : [];
+          const statedInterest = Object.entries(data.fields)
+            .find(([key]) => /interesse|objetivo|finalidade|assunto|deseja/i.test(key))?.[1] ?? "";
           const result = await intakeLead(db, {
             name: data.fields.full_name ?? data.fields.first_name ?? "Lead Meta",
             phone: data.fields.phone_number ?? "",
             email: data.fields.email ?? null,
-            interest: data.fields.interesse ?? "Formulário Meta Lead Ads",
-            message: Object.entries(data.fields)
-              .map(([key, value]) => `${key}: ${value}`)
-              .join("\n"),
+            interest: statedInterest || (data.ad ? classifyMetaContact(data.ad) : "Formulário Meta Lead Ads"),
+            message: [formFields,
+              leadgen.formId ? `Formulário Meta: ${leadgen.formId}` : "",
+              data.ad ? `Anúncio: ${data.ad}` : "",
+              propertyCode ? `Imóvel: ${propertyCode}` : "",
+            ].filter(Boolean).join("\n"),
             source: "meta_lead_ads",
             portal: "meta",
             channel: "lead_ads",
             campaign: data.campaign,
             externalId: leadgen.leadgenId,
+            propertyId: property?.id ?? null,
           });
           if (!result.id) throw new Error("CRM não confirmou o ID do lead");
           await logEvent(
