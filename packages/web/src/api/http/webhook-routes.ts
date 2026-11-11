@@ -517,11 +517,21 @@ export function registerWebhookRoutes(app: Hono) {
         return { key, item, enabled };
       }),
     );
-    const withSecret = secrets.find((entry) => entry.item.appSecret);
-    const signature = await verifyMetaSignature(withSecret?.item.appSecret ?? "", raw, header);
-    if (!signature.ok) {
-      await logEvent(db, "meta_lead_ads", "webhook", false, `Assinatura recusada: ${signature.reason}`);
-      return c.json({ error: signature.reason }, 401);
+    // Cada integração pode usar um App Secret diferente. Validar somente o
+    // primeiro configurado rejeita eventos legítimos das demais integrações.
+    // Nunca aceitar eventos sem uma assinatura válida.
+    const configuredSecrets = secrets.filter((entry) => entry.item.appSecret);
+    let signedBy: string | null = null;
+    for (const entry of configuredSecrets) {
+      const signature = await verifyMetaSignature(entry.item.appSecret ?? "", raw, header);
+      if (signature.ok) {
+        signedBy = entry.key;
+        break;
+      }
+    }
+    if (!signedBy) {
+      await logEvent(db, "meta_lead_ads", "webhook", false, "Assinatura Meta ausente ou inválida");
+      return c.json({ error: "assinatura inválida" }, 401);
     }
 
     let payload: unknown = {};
@@ -531,24 +541,37 @@ export function registerWebhookRoutes(app: Hono) {
       return c.json({ error: "json inválido" }, 400);
     }
 
-    /* Lead Ads */
+    /* Lead Ads — não confirmar recebimento bem-sucedido se a busca/gravação falhar.
+       A Meta poderá reenviar; intakeLead deduplica pelo externalId. */
     const leadgens = parseLeadgenWebhook(payload);
+    let failedLeadgens = 0;
     if (leadgens.length) {
       const entry = secrets.find((item) => item.key === "meta_lead_ads");
       const pageToken = entry?.item.pageToken ?? "";
+      // Um evento leadgen deve ser assinado pelo app configurado para Lead Ads.
+      if (signedBy !== "meta_lead_ads") {
+        await logEvent(db, "meta_lead_ads", "webhook", false, "Evento leadgen assinado por outro aplicativo");
+        return c.json({ error: "app de lead ads não corresponde à assinatura" }, 401);
+      }
       for (const leadgen of leadgens) {
-        if (!pageToken) {
+        if (!entry?.enabled || !pageToken) {
+          failedLeadgens++;
           await logEvent(
             db,
             "meta_lead_ads",
             "webhook",
             false,
-            `Lead ${leadgen.leadgenId} recebido, mas falta o token da página para buscar os dados.`,
+            `Lead ${leadgen.leadgenId} recebido, mas a integração está desativada ou falta token da página.`,
           );
           continue;
         }
         try {
           const data = await fetchLeadgen(leadgen.leadgenId, pageToken);
+          // Um teste com identificador fictício pode não retornar dados pela Graph API.
+          // Não criar um lead vazio no CRM e não afirmar sucesso nesse cenário.
+          if (!data.fields.phone_number && !data.fields.email) {
+            throw new Error("Graph API não retornou telefone nem e-mail do lead");
+          }
           const result = await intakeLead(db, {
             name: data.fields.full_name ?? data.fields.first_name ?? "Lead Meta",
             phone: data.fields.phone_number ?? "",
@@ -563,6 +586,7 @@ export function registerWebhookRoutes(app: Hono) {
             campaign: data.campaign,
             externalId: leadgen.leadgenId,
           });
+          if (!result.id) throw new Error("CRM não confirmou o ID do lead");
           await logEvent(
             db,
             "meta_lead_ads",
@@ -571,12 +595,13 @@ export function registerWebhookRoutes(app: Hono) {
             `${result.detail} (lead #${result.id})`,
           );
         } catch (error) {
+          failedLeadgens++;
           await logEvent(
             db,
             "meta_lead_ads",
             "error",
             false,
-            `Falha ao buscar lead ${leadgen.leadgenId}: ${error instanceof Error ? error.message : "erro"}`,
+            `Falha ao processar lead ${leadgen.leadgenId}: ${error instanceof Error ? error.message : "erro"}`,
           );
         }
       }
@@ -631,6 +656,11 @@ export function registerWebhookRoutes(app: Hono) {
       );
     }
 
+    // HTTP 200 somente quando todos os leads desta notificação foram tratados.
+    // Retorno 502 permite retentativa da Meta, mantendo a deduplicação pelo ID externo.
+    if (failedLeadgens > 0) {
+      return c.json({ ok: false, failedLeadgens }, 502);
+    }
     return c.json({ ok: true }, 200);
   });
 }
