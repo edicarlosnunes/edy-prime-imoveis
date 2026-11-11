@@ -16,7 +16,7 @@ async function ensure(db:Awaited<ReturnType<typeof getDb>>) {
   await db.run(sql`CREATE TABLE IF NOT EXISTS crm_tiktok_posts (property_id INTEGER PRIMARY KEY, video_url TEXT NOT NULL, state TEXT NOT NULL, message TEXT, external_id TEXT, planner_url TEXT, created_at INTEGER NOT NULL)`);
 }
 export function tiktokBookCaption(property: any) {
-  if (property.isCampaign) return campaignPublicationCaption(property, 2100, "tiktok";
+  if (property.isCampaign) return campaignPublicationCaption(property, 2100, "tiktok");
   return withPropertyLink([property.title, `Código: ${property.code}`, formatPropertyPrice(property), `${property.district} · ${property.city}`, publicationDescription(property.description, property.features, 1000)].filter(Boolean).join("\n"), property, "https://www.esantoscorretor.com.br", 2100, "tiktok");
 }
 const back=(message:string)=>Response.redirect(`https://www.esantoscorretor.com.br/admin/tiktok?result=${encodeURIComponent(message)}`,302);
