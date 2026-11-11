@@ -55,15 +55,17 @@ export function registerPropertyContactRoutes(app: Hono) {
       const agent = (c.req.header("user-agent") ?? "").slice(0, 160);
       const ip = (c.req.header("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "";
       const fingerprint = await sha256Hex(
-        [new Date().toISOString().slice(0, 10), property.id, source, ip, agent].join("|"),
+        [property.id, source, ip, agent].join("|"),
       );
-      const since = new Date(Date.now() - 15 * 60_000);
+      // Um acesso por impressão digital aproximada, anúncio e plataforma em 24 h.
+      // O fingerprint é hash, nunca guarda o endereço IP ou a identificação bruta.
+      const since = new Date(Date.now() - 24 * 60 * 60_000);
       const recent = await db.select({ detail: schema.auditLog.detail })
         .from(schema.auditLog).where(and(
           eq(schema.auditLog.action, "contato_iniciado_whatsapp"),
           eq(schema.auditLog.entityId, String(property.id)),
           gte(schema.auditLog.createdAt, since),
-        )).orderBy(desc(schema.auditLog.createdAt)).limit(100);
+        )).orderBy(desc(schema.auditLog.createdAt)).limit(1000);
       if (!recent.some((event) => {
         try { return JSON.parse(event.detail ?? "{}").fingerprint === fingerprint; }
         catch { return false; }
