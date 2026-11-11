@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { and, desc, eq, like, or } from "drizzle-orm";
+import { and, desc, eq, like, or, gte } from "drizzle-orm";
 import { ORPCError } from "@orpc/server";
 import { adminBase } from "../lib/admin-base";
 import * as schema from "../database/schema";
@@ -26,6 +26,24 @@ const optionalDate = z
   .transform((value) => (value ? new Date(value) : null));
 
 export const adminLeads = {
+  /** Cliques com EPI: registros de interesse iniciado, nunca leads confirmados. */
+  contactStarts: adminBase.handler(async ({ context }) => {
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await context.db.select({
+      id: schema.auditLog.id,
+      entityId: schema.auditLog.entityId,
+      detail: schema.auditLog.detail,
+      createdAt: schema.auditLog.createdAt,
+    }).from(schema.auditLog).where(and(
+      eq(schema.auditLog.action, "contato_iniciado_whatsapp"),
+      gte(schema.auditLog.createdAt, since),
+    )).orderBy(desc(schema.auditLog.createdAt)).limit(300);
+    return rows.map(row => {
+      let detail: { code?: string; source?: string } = {};
+      try { detail = JSON.parse(row.detail ?? "{}"); } catch { /* apenas registro legado */ }
+      return { id: row.id, code: detail.code ?? "—", source: detail.source ?? "—", createdAt: row.createdAt };
+    });
+  }),
   list: adminBase
     .input(
       z
