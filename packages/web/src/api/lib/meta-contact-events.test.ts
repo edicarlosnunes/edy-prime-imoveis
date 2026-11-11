@@ -28,7 +28,9 @@ test("reconhece mensagem Messenger e dados do anúncio sem criar evento por cliq
       { sender: { id: "456" }, message: { mid: "m2", text: "mensagem do perfil", is_echo: true } },
     ] }],
   });
-  assert.equal(events.length, 1);
+  assert.equal(events.length, 2);
+  assert.equal(events[1]?.text, "");
+  assert.equal(events[1]?.referral, "imovel:AP-104");
   assert.deepEqual(events[0], {
     platform: "facebook", senderId: "123", text: "Quero comprar o código AP-104",
     messageId: "m1", referral: "imovel:AP-104", adId: "554433",
