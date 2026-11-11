@@ -21,6 +21,7 @@ import {
   stageReached,
 } from "../lib/inbound-idempotency";
 import { intakeLead, normalizeWebhookLead } from "../lib/lead-intake";
+import { classifyMetaContact, metaPropertyReference, parseMetaContactEvents } from "../lib/meta-contact-events";
 import { logEvent, parseConfig } from "../lib/integrations";
 import { createRateLimiter, resolveWebhookPortal } from "../lib/lead-webhook-token";
 import { addOwnerPhotos, serializeOwnerPhotos } from "../lib/capture-photos";
@@ -38,7 +39,6 @@ import {
 import {
   fetchLeadgen,
   parseLeadgenWebhook,
-  parseMetaMessaging,
   downloadWhatsappMedia,
   parseWhatsappWebhook,
   sendMetaMessage,
@@ -607,59 +607,93 @@ export function registerWebhookRoutes(app: Hono) {
       }
     }
 
-    /* Instagram / Messenger */
+    /* Instagram / Messenger: cada primeiro contato vira lead no CRM.
+       Guardar o identificador do remetente da Meta (sem inventar telefone),
+       o código do imóvel, o anúncio de origem e a conversa já existente.
+       Reentregas não criam duplicatas nem geram resposta da IA novamente. */
     const baseUrl = siteBaseUrl(c.req.raw.headers);
-    for (const message of parseMetaMessaging(payload)) {
+    let failedMessages = 0;
+    for (const message of parseMetaContactEvents(payload)) {
       const key = message.platform === "instagram" ? "instagram_dm" : "facebook_messenger";
       const entry = secrets.find((item) => item.key === key);
       if (!entry?.enabled) {
         await logEvent(db, key, "webhook", false, "Integração desativada no painel");
         continue;
       }
-      const conversation = await ensureConversation(db, {
-        channel: message.platform,
-        externalId: message.senderId,
-        contactName: null,
-      });
-      await addMessage(db, conversation.id, {
-        direction: "in",
-        author: "cliente",
-        body: message.text,
-        externalId: message.messageId,
-      });
-      const turn = await aiTurn(db, conversation.id, baseUrl);
-      let delivered = false;
-      if (turn.replied && turn.text) {
-        try {
-          await sendMetaMessage(entry.item, message.senderId, turn.text, message.platform);
-          delivered = true;
-        } catch (error) {
-          await logEvent(
-            db,
-            key,
-            "error",
-            false,
-            `Falha ao responder: ${error instanceof Error ? error.message : "erro"}`,
-          );
+      try {
+        const code = metaPropertyReference(message.text, message.referral);
+        const [property] = code ? await db.select({ id: schema.properties.id })
+          .from(schema.properties).where(eq(schema.properties.code, code)).limit(1) : [];
+        const conversation = await ensureConversation(db, {
+          channel: message.platform,
+          externalId: message.senderId,
+          contactName: null,
+          propertyId: property?.id ?? null,
+        });
+        const recorded = await addMessage(db, conversation.id, {
+          direction: "in",
+          author: "cliente",
+          body: message.text,
+          externalId: message.messageId,
+        });
+        if (!conversation.leadId) {
+          const result = await intakeLead(db, {
+            name: `Contato ${message.platform === "instagram" ? "Instagram" : "Messenger"} ${message.senderId.slice(-6)}`,
+            phone: "",
+            interest: classifyMetaContact(message.text),
+            message: [
+              message.text,
+              code ? `Código do imóvel: ${code}` : "",
+              message.referral ? `Referência Meta: ${message.referral}` : "",
+              message.adId ? `Anúncio Meta: ${message.adId}` : "",
+            ].filter(Boolean).join("\n"),
+            source: key,
+            portal: "meta",
+            channel: message.platform,
+            campaign: message.adId ? `Meta ad ${message.adId}` : null,
+            externalId: `meta-contact:${message.platform}:${message.senderId}`,
+            propertyId: property?.id ?? null,
+          });
+          if (!result.id) throw new Error("CRM não confirmou ID do contato Meta");
+          await db.update(schema.conversations)
+            .set({ leadId: result.id, propertyId: conversation.propertyId ?? property?.id ?? null })
+            .where(eq(schema.conversations.id, conversation.id));
+          await logEvent(db, key, "webhook", true,
+            `Contato Meta vinculado ao lead #${result.id}${code ? ` · imóvel ${code}` : ""}`);
+        } else if (property?.id && !conversation.propertyId) {
+          await db.update(schema.conversations).set({ propertyId: property.id })
+            .where(eq(schema.conversations.id, conversation.id));
+          await db.update(schema.leads).set({ propertyId: property.id })
+            .where(eq(schema.leads.id, conversation.leadId));
         }
+        if (!recorded.inserted) continue;
+        const turn = await aiTurn(db, conversation.id, baseUrl);
+        let delivered = false;
+        if (turn.replied && turn.text) {
+          try {
+            await sendMetaMessage(entry.item, message.senderId, turn.text, message.platform);
+            delivered = true;
+          } catch (error) {
+            await logEvent(db, key, "error", false,
+              `Falha ao responder: ${error instanceof Error ? error.message : "erro"}`);
+          }
+        }
+        await logEvent(db, key, "webhook", true,
+          turn.replied
+            ? delivered ? "Mensagem recebida, lead vinculado e IA respondeu"
+              : "Mensagem e lead gravados; resposta da IA não foi entregue"
+            : `Mensagem e lead gravados (${turn.skipped})`);
+      } catch (error) {
+        failedMessages++;
+        await logEvent(db, key, "error", false,
+          `Falha no contato Meta ${message.messageId ?? message.senderId}: ${error instanceof Error ? error.message : "erro"}`);
       }
-      await logEvent(
-        db,
-        key,
-        "webhook",
-        true,
-        turn.replied
-          ? delivered
-            ? "Mensagem recebida e respondida pela IA"
-            : "Resposta da IA gravada no painel, mas não entregue pela Meta"
-          : `Mensagem recebida (${turn.skipped})`,
-      );
     }
 
-    // HTTP 200 somente quando todos os leads desta notificação foram tratados.
-    // Retorno 502 permite retentativa da Meta, mantendo a deduplicação pelo ID externo.
-    if (failedLeadgens > 0) {
-      return c.json({ ok: false, failedLeadgens }, 502);
+    // Falhas reais devem pedir reentrega à Meta; IDs de mensagem e lead
+    // preservam a idempotência. A rota de WhatsApp permanece intocada.
+    if (failedLeadgens > 0 || failedMessages > 0) {
+      return c.json({ ok: false, failedLeadgens, failedMessages }, 502);
     }
     return c.json({ ok: true }, 200);
   });
