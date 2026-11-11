@@ -17,7 +17,7 @@ async function ensure(db:Awaited<ReturnType<typeof getDb>>) {
 }
 export function tiktokBookCaption(property: any) {
   if (property.isCampaign) return campaignPublicationCaption(property, 2100);
-  return withPropertyLink([property.title, `Código: ${property.code}`, formatPropertyPrice(property), `${property.district} · ${property.city}`, publicationDescription(property.description, property.features, 1000)].filter(Boolean).join("\n"), property, "https://www.esantoscorretor.com.br", 2100);
+  return withPropertyLink([property.title, `Código: ${property.code}`, formatPropertyPrice(property), `${property.district} · ${property.city}`, publicationDescription(property.description, property.features, 1000)].filter(Boolean).join("\n"), property, "https://www.esantoscorretor.com.br", 2100, "tiktok");
 }
 const back=(message:string)=>Response.redirect(`https://www.esantoscorretor.com.br/admin/tiktok?result=${encodeURIComponent(message)}`,302);
 export function registerMetricoolRoutes(app:Hono) {

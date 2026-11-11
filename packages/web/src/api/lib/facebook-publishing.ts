@@ -1,4 +1,4 @@
-import { withPropertyLink } from "./property-publication-link";
+import { propertyMessengerLink, withPropertyLink } from "./property-publication-link";
 import { publicationDescription } from "../../shared/negotiation";
 import { formatPropertyPrice } from "../../shared/property-price";
 const GRAPH_VERSION = "v26.0";
@@ -33,7 +33,7 @@ export interface FacebookPublishResult {
   mode: "photo" | "link";
 }
 
-export function buildFacebookCaption(property: FacebookPropertyForPost) {
+export function buildFacebookCaption(property: FacebookPropertyForPost, pageId?: string) {
   const lines = [property.title.trim(), ""];
   const purpose = property.purpose === "locacao" ? "Locação" : property.purpose === "venda_locacao" ? "Venda ou locação" : "Venda";
   lines.push(`🏠 ${purpose}`);
@@ -55,7 +55,11 @@ export function buildFacebookCaption(property: FacebookPropertyForPost) {
   }
 
   lines.push("", `Código do imóvel: ${property.code}`);
-  return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 5000);
+  if (pageId) {
+    lines.push("", "✉️ Para perguntar sobre ESTE imóvel, abra a conversa do Messenger:",
+      propertyMessengerLink(property, pageId));
+  }
+  return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 5000, "facebook");
 }
 
 async function graphJson(path: string, init: RequestInit, token: string) {
@@ -107,7 +111,7 @@ export async function publishFacebookProperty(
     throw new Error("Facebook ainda não está configurado.");
   }
 
-  const caption = buildFacebookCaption(property);
+  const caption = buildFacebookCaption(property, config.pageId);
   const params = new URLSearchParams();
   let endpoint: string;
   let mode: FacebookPublishResult["mode"];

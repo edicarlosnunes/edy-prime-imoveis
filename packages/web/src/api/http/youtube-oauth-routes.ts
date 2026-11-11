@@ -112,7 +112,7 @@ function videoMetadata(property: NonNullable<Awaited<ReturnType<typeof propertyB
     "WhatsApp: https://wa.me/5513997141174",
     "Contato: (13) 99714-1174. Nos Shorts, acesse os links no perfil do canal.",
   ].filter(Boolean);
-  return { title, description: withPropertyLink(details.join("\n"), property, baseUrl, 4900) };
+  return { title, description: withPropertyLink(details.join("\n"), property, baseUrl, 4900, "youtube") };
 }
 
 export async function handleYouTubeOAuthRequest(request: Request): Promise<Response | null> {
