@@ -31,10 +31,10 @@ export function parseMetaContactEvents(payload: unknown): MetaContactEvent[] {
     for (const item of entry.messaging ?? []) {
       if (!item.sender?.id || item.message?.is_echo) continue;
       const text = String(item.message?.text ?? item.postback?.title ?? "").trim();
-      // Abrir uma conversa ou clicar no anúncio, sem mensagem/ação explícita,
-      // não comprova interesse. Não cadastrar só por referral.
-      if (!text) continue;
       const referral = item.message?.referral ?? item.postback?.referral ?? item.referral;
+      // Um referral sem texto NÃO é lead, mas é necessário preservar o imóvel
+      // associado para identificar a mensagem que chegar em seguida.
+      if (!text && !referral?.ref) continue;
       events.push({
         platform,
         senderId: item.sender.id,
