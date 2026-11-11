@@ -117,6 +117,10 @@ export function useBackfillStreets() {
 
 /* ----------------------------------------------------------------- leads */
 
+export function useContactStarts() {
+  return useQuery(orpc.adminLeads.contactStarts.queryOptions({ staleTime: 30_000 }));
+}
+
 export function useAdminLeads(filters?: { search?: string; status?: "aberto" | "perdido" | "ganho" }) {
   return useQuery(orpc.adminLeads.list.queryOptions({ input: filters ?? {} }));
 }
