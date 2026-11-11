@@ -1018,11 +1018,11 @@ export function PropertyForm({
                   </div>
 
                   <Field label="Título">
-                    <Input value={form.title} onChange={(e) => set("title", e.target.value)} />
+                    <Input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="Ex.: Apartamento à venda em Praia Grande — [bairro], [dormitórios] e [diferencial real]" />
                   </Field>
 
                   <Field label="Frase de destaque" hint="Aparece no card do imóvel dentro do site.">
-                    <Input value={form.highlight} onChange={(e) => set("highlight", e.target.value)} />
+                    <Input value={form.highlight} onChange={(e) => set("highlight", e.target.value)} placeholder="Ex.: Conheça este imóvel em [bairro] — confira preço e agende sua visita" />
                   </Field>
 
                   <p className="text-[11px] text-muted">
@@ -1161,7 +1161,7 @@ export function PropertyForm({
                     <Btn tone="brass" onClick={() => void runGenerate()} disabled={generate.isPending}><Sparkles className="h-3.5 w-3.5" />{generate.isPending ? "Gerando…" : "Gerar conteúdo com IA"}</Btn>
                     <p className="text-[11px] text-muted">Usa somente os dados já cadastrados deste imóvel. Você revisa antes de aplicar — nada é publicado automaticamente.</p>
                   </div>
-                  <Field label="Descrição"><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} className="min-h-40" /></Field>
+                  <Field label="Descrição" hint="Use naturalmente palavras como bairro, cidade, tipo do imóvel e diferencial verdadeiro. Os exemplos em cinza não são publicados."><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} className="min-h-40" placeholder={"Ex.: Conheça este [tipo de imóvel] em [bairro], Praia Grande! São [m²], [dormitórios], [vagas] e [diferencial real]. Valor: R$ [preço]. Confira as condições e solicite uma visita.\n\nUse apenas características confirmadas do imóvel."} /></Field>
                   <div className="border-t border-line pt-4">
                     <p className="label-xs text-muted">Características e diferenciais</p>
                     <p className="mt-1 text-[11px] text-muted">Marque somente o que o imóvel realmente tem. Estes itens alimentam o site, os portais e a geração de conteúdo com IA.</p>
