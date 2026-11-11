@@ -55,7 +55,7 @@ export function buildFacebookCaption(property: FacebookPropertyForPost) {
   }
 
   lines.push("", `Código do imóvel: ${property.code}`);
-  return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 5000);
+  return withPropertyLink(lines.join("\n"), property, new URL(property.link).origin, 5000, "facebook");
 }
 
 async function graphJson(path: string, init: RequestInit, token: string) {
