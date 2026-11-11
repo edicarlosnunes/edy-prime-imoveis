@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { propertyPublicationLink, withPropertyLink } from "./property-publication-link.ts";
+import { propertyMessengerLink, propertyPublicationLink, withPropertyLink } from "./property-publication-link.ts";
 
 const domain = "https://www.esantoscorretor.com.br";
 const property = { code: "AP-104", slug: "apartamento-tupi" };
@@ -27,4 +27,11 @@ test("publicações antigas permanecem compatíveis e legendas respeitam limite"
     assert.ok(caption.length <= max);
     assert.ok(caption.includes("utm_source=facebook"));
   }
+});
+
+
+test("Messenger recebe código único do imóvel na referência de conversa", () => {
+  assert.equal(propertyMessengerLink(property, "101408975339330"),
+    "https://m.me/101408975339330?ref=imovel%3AAP-104");
+  assert.throws(() => propertyMessengerLink(property, "not-a-page"), /inválido/);
 });
