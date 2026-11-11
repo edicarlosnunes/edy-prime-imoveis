@@ -78,7 +78,6 @@ import {
   type GalleryImage,
 } from "../../components/admin/property-gallery";
 import { PropertyVideosSection } from "../../components/admin/property-videos-section";
-import { PropertyCoverPilot } from "../../components/admin/property-cover-pilot";
 import { propertyProgress } from "../../lib/property-progress";
 import { MoneyInputError, formatMoneyInput, parseMoneyInput } from "../../lib/money-input";
 import {
@@ -1197,26 +1196,6 @@ export function PropertyForm({
 
               {section === "publicacao" && (
                 <>
-                  {!isCampaign && propertyId === null && (
-                    <PropertyCoverPilot
-                      data={{
-                        title: form.title,
-                        typeLabel: propertyTypeLabel[form.type] ?? form.type,
-                        district: form.district,
-                        city: form.city,
-                        price: form.price,
-                        opportunityPrice: form.opportunityPrice,
-                        bedrooms: form.bedrooms,
-                        suites: form.suites,
-                        bathrooms: form.bathrooms,
-                        parking: form.parking,
-                        areaUtil: form.areaUtil,
-                        features: form.features,
-                        code: form.code,
-                      }}
-                      images={images}
-                    />
-                  )}
                   <Field label="Status">
                     <Select value={form.status} onChange={(e) => set("status", e.target.value as FormState["status"])}>
                       {propertyStatuses.map((value) => <option key={value} value={value}>{propertyStatusLabel[value]}</option>)}
