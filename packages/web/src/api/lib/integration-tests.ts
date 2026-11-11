@@ -72,7 +72,57 @@ export async function runTest(
     }
 
     /* -------------------------------------------------------------- Meta */
-    case "meta_lead_ads":
+    case "meta_lead_ads": {
+      const token = (config.pageToken ?? "").trim();
+      const pageId = (config.pageId ?? "").trim();
+      const appId = (config.appId ?? "").trim();
+      if (!token || !pageId || !appId) {
+        return {
+          ok: false,
+          status: "aguardando_credencial",
+          message: "A integração Lead Ads precisa de App ID, ID e token da Página. Não altere os valores salvos sem verificar as permissões.",
+        };
+      }
+      if (!/^\\d+$/.test(pageId) || !/^\\d+$/.test(appId)) {
+        return { ok: false, status: "erro", message: "ID da Página ou do aplicativo inválido." };
+      }
+      try {
+        // Consulta somente leitura da Página com o token já armazenado no CRM.
+        // Um teste de /me isolado não prova que o webhook leadgen entrega leads.
+        const response = await graph(
+          `${pageId}/subscribed_apps?fields=id,name,subscribed_fields`,
+          token,
+        ) as { data?: Array<{ id?: string; name?: string; subscribed_fields?: string[] }> };
+        const app = (response.data ?? []).find((item) => item.id === appId);
+        if (!app) {
+          return {
+            ok: false,
+            status: "configurando",
+            message: "Token consultou as assinaturas da Página, mas o aplicativo E. Santos Corretor não está associado. Falta inscrever o app na Página para receber leadgen.",
+          };
+        }
+        const fields = app.subscribed_fields ?? [];
+        if (!fields.includes("leadgen")) {
+          return {
+            ok: false,
+            status: "configurando",
+            message: "Aplicativo associado à Página, mas o campo leadgen não aparece na assinatura da Página.",
+          };
+        }
+        return {
+          ok: true,
+          status: "conectado",
+          message: "Associação confirmada pela API: aplicativo E. Santos Corretor inscrito na Página com leadgen. Ainda falta confirmar a entrega de um formulário ao CRM.",
+        };
+      } catch (error) {
+        // Não expor tokens na mensagem de erro ao navegador nem no log de teste.
+        const message = error instanceof Error ? error.message : "Falha desconhecida";
+        const reason = /permission|permissions|access|oauth|token/i.test(message)
+          ? "Permissão ou acesso insuficiente para consultar as assinaturas da Página."
+          : "Não foi possível consultar as assinaturas da Página na Graph API.";
+        return { ok: false, status: "erro", message: reason + " Consulte os eventos da integração para diagnóstico." };
+      }
+    }
     case "facebook_messenger":
     case "instagram_dm": {
       const token = config.pageToken ?? "";
