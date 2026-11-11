@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { propertyMessengerLink, propertyPublicationLink, withPropertyLink } from "./property-publication-link.ts";
+import { propertyMessengerLink, propertyPublicationLink, propertyWhatsapp1174Link, withPropertyLink } from "./property-publication-link.ts";
 
 const domain = "https://www.esantoscorretor.com.br";
 const property = { code: "AP-104", slug: "apartamento-tupi" };
@@ -34,4 +34,19 @@ test("Messenger recebe código único do imóvel na referência de conversa", ()
   assert.equal(propertyMessengerLink(property, "101408975339330"),
     "https://m.me/101408975339330?ref=imovel%3AAP-104");
   assert.throws(() => propertyMessengerLink(property, "not-a-page"), /inválido/);
+});
+
+test("WhatsApp 1174 pré-preenche EPI e origem exata sem integrar conversas", () => {
+  for (const channel of ["facebook", "instagram", "tiktok", "youtube"] as const) {
+    const link = propertyWhatsapp1174Link({code:"EPI-2026-001"},channel);
+    const url = new URL(link);
+    assert.equal(url.origin + url.pathname, "https://wa.me/5513997141174");
+    const message = url.searchParams.get("text") ?? "";
+    assert.match(message,/EPI-2026-001/);
+    assert.match(message,new RegExp("Origem: " + channel.toUpperCase()));
+    const caption = withPropertyLink("Teste", {code:"EPI-2026-001",purpose:"venda"}, domain, 500,channel);
+    assert.ok(caption.includes(link));
+  }
+  assert.match(new URL(propertyWhatsapp1174Link({code:"EPI-2"},"facebook","locacao")).searchParams.get("text") ?? "",/alugar/);
+  assert.throws(() => propertyWhatsapp1174Link({code:"  "},"facebook"), /sem código/);
 });
