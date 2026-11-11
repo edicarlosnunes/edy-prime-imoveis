@@ -599,7 +599,7 @@ export function registerWebhookRoutes(app: Hono) {
             channel: "lead_ads",
             campaign: data.campaign,
             externalId: leadgen.leadgenId,
-            propertyId: property?.id ?? null,
+            propertyId: effectivePropertyId,
           });
           if (!result.id) throw new Error("CRM não confirmou o ID do lead");
           await logEvent(
@@ -645,6 +645,19 @@ export function registerWebhookRoutes(app: Hono) {
           contactName: null,
           propertyId: property?.id ?? null,
         });
+        if (property?.id && property.id !== conversation.propertyId) {
+          await db.update(schema.conversations).set({ propertyId: property.id })
+            .where(eq(schema.conversations.id, conversation.id));
+        }
+        // A referência de um link m.me chega às vezes ANTES da mensagem.
+        // Preservá-la na conversa não cria lead até haver manifestação real.
+        if (!message.text) continue;
+        const effectivePropertyId = property?.id ?? conversation.propertyId ?? null;
+        const [priorProperty] = !code && effectivePropertyId
+          ? await db.select({ code: schema.properties.code })
+            .from(schema.properties).where(eq(schema.properties.id, effectivePropertyId)).limit(1)
+          : [];
+        const contextCode = code ?? priorProperty?.code ?? null;
         const recorded = await addMessage(db, conversation.id, {
           direction: "in",
           author: "cliente",
@@ -658,7 +671,7 @@ export function registerWebhookRoutes(app: Hono) {
             interest: classifyMetaContact(message.text),
             message: [
               message.text,
-              code ? `Código do imóvel: ${code}` : "",
+              contextCode ? `Código do imóvel: ${contextCode}` : "",
               message.referral ? `Referência Meta: ${message.referral}` : "",
               message.adId ? `Anúncio Meta: ${message.adId}` : "",
             ].filter(Boolean).join("\n"),
@@ -674,11 +687,9 @@ export function registerWebhookRoutes(app: Hono) {
             .set({ leadId: result.id, propertyId: conversation.propertyId ?? property?.id ?? null })
             .where(eq(schema.conversations.id, conversation.id));
           await logEvent(db, key, "webhook", true,
-            `Contato Meta vinculado ao lead #${result.id}${code ? ` · imóvel ${code}` : ""}`);
-        } else if (property?.id && !conversation.propertyId) {
-          await db.update(schema.conversations).set({ propertyId: property.id })
-            .where(eq(schema.conversations.id, conversation.id));
-          await db.update(schema.leads).set({ propertyId: property.id })
+            `Contato Meta vinculado ao lead #${result.id}${contextCode ? ` · imóvel ${contextCode}` : ""}`);
+        } else if (effectivePropertyId && !conversation.propertyId) {
+          await db.update(schema.leads).set({ propertyId: effectivePropertyId })
             .where(eq(schema.leads.id, conversation.leadId));
         }
         if (!recorded.inserted) continue;
