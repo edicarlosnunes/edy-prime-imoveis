@@ -69,6 +69,28 @@ const generateInput = z.object({
 
 type GenerateInput = z.infer<typeof generateInput>;
 
+/**
+ * Prioriza o tipo explícito no título digitado pelo corretor, caso a seleção
+ * interna ainda esteja desatualizada. Nunca modifica o tipo salvo no banco.
+ */
+function explicitTypeFromTitle(title: string): string | null {
+  const normalized = title
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+  const matches = [
+    { term: /\bapartamentos?\b/, value: "apartamento" },
+    { term: /\bsobrados?\b/, value: "sobrado" },
+    { term: /\bcoberturas?\b/, value: "cobertura" },
+    { term: /\bcasas?\s+altas?\b/, value: "casa alta" },
+    { term: /\bcasas?\s+baixas?\b/, value: "casa baixa" },
+    { term: /\bcasas?\b/, value: "casa" },
+    { term: /\bterrenos?\b/, value: "terreno" },
+  ].filter(({ term }) => term.test(normalized)).map(({ value }) => value);
+  const distinct = [...new Set(matches.map(value => value.startsWith("casa ") ? "casa" : value))];
+  if (distinct.length !== 1) return null;
+  return matches.find(value => value.startsWith("casa ")) ?? matches[0] ?? null;
+}
+
 const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
@@ -81,7 +103,16 @@ function buildSheet(input: GenerateInput, catalogLabel?: string, isCampaign = fa
     if (input.title.trim()) lines.push(`Tema da campanha: ${input.title.trim()}`);
     return lines.join("\n");
   }
-  lines.push(`Tipo de imóvel: ${catalogLabel ?? typeLabel[input.type] ?? "imóvel"}`);
+  const selectedType = catalogLabel ?? typeLabel[input.type] ?? "imóvel";
+  const declaredInTitle = explicitTypeFromTitle(input.title.trim());
+  const typeForAd = declaredInTitle ?? selectedType;
+  lines.push(`Tipo de imóvel para o anúncio: ${typeForAd}`);
+  if (input.title.trim()) {
+    lines.push(`Título já preenchido pelo corretor: ${input.title.trim()}`);
+    if (declaredInTitle && declaredInTitle.toLocaleLowerCase("pt-BR") !== selectedType.toLocaleLowerCase("pt-BR")) {
+      lines.push("ATENÇÃO: o título do corretor informa um tipo explícito diferente da seleção interna. Para este anúncio, preserve o tipo explícito do título e não mencione a seleção conflitante.");
+    }
+  }
   lines.push(`Finalidade: ${purposeLabel[input.purpose] ?? "venda"}`);
   if (input.district.trim()) lines.push(`Bairro: ${input.district.trim()}`);
   if (input.city.trim()) lines.push(`Cidade: ${input.city.trim()}`);
@@ -118,7 +149,8 @@ const RULES = `REGRAS ABSOLUTAS (quebrar qualquer uma torna o texto inútil):
 4. Não use superlativo vazio nem promessa ("o melhor da cidade", "oportunidade única", "imperdível", "não perca"). Não prometa retorno de investimento nem valorização.
 5. Tom: sofisticado, premium e profissional, humano e direto. Português do Brasil. Sem CAIXA ALTA. Emojis e hashtags somente nos campos e nas condições autorizadas pela PERSONALIZAÇÃO COMERCIAL.
 6. Se a ficha tiver poucos dados, escreva textos mais curtos — jamais complete com suposição.
-7. Não cite o nome da imobiliária, telefone, link, preço em texto de SEO nem chamada para ação com contato inventado.`;
+7. Não cite o nome da imobiliária, telefone, link, preço em texto de SEO nem chamada para ação com contato inventado.
+8. Respeite o tipo EXATO informado na ficha: quando for casa, nunca escreva apartamento. Se for casa alta ou casa baixa, mantenha a classificação, sem mudar para sobrado. Nunca misture os tipos em nenhum campo do JSON.`;
 
 const FORMAT = `Responda SOMENTE com um objeto JSON válido, sem cercas de código e sem comentários, com exatamente estas chaves:
 {
