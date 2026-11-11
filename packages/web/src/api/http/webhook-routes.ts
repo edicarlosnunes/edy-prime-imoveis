@@ -599,7 +599,7 @@ export function registerWebhookRoutes(app: Hono) {
             channel: "lead_ads",
             campaign: data.campaign,
             externalId: leadgen.leadgenId,
-            propertyId: effectivePropertyId,
+            propertyId: property?.id ?? null,
           });
           if (!result.id) throw new Error("CRM não confirmou o ID do lead");
           await logEvent(
