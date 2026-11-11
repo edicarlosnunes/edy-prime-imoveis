@@ -77,7 +77,7 @@ export function classifyMetaContact(text: string): string {
 
 /** Extrai apenas códigos explicitamente identificados, sem adivinhar matrícula/telefone. */
 export function metaPropertyReference(text: string, referral: string | null): string | null {
-  const combined = [referral ?? "", text].join(" ");
+  const combined = normalized([referral ?? "", text].join(" "));
   const match = combined.match(/(?:\bimovel\s*[:=#-]\s*|\bcodigo(?:\s+do\s+imovel)?\s*[:#-]?\s*|\bref(?:erencia)?\s*[:#-]\s*)([A-Za-z0-9][A-Za-z0-9_-]{1,23})/i);
   return match?.[1]?.toUpperCase() ?? null;
 }
