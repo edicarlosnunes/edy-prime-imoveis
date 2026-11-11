@@ -30,7 +30,7 @@ export function propertyWhatsapp1174Link(
     : purpose === "venda_locacao"
       ? "comprar ou alugar"
       : "comprar";
-  const message = `Olá! Vi o anúncio ${code} no ${source.toUpperCase()} e tenho interesse em ${goal}. Código do imóvel: ${code}. Origem: ${source.toUpperCase()}.`;
+  const message = `Olá! Quero ${goal} imóvel do código ${code}. Origem: ${source.toUpperCase()}.`;
   return `https://wa.me/5513997141174?text=${encodeURIComponent(message)}`;
 }
 
@@ -49,8 +49,12 @@ export function withPropertyLink(
     link.searchParams.set("utm_campaign", `imovel-${property.code.trim().toLowerCase()}`);
   }
   const whatsapp = source
-    ? `\nFale sobre este imóvel no WhatsApp: ${propertyWhatsapp1174Link(property, source, (property as { purpose?: string }).purpose ?? "venda")}`
+    ? `\nWhatsApp (imóvel ${property.code}): ${propertyWhatsapp1174Link(property, source, (property as { purpose?: string }).purpose ?? "venda")}`
     : "";
-  const footer = `Veja o imóvel ${property.code}: ${link.toString()}${whatsapp}\nE-mail: esantosgestorimobiliario@gmail.com`;
-  return `${body.slice(0, Math.max(0, max - footer.length - 2)).trimEnd()}\n\n${footer}`;
+  const essential = `Veja o imóvel ${property.code}: ${link.toString()}${whatsapp}`;
+  // Em legendas curtas, omitir o e-mail antes de cortar um link.
+  const email = "\nE-mail: esantosgestorimobiliario@gmail.com";
+  const footer = essential.length + email.length + 2 <= max ? essential + email : essential;
+  const intro = body.slice(0, Math.max(0, max - footer.length - 2)).trimEnd();
+  return intro ? `${intro}\n\n${footer}` : footer;
 }
