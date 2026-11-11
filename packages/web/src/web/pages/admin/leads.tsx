@@ -34,6 +34,23 @@ export default function AdminLeads() {
   );
 }
 
+/** Horário do clique do Sistema Y, inclusive segundos, no fuso da operação. */
+function contactClickTime(value: Date | string | number | null | undefined) {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 type StatusFilter = "" | "aberto" | "perdido" | "ganho";
 type TierFilter = "" | "quente" | "morno" | "frio";
 
@@ -97,7 +114,7 @@ function Content() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-deep">Sistema Y — contatos iniciados</p>
-              <p className="text-xs text-muted">Cliques no link EPI nos últimos 30 dias; não são leads confirmados nem mensagens recebidas.</p>
+              <p className="text-xs text-muted">Cliques no link EPI nos últimos 30 dias; não são leads confirmados nem mensagens recebidas. Horários de Brasília (HH:mm:ss).</p>
             </div>
             <span className="text-2xl font-semibold text-deep">{contactStarts.length}{contactStarts.length === 300 ? "+" : ""}</span>
           </div>
@@ -106,7 +123,7 @@ function Content() {
               {contactStarts.slice(0, 15).map((item) => (
                 <div key={item.id} className="flex flex-wrap justify-between gap-2 border-t border-line py-2">
                   <span className="font-semibold">{item.code} · {item.source.toUpperCase()}</span>
-                  <span className="text-muted">{dateLabel(item.createdAt)}</span>
+                  <span className="text-muted">{contactClickTime(item.createdAt)}</span>
                 </div>
               ))}
             </div>
