@@ -14,6 +14,26 @@ export function propertyMessengerLink(
   return `https://m.me/${page}?ref=${encodeURIComponent(`imovel:${property.code.trim()}`)}`;
 }
 
+/** O link do WhatsApp Business 1174 é somente uma conversa pré-preenchida.
+ * Não registra, intercepta ou encaminha mensagens para o CRM.
+ * Códigos EPI são obtidos do cadastro real do imóvel e nunca inventados.
+ */
+export function propertyWhatsapp1174Link(
+  property: { code: string },
+  source: "facebook" | "instagram" | "tiktok" | "youtube" | "site",
+  purpose: string = "venda",
+) {
+  const code = property.code.trim();
+  if (!code) throw new Error("Imóvel sem código para identificar conversa");
+  const goal = purpose === "locacao"
+    ? "alugar"
+    : purpose === "venda_locacao"
+      ? "comprar ou alugar"
+      : "comprar";
+  const message = `Olá! Vi o anúncio ${code} no ${source.toUpperCase()} e tenho interesse em ${goal}. Código do imóvel: ${code}. Origem: ${source.toUpperCase()}.`;
+  return `https://wa.me/5513997141174?text=${encodeURIComponent(message)}`;
+}
+
 /** Reserve room for the call to action even when the supplied description is long. */
 export function withPropertyLink(
   body: string,
@@ -28,6 +48,9 @@ export function withPropertyLink(
     link.searchParams.set("utm_medium", "social");
     link.searchParams.set("utm_campaign", `imovel-${property.code.trim().toLowerCase()}`);
   }
-  const footer = `Veja o imóvel ${property.code}: ${link.toString()}\nE-mail: esantosgestorimobiliario@gmail.com`;
+  const whatsapp = source
+    ? `\nFale sobre este imóvel no WhatsApp: ${propertyWhatsapp1174Link(property, source, (property as { purpose?: string }).purpose ?? "venda")}`
+    : "";
+  const footer = `Veja o imóvel ${property.code}: ${link.toString()}${whatsapp}\nE-mail: esantosgestorimobiliario@gmail.com`;
   return `${body.slice(0, Math.max(0, max - footer.length - 2)).trimEnd()}\n\n${footer}`;
 }
