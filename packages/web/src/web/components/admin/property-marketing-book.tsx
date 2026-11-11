@@ -322,39 +322,160 @@ export function PropertyMarketingBook({ propertyId }: { propertyId: number | nul
   async function buildCoverCanvas() {
     if (customCoverUrl) return buildSocialPhotoCanvas(customCoverUrl);
     if (!primary?.url || !property) throw new Error("Cadastre ao menos uma foto para gerar a capa premium.");
-    // Campanhas usam a arte pronta, sem títulos, preços, metragem ou legendas sobre ela.
+    // Campanha institucional: preservar arte original sem qualquer sobreposição.
     if (isCampaign) return buildSocialPhotoCanvas(primary.url);
-    const image = await loadImage(primary.url);
+
+    // Estrutura fixa 1+3: 1ª foto é a principal e as próximas 3 vêm do MESMO imóvel.
+    const ordered = [primary, ...images.filter((image) => image.url !== primary.url)].slice(0, 4);
+    const pictureData = await Promise.all(ordered.map((image) => loadImage(image.url)));
     const canvas = document.createElement("canvas");
     canvas.width = 1080;
     canvas.height = 1080;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Seu navegador não conseguiu preparar a capa.");
-    cropImage(ctx, image, 1080, 1080);
-    const gradient = ctx.createLinearGradient(0, 330, 0, 1080);
-    gradient.addColorStop(0, "rgba(0,0,0,0.02)");
-    gradient.addColorStop(0.52, theme.overlay);
-    gradient.addColorStop(1, theme.coverBottom);
-    ctx.fillStyle = gradient;
+
+    ctx.fillStyle = "#06152b";
     ctx.fillRect(0, 0, 1080, 1080);
-    ctx.shadowColor = "rgba(0,0,0,.8)";
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    ctx.fillStyle = theme.ink;
-    ctx.font = "700 57px Arial";
-    wrapText(ctx, headline, 64, 710, 900, 66, 3);
-    if (previousPriceText) {
-      ctx.fillStyle = theme.ink;
-      ctx.font = "500 28px Arial";
-      ctx.fillText(`De ${previousPriceText}`, 64, 879);
+    const drawFrame = (photo: HTMLImageElement, x: number, y: number, w: number, h: number) => {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 15);
+      ctx.clip();
+      ctx.translate(x, y);
+      cropImage(ctx, photo, w, h);
+      ctx.restore();
+      ctx.strokeStyle = "#f5bf35";
+      ctx.lineWidth = 5;
+      ctx.strokeRect(x + 3, y + 3, w - 6, h - 6);
+    };
+
+    drawFrame(pictureData[0], 0, 0, 1080, 665);
+    // Faixa de fotos: se há menos de quatro, o restante fica vazio,
+    // nunca usa imagens genéricas ou imagens de outros imóveis.
+    for (let i = 1; i <= 3; i += 1) {
+      const x = 15 + (i - 1) * 355;
+      const photo = pictureData[i];
+      if (photo) drawFrame(photo, x, 675, 340, 200);
+      else {
+        ctx.fillStyle = "#142a45";
+        ctx.fillRect(x, 675, 340, 200);
+        ctx.font = "20px Arial";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#b7c4d7";
+        ctx.fillText(`Foto ${i + 1} não cadastrada`, x + 170, 782);
+        ctx.textAlign = "left";
+      }
     }
-    ctx.fillStyle = theme.accent;
-    ctx.font = "700 43px Arial";
-    ctx.fillText(`${previousPriceText ? "Por " : ""}${priceText}`, 64, 930);
-    ctx.fillStyle = theme.ink;
-    ctx.font = "500 27px Arial";
-    if (location) ctx.fillText(location, 64, 980);
-    if (info) ctx.fillText(info, 64, 1025);
+
+    // Marca aprovada pelo usuário; não cria um logotipo fictício.
+    ctx.fillStyle = "rgba(5,18,41,.97)";
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 346, 188, [0, 0, 28, 0]);
+    ctx.fill();
+    try {
+      const brand = await loadImage("/brand/e-santos-logo-original.svg");
+      ctx.drawImage(brand, 17, 5, 285, 174);
+    } catch {
+      ctx.fillStyle = "#ffd861";
+      ctx.font = "bold 42px Georgia";
+      ctx.fillText("E. Santos", 24, 100);
+      ctx.font = "bold 20px Arial";
+      ctx.fillText("GESTOR IMOBILIÁRIO", 25, 130);
+    }
+
+    const propertyType = (typeCatalog.labels[property.type] || property.type || "Imóvel").trim();
+    ctx.fillStyle = "rgba(4,16,37,.86)";
+    ctx.beginPath();
+    ctx.roundRect(400, 15, 665, 245, 20);
+    ctx.fill();
+    ctx.fillStyle = "#ffd22f";
+    ctx.textAlign = "left";
+    ctx.shadowColor = "rgba(0,0,0,.85)";
+    ctx.shadowBlur = 4;
+    ctx.font = "bold 55px Arial";
+    wrapText(ctx, propertyType.toLocaleUpperCase("pt-BR"), 424, 85, 618, 58, 2);
+    if (property.title?.trim()) {
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 27px Arial";
+      wrapText(ctx, property.title.trim(), 425, 202, 612, 33, 2);
+    }
+    ctx.shadowBlur = 0;
+
+    // Preço real do banco, respeitando eventuais valores de oportunidade.
+    ctx.fillStyle = "#ffd22c";
+    ctx.beginPath();
+    ctx.roundRect(25, 525, 570, 115, 17);
+    ctx.fill();
+    ctx.fillStyle = "#860e06";
+    if (previousPriceText) {
+      ctx.font = "25px Arial";
+      ctx.fillText(`De ${previousPriceText}`, 45, 561);
+    }
+    const displayedPrice = priceText;
+    let priceFont = previousPriceText ? 59 : 70;
+    ctx.font = `900 ${priceFont}px Arial`;
+    while (ctx.measureText(displayedPrice).width > 530 && priceFont > 32) {
+      priceFont -= 2;
+      ctx.font = `900 ${priceFont}px Arial`;
+    }
+    ctx.fillText(displayedPrice, 45, previousPriceText ? 620 : 606);
+
+    const infoBadges = [
+      { value: property.bedrooms, label: "Dormitórios" },
+      { value: property.suites, label: "Suítes" },
+      { value: property.bathrooms, label: "Banheiros" },
+      { value: property.parking, label: "Vagas" },
+      { value: property.areaUtil, label: "m² úteis" },
+    ].filter((entry) => Number(entry.value) > 0)
+      .map((entry) => `${entry.value} ${entry.label}`);
+    const realFeatures = Array.isArray(property.features)
+      ? property.features.filter((feature): feature is string => typeof feature === "string" && feature.trim().length > 0)
+      : [];
+    const badges = [...infoBadges, ...realFeatures.map((feature) => feature.replace(/[_-]/g, " "))].slice(0, 6);
+    badges.forEach((badge, i) => {
+      const x = 15 + i * 177;
+      ctx.fillStyle = "#112e54";
+      ctx.beginPath();
+      ctx.roundRect(x, 890, 166, 72, 12);
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#dfb84b";
+      ctx.stroke();
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#f7e8b8";
+      let fs = 22;
+      ctx.font = `bold ${fs}px Arial`;
+      while (ctx.measureText(badge).width > 150 && fs > 14) {
+        fs -= 1;
+        ctx.font = `bold ${fs}px Arial`;
+      }
+      ctx.fillText(badge, x + 83, 933);
+    });
+    ctx.textAlign = "left";
+
+    ctx.fillStyle = "#081a38";
+    ctx.fillRect(0, 975, 1080, 105);
+    ctx.strokeStyle = "#deb13f";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, 974);
+    ctx.lineTo(1080, 974);
+    ctx.stroke();
+    if (location) {
+      ctx.font = "bold 24px Arial";
+      ctx.fillStyle = "#ffffff";
+      wrapText(ctx, location, 24, 1012, 640, 30, 2);
+    }
+    if (property.code) {
+      ctx.font = "18px Arial";
+      ctx.fillStyle = "#f7d575";
+      ctx.fillText(property.code, 24, 1060);
+    }
+    ctx.font = "bold 28px Arial";
+    ctx.fillStyle = "#ffd75a";
+    ctx.textAlign = "right";
+    ctx.fillText("(13) 99714-1174", 1055, 1036);
+    ctx.textAlign = "left";
     return canvas;
   }
 
