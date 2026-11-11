@@ -83,7 +83,7 @@ export async function runTest(
           message: "A integração Lead Ads precisa de App ID, ID e token da Página. Não altere os valores salvos sem verificar as permissões.",
         };
       }
-      if (!/^\\d+$/.test(pageId) || !/^\\d+$/.test(appId)) {
+      if (!/^\d+$/.test(pageId) || !/^\d+$/.test(appId)) {
         return { ok: false, status: "erro", message: "ID da Página ou do aplicativo inválido." };
       }
       try {
