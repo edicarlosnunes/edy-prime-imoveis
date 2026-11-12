@@ -127,6 +127,22 @@ export function Footer() {
           </div>
         </div>
 
+        {/* Observação legal discreta, sem modificar os demais dados do rodapé. */}
+        <aside
+          aria-label="Observação sobre identificação profissional"
+          className="mt-12 rounded-lg border border-[#a9834b]/35 bg-white/[0.035] px-5 py-4 text-sm leading-relaxed text-[#c8c5bd]"
+        >
+          <p className="font-semibold text-[#c9a46a]">Observação — Identificação profissional</p>
+          <p className="mt-2 text-[#f5f5f0]">
+            E. Santos Gestor Imobiliário / E. Santos Corretor · CRECI-SP 134718-F · Perito Imobiliário CNAI 55.918
+          </p>
+          <p className="mt-2 text-xs leading-relaxed">
+            Referência normativa: Resolução COFECI nº 1.065/2007 e Manual de Divulgação do CRECI-SP,
+            inclusive quanto à identificação profissional e às condições para uso de logotipo.
+            O registro específico de nome abreviado ou fantasia deve ser confirmado perante o CRECI-SP.
+          </p>
+        </aside>
+
         <div data-t="caption" className="mt-14 flex flex-col gap-3 border-t border-white/12 pt-8 text-xs md:flex-row md:items-center md:justify-between">
           <ul data-t="footer" className="order-2 flex flex-wrap items-center gap-x-6 gap-y-2 md:order-3">
             <li>
