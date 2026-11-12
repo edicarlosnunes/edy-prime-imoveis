@@ -1,3 +1,5 @@
+import { sanitizePublicPropertyText } from "../../shared/negotiation";
+
 /** The public detail route accepts both the saved slug and the property code. */
 export function propertyPublicationLink(property: { slug?: string | null; code: string }, baseUrl: string) {
   const key = property.code.trim() || property.slug?.trim();
@@ -67,6 +69,7 @@ export function withPropertyLink(
   // Em legendas curtas, omitir o e-mail antes de cortar um link.
   const email = "\nE-mail: esantosgestorimobiliario@gmail.com";
   const footer = essential.length + email.length + 2 <= max ? essential + email : essential;
-  const intro = body.slice(0, Math.max(0, max - footer.length - 2)).trimEnd();
+  const safeBody = sanitizePublicPropertyText(body);
+  const intro = safeBody.slice(0, Math.max(0, max - footer.length - 2)).trimEnd();
   return intro ? `${intro}\n\n${footer}` : footer;
 }

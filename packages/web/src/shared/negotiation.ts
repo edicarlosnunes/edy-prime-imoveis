@@ -37,12 +37,43 @@ export function withoutNegotiation(description: string | null | undefined, value
 export function withNegotiation(description: string | null | undefined, value: Negotiation): string {
   return [withoutNegotiation(description,value),negotiationText(value)].filter(Boolean).join("\n\n");
 }
-// Reserve space for the complete conditions before shortening the descriptive prose.
-export function publicationDescription(description: string | null | undefined, features: string | null | undefined, maxProse=900) {
-  const value=readNegotiation(features);
-  const prose = withoutNegotiation(description,value);
-  const tags = prose.match(/(?:#[\p{L}\p{N}_]+[ \n]*)+$/u)?.[0]?.trim() || "";
-  const body = tags ? prose.slice(0, prose.lastIndexOf(tags)).trim() : prose;
-  const limit = negotiationText(value) ? Math.min(maxProse,400) : maxProse;
-  return [negotiationText(value), body.slice(0, Math.max(0, limit - (tags ? tags.length + 2 : 0))).trim(), tags].filter(Boolean).join("\n\n");
+/**
+ * Proteção central: repasse, débitos e responsabilidades do proprietário são
+ * INTERNOS. Não reescrever nem incluir em anúncios, mesmo em descrições antigas.
+ */
+const PRIVATE_FINANCIAL_LINE = /^\s*(?:pagamento\s+ao\s+propriet[aá]rio|d[eé]bitos?\s+informad[oa]s?|detalhes?\s+dos?\s+d[eé]bitos?|responsabilidade\s+pelos?\s+d[eé]bitos?|repasse\s+ao\s+propriet[aá]rio|valor\s+l[ií]quido\s+(?:do|ao)\s+propriet[aá]rio|comiss[aã]o\s+(?:do|da)\s+corretor|valor\s+da\s+comiss[aã]o)\s*:/i;
+const PRIVATE_FINANCIAL_HEADING = /^\s*(?:condi[cç][oõ]es\s+de\s+pagamento\s+e\s+negocia[cç][aã]o|dados\s+financeiros\s+internos)\s*:?\s*$/i;
+
+/** Sanitização de segurança na saída pública, sem alterar a ficha no CRM. */
+export function sanitizePublicPropertyText(description: string | null | undefined): string {
+  return (description ?? "")
+    .split(/\r?\n/)
+    .filter((line) => !PRIVATE_FINANCIAL_LINE.test(line) && !PRIVATE_FINANCIAL_HEADING.test(line))
+    .map((line) => line.replace(
+      /(?:pagamento\s+ao\s+propriet[aá]rio|d[eé]bitos?\s+informad[oa]s?|detalhes?\s+dos?\s+d[eé]bitos?|responsabilidade\s+pelos?\s+d[eé]bitos?)\s*:\s*[^.;\n]+[.;]?/gi,
+      "",
+    ))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** Permite apenas modalidades gerais, não o valor de repasse, débitos ou outros detalhes. */
+export function publicNegotiationSummary(value: Negotiation): string {
+  const methods = value.methods.filter((method) => PAYMENT_METHODS.includes(method));
+  return methods.length ? "Condições aceitas: " + methods.join(", ") + "." : "";
+}
+
+export function publicationDescription(
+  description: string | null | undefined,
+  features: string | null | undefined,
+  maxProse = 900,
+): string {
+  const value = readNegotiation(features);
+  const clean = sanitizePublicPropertyText(withoutNegotiation(description, value));
+  const tags = clean.match(/(?:#[\p{L}\p{N}_]+[ \n]*)+$/u)?.[0]?.trim() || "";
+  const body = tags ? clean.slice(0, clean.lastIndexOf(tags)).trim() : clean;
+  const summary = publicNegotiationSummary(value);
+  const limit = Math.max(0, maxProse - (summary ? summary.length + 2 : 0) - (tags ? tags.length + 2 : 0));
+  return [summary, body.slice(0, limit).trim(), tags].filter(Boolean).join("\n\n");
 }
