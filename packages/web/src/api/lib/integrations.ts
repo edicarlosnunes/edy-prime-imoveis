@@ -51,6 +51,7 @@ export interface IntegrationDef {
 }
 
 export const CATEGORIES = [
+  "Publicação em redes sociais",
   "Portais de Imóveis",
   "Entrada de Leads",
   "WhatsApp",
@@ -82,6 +83,19 @@ const feedFields: IntegrationField[] = [
 ];
 
 export const INTEGRATIONS: IntegrationDef[] = [
+  {
+    key: "linkedin_direct", category: "Publicação em redes sociais",
+    name: "LinkedIn — API direta do CRM", mark: "LI",
+    purpose: "Publicar imóveis diretamente pelo CRM, sem Metricool nem serviços pagos; autorização oficial pelo LinkedIn.",
+    method: "OAuth 2.0 do LinkedIn + Share on LinkedIn (w_member_social), para perfil autorizado. Publicação sob comando do corretor, inicialmente com primeira foto ou texto. Publicar como Página empresarial exige liberação separada da Community Management API.",
+    pending: ["Criar ou selecionar aplicativo em linkedin.com/developers", "Ativar Share on LinkedIn e Sign In with LinkedIn using OpenID Connect", "Registrar a URL de callback informada abaixo", "Salvar Client ID e Client Secret e autorizar o LinkedIn. Nenhum anúncio é publicado durante a conexão."],
+    fields: [
+      { key: "clientId", label: "LinkedIn Client ID", type: "text" },
+      { key: "clientSecret", label: "LinkedIn Client Secret", type: "password", secret: true },
+    ],
+    canTest: false, canSync: false, available: true,
+    docsUrl: "https://learn.microsoft.com/en-us/linkedin/shared/authentication/getting-access",
+  },
   {
     key: "imovelguide", category: "Portais de Imóveis", name: "Imóvel Guide", mark: "IG",
     purpose: "Disponibilizar somente os imóveis autorizados em um XML exclusivo para o Imóvel Guide.",

@@ -1,3 +1,4 @@
+import { registerLinkedInRoutes } from "./http/linkedin-routes";
 import { registerMetricoolRoutes } from "./http/metricool-routes";
 import { registerPropertyContactRoutes } from "./http/property-contact-routes";
 import {registerStandaloneAuthorizationRoutes} from './http/standalone-authorization-routes';
@@ -119,6 +120,7 @@ app.get("/api/cron/property-review", async (c) => {
   return c.json({ok:true,...await sweepPropertyReviews(await getDb())});
 });
 registerMetricoolRoutes(app);
+registerLinkedInRoutes(app);
 registerPropertyContactRoutes(app);
 app.all("/api/oauth/mercadolivre/*", async (c) => {
   const response = await handleMercadoLivreOAuthRequest(c.req.raw);
