@@ -62,6 +62,8 @@ function mergeConfig(existing: ConfigMap, incoming: ConfigMap, secretKeys: Set<s
 
 function publicUrls(key: string, baseUrl: string, config: ConfigMap) {
   switch (key) {
+    case "linkedin_direct":
+      return [{ label: "Callback do OAuth LinkedIn", url: baseUrl + "/api/oauth/linkedin/callback" }];
     case "mercadolivre":
       return [{ label: "URI de redirect (retorno da autorização)", url: `${baseUrl}/api/oauth/mercadolivre/callback` }];
     case "imovelguide":
@@ -244,6 +246,9 @@ export const adminIntegrations = {
 
       const { config: existing } = await readConfig(context.db, input.key);
       const merged = mergeConfig(existing, incoming, secretKeys);
+      if (input.key === "linkedin_direct" && (merged.clientId !== existing.clientId || merged.clientSecret !== existing.clientSecret)) {
+        for (const key of ["accessToken", "personId", "accountName", "tokenExpiresAt", "oauthState", "oauthSession", "oauthExpiresAt"]) delete merged[key];
+      }
       if (input.key === "mercadolivre" && (merged.clientId !== existing.clientId || merged.clientSecret !== existing.clientSecret)) {
         for (const field of ["accessToken", "refreshToken", "tokenExpiresAt", "sellerId", "sellerName", "oauthState", "oauthSession", "oauthExpiresAt", "codeVerifier"]) delete merged[field];
       }
@@ -260,7 +265,7 @@ export const adminIntegrations = {
 
       const previousStatus = (await getIntegrationRow(context.db, input.key))?.status ?? "";
       const status =
-        previousStatus === "conectado" && !def.selfServed && (input.key !== "mercadolivre" || Boolean(merged.accessToken))
+        previousStatus === "conectado" && !def.selfServed && (input.key !== "mercadolivre" || Boolean(merged.accessToken)) && (input.key !== "linkedin_direct" || Boolean(merged.accessToken))
           ? "conectado"
           : statusFromConfig(def, merged);
 
@@ -289,6 +294,10 @@ export const adminIntegrations = {
     .handler(async ({ input, context }) => {
       const def = findIntegration(input.key);
       if (!def) throw new ORPCError("NOT_FOUND", { message: "Integração desconhecida" });
+      if (def.key === "linkedin_direct" && input.enabled) {
+        const li = await readConfig(context.db, def.key);
+        if (li.row?.status !== "conectado" || !li.config.accessToken || Number(li.config.tokenExpiresAt) <= Date.now()) throw new ORPCError("BAD_REQUEST", { message: "Autorize o LinkedIn primeiro na pasta LinkedIn." });
+      }
       if (def.key === "tiktok_publishing" && input.enabled) {
         throw new ORPCError("BAD_REQUEST", { message: "Abra a pasta TikTok, conecte com Metricool e teste o perfil para ativar o envio" });
       }
