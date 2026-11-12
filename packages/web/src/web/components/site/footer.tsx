@@ -17,56 +17,40 @@ export function Footer() {
       <div className="mx-auto max-w-[1240px] px-6 py-16 lg:px-8">
         <div className="grid gap-12 md:grid-cols-4">
           <div className="md:col-span-2">
-            {logoUrl ? (
-              <img
-                src={logoUrl}
-                alt={`${menu.logoText || site.brand} ${menu.logoSuffix || site.brandSuffix}`}
-                style={{ height: `${theme.logoHeight || 34}px` }}
-                className="w-auto object-contain"
-              />
-            ) : (
-              <p className="flex items-baseline gap-2 text-[#f5f5f0]">
-                <span className="display text-2xl">{menu.logoText || site.brand}</span>
-                <span className="label-xs text-[#c9a46a]">
-                  {menu.logoSuffix || site.brandSuffix}
-                </span>
-              </p>
-            )}
-            <p data-t="body" className="mt-5 max-w-sm text-sm leading-relaxed">
-              <Lines text={footer.about} />
-            </p>
-            {/* Identificação profissional: credenciais + tempo de atuação. */}
-            <div data-t="caption" className="mt-5 max-w-sm text-xs leading-relaxed">
-              <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[#f5f5f0]">
-                <span aria-hidden="true" className="h-px w-6 shrink-0 bg-[#a9834b]" />
-                <span className="whitespace-nowrap">{site.creci}</span>
-                <span aria-hidden="true" className="text-white/25">
-                  ·
-                </span>
-                <span className="whitespace-nowrap">{CNAI}</span>
-              </p>
-              <p className="mt-1.5 pl-8 text-[#c8c5bd]">
-                Atuando no mercado imobiliário desde 2013
-              </p>
-              {/* Vínculo entre a marca e a pessoa jurídica que a administra. */}
-              <p className="mt-3 pl-8 text-[#c8c5bd]">{LEGAL_ENTITY_NOTICE}</p>
+            <div className="flex flex-col items-start gap-5 sm:flex-row sm:gap-6">
+              <div className="shrink-0">
+                {logoUrl ? (
+                  <img
+                    src={logoUrl}
+                    alt={`${menu.logoText || site.brand} ${menu.logoSuffix || site.brandSuffix}`}
+                    style={{ height: `${theme.logoHeight || 34}px` }}
+                    className="w-auto object-contain"
+                  />
+                ) : (
+                  <p className="flex items-baseline gap-2 text-[#f5f5f0]">
+                    <span className="display text-2xl">{menu.logoText || site.brand}</span>
+                    <span className="label-xs text-[#c9a46a]">
+                      {menu.logoSuffix || site.brandSuffix}
+                    </span>
+                  </p>
+                )}
+              </div>
+              <aside
+                aria-label="Observação sobre identificação profissional"
+                className="w-full min-w-0 max-w-[440px] rounded-md border border-[#a9834b]/35 bg-white/[0.035] px-4 py-3 text-xs leading-relaxed"
+              >
+                <p className="text-center font-semibold text-[#c9a46a]">Observação · Identificação profissional</p>
+                <p className="mt-2 font-medium text-[#f5f5f0]">
+                  E. Santos Gestor Imobiliário / E. Santos Corretor · CRECI-SP 134718-F
+                </p>
+                <p className="mt-1 text-[#f5f5f0]">Perito Imobiliário · CNAI 55.918</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-[#c8c5bd]">
+                  Resolução COFECI nº 1.065/2007 e Manual de Divulgação do CRECI-SP:
+                  regras de identificação e uso de logotipo. O registro do nome abreviado
+                  ou fantasia depende de confirmação junto ao CRECI-SP.
+                </p>
+              </aside>
             </div>
-            {/* Aviso legal compacto, integrado à coluna de identificação do rodapé. */}
-            <aside
-              aria-label="Observação sobre identificação profissional"
-              className="mt-5 w-full max-w-[430px] rounded-md border border-[#a9834b]/35 bg-white/[0.035] px-4 py-3 text-xs leading-relaxed"
-            >
-              <p className="text-center font-semibold text-[#c9a46a]">Observação · Identificação profissional</p>
-              <p className="mt-2 font-medium text-[#f5f5f0]">
-                E. Santos Gestor Imobiliário / E. Santos Corretor · CRECI-SP 134718-F
-              </p>
-              <p className="mt-1 text-[#f5f5f0]">Perito Imobiliário · CNAI 55.918</p>
-              <p className="mt-2 text-[11px] leading-relaxed text-[#c8c5bd]">
-                Resolução COFECI nº 1.065/2007 e Manual de Divulgação do CRECI-SP:
-                regras de identificação e uso de logotipo. O registro do nome abreviado
-                ou fantasia depende de confirmação junto ao CRECI-SP.
-              </p>
-            </aside>
           </div>
 
           {footer.links.length > 0 && (
@@ -143,7 +127,23 @@ export function Footer() {
           </div>
         </div>
 
-        <div data-t="caption" className="mt-14 flex flex-col gap-3 border-t border-white/12 pt-8 text-xs md:flex-row md:items-center md:justify-between">
+        {/* Informações institucionais em faixa horizontal, sem repetir o quadro legal. */}
+        <div data-t="caption" className="mt-8 border-t border-white/10 pt-5 text-xs leading-relaxed text-[#c8c5bd]">
+          <p className="w-full">
+            <Lines text={footer.about} />
+          </p>
+          <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[#f5f5f0]">
+            <span>{site.creci}</span>
+            <span aria-hidden="true" className="text-[#a9834b]">·</span>
+            <span>{CNAI}</span>
+            <span aria-hidden="true" className="text-[#a9834b]">·</span>
+            <span>Atuando no mercado imobiliário desde 2013</span>
+            <span aria-hidden="true" className="text-[#a9834b]">·</span>
+            <span>{LEGAL_ENTITY_NOTICE}</span>
+          </p>
+        </div>
+
+        <div data-t="caption" className="mt-5 flex flex-col gap-3 border-t border-white/12 pt-8 text-xs md:flex-row md:items-center md:justify-between">
           <ul data-t="footer" className="order-2 flex flex-wrap items-center gap-x-6 gap-y-2 md:order-3">
             <li>
               <Link href="/privacidade" className="transition-colors hover:text-[#c9a46a]">
