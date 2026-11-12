@@ -443,6 +443,12 @@ function IntegrationsPage() {
             href="/admin/youtube"
           />
           <SocialFolder
+            mark="LI"
+            name="LinkedIn"
+            description="Publicação direta pelo CRM: conexão OAuth oficial e anúncio com capa sem intermediários."
+            href="/admin/linkedin"
+          />
+          <SocialFolder
             mark="TT"
             name="TikTok"
             description="Preparar @esantosgestorimobiliario. Publicação aguardando vinculação da conta."
