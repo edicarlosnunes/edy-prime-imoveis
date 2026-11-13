@@ -20,14 +20,12 @@ export function validCnpj(value:string){
  * completados pelo corretor depois. Não valida assinatura ou aceite do vendedor. */
 export function validateProposal(d:PurchaseProposal){
  proposalExpiry(d.date,d.duration);
- if(!d.buyer.name.trim()||!d.buyer.phone.trim())throw Error('Informe o nome e o telefone do comprador.');
  for(const [label,p] of [['vendedor',d.seller],['comprador',d.buyer]] as const){
   if(p.kind!=='pf'&&p.kind!=='pj')throw Error(`Selecione pessoa física ou jurídica para o ${label}.`);
   if(p.kind==='pf'){
    if(p.cpf.trim()&&p.cpf.replace(/\D/g,'').length!==11)throw Error(`Confira o CPF do ${label} (11 dígitos).`);
    if(p.hasSpouse&&p.spouseCpf.trim()&&p.spouseCpf.replace(/\D/g,'').length!==11)throw Error(`Confira o CPF do cônjuge do ${label}.`);
   }else{
-   if(label==='comprador'&&!p.cnpj.trim())throw Error('Informe o CNPJ da empresa compradora.');
    if(p.cnpj.trim()&&!validCnpj(p.cnpj))throw Error(`Confira o CNPJ do ${label} (14 dígitos válidos).`);
   }
  }
