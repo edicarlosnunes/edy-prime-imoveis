@@ -13,6 +13,7 @@ import { leads } from "./routes/leads";
 import { owners } from "./routes/owners";
 import { properties } from "./routes/properties";
 import { siteConfig } from "./routes/site-config";
+import { adminCampaigns, publicCampaigns } from "./routes/campaigns";
 import { siteContent } from "./routes/site-content";
 import { siteChat } from "./routes/site-chat";
 import { adminAuth } from "./routes/admin-auth";
@@ -46,6 +47,7 @@ import { registerFeedRoutes } from "./http/feed-routes";
 import { registerWebhookRoutes } from "./http/webhook-routes";
 import { registerFacebookVideoRoute } from "./http/facebook-video-route";
 import { registerYoutubeShortProxyRoutes } from "./http/youtube-short-proxy-routes";
+import { registerCampaignVideoUpload } from "./http/campaign-video-upload";
 import { registerPropertyVideoRoutes } from "./http/property-video-routes";
 import { registerPropertyBookRoutes } from "./http/property-book-routes";
 import * as schema from "./database/schema";
@@ -77,6 +79,8 @@ export const router = {
   properties,
   siteConfig,
   siteContent,
+  publicCampaigns,
+  adminCampaigns,
   siteChat,
   adminAuth,
   adminProperties,
@@ -136,6 +140,7 @@ registerWebhookRoutes(app);
 registerFacebookVideoRoute(app);
 registerYoutubeShortProxyRoutes(app);
 registerPropertyVideoRoutes(app);
+registerCampaignVideoUpload(app);
 registerPropertyBookRoutes(app);
 
 app.get("/api/cron/link-captacao-help", async (c) => {

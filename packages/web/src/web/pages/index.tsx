@@ -1,3 +1,4 @@
+import { CampaignHomeLink } from "./campaign";
 import { Fragment, lazy, Suspense, type ReactNode } from "react";
 import { useReveal } from "../hooks/use-reveal";
 import { Header } from "../components/site/header";
@@ -66,6 +67,7 @@ function Index() {
         <Header />
         <main>
           <Hero />
+          <CampaignHomeLink />
           {order.map((key) => {
             const Section = sectionComponents[key];
             return (

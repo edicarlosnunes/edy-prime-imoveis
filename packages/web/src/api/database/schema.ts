@@ -850,6 +850,12 @@ export const settings = sqliteTable("settings", {
  * status: draft (rascunho em edição) | published (no ar) | archived (histórico)
  * data: JSON com o conteúdo completo (ver src/web/lib/site-content.ts)
  */
+export const campaigns = sqliteTable("campaigns", {
+  slug: text("slug").primaryKey().notNull(),
+  draft: text("draft").notNull(),
+  live: text("live"),
+});
+
 export const siteContent = sqliteTable(
   "site_content",
   {
