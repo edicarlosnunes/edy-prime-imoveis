@@ -34,6 +34,16 @@ function sanitize(raw:unknown):PurchaseProposal{
   }
   if(typeof row.hasSpouse!=='boolean')throw Error('Estado civil inválido.');
   d[side].hasSpouse=row.hasSpouse;
+  if(row.kind!==undefined&&row.kind!=='pf'&&row.kind!=='pj')throw Error('Tipo de pessoa inválido.');
+  d[side].kind=row.kind==='pj'?'pj':'pf';
+  for(const field of ['cnpj','representative'] as const){
+   const value=row[field];
+   if(value!==undefined&&(typeof value!=='string'||value.length>250))throw Error('Campo empresarial inválido: '+field);
+   d[side][field]=typeof value==='string'?value:'';
+  }
+  if(d[side].kind==='pj'){
+   d[side].cpf='';d[side].nationality='';d[side].civilStatus='';d[side].profession='';d[side].hasSpouse=false;d[side].spouseName='';d[side].spouseCpf='';
+  }else{d[side].cnpj='';d[side].representative='';}
  }
  validateProposal(d);
  return d;
