@@ -8,7 +8,8 @@ export function proposalWrap(s:string,maxWidth:number,size=9.2){const lines:stri
 export function purchaseProposalPdf(d:PurchaseProposal){validateProposal(d);const ops:string[]=[];
 const text=(s:string,x:number,y:number,size=9.2,bold=false)=>ops.push(`BT /${bold?'F2':'F1'} ${size} Tf 1 0 0 1 ${x} ${y} Tm (${esc(s)}) Tj ET`);
 const rule=(x:number,y:number,w:number)=>ops.push(`0.65 G .5 w ${x} ${y} m ${x+w} ${y} l S 0 G`);
-function block(s:string,x:number,y:number,w:number,max:number,label:string,size=9.2){const lines=proposalWrap(s,w,size);if(lines.length>max)throw Error(`Resuma o campo ${label} para manter a proposta em uma folha A4.`);lines.forEach((l,i)=>text(l,x,y-i*11,size));return y-lines.length*11;}
+function block(s:string,x:number,y:number,w:number,max:number,label:string,size=9.2,bold=false){const lines=proposalWrap(s,w,size);if(lines.length>max)throw Error(`Resuma o campo ${label} para manter a proposta em uma folha A4.`);lines.forEach((l,i)=>text(l,x,y-i*11,size,bold));return y-lines.length*11;}
+function blockWithBoldPrefix(prefix:string,body:string,x:number,y:number,w:number,max:number,label:string,size=8.7){const lines=proposalWrap(prefix+body,w,size);if(lines.length>max)throw Error(`Resuma o campo ${label} para manter a proposta em uma folha A4.`);lines.forEach((line,i)=>{if(i===0&&line.startsWith(prefix)){text(prefix.trimEnd(),x,y,size,true);const rest=line.slice(prefix.length);if(rest)text(rest,x+width(prefix,size),y,size);}else text(line,x,y-i*11,size);});return y-lines.length*11;}
 function section(s:string,y:number,x=36,w=523){ops.push(`.95 .94 .91 rg ${x} ${y-5} ${w} 17 re f 0 g`);text(s,x+5,y,10,true);}
 ops.push('q 64 0 0 64 36 754 cm /Logo Do Q');text('E. SANTOS GESTOR IMOBILIÁRIO',112,803,12,true);text('CRECI 134718-F | (Perito Imobiliário CNAI 55.918)',112,788,9);text('Rua Guimarães Rosa, 492/163',112,774,9);text('esantosgestorimobiliario@gmail.com | (13) 99714-1174',112,760,9);rule(36,746,523);
 text('PROPOSTA DE COMPRA DE IMÓVEL',36,726,15,true);text(`Data: ${proposalDate(d.date)}   |   Duração: ${d.duration} dias   |   Válida até: ${proposalDate(proposalExpiry(d.date,d.duration))}`,36,707,9.5);
@@ -54,8 +55,8 @@ y-=8;
 section('6. CONDIÇÕES DA PROPOSTA',y);y-=21;
 y=block(PROPOSAL_TERMS,36,y,523,4,'condições',8.8);
 y-=3;
-y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?'R$ '+proposalMoney(d.amount):'valor a definir'} = ${commissionMoney(d.amount,d.commissionRate)}`,36,y,523,2,'comissão',9);
-if(d.commission.trim())y=block(`Condições de pagamento da comissão: ${d.commission.trim()}`,36,y,523,3,'condições da comissão',8.7);
+y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?'R$ '+proposalMoney(d.amount):'valor a definir'} = ${commissionMoney(d.amount,d.commissionRate)}`,36,y,523,2,'comissão',9,true);
+if(d.commission.trim())y=blockWithBoldPrefix('Condições de pagamento da comissão: ',d.commission.trim(),36,y,523,3,'condições da comissão',8.7);
 if(y<140)throw Error('O texto ultrapassa o espaço de uma folha A4. Resuma a descrição do imóvel ou as observações.');
 text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,Math.max(135,y-4),9);
 // Space above every line is kept clear for handwritten or digital signatures.
