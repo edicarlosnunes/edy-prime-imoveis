@@ -12,11 +12,17 @@ describe('proposta independente',()=>{it('usa data de São Paulo e prazo editáv
  expect(out).toContain('A definir pelo comprador');
  expect(out).toContain('/Count 1');
 });
-it('rejeita envio sem nome ou telefone do comprador',()=>{
- const d=initialProposal();
- expect(()=>purchaseProposalPdf(d)).toThrow('nome e o telefone do comprador');
- d.buyer.name='Pessoa de Exemplo';
- expect(()=>purchaseProposalPdf(d)).toThrow('nome e o telefone do comprador');
+it('permite salvar PDF sem comprador preenchido, com descrição e comissão',()=>{
+ const d=initialProposal();d.propertyDescription='Apartamento com dois dormitórios e sacada';d.amount='610.000,00';d.commissionRate='5';
+ const pdf=new TextDecoder('latin1').decode(purchaseProposalPdf(d));
+ expect(pdf).toContain('/Count 1');
+ expect(pdf).toContain('Apartamento com dois dormitórios e sacada');
+ expect(pdf).toContain('30.500,00');
+ expect(pdf).toContain('A preencher');
+});
+it('permite salvar proposta com empresa compradora sem CNPJ ainda preenchido',()=>{
+ const d=initialProposal();d.buyer.kind='pj';
+ expect(()=>purchaseProposalPdf(d)).not.toThrow();
 });
 it('aceita empresa compradora com CNPJ válido e gera PDF sem campos de pessoa física',()=>{
  const d=initialProposal(new Date('2026-11-13T17:00:00Z'));
@@ -48,7 +54,7 @@ it('rejeita CNPJ inválido do comprador ou vendedor sem exigir CPF do PJ',()=>{
  const d=initialProposal();
  d.buyer.kind='pj';d.buyer.name='Empresa Compradora';
  d.buyer.phone='13999990000';
- expect(()=>purchaseProposalPdf(d)).toThrow('CNPJ da empresa compradora');
+ expect(()=>purchaseProposalPdf(d)).not.toThrow();
  d.buyer.cnpj='11.111.111/1111-11';
  expect(()=>purchaseProposalPdf(d)).toThrow('Confira o CNPJ');
  d.buyer.cnpj='04.252.011/0001-10';
