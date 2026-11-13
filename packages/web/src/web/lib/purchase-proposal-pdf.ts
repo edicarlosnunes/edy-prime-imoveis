@@ -35,12 +35,28 @@ function party(p:ProposalParty,label:string,x:number){
  if(y<531)throw Error(`Resuma os dados do ${label.toLowerCase()} para caber em uma folha A4.`);
 }
 party(d.buyer,'1. COMPRADOR',36);party(d.seller,'2. VENDEDOR',306);
-section('3. IMÓVEL',520);block(`Tipo: ${d.propertyType||'A preencher'} | Código: ${d.propertyCode||'Não informado'}`,36,499,523,1,'tipo/código');block(`Endereço: ${d.propertyAddress||'A preencher'}`,36,487,523,2,'endereço do imóvel');block(`Matrícula/cartório: ${d.registry||'Não informado'}`,36,463,523,1,'matrícula');
-section('4. VALOR E CONDIÇÕES DE PAGAMENTO',441);text(`Valor total oferecido: ${d.amount?'R$ '+proposalMoney(d.amount):'A definir pelo comprador'}`,36,420,11,true);text(`Sinal/entrada: ${d.deposit?'R$ '+proposalMoney(d.deposit):'Não informado'} | Data: ${proposalDate(d.depositDate)} | Saldo: ${d.balance?'R$ '+proposalMoney(d.balance):'Não informado'}`,36,405,9.2);
-let y=389;for(const [label,value,max] of [['Forma de pagamento',d.payment,2],['Parcelamento',d.installments||'Não se aplica',2],['Financiamento / FGTS / permuta',d.financing||'Não se aplica',2]] as const){y=block(`${label}: ${value}`,36,y,523,max,label);}
-if(y<323)throw Error('Resuma as condições de pagamento para manter uma folha A4.');
-section('5. OBSERVAÇÕES E CONDIÇÕES ESPECÍFICAS',309);block(d.notes||'Sem observações adicionais.',36,288,523,3,'observações');
-section('6. CONDIÇÕES DA PROPOSTA',241);block(PROPOSAL_TERMS,36,220,523,4,'condições',9);block(`Comissão de intermediação: ${d.commissionRate}% sobre o valor da proposta = ${commissionMoney(d.amount,d.commissionRate)}. Pagamento: ${d.commission||'responsável a definir.'}`,36,172,523,2,'comissão',9);text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,144,9);
+// Layout compacto: todas as seções permanecem em UMA folha A4, como o modelo aprovado.
+let y=520;
+section('3. IMÓVEL',y);y-=21;
+y=block(`Tipo: ${d.propertyType||'A preencher'} | Código: ${d.propertyCode||'Não informado'}`,36,y,523,1,'tipo/código',9);
+y=block(`Endereço: ${d.propertyAddress||'A preencher'}`,36,y,523,2,'endereço do imóvel',9);
+y=block(`Matrícula/cartório: ${d.registry||'Não informado'}`,36,y,523,1,'matrícula',9);
+if(d.propertyDescription.trim())y=block(`Descrição do imóvel e condomínio: ${d.propertyDescription.trim()}`,36,y,523,4,'descrição do imóvel',8.7);
+y-=8;
+section('4. VALOR E CONDIÇÕES DE PAGAMENTO',y);y-=21;
+text(`Valor total oferecido: ${d.amount?'R$ '+proposalMoney(d.amount):'A definir pelo comprador'}`,36,y,11,true);y-=15;
+text(`Sinal/entrada: ${d.deposit?'R$ '+proposalMoney(d.deposit):'Não informado'} | Data: ${proposalDate(d.depositDate)} | Saldo: ${d.balance?'R$ '+proposalMoney(d.balance):'Não informado'}`,36,y,9.2);y-=16;
+for(const [label,value,max] of [['Forma de pagamento',d.payment,2],['Parcelamento',d.installments||'Não se aplica',2],['Financiamento / FGTS / permuta',d.financing||'Não se aplica',2]] as const){y=block(`${label}: ${value}`,36,y,523,max,label,9);}
+y-=8;
+section('5. OBSERVAÇÕES E CONDIÇÕES ESPECÍFICAS',y);y-=21;
+y=block(d.notes||'Sem observações adicionais.',36,y,523,3,'observações',9);
+y-=8;
+section('6. CONDIÇÕES DA PROPOSTA',y);y-=21;
+y=block(PROPOSAL_TERMS,36,y,523,4,'condições',8.8);
+y-=3;
+y=block(`Comissão de intermediação: ${d.commissionRate}% sobre o valor da proposta = ${commissionMoney(d.amount,d.commissionRate)}. Pagamento: ${d.commission||'responsável a definir.'}`,36,y,523,2,'comissão',9);
+if(y<140)throw Error('O texto ultrapassa o espaço de uma folha A4. Resuma a descrição do imóvel ou as observações.');
+text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,Math.max(135,y-4),9);
 // Space above every line is kept clear for handwritten or digital signatures.
 function signature(name:string,label:string,x:number,y:number,w:number){rule(x,y,w);text(label,x,y-11,8,true);block(name,x,y-22,w,2,'nome na assinatura',8);}
 signature(d.seller.name||'A preencher',d.seller.kind==='pj'?'Vendedora - aceite (PJ)':'Vendedor - aceite',36,100,162);signature(d.buyer.name||'A preencher',d.buyer.kind==='pj'?'Compradora - proponente (PJ)':'Comprador - proponente',217,100,162);
@@ -48,35 +64,14 @@ signature('E. Santos | CRECI 134718-F','Intermediário',398,100,161);
 if(d.seller.kind==='pf'&&d.seller.hasSpouse)signature(d.seller.spouseName,'Cônjuge do vendedor',36,40,253);if(d.buyer.kind==='pf'&&d.buyer.hasSpouse)signature(d.buyer.spouseName,'Cônjuge do comprador',306,40,253);
 
 const logo=atob(AUTHORIZATION_LOGO_JPEG);
-const streams=[ops.join('\n')];
-const description=d.propertyDescription.trim();
-if(description){
- const lines=proposalWrap(description,505,10);
- const perPage=54;
- for(let offset=0;offset<lines.length;offset+=perPage){
-  const pageIndex=Math.floor(offset/perPage)+2;
-  const pageOps=[
-   'q 54 0 0 54 36 754 cm /Logo Do Q',
-   'BT /F2 12 Tf 1 0 0 1 102 798 Tm (E. SANTOS GESTOR IMOBILIÁRIO) Tj ET',
-   '0.65 G .5 w 36 745 m 559 745 l S 0 G',
-   'BT /F2 14 Tf 1 0 0 1 36 716 Tm (DESCRIÇÃO DO IMÓVEL E CONDOMÍNIO) Tj ET',
-   'BT /F1 9 Tf 1 0 0 1 36 694 Tm (Complemento da proposta de compra - página '+pageIndex+') Tj ET'
-  ];
-  lines.slice(offset,offset+perPage).forEach((l,i)=>pageOps.push('BT /F1 10 Tf 1 0 0 1 36 '+(670-i*12)+' Tm ('+esc(l)+') Tj ET'));
-  streams.push(pageOps.join('\n'));
- }
-}
-const pageIds=streams.map((_,i)=>6+i*2);
+const content=ops.join('\n');
 const objects=[
  '<< /Type /Catalog /Pages 2 0 R >>',
- '<< /Type /Pages /Kids ['+pageIds.map(n=>n+' 0 R').join(' ')+'] /Count '+streams.length+' >>',
+ '<< /Type /Pages /Kids [6 0 R] /Count 1 >>',
  '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
  '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
- '<< /Type /XObject /Subtype /Image /Width 240 /Height 240 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+logo.length+' >>\nstream\n'+logo+'\nendstream'
+ '<< /Type /XObject /Subtype /Image /Width 240 /Height 240 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+logo.length+' >>\nstream\n'+logo+'\nendstream',
+ '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R >> >> /Contents 7 0 R >>',
+ '<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream'
 ];
-streams.forEach((content,i)=>{
- const contentId=pageIds[i]+1;
- objects.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R >> >> /Contents '+contentId+' 0 R >>');
- objects.push('<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream');
-});
 let out='%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';const offsets=[0];objects.forEach((o,i)=>{offsets.push(out.length);out+=`${i+1} 0 obj\n${o}\nendobj\n`;});const start=out.length;out+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`+offsets.slice(1).map(n=>`${String(n).padStart(10,'0')} 00000 n \n`).join('')+`trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;return Uint8Array.from(out,c=>c.charCodeAt(0));}
