@@ -2,6 +2,7 @@ import { registerLinkedInRoutes } from "./http/linkedin-routes";
 import { registerMetricoolRoutes } from "./http/metricool-routes";
 import { registerPropertyContactRoutes } from "./http/property-contact-routes";
 import {registerStandaloneAuthorizationRoutes} from './http/standalone-authorization-routes';
+import {registerProposalSubmissionRoutes} from './http/proposal-submission-routes';
 import type { RouterClient } from "@orpc/server";
 import { handleMercadoLivreOAuthRequest } from "./http/mercadolivre-oauth-routes";
 import { eq } from "drizzle-orm";
@@ -129,6 +130,7 @@ app.all("/api/oauth/mercadolivre/*", async (c) => {
 
 /* Arquivos públicos (feed/sitemap/robots/prerender), webhooks e vídeos. */
 registerStandaloneAuthorizationRoutes(app);
+registerProposalSubmissionRoutes(app);
 registerFeedRoutes(app);
 registerWebhookRoutes(app);
 registerFacebookVideoRoute(app);

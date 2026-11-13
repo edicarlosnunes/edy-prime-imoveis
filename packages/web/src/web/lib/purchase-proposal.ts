@@ -6,5 +6,16 @@ export function proposalExpiry(date:string,duration:string){const days=Number(du
 export const proposalDate=(date:string)=>date?date.split('-').reverse().join('/'):'Não informado';
 export function initialProposal(now=new Date()):PurchaseProposal{return {seller:emptyParty(),buyer:emptyParty(),propertyType:'',propertyAddress:'',propertyCode:'',registry:'',amount:'',deposit:'',depositDate:'',balance:'',payment:'',installments:'',financing:'',notes:'',commission:'',city:'',date:proposalToday(now),duration:'30'};}
 export function proposalMoney(value:string){const v=value.trim();if(!/^\d+(?:\.\d{3})*(?:,\d{1,2})?$/.test(v))throw Error('Informe os valores em reais, por exemplo: 110.000,00.');const n=Number(v.replace(/\./g,'').replace(',','.'));if(!Number.isFinite(n)||n<=0)throw Error('Informe um valor maior que zero.');return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
-export function validateProposal(d:PurchaseProposal){proposalExpiry(d.date,d.duration);proposalMoney(d.amount);for(const value of [d.deposit,d.balance])if(value.trim())proposalMoney(value);for(const [label,p] of [['vendedor',d.seller],['comprador',d.buyer]] as const){if(!p.name.trim()||!p.address.trim()||!p.nationality.trim()||!p.civilStatus.trim()||!p.profession.trim()||!p.phone.trim())throw Error(`Preencha os dados completos do ${label}.`);if(p.cpf.replace(/\D/g,'').length!==11)throw Error(`Confira o CPF do ${label} (11 dígitos).`);if(p.hasSpouse&&(!p.spouseName.trim()||p.spouseCpf.replace(/\D/g,'').length!==11))throw Error(`Preencha o nome e o CPF do cônjuge do ${label}.`);}if(!d.propertyType.trim()||!d.propertyAddress.trim()||!d.payment.trim()||!d.city.trim())throw Error('Preencha o imóvel, a forma de pagamento e a cidade/UF.');}
+/** Dados mínimos de recebimento: os detalhes do vendedor e do negócio podem ser
+ * completados pelo corretor depois. Não valida assinatura ou aceite do vendedor. */
+export function validateProposal(d:PurchaseProposal){
+ proposalExpiry(d.date,d.duration);
+ if(!d.buyer.name.trim()||!d.buyer.phone.trim())throw Error('Informe o nome e o telefone do comprador.');
+ for(const [label,p] of [['vendedor',d.seller],['comprador',d.buyer]] as const){
+  if(p.cpf.trim()&&p.cpf.replace(/\D/g,'').length!==11)throw Error(`Confira o CPF do ${label} (11 dígitos).`);
+  if(p.hasSpouse&&p.spouseCpf.trim()&&p.spouseCpf.replace(/\D/g,'').length!==11)throw Error(`Confira o CPF do cônjuge do ${label}.`);
+ }
+ for(const value of [d.amount,d.deposit,d.balance])if(value.trim())proposalMoney(value);
+}
+
 export const PROPOSAL_TERMS='O comprador apresenta esta oferta nas condições registradas. O aceite do vendedor será formalizado por assinatura dentro da validade. Alterações dependem da concordância das partes. A negociação observará a conferência documental e as condições expressas de financiamento, se houver, com formalização em instrumento próprio. Esta proposta não transfere a propriedade.';
