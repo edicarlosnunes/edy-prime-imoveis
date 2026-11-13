@@ -54,7 +54,8 @@ y-=8;
 section('6. CONDIÇÕES DA PROPOSTA',y);y-=21;
 y=block(PROPOSAL_TERMS,36,y,523,4,'condições',8.8);
 y-=3;
-y=block(`Comissão de intermediação: ${d.commissionRate}% sobre o valor da proposta = ${commissionMoney(d.amount,d.commissionRate)}. Pagamento: ${d.commission||'responsável a definir.'}`,36,y,523,2,'comissão',9);
+y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?'R$ '+proposalMoney(d.amount):'valor a definir'} = ${commissionMoney(d.amount,d.commissionRate)}`,36,y,523,2,'comissão',9);
+if(d.commission.trim())y=block(`Condições de pagamento da comissão: ${d.commission.trim()}`,36,y,523,2,'condições da comissão',8.7);
 if(y<140)throw Error('O texto ultrapassa o espaço de uma folha A4. Resuma a descrição do imóvel ou as observações.');
 text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,Math.max(135,y-4),9);
 // Space above every line is kept clear for handwritten or digital signatures.
