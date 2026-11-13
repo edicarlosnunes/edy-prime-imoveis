@@ -25,6 +25,7 @@ import { ScoreBadge } from "../../components/admin/score-badge";
 import { errorMessage } from "../../lib/admin-session";
 import { useAdminLeads, useContactStarts, useSetLeadStage } from "../../queries/admin";
 import { LeadDetail } from "./lead-detail";
+import { ReceivedProposals } from "../../components/admin/received-proposals";
 
 export default function AdminLeads() {
   return (
@@ -110,6 +111,7 @@ function Content() {
       }
     >
       <div className="space-y-4">
+        <ReceivedProposals />
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
