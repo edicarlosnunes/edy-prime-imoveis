@@ -1,11 +1,14 @@
 export type ProposalParty = Record<'name'|'cpf'|'nationality'|'civilStatus'|'profession'|'address'|'phone'|'email'|'spouseName'|'spouseCpf',string> & {hasSpouse:boolean;kind:'pf'|'pj';cnpj:string;representative:string};
-export type PurchaseProposal = {seller:ProposalParty;buyer:ProposalParty;propertyType:string;propertyAddress:string;propertyCode:string;registry:string;amount:string;deposit:string;depositDate:string;balance:string;payment:string;installments:string;financing:string;notes:string;commission:string;city:string;date:string;duration:string};
+export type PurchaseProposal = {seller:ProposalParty;buyer:ProposalParty;propertyType:string;propertyAddress:string;propertyCode:string;registry:string;amount:string;deposit:string;depositDate:string;balance:string;payment:string;installments:string;financing:string;notes:string;commission:string;commissionRate:string;city:string;date:string;duration:string};
 export const emptyParty=():ProposalParty=>({name:'',cpf:'',nationality:'',civilStatus:'',profession:'',address:'',phone:'',email:'',hasSpouse:false,spouseName:'',spouseCpf:'',kind:'pf',cnpj:'',representative:''});
 export function proposalToday(now=new Date()){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);const v=(k:string)=>parts.find(p=>p.type===k)!.value;return `${v('year')}-${v('month')}-${v('day')}`;}
 export function proposalExpiry(date:string,duration:string){const days=Number(duration);if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isInteger(days)||days<1||days>3650)throw Error('Informe uma duração entre 1 e 3.650 dias.');const d=new Date(date+'T12:00:00Z');if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==date)throw Error('Data da proposta inválida.');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
 export const proposalDate=(date:string)=>date?date.split('-').reverse().join('/'):'Não informado';
-export function initialProposal(now=new Date()):PurchaseProposal{return {seller:emptyParty(),buyer:emptyParty(),propertyType:'',propertyAddress:'',propertyCode:'',registry:'',amount:'',deposit:'',depositDate:'',balance:'',payment:'',installments:'',financing:'',notes:'',commission:'',city:'',date:proposalToday(now),duration:'30'};}
+export function initialProposal(now=new Date()):PurchaseProposal{return {seller:emptyParty(),buyer:emptyParty(),propertyType:'',propertyAddress:'',propertyCode:'',registry:'',amount:'',deposit:'',depositDate:'',balance:'',payment:'',installments:'',financing:'',notes:'',commission:'',commissionRate:'6',city:'',date:proposalToday(now),duration:'30'};}
 export function proposalMoney(value:string){const v=value.trim();if(!/^\d+(?:\.\d{3})*(?:,\d{1,2})?$/.test(v))throw Error('Informe os valores em reais, por exemplo: 110.000,00.');const n=Number(v.replace(/\./g,'').replace(',','.'));if(!Number.isFinite(n)||n<=0)throw Error('Informe um valor maior que zero.');return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+export function proposalAmountNumber(value:string){const v=value.trim();if(!v)return null;proposalMoney(v);return Number(v.replace(/\./g,'').replace(',','.'));}
+export function commissionValue(amount:string,rate:string){const n=proposalAmountNumber(amount);const p=Number(rate);if(!Number.isInteger(p)||p<1||p>6)throw Error('Escolha uma comissão entre 1% e 6%.');return n===null?null:Math.round(n*100*p/100)/100;}
+export function commissionMoney(amount:string,rate:string){const v=commissionValue(amount,rate);return v===null?'A calcular':v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'});}
 /** Valida dígitos verificadores do CNPJ, inclusive valores informados com máscara. */
 export function validCnpj(value:string){
  const x=value.replace(/\D/g,'');
@@ -28,6 +31,7 @@ export function validateProposal(d:PurchaseProposal){
    if(p.cnpj.trim()&&!validCnpj(p.cnpj))throw Error(`Confira o CNPJ do ${label} (14 dígitos válidos).`);
   }
  }
+ commissionValue(d.amount,d.commissionRate);
  for(const value of [d.amount,d.deposit,d.balance])if(value.trim())proposalMoney(value);
 }
 
