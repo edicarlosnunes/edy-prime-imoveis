@@ -1,5 +1,5 @@
 import {AUTHORIZATION_LOGO_JPEG} from './authorization-logo';
-import {PROPOSAL_TERMS,proposalDate,proposalExpiry,proposalMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
+import {PROPOSAL_TERMS,proposalDate,proposalExpiry,proposalMoney,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
 function latin(s:string){return s.normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?');}
 function esc(s:string){return latin(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');}
 // Conservative Helvetica widths: wrapping never relies on browser/canvas availability.
@@ -40,7 +40,7 @@ section('4. VALOR E CONDIÇÕES DE PAGAMENTO',441);text(`Valor total oferecido: 
 let y=389;for(const [label,value,max] of [['Forma de pagamento',d.payment,2],['Parcelamento',d.installments||'Não se aplica',2],['Financiamento / FGTS / permuta',d.financing||'Não se aplica',2]] as const){y=block(`${label}: ${value}`,36,y,523,max,label);}
 if(y<323)throw Error('Resuma as condições de pagamento para manter uma folha A4.');
 section('5. OBSERVAÇÕES E CONDIÇÕES ESPECÍFICAS',309);block(d.notes||'Sem observações adicionais.',36,288,523,3,'observações');
-section('6. CONDIÇÕES DA PROPOSTA',241);block(PROPOSAL_TERMS,36,220,523,4,'condições',9);block(`Intermediação - comissão e responsável pelo pagamento: ${d.commission||'A definir em ajuste próprio.'}`,36,172,523,2,'comissão',9);text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,144,9);
+section('6. CONDIÇÕES DA PROPOSTA',241);block(PROPOSAL_TERMS,36,220,523,4,'condições',9);block(`Comissão de intermediação: ${d.commissionRate}% sobre o valor da proposta = ${commissionMoney(d.amount,d.commissionRate)}. Pagamento: ${d.commission||'responsável a definir.'}`,36,172,523,2,'comissão',9);text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,144,9);
 // Space above every line is kept clear for handwritten or digital signatures.
 function signature(name:string,label:string,x:number,y:number,w:number){rule(x,y,w);text(label,x,y-11,8,true);block(name,x,y-22,w,2,'nome na assinatura',8);}
 signature(d.seller.kind==='pj'?(d.seller.representative||'Representante a definir'):(d.seller.name||'A preencher'),d.seller.kind==='pj'?'Representante vendedor - aceite':'Vendedor - aceite',36,100,162);signature(d.buyer.kind==='pj'?(d.buyer.representative||'Representante a definir'):d.buyer.name,d.buyer.kind==='pj'?'Representante comprador':'Comprador - proponente',217,100,162);
