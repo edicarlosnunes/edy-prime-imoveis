@@ -25,9 +25,11 @@ export function ReceivedProposals(){
     </div><a href={`/api/proposta/admin/recebidas/${row.id}/pdf`} className="rounded border border-line px-3 py-2 text-sm underline">Baixar proposta em PDF</a></div>
     <div className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
      <p>Telefone: <b>{row.data.buyer.phone||'—'}</b></p>
-     <p>CPF: {row.data.buyer.cpf||'Pendente'}</p>
+     <p>{row.data.buyer.kind==='pj'?'CNPJ':'CPF'}: {row.data.buyer.kind==='pj'?(row.data.buyer.cnpj||'Pendente'):(row.data.buyer.cpf||'Pendente')}</p>
      <p>E-mail: {row.data.buyer.email||'Não informado'}</p>
-     <p>Vendedor: {row.data.seller.name||'Pendente'}</p>
+     <p>Vendedor: {row.data.seller.name||'Pendente'} {row.data.seller.kind==='pj'?'(empresa)':''}</p>
+     {row.data.buyer.kind==='pj'&&<p>Responsável pela compradora: {row.data.buyer.representative||'Pendente'}</p>}
+     {row.data.seller.kind==='pj'&&<p>CNPJ vendedor: {row.data.seller.cnpj||'Pendente'} · Responsável: {row.data.seller.representative||'Pendente'}</p>}
      <p>Imóvel: {row.data.propertyAddress||row.data.propertyCode||'Pendente'}</p>
      <p>Valor oferecido: {row.data.amount?'R$ '+row.data.amount:'Pendente'}</p>
     </div>
