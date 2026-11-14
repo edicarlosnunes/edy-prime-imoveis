@@ -59,7 +59,11 @@ export function dinheiroComExtenso(valor:number):string{
 }
 /** Anota valores monetários explícitos no texto livre, sem alterar datas, documentos ou quantidades. */
 export function anotarValoresMonetarios(texto:string):string{
- return texto.replace(/(?:R\$\s*)?\d{1,3}(?:\.\d{3})+,\d{2}|R\$\s*\d+(?:,\d{1,2})?/g,(valor,offset,original)=>{
+ const comMil=texto.replace(/\b(\d{1,3})\s+mil\b(?!\s+(?:reais|habitantes|metros|m²))/gi,(trecho,qtd,offset,original)=>{
+  if(/\(\s*$/.test(original.slice(Math.max(0,offset-2),offset)))return trecho;
+  return dinheiroComExtenso(Number(qtd)*1000);
+ });
+ return comMil.replace(/(?:R\$\s*)?\d{1,3}(?:\.\d{3})+,\d{2}|R\$\s*\d+(?:,\d{1,2})?/g,(valor,offset,original)=>{
   const anterior=original.slice(Math.max(0,offset-3),offset);
   if(/\($/.test(anterior))return valor;
   try{return dinheiroComExtenso(numeroMonetarioBR(valor));}catch{return valor;}
