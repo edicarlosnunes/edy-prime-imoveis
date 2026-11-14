@@ -1,4 +1,4 @@
-import {AUTHORIZATION_LOGO_JPEG} from './authorization-logo';
+import {PROPOSAL_LOGO_JPEG,PROPOSAL_LOGO_SIZE} from './proposal-logo';
 import {anotarValoresMonetarios,dinheiroComExtenso,numeroMonetarioBR} from './valor-por-extenso';
 import {PROPOSAL_TERMS,proposalDate,proposalExpiry,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
 function latin(s:string){return s.normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?');}
@@ -67,14 +67,14 @@ signature(d.seller.name||'A preencher',d.seller.kind==='pj'?'Vendedora - aceite 
 signature('E. Santos | CRECI 134718-F','Intermediário',398,100,161);
 if(d.seller.kind==='pf'&&d.seller.hasSpouse)signature(d.seller.spouseName,'Cônjuge do vendedor',36,40,253);if(d.buyer.kind==='pf'&&d.buyer.hasSpouse)signature(d.buyer.spouseName,'Cônjuge do comprador',306,40,253);
 
-const logo=atob(AUTHORIZATION_LOGO_JPEG);
+const logo=atob(PROPOSAL_LOGO_JPEG);
 const content=ops.join('\n');
 const objects=[
  '<< /Type /Catalog /Pages 2 0 R >>',
  '<< /Type /Pages /Kids [6 0 R] /Count 1 >>',
  '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
  '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>',
- '<< /Type /XObject /Subtype /Image /Width 240 /Height 240 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+logo.length+' >>\nstream\n'+logo+'\nendstream',
+ '<< /Type /XObject /Subtype /Image /Width '+PROPOSAL_LOGO_SIZE+' /Height '+PROPOSAL_LOGO_SIZE+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length '+logo.length+' >>\nstream\n'+logo+'\nendstream',
  '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> /XObject << /Logo 5 0 R >> >> /Contents 7 0 R >>',
  '<< /Length '+content.length+' >>\nstream\n'+content+'\nendstream'
 ];
