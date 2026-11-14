@@ -1,6 +1,6 @@
 import {PROPOSAL_LOGO_JPEG,PROPOSAL_LOGO_WIDTH,PROPOSAL_LOGO_HEIGHT} from './proposal-logo-inline';
 import {anotarValoresMonetarios,dinheiroComExtenso,numeroMonetarioBR} from './valor-por-extenso';
-import {PROPOSAL_TERMS,proposalDate,proposalExpiry,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
+import {PROPOSAL_TERMS,proposalDate,proposalCityDate,proposalExpiry,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
 function latin(s:string){return s.normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?');}
 function esc(s:string){return latin(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');}
 // Conservative Helvetica widths: wrapping never relies on browser/canvas availability.
@@ -60,7 +60,7 @@ y=block(PROPOSAL_TERMS,36,y,523,4,'condições',8.8);
 y-=3;
 y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?dinheiroComExtenso(numeroMonetarioBR(d.amount)):'valor a definir'} = ${d.amount?dinheiroComExtenso(numeroMonetarioBR(commissionMoney(d.amount,d.commissionRate))):'A calcular'}`,36,y,523,4,'comissão',8.7,true);
 if(d.commission.trim())y=blockWithBoldPrefix('Condições de pagamento da comissão: ',anotarValoresMonetarios(d.commission.trim()),36,y,523,4,'condições da comissão',8.5);
-text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,y-4,9);
+text(proposalCityDate(d.city,d.date),36,y-4,9);
 // Ajuste automático do conteúdo ao espaço disponível acima das assinaturas.
 // Não rejeita o salvamento por excesso de texto; preserva o documento em uma folha.
 if(y-15<140){

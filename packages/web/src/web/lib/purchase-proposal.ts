@@ -4,7 +4,21 @@ export const emptyParty=():ProposalParty=>({name:'',cpf:'',nationality:'',civilS
 export function proposalToday(now=new Date()){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);const v=(k:string)=>parts.find(p=>p.type===k)!.value;return `${v('year')}-${v('month')}-${v('day')}`;}
 export function proposalExpiry(date:string,duration:string){const days=Number(duration);if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isInteger(days)||days<1||days>3650)throw Error('Informe uma duração entre 1 e 3.650 dias.');const d=new Date(date+'T12:00:00Z');if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==date)throw Error('Data da proposta inválida.');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10);}
 export const proposalDate=(date:string)=>date?date.split('-').reverse().join('/'):'Não informado';
-export function initialProposal(now=new Date()):PurchaseProposal{return {seller:emptyParty(),buyer:emptyParty(),propertyType:'',propertyAddress:'',propertyCode:'',registry:'',propertyDescription:'',amount:'',deposit:'',depositDate:'',balance:'',payment:'',installments:'',financing:'',notes:'',commission:'',commissionRate:'6',city:'',date:proposalToday(now),duration:'30'};}
+const MESES_PROPOSTA=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'] as const;
+export function proposalLongDate(date:string){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return 'Data a definir';
+ const [year,month,day]=date.split('-').map(Number);
+ const d=new Date(Date.UTC(year,month-1,day,12));
+ if(d.getUTCFullYear()!==year||d.getUTCMonth()!==month-1||d.getUTCDate()!==day)return 'Data a definir';
+ return `${day} de ${MESES_PROPOSTA[month-1]} de ${year}`;
+}
+export function proposalCityDate(city:string,date:string){
+ const place=city.trim()||'Cidade a definir';
+ // Não repetir a data em rascunhos antigos onde foi digitada dentro do campo da cidade.
+ if(/\b\d{1,2}\s+de\s+(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\s+de\s+\d{4}\b/i.test(place))return place;
+ return `${place.replace(/[,\s]+$/,'')}, ${proposalLongDate(date)}`;
+}
+export function initialProposal(now=new Date()):PurchaseProposal{return {seller:emptyParty(),buyer:emptyParty(),propertyType:'',propertyAddress:'',propertyCode:'',registry:'',propertyDescription:'',amount:'',deposit:'',depositDate:'',balance:'',payment:'',installments:'',financing:'',notes:'',commission:'',commissionRate:'6',city:'Praia Grande',date:proposalToday(now),duration:'30'};}
 export function proposalMoney(value:string){const v=value.trim();if(!/^\d+(?:\.\d{3})*(?:,\d{1,2})?$/.test(v))throw Error('Informe os valores em reais, por exemplo: 110.000,00.');const n=Number(v.replace(/\./g,'').replace(',','.'));if(!Number.isFinite(n)||n<=0)throw Error('Informe um valor maior que zero.');return n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 export function proposalAmountNumber(value:string){const v=value.trim();if(!v)return null;proposalMoney(v);return Number(v.replace(/\./g,'').replace(',','.'));}
 export function commissionValue(amount:string,rate:string){const normalized=rate.trim().replace(',','.');if(!/^(?:\d{1,3})(?:\.\d{1,2})?$/.test(normalized))throw Error('Informe um percentual válido de comissão.');const p=Number(normalized);if(!Number.isFinite(p)||p<=0||p>100)throw Error('Informe uma comissão maior que 0% e de até 100%.');const n=proposalAmountNumber(amount);return n===null?null:Math.round(n*p)/100;}
