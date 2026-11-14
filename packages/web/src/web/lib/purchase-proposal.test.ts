@@ -61,4 +61,4 @@ it('rejeita CNPJ inválido do comprador ou vendedor sem exigir CPF do PJ',()=>{
  d.seller.kind='pj';d.seller.cnpj='11.111.111/1111-11';
  expect(()=>purchaseProposalPdf(d)).toThrow('Confira o CNPJ');
 });
-it('não corta texto longo silenciosamente nem produz segunda página',()=>{const d=exampleProposal();d.notes='Observação extensa '.repeat(100);expect(()=>purchaseProposalPdf(d)).toThrow('Resuma');});});
+it('salva proposta extensa em uma única folha sem bloquear',()=>{const d=exampleProposal();d.notes='Observação extensa '.repeat(100);const pdf=new TextDecoder('latin1').decode(purchaseProposalPdf(d));expect(pdf).toContain('/Count 1');expect(pdf).toContain('Observação extensa');});});
