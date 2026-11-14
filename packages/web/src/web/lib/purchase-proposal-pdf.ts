@@ -1,6 +1,6 @@
 import {AUTHORIZATION_LOGO_JPEG} from './authorization-logo';
 import {anotarValoresMonetarios,dinheiroComExtenso,numeroMonetarioBR} from './valor-por-extenso';
-import {PROPOSAL_TERMS,proposalDate,proposalExpiry,proposalMoney,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
+import {PROPOSAL_TERMS,proposalDate,proposalExpiry,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
 function latin(s:string){return s.normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?');}
 function esc(s:string){return latin(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');}
 // Conservative Helvetica widths: wrapping never relies on browser/canvas availability.
