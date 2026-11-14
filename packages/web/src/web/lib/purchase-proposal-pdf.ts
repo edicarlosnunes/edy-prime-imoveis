@@ -1,4 +1,5 @@
 import {AUTHORIZATION_LOGO_JPEG} from './authorization-logo';
+import {anotarValoresMonetarios,dinheiroComExtenso,numeroMonetarioBR} from './valor-por-extenso';
 import {PROPOSAL_TERMS,proposalDate,proposalExpiry,proposalMoney,commissionMoney,validateProposal,type PurchaseProposal,type ProposalParty} from './purchase-proposal';
 function latin(s:string){return s.normalize('NFC').replace(/[–—]/g,'-').replace(/[“”]/g,'"').replace(/[‘’]/g,"'").replace(/[^\x20-\xFF]/g,'?');}
 function esc(s:string){return latin(s).replace(/\\/g,'\\\\').replace(/\(/g,'\\(').replace(/\)/g,'\\)');}
@@ -45,9 +46,10 @@ y=block(`Matrícula/cartório: ${d.registry||'Não informado'}`,36,y,523,1,'matr
 if(d.propertyDescription.trim())y=block(`Descrição do imóvel e condomínio: ${d.propertyDescription.trim()}`,36,y,523,4,'descrição do imóvel',8.7);
 y-=8;
 section('4. VALOR E CONDIÇÕES DE PAGAMENTO',y);y-=21;
-text(`Valor total oferecido: ${d.amount?'R$ '+proposalMoney(d.amount):'A definir pelo comprador'}`,36,y,11,true);y-=15;
-text(`Sinal/entrada: ${d.deposit?'R$ '+proposalMoney(d.deposit):'Não informado'} | Data: ${proposalDate(d.depositDate)} | Saldo: ${d.balance?'R$ '+proposalMoney(d.balance):'Não informado'}`,36,y,9.2);y-=16;
-for(const [label,value,max] of [['Forma de pagamento',d.payment,2],['Parcelamento',d.installments||'Não se aplica',2],['Financiamento / FGTS / permuta',d.financing||'Não se aplica',2]] as const){y=block(`${label}: ${value}`,36,y,523,max,label,9);}
+y=block(`Valor total oferecido: ${d.amount?dinheiroComExtenso(numeroMonetarioBR(d.amount)):'A definir pelo comprador'}`,36,y,523,2,'valor total oferecido',9.4,true);
+y=block(`Sinal/entrada: ${d.deposit?dinheiroComExtenso(numeroMonetarioBR(d.deposit)):'Não informado'} | Data: ${proposalDate(d.depositDate)}`,36,y,523,2,'sinal/entrada',8.9);
+y=block(`Saldo: ${d.balance?dinheiroComExtenso(numeroMonetarioBR(d.balance)):'Não informado'}`,36,y,523,2,'saldo',8.9);
+for(const [label,value,max] of [['Forma de pagamento',d.payment,3],['Parcelamento',d.installments||'Não se aplica',3],['Financiamento / FGTS / permuta',d.financing||'Não se aplica',3]] as const){y=block(`${label}: ${anotarValoresMonetarios(value)}`,36,y,523,max,label,8.7);}
 y-=8;
 section('5. OBSERVAÇÕES E CONDIÇÕES ESPECÍFICAS',y);y-=21;
 y=block(d.notes||'Sem observações adicionais.',36,y,523,3,'observações',9);
@@ -55,8 +57,8 @@ y-=8;
 section('6. CONDIÇÕES DA PROPOSTA',y);y-=21;
 y=block(PROPOSAL_TERMS,36,y,523,4,'condições',8.8);
 y-=3;
-y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?'R$ '+proposalMoney(d.amount):'valor a definir'} = ${commissionMoney(d.amount,d.commissionRate)}`,36,y,523,2,'comissão',9,true);
-if(d.commission.trim())y=blockWithBoldPrefix('Condições de pagamento da comissão: ',d.commission.trim(),36,y,523,3,'condições da comissão',8.7);
+y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?dinheiroComExtenso(numeroMonetarioBR(d.amount)):'valor a definir'} = ${d.amount?dinheiroComExtenso(numeroMonetarioBR(commissionMoney(d.amount,d.commissionRate))):'A calcular'}`,36,y,523,4,'comissão',8.7,true);
+if(d.commission.trim())y=blockWithBoldPrefix('Condições de pagamento da comissão: ',anotarValoresMonetarios(d.commission.trim()),36,y,523,4,'condições da comissão',8.5);
 if(y<140)throw Error('O texto ultrapassa o espaço de uma folha A4. Resuma a descrição do imóvel ou as observações.');
 text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,Math.max(135,y-4),9);
 // Space above every line is kept clear for handwritten or digital signatures.
