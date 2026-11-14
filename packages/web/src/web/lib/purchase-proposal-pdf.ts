@@ -39,6 +39,7 @@ function party(p:ProposalParty,label:string,x:number){
 party(d.buyer,'1. COMPRADOR',36);party(d.seller,'2. VENDEDOR',306);
 // Layout compacto: todas as seções permanecem em UMA folha A4, como o modelo aprovado.
 let y=520;
+const bodyStart=ops.length;
 section('3. IMÓVEL',y);y-=21;
 y=block(`Tipo: ${d.propertyType||'A preencher'} | Código: ${d.propertyCode||'Não informado'}`,36,y,523,1,'tipo/código',9);
 y=block(`Endereço: ${d.propertyAddress||'A preencher'}`,36,y,523,2,'endereço do imóvel',9);
@@ -59,8 +60,15 @@ y=block(PROPOSAL_TERMS,36,y,523,4,'condições',8.8);
 y-=3;
 y=block(`Comissão de intermediação: ${d.commissionRate.replace('.',',')}% sobre o valor total oferecido, ${d.amount?dinheiroComExtenso(numeroMonetarioBR(d.amount)):'valor a definir'} = ${d.amount?dinheiroComExtenso(numeroMonetarioBR(commissionMoney(d.amount,d.commissionRate))):'A calcular'}`,36,y,523,4,'comissão',8.7,true);
 if(d.commission.trim())y=blockWithBoldPrefix('Condições de pagamento da comissão: ',anotarValoresMonetarios(d.commission.trim()),36,y,523,4,'condições da comissão',8.5);
-if(y<140)throw Error('O texto ultrapassa o espaço de uma folha A4. Resuma a descrição do imóvel ou as observações.');
-text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,Math.max(135,y-4),9);
+text(`Local: ${d.city||'A definir'} | Data: ${proposalDate(d.date)}`,36,y-4,9);
+// Ajuste automático do conteúdo ao espaço disponível acima das assinaturas.
+// Não rejeita o salvamento por excesso de texto; preserva o documento em uma folha.
+if(y-15<140){
+ const factor=380/(520-(y-15));
+ const offset=520*(1-factor);
+ ops.splice(bodyStart,0,`q 1 0 0 ${factor.toFixed(5)} 0 ${offset.toFixed(3)} cm`);
+ ops.push('Q');
+}
 // Space above every line is kept clear for handwritten or digital signatures.
 function signature(name:string,label:string,x:number,y:number,w:number){rule(x,y,w);text(label,x,y-11,8,true);block(name,x,y-22,w,2,'nome na assinatura',8);}
 signature(d.seller.name||'A preencher',d.seller.kind==='pj'?'Vendedora - aceite (PJ)':'Vendedor - aceite',36,100,162);signature(d.buyer.name||'A preencher',d.buyer.kind==='pj'?'Compradora - proponente (PJ)':'Comprador - proponente',217,100,162);
