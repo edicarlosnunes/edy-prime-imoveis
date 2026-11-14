@@ -42,7 +42,7 @@ export function valorPorExtenso(valor:number):string{
  const centavosTotais=Math.round(valor*100);
  const reais=Math.floor(centavosTotais/100);
  const centavos=centavosTotais%100;
- const reaisTexto=reais===0?'zero real':inteiroPorExtenso(reais)+(reais===1?' real':' reais');
+ const reaisTexto=reais===0?'zero real':inteiroPorExtenso(reais)+(reais>=1_000_000&&reais%1_000_000===0?' de reais':reais===1?' real':' reais');
  if(centavos===0)return reaisTexto;
  const centavosTexto=inteiroPorExtenso(centavos)+(centavos===1?' centavo':' centavos');
  return reais===0?centavosTexto:reaisTexto+' e '+centavosTexto;
