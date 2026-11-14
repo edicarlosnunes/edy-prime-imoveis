@@ -1,11 +1,12 @@
-import {useState} from 'react';
+import {useEffect,useState} from 'react';
 import {initialProposal,proposalExpiry,proposalDate,commissionMoney,PROPOSAL_TERMS,type ProposalParty,type PurchaseProposal} from '../lib/purchase-proposal';
 import {purchaseProposalPdf} from '../lib/purchase-proposal-pdf';
 const GOV='https://assinador.iti.br/';
 const BROKER_WHATSAPP='https://wa.me/5513997141174';
 const inputClass='mt-2 w-full rounded-lg border border-line bg-white p-3 font-normal';
 export default function Proposta(){
- const [data,setData]=useState(initialProposal),[file,setFile]=useState<File|null>(null),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[reviewed,setReviewed]=useState(false),[openGov,setOpenGov]=useState(false);
+ const [data,setData]=useState<PurchaseProposal>(()=>{try{const saved=window.sessionStorage.getItem('edy-proposta-rascunho-v1');if(saved){const parsed=JSON.parse(saved) as PurchaseProposal;return {...initialProposal(),...parsed,seller:{...initialProposal().seller,...parsed.seller},buyer:{...initialProposal().buyer,...parsed.buyer}};}}catch{/* browser storage may be disabled */}return initialProposal();}),[file,setFile]=useState<File|null>(null),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,setBusy]=useState(false),[reviewed,setReviewed]=useState(false),[openGov,setOpenGov]=useState(false);
+ useEffect(()=>{try{window.sessionStorage.setItem('edy-proposta-rascunho-v1',JSON.stringify(data));}catch{/* storage unavailable */}},[data]);
  let expires='';try{expires=proposalDate(proposalExpiry(data.date,data.duration));}catch{/* validation is shown on submit */}
  function invalidate(){setFile(null);setError('');setStatus('');setReviewed(false);}
  function change(key:keyof PurchaseProposal,value:string){invalidate();setData(d=>({...d,[key]:value}));}
