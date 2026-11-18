@@ -1,4 +1,4 @@
-import { Facebook, Instagram, Linkedin, Mail, MessageCircle, Music2 } from "lucide-react";
+import { Facebook, Instagram, Linkedin, Mail, MessageCircle, Music2, Youtube } from "lucide-react";
 import { Link } from "wouter";
 import { LEGAL_ENTITY_NOTICE } from "../../lib/legal-entity";
 import { site } from "../../lib/site";
@@ -145,6 +145,17 @@ export function Footer() {
                     >
                       <Linkedin className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
                       LinkedIn
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://www.youtube.com/@E.SantosGestorImobiliário"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
+                    >
+                      <Youtube className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
+                      YouTube
                     </a>
                   </li>
                 </>
