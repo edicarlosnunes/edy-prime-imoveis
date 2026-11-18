@@ -82,6 +82,7 @@ export function About() {
             data-reveal-delay="230"
           >
             {LEGAL_ENTITY_ABOUT}
+            <span className="mt-2 block">CRECI/SP 134718-F · Perito Avaliador Imobiliário · CNAI 55.918.</span>
           </p>
 
           {data.ctaLabel.trim() && (
