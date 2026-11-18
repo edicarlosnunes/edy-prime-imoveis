@@ -43,7 +43,7 @@ export function Footer() {
                 <p className="mt-2 font-medium text-[#f5f5f0]">
                   E. Santos Gestor Imobiliário / E. Santos Corretor · CRECI-SP 134718-F
                 </p>
-                <p className="mt-1 text-[#f5f5f0]">Perito Imobiliário · CNAI 55.918</p>
+                <p className="mt-1 text-[#f5f5f0]">Perito Avaliador Imobiliário · CNAI 55.918</p>
                 <p className="mt-2 text-[11px] leading-relaxed text-[#c8c5bd]">
                   Resolução COFECI nº 1.065/2007 e Manual de Divulgação do CRECI-SP:
                   regras de identificação e uso de logotipo. O registro do nome abreviado

@@ -39,7 +39,7 @@ function Privacidade() {
               O controlador dos dados pessoais tratados neste site é a{" "}
               <strong>{CONTROLLER.legalName}</strong>, que atua sob o nome comercial{" "}
               <strong>{CONTROLLER.tradeName}</strong>, inscrita no CNPJ sob o nº{" "}
-              <strong>{CONTROLLER.cnpj}</strong>, {site.creci}, com atendimento em {site.address}.
+              <strong>{CONTROLLER.cnpj}</strong>, {site.creci}, Perito Avaliador Imobiliário — CNAI 55.918, com atendimento em {site.address}.
             </Paragraph>
             <Paragraph>
               Para qualquer assunto relacionado à privacidade e à proteção de dados — incluindo o

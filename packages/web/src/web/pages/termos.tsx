@@ -30,7 +30,7 @@ function Termos() {
             <Paragraph>
               Este site é mantido pela <strong>{CONTROLLER.legalName}</strong>, que atua sob o nome
               comercial <strong>{CONTROLLER.tradeName}</strong>, inscrita no CNPJ sob o nº{" "}
-              <strong>{CONTROLLER.cnpj}</strong>, {site.creci}, com atendimento em {site.address}.
+              <strong>{CONTROLLER.cnpj}</strong>, {site.creci}, Perito Avaliador Imobiliário — CNAI 55.918, com atendimento em {site.address}.
               O contato para dúvidas sobre estes termos é o e-mail{" "}
               <a href={`mailto:${site.email}`} className="text-brass underline-offset-4 hover:underline">
                 {site.email}
