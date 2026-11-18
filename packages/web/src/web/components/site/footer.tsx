@@ -1,4 +1,4 @@
-import { Facebook, Instagram, Mail, MessageCircle } from "lucide-react";
+import { Facebook, Instagram, Linkedin, Mail, MessageCircle, Music2 } from "lucide-react";
 import { Link } from "wouter";
 import { LEGAL_ENTITY_NOTICE } from "../../lib/legal-entity";
 import { site } from "../../lib/site";
@@ -122,6 +122,32 @@ export function Footer() {
                     Facebook
                   </a>
                 </li>
+              )}
+              {footer.showSocial && (
+                <>
+                  <li>
+                    <a
+                      href="https://www.tiktok.com/@esantosgestorimobiliario"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
+                    >
+                      <Music2 className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
+                      TikTok
+                    </a>
+                  </li>
+                  <li>
+                    <a
+                      href="https://www.linkedin.com/in/e-santos-gestor-imobiliario-863b63448/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 transition-colors hover:text-[#c9a46a]"
+                    >
+                      <Linkedin className="h-4 w-4 text-[#a9834b]" strokeWidth={1.5} />
+                      LinkedIn
+                    </a>
+                  </li>
+                </>
               )}
             </ul>
           </div>
