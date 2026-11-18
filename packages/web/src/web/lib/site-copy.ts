@@ -88,6 +88,11 @@ export function upgradeSiteCopy(content: SiteContent): SiteContent {
 
   return {
     ...content,
+    company: {
+      ...content.company,
+      // Atualiza apenas o e-mail legado publicado; outros e-mails editados no CMS permanecem intactos.
+      email: swap(content.company.email, "edyprimeimoveis@gmail.com", "contato@esantoscorretor.com.br"),
+    },
     hero: {
       ...hero,
       title: heroTitle,
