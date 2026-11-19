@@ -1,5 +1,5 @@
 import { readMetaLocation } from "../../shared/meta-location";
-import { formatPropertyPrice, propertyPrice } from "../../shared/property-price";
+import { formatPropertyPrice, propertyPrice, publicPropertyDescription } from "../../shared/property-price";
 /**
  * Feed XML dos imóveis + sitemap + robots.
  *
@@ -106,7 +106,7 @@ export async function feedProperties(db: AdminDb, channel: FeedChannel): Promise
     parking: row.parking,
     areaUtil: row.areaUtil,
     areaTotal: row.areaTotal,
-    description: [row.description, propertyPrice(row).discounted ? `Valor: ${formatPropertyPrice(row)}` : null].filter(Boolean).join("\n\n"),
+    description: [publicPropertyDescription(row.description), propertyPrice(row).discounted ? `Valor: ${formatPropertyPrice(row)}` : null].filter(Boolean).join("\n\n"),
     features: parseFeatures(row.features).filter((feature) => !feature.startsWith("__opportunity_price:") && !feature.startsWith("__referral_note:") && !feature.startsWith("__negotiation:") && !feature.startsWith("__meta_location:")),
     status: row.status,
     slug: row.slug ?? propertySlug(row),
