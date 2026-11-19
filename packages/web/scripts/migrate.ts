@@ -214,6 +214,11 @@ const statements = [
     source TEXT NOT NULL DEFAULT 'site',
     created_at INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS campaigns (
+    slug TEXT PRIMARY KEY NOT NULL,
+    draft TEXT NOT NULL,
+    live TEXT
+  )`,
   `CREATE TABLE IF NOT EXISTS site_content (
     id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     status TEXT NOT NULL DEFAULT 'draft',
