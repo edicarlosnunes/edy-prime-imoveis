@@ -1,4 +1,4 @@
-import { formatPropertyPrice, propertyPrice } from "../../shared/property-price";
+import { formatPropertyPrice, propertyPrice, publicPropertyDescription } from "../../shared/property-price";
 /**
  * Rotas públicas de arquivo: feed XML dos portais, sitemap, robots e o
  * prerender da página do imóvel (título/meta/OG/JSON-LD para Google e
@@ -166,7 +166,7 @@ export function registerFeedRoutes(app: Hono) {
         "@context": "https://schema.org",
         "@type": "RealEstateListing",
         name: property.title,
-        description: (property.description ?? description).slice(0, 500),
+        description: (publicPropertyDescription(property.description) || description).slice(0, 500),
         url,
         image: image || undefined,
         offers: {
