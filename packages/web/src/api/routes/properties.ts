@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { publicPropertyDescription } from "../../shared/property-price";
 import { z } from "zod";
 import { base } from "../__core/app";
 import * as schema from "../database/schema";
@@ -133,7 +134,7 @@ export const properties = {
         areaTotal: row.areaTotal,
         status: effectiveCommercialStatus(row) === "VENDIDO" ? "vendido" : row.status,
         highlight: row.highlight ?? "",
-        description: row.description ?? "",
+        description: publicPropertyDescription(row.description),
         features: parseFeatures(row.features),
         image: primary?.url ?? FALLBACK_IMAGE,
         images: own.map((image) => image.url),
@@ -200,7 +201,7 @@ export const properties = {
           areaTotal: item.areaTotal,
           status: effectiveCommercialStatus(item) === "VENDIDO" ? "vendido" : item.status,
           highlight: item.highlight ?? "",
-          description: item.description ?? "",
+          description: publicPropertyDescription(item.description),
           features: parseFeatures(item.features),
           image: cover?.url ?? FALLBACK_IMAGE,
           images: list.map((image) => image.url),
