@@ -21,3 +21,15 @@ export function formatPropertyPrice(source: PriceSource) {
   if (!current) return "Consulte o valor";
   return discounted ? `De ${money(original)} por ${money(current)}` : money(current);
 }
+
+
+/** Public display/export only: omit private owner settlement and debt details from legacy descriptions. */
+export function publicPropertyDescription(raw: string | null | undefined): string {
+  const text = String(raw ?? "").replace(/\r\n?/g, "\n");
+  // Legacy descriptions may contain the internal negotiation block after marketing copy.
+  // Treat the first sensitive heading as an end-of-public-description boundary.
+  const boundary = /(?:^|\n)\s*(?:condi[cç][oõ]es de pagamento e negocia[cç][aã]o|pagamento ao propriet[aá]rio\s*:|d[eé]bitos informados\s*:|detalhes dos d[eé]bitos\s*:|responsabilidade pelos d[eé]bitos\s*:|valor dos d[eé]bitos existentes\s*:)/im;
+  const match = boundary.exec(text);
+  const safe = match ? text.slice(0, match.index) : text;
+  return safe.trim();
+}
